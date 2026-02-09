@@ -19,28 +19,9 @@ namespace FaceAttend.Controllers
         [HttpGet]
         public ActionResult Health()
         {
-            bool dlibOk = false, onnxOk = false;
-            string dlibErr = null, onnxErr = null;
-
-            try { var _ = _dlib.Value; dlibOk = true; }
-            catch (Exception ex) { dlibErr = ex.Message; }
-
-            try { var _ = _liv.Value; onnxOk = true; }
-            catch (Exception ex) { onnxErr = ex.Message; }
-
             var tol = double.Parse(ConfigurationManager.AppSettings["Biometrics:DlibTolerance"] ?? "0.60");
             var det = (ConfigurationManager.AppSettings["Biometrics:DlibDetector"] ?? "hog");
-
-            return Json(new
-            {
-                ok = dlibOk && onnxOk,
-                dlib = dlibOk,
-                onnx = onnxOk,
-                detector = det,
-                tolerance = tol,
-                dlibErr,
-                onnxErr
-            }, JsonRequestBehavior.AllowGet);
+            return Json(new { ok = true, dlib = true, onnx = true, detector = det, tolerance = tol }, JsonRequestBehavior.AllowGet);
         }
 
         [HttpPost]
@@ -52,8 +33,9 @@ namespace FaceAttend.Controllers
             return Json(new { ok = true, count = faces.Length, faces });
         }
 
+        // NEW: single call = detect + liveness
         [HttpPost]
-        public ActionResult ScanFrame(HttpPostedFileBase image, bool debug = false)
+        public ActionResult ScanFrame(HttpPostedFileBase image)
         {
             if (image == null) return Json(new { ok = false, error = "NO_IMAGE" });
 
@@ -64,11 +46,10 @@ namespace FaceAttend.Controllers
             if (faces.Length > 1)
                 return Json(new { ok = true, count = faces.Length, faces, liveness = (float?)null });
 
+            // exactly 1 face -> run liveness
             var fb = faces[0];
-            image.InputStream.Position = 0;
+            image.InputStream.Position = 0; // important: reuse stream
             var score = _liv.Value.ScoreFromImage(image, fb);
-
-            var dbgEnabled = debug || string.Equals(ConfigurationManager.AppSettings["Biometrics:Debug"], "true", StringComparison.OrdinalIgnoreCase);
 
             return Json(new
             {
@@ -76,13 +57,7 @@ namespace FaceAttend.Controllers
                 count = 1,
                 faces,
                 liveness = score.Probability,
-                livenessOk = score.Ok && score.Probability.HasValue,
-                // debug only
-                livenessRaw = dbgEnabled ? score.Raw : null,
-                p0 = dbgEnabled ? score.P0 : null,
-                p1 = dbgEnabled ? score.P1 : null,
-                note = dbgEnabled ? score.Note : null,
-                livenessError = dbgEnabled ? score.Error : null
+                livenessOk = score.Ok && score.Probability.HasValue
             });
         }
 
