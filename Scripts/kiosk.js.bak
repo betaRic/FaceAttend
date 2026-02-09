@@ -2,6 +2,7 @@
 (function () {
   const base = ""; // same-origin
 
+  // Fast burst config (tune later)
   const cfg = {
     frames: 6,
     perFrameLiveness: 0.75,
@@ -9,29 +10,27 @@
     passBest: 0.88,
 
     // Guards based on face-box size in the captured frame
-    minFaceRatio: 0.12,
-    maxFaceRatio: 0.45,
+    minFaceRatio: 0.12,  // too far if below
+    maxFaceRatio: 0.45,  // too close if above
 
     // Guards based on face center position (0..1)
     centerMin: 0.18,
     centerMax: 0.82,
 
+    // How long to show final result before restarting scan
     cooldownMs: 900,
 
+    // JPEG quality for burst frames (speed)
     burstQuality: 0.75,
-    identifyQuality: 0.90,
 
-    ajaxTimeoutMs: 8000,
-
-    // Stop infinite loops on permanent failures
-    maxFatalErrors: 3,
-    maxNetErrors: 3
+    // JPEG quality for identify frame (accuracy)
+    identifyQuality: 0.90
   };
 
   const $video = $("#cam");
   const video = $video.get(0);
   const canvas = document.getElementById("cap");
-  const ctx = canvas ? canvas.getContext("2d", { willReadFrequently: true }) : null;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
 
   const $status = $("#status");
   const $sub = $("#sub");
@@ -60,29 +59,22 @@
     preventDuplicates: true
   };
 
-  // Hard abort if the view is missing required elements
-  if (!video || !canvas || !ctx || !$status.length || !$hintMsg.length) {
-    // eslint-disable-next-line no-console
-    console.error("Kiosk UI elements missing. Check Kiosk/Index.cshtml IDs.");
-    return;
-  }
-
-  function setStatus(text, subText) {
+  function setStatus(text, sub) {
     $status.text(text).addClass("pulse");
     setTimeout(() => $status.removeClass("pulse"), 200);
-    if (typeof subText === "string") $sub.text(subText);
+    if (typeof sub === "string") $sub.text(sub);
   }
 
-  function setHint(msg, subText) {
+  function setHint(msg, sub) {
     if (typeof msg === "string") $hintMsg.text(msg);
-    if (typeof subText === "string") $hintSub.text(subText);
+    if (typeof sub === "string") $hintSub.text(sub);
   }
 
   function setDot($dot, state) {
     $dot.removeClass("good bad warn");
     if (state === "good") $dot.addClass("good");
     else if (state === "bad") $dot.addClass("bad");
-    else $dot.addClass("warn");
+    else if (state === "warn") $dot.addClass("warn");
   }
 
   function tickClock() { $clock.text(new Date().toLocaleString()); }
@@ -93,40 +85,6 @@
   let running = false;
   let coolingDown = false;
 
-  let fatal = false;
-  let cameraErrors = 0;
-  let netErrors = 0;
-
-  function stopCamera() {
-    try {
-      if (video) video.srcObject = null;
-    } catch (_) { /* ignore */ }
-
-    try {
-      if (stream) {
-        const tracks = stream.getTracks ? stream.getTracks() : [];
-        tracks.forEach(t => {
-          try { t.stop(); } catch (_) { /* ignore */ }
-        });
-      }
-    } catch (_) { /* ignore */ }
-
-    stream = null;
-    setDot($camDot, "warn");
-  }
-
-  function markFatal(title, subText, hint, hintSub) {
-    fatal = true;
-    stopCamera();
-    setStatus(title, subText || "");
-    setHint(hint || title, hintSub || subText || "");
-    setDot($netDot, "bad");
-    setDot($livDot, "warn");
-    setDot($dlibDot, "warn");
-  }
-
-  window.addEventListener("beforeunload", stopCamera);
-
   // Hidden admin hotkey (silent)
   $(document).on("keydown", function (e) {
     if (e.ctrlKey && e.shiftKey && (e.key === "A" || e.key === "a")) {
@@ -135,14 +93,6 @@
   });
 
   async function startCamera() {
-    if (fatal) throw new Error("FATAL");
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setDot($camDot, "bad");
-      markFatal("NO CAMERA", "Browser has no camera support", "No camera API", "Use a supported browser/device");
-      throw new Error("NO_MEDIA_DEVICES");
-    }
-
     const constraints = {
       video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
       audio: false
@@ -158,30 +108,18 @@
       canvas.height = video.videoHeight || 480;
 
       setDot($camDot, "good");
-      cameraErrors = 0;
     } catch (err) {
-      // Always cleanup on camera failure (Deep QA)
-      stopCamera();
       setDot($camDot, "bad");
-
-      cameraErrors++;
-      const blocked = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
-      const title = blocked ? "Camera blocked" : "Camera error";
-      const text = blocked ? "Allow camera access, then reload the page." : ((err && err.message) ? err.message : "Camera failed.");
-
-      // After 3 camera failures, stop retrying
-      if (cameraErrors >= cfg.maxFatalErrors) {
-        markFatal("CAMERA BLOCKED", "Reload the page", "Camera blocked", "Allow camera permission then reload");
-      }
-
-      await Swal.fire({ icon: "error", title, text });
+      await Swal.fire({
+        icon: "error",
+        title: "Camera blocked",
+        text: "Allow camera access, then reload the page."
+      });
       throw err;
     }
   }
 
   function captureJpegBlob(quality) {
-    // Guard against drawImage crash if video is not ready
-    if (!video || video.readyState < 2) return Promise.resolve(null);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     return new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
   }
@@ -189,27 +127,10 @@
   async function postImage(url, blob) {
     const fd = new FormData();
     fd.append("image", blob, "frame.jpg");
-
-    return $.ajax({
-      url,
-      method: "POST",
-      data: fd,
-      processData: false,
-      contentType: false,
-      timeout: cfg.ajaxTimeoutMs
-    });
+    return $.ajax({ url, method: "POST", data: fd, processData: false, contentType: false });
   }
 
-  async function postJson(url, payload) {
-    return $.ajax({
-      url,
-      method: "POST",
-      contentType: "application/json; charset=utf-8",
-      data: JSON.stringify(payload || {}),
-      timeout: cfg.ajaxTimeoutMs
-    });
-  }
-
+  // Map source coords -> displayed coords for object-fit: cover
   function mapCoverBoxToScreen(box) {
     const rect = video.getBoundingClientRect();
     const vw = rect.width, vh = rect.height;
@@ -229,9 +150,10 @@
     };
   }
 
+
   // --- face box robustness ---
-  let smooth = null;
-  const SMOOTH = 0.35;
+  let _smoothBox = null;  // {left,top,width,height}
+  const SMOOTH = 0.35;    // 0..1 (higher = snappier)
 
   function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
 
@@ -247,22 +169,21 @@
   }
 
   function smoothBox(next) {
-    if (!smooth) { smooth = next; return smooth; }
-    smooth = {
-      left: smooth.left + (next.left - smooth.left) * SMOOTH,
-      top: smooth.top + (next.top - smooth.top) * SMOOTH,
-      width: smooth.width + (next.width - smooth.width) * SMOOTH,
-      height: smooth.height + (next.height - smooth.height) * SMOOTH
+    if (!_smoothBox) { _smoothBox = next; return _smoothBox; }
+    _smoothBox = {
+      left:  _smoothBox.left  + (next.left  - _smoothBox.left)  * SMOOTH,
+      top:   _smoothBox.top   + (next.top   - _smoothBox.top)   * SMOOTH,
+      width: _smoothBox.width + (next.width - _smoothBox.width) * SMOOTH,
+      height:_smoothBox.height+ (next.height- _smoothBox.height)* SMOOTH
     };
-    return smooth;
+    return _smoothBox;
   }
 
-  function resetSmoothBox() { smooth = null; }
-
+  function resetSmoothBox() { _smoothBox = null; }
   function computeGuards(face) {
     const sw = canvas.width, sh = canvas.height;
 
-    const ratio = face.Width / sw;
+    const ratio = face.Width / sw; // face size relative to frame width
     const cx = (face.Left + (face.Width / 2)) / sw;
     const cy = (face.Top + (face.Height / 2)) / sh;
 
@@ -274,29 +195,25 @@
     return { code: "OK", level: "good", msg: "Hold still", sub: "Scanning…", ratio, cx, cy };
   }
 
-  function showFaceUI(faceCount, faceBox, levelClass) {
-    const wrap = document.getElementById("wrap");
-    if (!wrap) return;
-
-    const wrapRect = wrap.getBoundingClientRect();
+    function showFaceUI(faceCount, faceBox, levelClass) {
+    const wrapRect = document.getElementById("wrap").getBoundingClientRect();
 
     if (faceCount === 1 && faceBox) {
+      // Hide static guide; show tracked box
       $guide.addClass("hidden");
 
       const padded = expandBox(faceBox, 0.18);
-      const mapped = mapCoverBoxToScreen(padded);
+      const m = mapCoverBoxToScreen(padded);
 
-      let left = (mapped.left - wrapRect.left);
-      let top = (mapped.top - wrapRect.top);
-      let w = mapped.width;
-      let h = mapped.height;
+      // Convert to wrap-local coords
+      let left = (m.left - wrapRect.left);
+      let top  = (m.top  - wrapRect.top);
+      let w    = m.width;
+      let h    = m.height;
 
-      // Keep box within wrap bounds where possible
-      const maxLeft = Math.max(6, wrapRect.width - w - 6);
-      const maxTop = Math.max(6, wrapRect.height - h - 6);
-
-      left = clamp(left, 6, maxLeft);
-      top = clamp(top, 6, maxTop);
+      // Clamp inside screen
+      left = clamp(left, 6, wrapRect.width  - w - 6);
+      top  = clamp(top,  6, wrapRect.height - h - 6);
 
       const sm = smoothBox({ left, top, width: w, height: h });
 
@@ -310,12 +227,17 @@
           transform: `translate3d(${sm.left}px, ${sm.top}px, 0)`
         });
 
+      setDot($dlibDot, "good");
       return;
     }
 
-    // No single-face tracking -> show guide again
+    // No single-face tracking -> show guide again and reset smoothing
     $guide.removeClass("hidden");
     resetSmoothBox();
+    $box.hide();
+  }
+    // else
+    $guide.removeClass("good").addClass("bad");
     $box.hide();
   }
 
@@ -344,67 +266,46 @@
       preConfirm: () => {
         const name = (document.getElementById("vName").value || "").trim();
         const purpose = (document.getElementById("vPurpose").value || "").trim();
+
         if (!name) {
           Swal.showValidationMessage("Full name is required");
           return;
         }
         return { name, purpose };
-      }
-    });
+      }});
 
     if (!r2.isConfirmed) return;
 
-    const payload = { name: r2.value.name, purpose: r2.value.purpose };
+        // Log visitor now (JSON in App_Data/visitors.json)
+    const payload = { name: (r2.value && r2.value.name) || "", purpose: (r2.value && r2.value.purpose) || "" };
 
     try {
-      const resp = await postJson(base + "/Attendance/Visitor", payload);
+      const resp = await $.ajax({
+        url: base + "/Attendance/Visitor",
+        method: "POST",
+        contentType: "application/json; charset=utf-8",
+        data: JSON.stringify(payload)
+      });
+
       if (resp && resp.ok === true) {
         toastr.success("Visitor recorded. Please proceed to the office desk.");
       } else {
         toastr.warning("Visitor not saved. Please proceed to the office desk.");
       }
-    } catch (_) {
+    } catch (err) {
       toastr.warning("Visitor not saved. Please proceed to the office desk.");
-    }
-  }
+    }}
 
   function cooldownThenRestart() {
     coolingDown = true;
     setTimeout(() => {
-      try {
-        coolingDown = false;
-        // startFlow is async; we call it without await
-        startFlow();
-      } catch (e) {
-        // Deep QA: ensure coolingDown never gets stuck
-        coolingDown = false;
-        // eslint-disable-next-line no-console
-        console.error(e);
-      } finally {
-        coolingDown = false;
-      }
+      coolingDown = false;
+      startFlow();
     }, cfg.cooldownMs);
   }
 
-  async function recordAttendance(idResp) {
-    if (!idResp || idResp.ok !== true || !idResp.employeeId) return { ok: false };
-
-    const payload = {
-      employeeId: idResp.employeeId,
-      source: "KIOSK",
-      distance: (typeof idResp.distance === "number") ? idResp.distance : null,
-      similarity: (typeof idResp.similarity === "number") ? idResp.similarity : null
-    };
-
-    try {
-      return await postJson(base + "/Attendance/Record", payload);
-    } catch (e) {
-      return { ok: false, error: (e && e.message) ? e.message : "RECORD_FAILED" };
-    }
-  }
-
   async function startFlow() {
-    if (running || coolingDown || fatal) return;
+    if (running || coolingDown) return;
     running = true;
 
     try {
@@ -413,7 +314,6 @@
       setHint("Center your face in the frame", "Hold still during scanning");
 
       if (!stream) await startCamera();
-      if (fatal) return;
 
       setDot($netDot, "good");
       setStatus("SCANNING…", "Hold still");
@@ -421,74 +321,49 @@
 
       let okCount = 0;
       let bestP = 0;
-      let sawLiveness = false;
 
       for (let i = 0; i < cfg.frames; i++) {
         const blob = await captureJpegBlob(cfg.burstQuality);
-        if (!blob) {
-          setHint("Camera not ready", "Wait a moment");
-          continue;
-        }
 
-        let scan;
-        try {
-          scan = await postImage(base + "/Biometrics/ScanFrame", blob);
-          setDot($netDot, "good");
-          netErrors = 0; // reset on successful server call
-        } catch (e) {
-          setDot($netDot, "bad");
-          netErrors++;
-          if (netErrors >= cfg.maxNetErrors) {
-            markFatal("SERVER OFFLINE", "Reload or check IIS", "Server not responding", "Check IIS and network");
-            return;
-          }
-          throw e;
-        }
+        const scan = await postImage(base + "/Biometrics/ScanFrame", blob);
 
-        if (scan && scan.ok === false) {
-          // Server responded with an explicit error
-          if (debug) $("#debug").text("ScanFrame error: " + (scan.error || "UNKNOWN"));
-          setDot($netDot, "warn");
-          setHint("Scan error", "Try again");
-          continue;
-        }
-
-        const count = (scan && typeof scan.count === "number")
+        const count = scan && typeof scan.count === "number"
           ? scan.count
-          : (scan && scan.faces && scan.faces.length ? scan.faces.length : 0);
+          : (scan.faces && scan.faces.length ? scan.faces.length : 0);
 
-        const face = (scan && scan.faces && scan.faces.length) ? scan.faces[0] : null;
+        const face = (scan.faces && scan.faces.length) ? scan.faces[0] : null;
 
         if (count === 0) {
-          showFaceUI(0, null, "");
-          setDot($dlibDot, "warn");
+          showFaceUI(0, null, "" );
+          resetSmoothBox();
+setDot($dlibDot, "warn");
           setHint("No face detected", "Look at the camera");
           if (debug) $("#debug").text("No face");
           continue;
         }
 
         if (count > 1) {
-          showFaceUI(count, null, "");
-          setDot($dlibDot, "bad");
+          showFaceUI(count, null, "" );
+          resetSmoothBox();
+setDot($dlibDot, "bad");
           setHint("One person only", "Others step away from the camera");
           if (debug) $("#debug").text("Multiple faces: " + count);
           continue;
         }
 
-        setDot($dlibDot, "good");
-
+        // exactly 1 face
         const g = computeGuards(face);
         showFaceUI(1, face, g.level);
         setHint(g.msg, g.sub);
 
         if (debug) $("#debug").text(`Guard=${g.code} ratio=${g.ratio.toFixed(3)} cx=${g.cx.toFixed(2)} cy=${g.cy.toFixed(2)}`);
 
+        // Only count liveness if guard is OK
         if (g.code !== "OK") continue;
 
         const p = (scan && typeof scan.liveness === "number") ? scan.liveness : null;
 
         if (p !== null) {
-          sawLiveness = true;
           setDot($livDot, "good");
           bestP = Math.max(bestP, p);
           if (p >= cfg.perFrameLiveness) okCount++;
@@ -498,16 +373,17 @@
 
         setStatus("SCANNING…", `ok ${okCount}/${cfg.passOkFrames} • best ${bestP.toFixed(2)}`);
 
+        // Early exit (fast)
         if (okCount >= cfg.passOkFrames || bestP >= cfg.passBest) break;
       }
 
       const pass = (okCount >= cfg.passOkFrames) || (bestP >= cfg.passBest);
 
       if (!pass) {
-        setDot($livDot, sawLiveness ? "bad" : "warn");
-        setStatus("TRY AGAIN", sawLiveness ? "Liveness did not pass" : "Liveness not available");
-        setHint("Scan failed", sawLiveness ? "Adjust position and try again" : "Server liveness not returned");
+        setStatus("TRY AGAIN", "Liveness did not pass");
+        setHint("Scan failed", "Adjust position and try again");
         toastr.warning("Scan failed. Try again.");
+        setDot($livDot, "bad");
         cooldownThenRestart();
         return;
       }
@@ -517,41 +393,19 @@
       toastr.success("Liveness PASS");
 
       const blob2 = await captureJpegBlob(cfg.identifyQuality);
-      if (!blob2) throw new Error("NO_FRAME");
-
-      let id = null;
-      try {
-        id = await postImage(base + "/Biometrics/Identify", blob2);
-        netErrors = 0;
-      } catch (e) {
-        netErrors++;
-        if (netErrors >= cfg.maxNetErrors) {
-          markFatal("SERVER OFFLINE", "Reload or check IIS", "Server not responding", "Check IIS and network");
-          return;
-        }
-        throw e;
-      }
+      const id = await postImage(base + "/Biometrics/Identify", blob2);
 
       if (id && id.ok === true) {
-        setStatus("IDENTIFIED", "Recording attendance…");
-        setHint("Please wait", "Saving log");
+        setStatus("SUCCESS", "Attendance recorded");
+        setHint("Done", "You may proceed");
+        toastr.success("Attendance recorded");
 
-        const rec = await recordAttendance(id);
-
-        if (rec && rec.ok === true) {
-          setStatus("SUCCESS", "Attendance recorded");
-          setHint("Done", "You may proceed");
-          toastr.success("Attendance recorded");
-        } else {
-          setStatus("SUCCESS", "Identified (not saved)");
-          setHint("Done", "Please inform admin");
-          toastr.warning("Identified, but attendance was not saved.");
-        }
-
+        // Later: call Attendance/Record here (we can add it when ready)
         cooldownThenRestart();
         return;
       }
 
+      // No match
       setStatus("NOT ENROLLED", "No matching record");
       setHint("Not enrolled", "Go to admin for enrollment");
       toastr.error("Not enrolled / No match");
@@ -559,20 +413,20 @@
       await visitorPrompt();
       cooldownThenRestart();
     } catch (e) {
-      if (fatal) return;
-
       setStatus("ERROR", "Please try again");
       setHint("System error", "Try again");
       toastr.error((e && e.message) ? e.message : "Error");
-
-      // Stop if repeated camera failures already marked fatal
-      if (cameraErrors >= cfg.maxFatalErrors) return;
-
       cooldownThenRestart();
     } finally {
       running = false;
     }
   }
 
+  // Auto-start
   startFlow();
 })();
+
+
+
+
+

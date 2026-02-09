@@ -1,5 +1,4 @@
 using System;
-using System.Configuration;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -10,32 +9,22 @@ using Newtonsoft.Json;
 
 namespace FaceAttend.Services.Storage
 {
-    public class JsonVisitorRepository : IVisitorRepository
+    public class JsonAttendanceRepository : IAttendanceRepository
     {
-                private int MaxRecords
-        {
-            get
-            {
-                if (int.TryParse(ConfigurationManager.AppSettings["Visitors:MaxRecords"], out var n) && n > 0)
-                    return n;
-
-                return 10000;
-            }
-        }
-private static readonly object _inProcLock = new object();
-        private static readonly Mutex _mutex = new Mutex(false, @"Local\FaceAttend_VisitorsJson_v1");
+        private static readonly object _inProcLock = new object();
+        private static readonly Mutex _mutex = new Mutex(false, @"Local\FaceAttend_AttendanceJson_v1");
 
         private readonly string _path;
         private const int KeepBackups = 10;
 
-        public JsonVisitorRepository()
+        public JsonAttendanceRepository()
         {
             var dir = ResolvePath("~/App_Data");
             Directory.CreateDirectory(dir);
-            _path = Path.Combine(dir, "visitors.json");
+            _path = Path.Combine(dir, "attendance.json");
         }
 
-        public void Add(VisitorLogRecord record)
+        public void Add(AttendanceLogRecord record)
         {
             if (record == null) throw new ArgumentNullException(nameof(record));
 
@@ -44,15 +33,13 @@ private static readonly object _inProcLock = new object();
                 lock (_inProcLock)
                 {
                     var list = ReadAllUnsafe();
-                    list.Insert(0, record);
-                    if (list.Count > MaxRecords) list.RemoveRange(MaxRecords, list.Count - MaxRecords);
-// newest first
+                    list.Insert(0, record); // newest first
                     WriteAllUnsafe(list);
                 }
             });
         }
 
-        public IReadOnlyList<VisitorLogRecord> GetAll()
+        public IReadOnlyList<AttendanceLogRecord> GetAll()
         {
             WithFileLock(() => { });
             lock (_inProcLock)
@@ -75,8 +62,7 @@ private static readonly object _inProcLock = new object();
                     acquired = true;
                 }
 
-                if (!acquired) throw new TimeoutException("Could not lock visitors.json");
-
+                if (!acquired) throw new TimeoutException("Could not lock attendance.json");
                 action();
             }
             finally
@@ -95,38 +81,32 @@ private static readonly object _inProcLock = new object();
             return pathOrVirtual;
         }
 
-        private List<VisitorLogRecord> ReadAllUnsafe()
+        private List<AttendanceLogRecord> ReadAllUnsafe()
         {
-            if (!File.Exists(_path)) return new List<VisitorLogRecord>();
+            if (!File.Exists(_path)) return new List<AttendanceLogRecord>();
 
             string json;
-            try
-            {
-                json = File.ReadAllText(_path);
-            }
-            catch
-            {
-                return new List<VisitorLogRecord>();
-            }
+            try { json = File.ReadAllText(_path); }
+            catch { return new List<AttendanceLogRecord>(); }
 
-            if (string.IsNullOrWhiteSpace(json)) return new List<VisitorLogRecord>();
+            if (string.IsNullOrWhiteSpace(json)) return new List<AttendanceLogRecord>();
 
             try
             {
-                return JsonConvert.DeserializeObject<List<VisitorLogRecord>>(json) ?? new List<VisitorLogRecord>();
+                return JsonConvert.DeserializeObject<List<AttendanceLogRecord>>(json) ?? new List<AttendanceLogRecord>();
             }
             catch
             {
                 var bak = _path + ".bak_" + DateTime.UtcNow.ToString("yyyyMMdd_HHmmss");
                 try { File.Copy(_path, bak, true); } catch { }
                 PruneBackups();
-                return new List<VisitorLogRecord>();
+                return new List<AttendanceLogRecord>();
             }
         }
 
-        private void WriteAllUnsafe(List<VisitorLogRecord> list)
+        private void WriteAllUnsafe(List<AttendanceLogRecord> list)
         {
-            var json = JsonConvert.SerializeObject(list ?? new List<VisitorLogRecord>(), Formatting.Indented);
+            var json = JsonConvert.SerializeObject(list ?? new List<AttendanceLogRecord>(), Formatting.Indented);
 
             var tmp = _path + ".tmp";
             File.WriteAllText(tmp, json);
@@ -162,5 +142,3 @@ private static readonly object _inProcLock = new object();
         }
     }
 }
-
-

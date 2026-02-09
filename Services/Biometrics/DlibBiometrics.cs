@@ -20,6 +20,7 @@ namespace FaceAttend.Services.Biometrics
 
         private readonly FaceRecognition _fr;
         private readonly string _tmpDir;
+        private readonly int _maxBytes;
 
         public DlibBiometrics()
         {
@@ -32,6 +33,11 @@ namespace FaceAttend.Services.Biometrics
 
             _tmpDir = ResolvePath("~/App_Data/_tmp");
             Directory.CreateDirectory(_tmpDir);
+
+            if (int.TryParse(ConfigurationManager.AppSettings["Biometrics:MaxUploadBytes"], out var b) && b > 0)
+                _maxBytes = b;
+            else
+                _maxBytes = 10 * 1024 * 1024;
         }
 
         public FaceBox[] DetectFaces(HttpPostedFileBase imageFile)
@@ -41,14 +47,25 @@ namespace FaceAttend.Services.Biometrics
             var path = SaveToTemp(imageFile);
             try
             {
-                using (var img = FaceRecognition.LoadImageFile(path))
-                {
-                    var model = ReadDetectorModel();
-                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 1, model: model).ToArray();
-                    return locs.Select(ToBox).ToArray();
-                }
+                return DetectFacesFromFile(path);
             }
-            finally { SafeDelete(path); }
+            finally
+            {
+                SafeDelete(path);
+            }
+        }
+
+        public FaceBox[] DetectFacesFromFile(string imagePath)
+        {
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+                return new FaceBox[0];
+
+            using (var img = FaceRecognition.LoadImageFile(imagePath))
+            {
+                var model = ReadDetectorModel();
+                var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 1, model: model).ToArray();
+                return locs.Select(ToBox).ToArray();
+            }
         }
 
         // Returns 128D encoding for exactly 1 face; otherwise null.
@@ -60,21 +77,37 @@ namespace FaceAttend.Services.Biometrics
             var path = SaveToTemp(imageFile);
             try
             {
-                using (var img = FaceRecognition.LoadImageFile(path))
-                {
-                    var model = ReadDetectorModel();
-                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 1, model: model).ToArray();
-
-                    if (locs.Length == 0) { error = "NO_FACE"; return null; }
-                    if (locs.Length > 1) { error = "MULTIPLE_FACES"; return null; }
-
-                    var enc = _fr.FaceEncodings(img, knownFaceLocation: locs).FirstOrDefault();
-                    if (enc == null) { error = "ENCODING_FAILED"; return null; }
-
-                    return enc.GetRawEncoding();
-                }
+                return GetSingleFaceEncodingFromFile(path, out error);
             }
-            finally { SafeDelete(path); }
+            finally
+            {
+                SafeDelete(path);
+            }
+        }
+
+        public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
+        {
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            {
+                error = "NO_IMAGE";
+                return null;
+            }
+
+            using (var img = FaceRecognition.LoadImageFile(imagePath))
+            {
+                var model = ReadDetectorModel();
+                var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 1, model: model).ToArray();
+
+                if (locs.Length == 0) { error = "NO_FACE"; return null; }
+                if (locs.Length > 1) { error = "MULTIPLE_FACES"; return null; }
+
+                var enc = _fr.FaceEncodings(img, knownFaceLocation: locs).FirstOrDefault();
+                if (enc == null) { error = "ENCODING_FAILED"; return null; }
+
+                return enc.GetRawEncoding();
+            }
         }
 
         public static double Distance(double[] a, double[] b)
@@ -124,8 +157,16 @@ namespace FaceAttend.Services.Biometrics
 
         private string SaveToTemp(HttpPostedFileBase file)
         {
-            var ext = Path.GetExtension(file.FileName);
-            if (string.IsNullOrWhiteSpace(ext)) ext = ".jpg";
+            if (file == null) throw new ArgumentNullException(nameof(file));
+
+            if (file.ContentLength <= 0)
+                throw new InvalidDataException("EMPTY_IMAGE");
+
+            if (file.ContentLength > _maxBytes)
+                throw new InvalidDataException("IMAGE_TOO_LARGE");
+
+            var ext = (Path.GetExtension(file.FileName) ?? "").Trim().ToLowerInvariant();
+            if (ext != ".jpg" && ext != ".jpeg" && ext != ".png") ext = ".jpg";
 
             var path = Path.Combine(_tmpDir, Guid.NewGuid().ToString("N") + ext);
             file.SaveAs(path);
@@ -134,7 +175,11 @@ namespace FaceAttend.Services.Biometrics
 
         private static void SafeDelete(string path)
         {
-            try { if (!string.IsNullOrWhiteSpace(path) && File.Exists(path)) File.Delete(path); }
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+                    File.Delete(path);
+            }
             catch { }
         }
 

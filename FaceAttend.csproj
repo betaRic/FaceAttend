@@ -207,12 +207,17 @@
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
+    <Compile Include="Models\AttendanceLogRecord.cs" />
     <Compile Include="Models\EmployeeFaceRecord.cs" />
     <Compile Include="Models\VisitorLogRecord.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\Biometrics\DlibBiometrics.cs" />
+    <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
+    <Compile Include="Services\Storage\IAttendanceRepository.cs" />
     <Compile Include="Services\Storage\IEmployeeRepository.cs" />
+    <Compile Include="Services\Storage\IVisitorRepository.cs" />
+    <Compile Include="Services\Storage\JsonAttendanceRepository.cs" />
     <Compile Include="Services\Storage\JsonEmployeeRepository.cs" />
     <Compile Include="Services\Storage\JsonVisitorRepository.cs" />
   </ItemGroup>

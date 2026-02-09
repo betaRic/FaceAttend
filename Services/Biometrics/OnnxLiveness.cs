@@ -1,12 +1,14 @@
 using System;
 using System.Configuration;
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
-using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Web;
 using Microsoft.ML.OnnxRuntime;
 using Microsoft.ML.OnnxRuntime.Tensors;
@@ -15,19 +17,6 @@ namespace FaceAttend.Services.Biometrics
 {
     public sealed class OnnxLiveness : IDisposable
     {
-        public sealed class Score
-        {
-            public bool Ok { get; set; }
-            public float? Probability { get; set; }   // "real" probability (based on config)
-            public string Error { get; set; }
-
-            // debug helpers
-            public float[] Raw { get; set; }          // raw model output (logits or probs)
-            public float? P0 { get; set; }            // softmax/prob class 0
-            public float? P1 { get; set; }            // softmax/prob class 1
-            public string Note { get; set; }          // layout/shape/normalize info
-        }
-
         private readonly InferenceSession _session;
         private readonly string _inputName;
 
@@ -36,10 +25,27 @@ namespace FaceAttend.Services.Biometrics
         private readonly int _inH;
 
         private readonly float _cropScale;
-        private readonly int _realIndex;              // which class index means "real"
-        private readonly string _outputType;          // logits | prob | sigmoid
-        private readonly string _norm;                // 0_1 | minus1_1 | centered
-        private readonly bool _debug;
+        private readonly int _realIndex;
+        private readonly string _outputType;
+        private readonly string _normalize;
+
+        private readonly int _cbFailStreak;
+        private readonly int _cbDisableSeconds;
+        private readonly int _slowMs;
+
+        private readonly int _runTimeoutMs;       // inference timeout
+        private readonly int _gateWaitMs;         // how long to wait for single-flight gate
+
+        private static readonly object _cbLock = new object();
+        private static int _failStreak = 0;
+        private static DateTime _disabledUntilUtc = DateTime.MinValue;
+
+        // Single-flight gate to prevent N concurrent ONNX calls
+        private static readonly SemaphoreSlim _runGate = new SemaphoreSlim(1, 1);
+
+        // If a timeout happens, we treat session as "unsafe" and keep gate locked forever
+        // (prevents more hung threads). User must recycle IIS/app to recover.
+        private static volatile bool _sessionStuck = false;
 
         public OnnxLiveness()
         {
@@ -50,140 +56,198 @@ namespace FaceAttend.Services.Biometrics
                 throw new FileNotFoundException("Liveness ONNX not found: " + modelPath);
 
             _session = new InferenceSession(modelPath);
-
             _inputName = _session.InputMetadata.Keys.First();
+
             var dims = _session.InputMetadata[_inputName].Dimensions?.ToArray() ?? new int[0];
+            var fallback = ParseInt(ConfigurationManager.AppSettings["Biometrics:LivenessInputSize"], 128);
 
-            // defaults if model has dynamic dims
-            var cfgSize = ParseInt(ConfigurationManager.AppSettings["Biometrics:LivenessInputSize"], 128);
-            _inW = cfgSize;
-            _inH = cfgSize;
-            _isNhwc = false;
+            bool nhwc = false;
+            int h = fallback, w = fallback;
 
-            // Try infer layout + size
-            // NCHW: [1,3,H,W]
-            // NHWC: [1,H,W,3]
             if (dims.Length == 4)
             {
                 if (dims[1] == 3 && dims[2] > 0 && dims[3] > 0)
                 {
-                    _isNhwc = false;
-                    _inH = dims[2];
-                    _inW = dims[3];
+                    nhwc = false; h = dims[2]; w = dims[3];
                 }
                 else if (dims[3] == 3 && dims[1] > 0 && dims[2] > 0)
                 {
-                    _isNhwc = true;
-                    _inH = dims[1];
-                    _inW = dims[2];
+                    nhwc = true; h = dims[1]; w = dims[2];
                 }
             }
 
+            _isNhwc = nhwc;
+            _inH = h;
+            _inW = w;
+
             _cropScale = ParseFloat(ConfigurationManager.AppSettings["Biometrics:Liveness:CropScale"], 2.7f);
             _realIndex = ParseInt(ConfigurationManager.AppSettings["Biometrics:Liveness:RealIndex"], 1);
+            _outputType = (ConfigurationManager.AppSettings["Biometrics:Liveness:OutputType"] ?? "logits").Trim().ToLowerInvariant();
+            _normalize = (ConfigurationManager.AppSettings["Biometrics:Liveness:Normalize"] ?? "0_1").Trim().ToLowerInvariant();
 
-            _outputType = (ConfigurationManager.AppSettings["Biometrics:Liveness:OutputType"] ?? "logits")
-                .Trim().ToLowerInvariant();
+            _cbFailStreak = ParseInt(ConfigurationManager.AppSettings["Biometrics:Liveness:CircuitFailStreak"], 3);
+            _cbDisableSeconds = ParseInt(ConfigurationManager.AppSettings["Biometrics:Liveness:CircuitDisableSeconds"], 30);
+            _slowMs = ParseInt(ConfigurationManager.AppSettings["Biometrics:Liveness:SlowMs"], 1200);
 
-            _norm = (ConfigurationManager.AppSettings["Biometrics:Liveness:Normalize"] ?? "0_1")
-                .Trim().ToLowerInvariant();
-
-            _debug = string.Equals(ConfigurationManager.AppSettings["Biometrics:Debug"], "true", StringComparison.OrdinalIgnoreCase);
+            _runTimeoutMs = ParseInt(ConfigurationManager.AppSettings["Biometrics:Liveness:RunTimeoutMs"], 1500);
+            _gateWaitMs = ParseInt(ConfigurationManager.AppSettings["Biometrics:Liveness:GateWaitMs"], 300);
         }
 
-        public Score ScoreFromImage(HttpPostedFileBase imageFile, DlibBiometrics.FaceBox box)
+        public (bool Ok, float? Probability, string Error) ScoreFromFile(string imagePath, DlibBiometrics.FaceBox faceBox)
         {
-            if (imageFile == null) return new Score { Ok = false, Error = "NO_IMAGE" };
-            if (box == null) return new Score { Ok = false, Error = "NO_FACE_BOX" };
+            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath)) return (false, null, "NO_IMAGE");
+            if (faceBox == null) return (false, null, "NO_FACE_BOX");
+            if (_sessionStuck) return (false, null, "LIVENESS_STUCK");
+            if (IsDisabled()) return (false, null, "LIVENESS_DISABLED");
 
             try
             {
-                using (var ms = new MemoryStream())
+                using (var src = Image.FromFile(imagePath))
+                using (var bmp = new Bitmap(src))
+                using (var crop = CropFaceSquare(bmp, faceBox, _cropScale))
                 {
-                    imageFile.InputStream.CopyTo(ms);
-                    ms.Position = 0;
-
-                    using (var bmp = new Bitmap(ms))
-                    {
-                        using (var crop = CropFace(bmp, box, _cropScale))
-                        using (var resized = ResizeToInput(crop, _inW, _inH))
-                        {
-                            var input = BuildInputTensor(resized, _inW, _inH, _isNhwc);
-
-                            using (var inputs = new DisposableNamedOnnxValue[]
-                            {
-                                DisposableNamedOnnxValue.CreateFromTensor(_inputName, input)
-                            })
-                            {
-                                using (var results = _session.Run(inputs))
-                                {
-                                    var raw = results.First().AsTensor<float>().ToArray();
-                                    if (raw == null || raw.Length == 0)
-                                        return new Score { Ok = false, Error = "EMPTY_OUTPUT" };
-
-                                    float? p0 = null;
-                                    float? p1 = null;
-                                    float realP;
-
-                                    if (_outputType == "sigmoid")
-                                    {
-                                        // single logit -> sigmoid
-                                        var v = raw[0];
-                                        realP = Sigmoid(v);
-                                    }
-                                    else if (raw.Length >= 2)
-                                    {
-                                        if (_outputType == "prob")
-                                        {
-                                            p0 = Clamp01(raw[0]);
-                                            p1 = Clamp01(raw[1]);
-                                        }
-                                        else
-                                        {
-                                            // logits -> softmax
-                                            var sp0 = Softmax2(raw[0], raw[1], 0);
-                                            var sp1 = Softmax2(raw[0], raw[1], 1);
-                                            p0 = Clamp01(sp0);
-                                            p1 = Clamp01(sp1);
-                                        }
-
-                                        var idx = (_realIndex <= 0) ? 0 : 1;
-                                        realP = Clamp01(idx == 0 ? (p0 ?? 0f) : (p1 ?? 0f));
-                                    }
-                                    else
-                                    {
-                                        // raw.Length == 1 and not sigmoid => treat as probability already
-                                        realP = Clamp01(raw[0]);
-                                    }
-
-                                    return new Score
-                                    {
-                                        Ok = true,
-                                        Probability = Clamp01(realP),
-                                        Raw = _debug ? raw : null,
-                                        P0 = _debug ? p0 : null,
-                                        P1 = _debug ? p1 : null,
-                                        Note = _debug ? $"layout={(_isNhwc ? "NHWC" : "NCHW")} size={_inW}x{_inH} norm={_norm} cropScale={_cropScale} out={_outputType} realIndex={_realIndex}" : null
-                                    };
-                                }
-                            }
-                        }
-                    }
+                    return TryRun(crop);
                 }
             }
             catch (Exception ex)
             {
-                return new Score { Ok = false, Error = "INFERENCE_FAILED: " + ex.Message };
+                RegisterFail();
+                return (false, null, "FILE_FAILED: " + ex.Message);
+            }
+        }
+
+        private (bool Ok, float? Probability, string Error) TryRun(Bitmap faceRgb)
+        {
+            if (_sessionStuck) return (false, null, "LIVENESS_STUCK");
+            if (IsDisabled()) return (false, null, "LIVENESS_DISABLED");
+
+            // Gate wait: avoid stacking requests
+            if (!_runGate.Wait(_gateWaitMs))
+            {
+                RegisterFail();
+                return (false, null, "LIVENESS_BUSY");
+            }
+
+            var gateReleased = false;
+
+            try
+            {
+                var sw = Stopwatch.StartNew();
+
+                // Run inference on a worker thread so we can time out
+                var task = Task.Run(() => RunInternal(faceRgb));
+
+                if (!task.Wait(_runTimeoutMs))
+                {
+                    // We cannot safely cancel a hung ONNX call.
+                    // Mark stuck so all future calls fail fast, and DO NOT release the gate.
+                    _sessionStuck = true;
+                    RegisterFail();
+                    return (false, null, "LIVENESS_TIMEOUT");
+                }
+
+                var p = task.Result;
+
+                sw.Stop();
+                if (_slowMs > 0 && sw.ElapsedMilliseconds > _slowMs)
+                {
+                    RegisterFail();
+                    return (false, null, "LIVENESS_SLOW");
+                }
+
+                if (!p.HasValue)
+                {
+                    RegisterFail();
+                    return (false, null, "INFERENCE_FAILED");
+                }
+
+                RegisterSuccess();
+                return (true, p.Value, null);
+            }
+            catch (Exception ex)
+            {
+                RegisterFail();
+                return (false, null, "INFERENCE_ERROR: " + ex.Message);
+            }
+            finally
+            {
+                // Only release if not stuck (timeout means gate stays held to prevent more damage)
+                if (!_sessionStuck)
+                {
+                    try { _runGate.Release(); gateReleased = true; } catch { }
+                }
+
+                // If we released, fine. If we didn't, liveness is effectively disabled until recycle.
+                if (!gateReleased && _sessionStuck)
+                {
+                    // open circuit longer
+                    lock (_cbLock)
+                    {
+                        _disabledUntilUtc = DateTime.UtcNow.AddDays(1);
+                    }
+                }
+            }
+        }
+
+        // Returns probability of "real" (0..1)
+        private float? RunInternal(Bitmap faceRgb)
+        {
+            using (var resized = ResizeToInput(faceRgb, _inW, _inH))
+            {
+                var input = BuildInputTensor(resized, _inW, _inH, _isNhwc);
+
+                NamedOnnxValue[] inputs = null;
+                try
+                {
+                    inputs = new[] { NamedOnnxValue.CreateFromTensor(_inputName, input) };
+
+                    using (var results = _session.Run(inputs))
+                    {
+                        var raw = results.First().AsTensor<float>().ToArray();
+                        if (raw == null || raw.Length == 0) return null;
+
+                        if (raw.Length == 1)
+                        {
+                            if (_outputType == "sigmoid") return Clamp01(Sigmoid(raw[0]));
+                            return Clamp01(raw[0]);
+                        }
+
+                        float p0, p1;
+
+                        if (_outputType == "prob")
+                        {
+                            p0 = Clamp01(raw[0]);
+                            p1 = Clamp01(raw[1]);
+                        }
+                        else
+                        {
+                            p0 = Softmax2(raw[0], raw[1], 0);
+                            p1 = Softmax2(raw[0], raw[1], 1);
+                        }
+
+                        return Clamp01((_realIndex <= 0) ? p0 : p1);
+                    }
+                }
+                finally
+                {
+                    if (inputs != null)
+                    {
+                        foreach (var v in inputs)
+                        {
+                            try { (v as IDisposable)?.Dispose(); } catch { }
+                        }
+                    }
+                }
             }
         }
 
         private DenseTensor<float> BuildInputTensor(Bitmap bmp, int w, int h, bool nhwc)
         {
-            // Force 24bpp for predictable BGR byte layout
             using (var src = Ensure24bpp(bmp))
             {
                 var rect = new Rectangle(0, 0, w, h);
                 var data = src.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+
                 try
                 {
                     var stride = data.Stride;
@@ -195,31 +259,29 @@ namespace FaceAttend.Services.Biometrics
 
                     for (int y = 0; y < h; y++)
                     {
-                        var row = y * stride;
+                        int row = y * stride;
                         for (int x = 0; x < w; x++)
                         {
-                            var i = row + (x * 3);
+                            int i = row + (x * 3);
 
-                            // Format24bppRgb stores bytes as B,G,R
-                            var b = buffer[i + 0];
-                            var g = buffer[i + 1];
-                            var r = buffer[i + 2];
+                            byte b = buffer[i + 0];
+                            byte g = buffer[i + 1];
+                            byte r = buffer[i + 2];
 
-                            var rf = Norm(r);
-                            var gf = Norm(g);
-                            var bf = Norm(b);
+                            float rf = Norm(r);
+                            float gf = Norm(g);
+                            float bf = Norm(b);
 
                             if (nhwc)
                             {
-                                var o = (y * w * 3) + (x * 3);
+                                int o = (y * w * 3) + (x * 3);
                                 outData[o + 0] = rf;
                                 outData[o + 1] = gf;
                                 outData[o + 2] = bf;
                             }
                             else
                             {
-                                // NCHW: c*H*W + y*W + x
-                                var hw = h * w;
+                                int hw = h * w;
                                 outData[(0 * hw) + (y * w) + x] = rf;
                                 outData[(1 * hw) + (y * w) + x] = gf;
                                 outData[(2 * hw) + (y * w) + x] = bf;
@@ -239,13 +301,8 @@ namespace FaceAttend.Services.Biometrics
 
         private float Norm(byte v)
         {
-            if (_norm == "minus1_1")
-                return (v / 127.5f) - 1f;
-
-            if (_norm == "centered")
-                return (v - 127.5f) / 128f;
-
-            // default 0..1
+            if (_normalize == "minus1_1") return (v / 127.5f) - 1f;
+            if (_normalize == "centered") return (v - 127.5f) / 128f;
             return v / 255f;
         }
 
@@ -257,37 +314,11 @@ namespace FaceAttend.Services.Biometrics
             var clone = new Bitmap(bmp.Width, bmp.Height, PixelFormat.Format24bppRgb);
             using (var g = Graphics.FromImage(clone))
             {
-                g.CompositingQuality = CompositingQuality.HighSpeed;
                 g.InterpolationMode = InterpolationMode.Low;
                 g.SmoothingMode = SmoothingMode.None;
                 g.DrawImage(bmp, 0, 0, bmp.Width, bmp.Height);
             }
             return clone;
-        }
-
-        private static Bitmap CropFace(Bitmap bmp, DlibBiometrics.FaceBox box, float scale)
-        {
-            // square crop around center, scaled up
-            var cx = box.Left + (box.Width / 2f);
-            var cy = box.Top + (box.Height / 2f);
-            var side = Math.Max(box.Width, box.Height) * Math.Max(1.0f, scale);
-
-            var left = (int)Math.Round(cx - (side / 2f));
-            var top = (int)Math.Round(cy - (side / 2f));
-            var w = (int)Math.Round(side);
-            var h = (int)Math.Round(side);
-
-            // clamp
-            if (left < 0) { w += left; left = 0; }
-            if (top < 0) { h += top; top = 0; }
-            if (left + w > bmp.Width) w = bmp.Width - left;
-            if (top + h > bmp.Height) h = bmp.Height - top;
-
-            if (w <= 10 || h <= 10)
-                return (Bitmap)bmp.Clone();
-
-            var rect = new Rectangle(left, top, w, h);
-            return bmp.Clone(rect, bmp.PixelFormat);
         }
 
         private static Bitmap ResizeToInput(Bitmap src, int w, int h)
@@ -303,6 +334,30 @@ namespace FaceAttend.Services.Biometrics
             return dst;
         }
 
+        private static Bitmap CropFaceSquare(Bitmap bmp, DlibBiometrics.FaceBox box, float scale)
+        {
+            float cx = box.Left + (box.Width / 2f);
+            float cy = box.Top + (box.Height / 2f);
+
+            float side = Math.Max(box.Width, box.Height) * Math.Max(1f, scale);
+
+            int left = (int)Math.Round(cx - (side / 2f));
+            int top = (int)Math.Round(cy - (side / 2f));
+            int w = (int)Math.Round(side);
+            int h = (int)Math.Round(side);
+
+            if (left < 0) { w += left; left = 0; }
+            if (top < 0) { h += top; top = 0; }
+            if (left + w > bmp.Width) w = bmp.Width - left;
+            if (top + h > bmp.Height) h = bmp.Height - top;
+
+            if (w < 8 || h < 8)
+                return (Bitmap)bmp.Clone();
+
+            var rect = new Rectangle(left, top, w, h);
+            return bmp.Clone(rect, PixelFormat.Format24bppRgb);
+        }
+
         private static float Softmax2(float a, float b, int index)
         {
             var m = Math.Max(a, b);
@@ -313,28 +368,43 @@ namespace FaceAttend.Services.Biometrics
             return index == 0 ? (ea / sum) : (eb / sum);
         }
 
-        private static float Sigmoid(float x)
+        private static float Sigmoid(float x) => 1f / (1f + (float)Math.Exp(-x));
+        private static float Clamp01(float v) => v < 0 ? 0 : (v > 1 ? 1 : v);
+
+        private bool IsDisabled()
         {
-            return 1f / (1f + (float)Math.Exp(-x));
+            lock (_cbLock) { return DateTime.UtcNow < _disabledUntilUtc; }
         }
 
-        private static float Clamp01(float x)
+        private void RegisterSuccess()
         {
-            if (x < 0f) return 0f;
-            if (x > 1f) return 1f;
-            return x;
+            lock (_cbLock) { _failStreak = 0; }
+        }
+
+        private void RegisterFail()
+        {
+            if (_cbFailStreak <= 0 || _cbDisableSeconds <= 0) return;
+
+            lock (_cbLock)
+            {
+                _failStreak++;
+                if (_failStreak >= _cbFailStreak)
+                {
+                    _disabledUntilUtc = DateTime.UtcNow.AddSeconds(_cbDisableSeconds);
+                    _failStreak = 0;
+                }
+            }
         }
 
         private static int ParseInt(string s, int fallback)
         {
-            if (int.TryParse((s ?? "").Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var v))
-                return v;
+            if (int.TryParse((s ?? "").Trim(), out var v)) return v;
             return fallback;
         }
 
         private static float ParseFloat(string s, float fallback)
         {
-            if (float.TryParse((s ?? "").Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out var v))
+            if (float.TryParse((s ?? "").Trim(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v))
                 return v;
             return fallback;
         }

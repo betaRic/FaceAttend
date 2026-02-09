@@ -35,8 +35,7 @@ namespace FaceAttend.Filters
                 var s = ConfigurationManager.AppSettings["Admin:SessionMinutes"];
                 if (int.TryParse(s, out var m) && m > 0) minutes = m;
 
-                if ((DateTime.UtcNow - unlockedUtc.Value) <= TimeSpan.FromMinutes(minutes))
-                    return;
+                if ((DateTime.UtcNow - unlockedUtc.Value) <= TimeSpan.FromMinutes(minutes)) { ctx.Session["AdminUnlockedUtc"] = DateTime.UtcNow; return; }
             }
 
             Deny(filterContext);
@@ -57,3 +56,4 @@ namespace FaceAttend.Filters
         }
     }
 }
+

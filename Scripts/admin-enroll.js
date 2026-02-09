@@ -9,12 +9,13 @@
     passBest: 0.88,
     burstQuality: 0.75,
     enrollQuality: 0.92,
-    cooldownMs: 700
+    cooldownMs: 700,
+    maxCameraFails: 3
   };
 
   const video = $("#camA").get(0);
   const canvas = document.getElementById("capA");
-  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const ctx = canvas ? canvas.getContext("2d", { willReadFrequently: true }) : null;
 
   const $empId = $("#empId");
   const $btnStart = $("#btnStart");
@@ -43,6 +44,13 @@
     preventDuplicates: true
   };
 
+  // Hard abort if Enroll view is missing required elements
+  if (!video || !canvas || !ctx || !$empId.length || !$btnStart.length || !$btnRedo.length) {
+    // eslint-disable-next-line no-console
+    console.error("Enroll UI elements missing. Check Enroll.cshtml.");
+    return;
+  }
+
   function setDot($dot, state) {
     $dot.removeClass("good bad warn");
     if (state === "good") $dot.addClass("good");
@@ -62,13 +70,39 @@
 
   let stream = null;
   let running = false;
+  let camFails = 0;
+
+  function stopCamera() {
+    try {
+      if (video) video.srcObject = null;
+    } catch (_) { /* ignore */ }
+
+    try {
+      if (stream) {
+        const tracks = stream.getTracks ? stream.getTracks() : [];
+        tracks.forEach(t => {
+          try { t.stop(); } catch (_) { /* ignore */ }
+        });
+      }
+    } catch (_) { /* ignore */ }
+
+    stream = null;
+    setDot($camDot, "warn");
+  }
 
   async function startCamera() {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      setDot($camDot, "bad");
+      await Swal.fire({ icon: "error", title: "No camera API", text: "This browser does not support camera capture." });
+      throw new Error("NO_MEDIA_DEVICES");
+    }
+
     try {
       stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
         audio: false
       });
+
       video.srcObject = stream;
 
       await new Promise(res => { video.onloadedmetadata = () => res(); });
@@ -77,14 +111,31 @@
       canvas.height = video.videoHeight || 480;
 
       setDot($camDot, "good");
+      camFails = 0;
     } catch (e) {
+      camFails++;
+      stopCamera();
       setDot($camDot, "bad");
-      await Swal.fire({ icon: "error", title: "Camera blocked", text: "Allow camera access, then reload." });
+
+      const blocked = e && (e.name === "NotAllowedError" || e.name === "SecurityError");
+      const title = blocked ? "Camera blocked" : "Camera error";
+      const text = blocked ? "Allow camera access, then reload." : ((e && e.message) ? e.message : "Camera failed.");
+
+      await Swal.fire({ icon: "error", title, text });
+
+      if (camFails >= cfg.maxCameraFails) {
+        $btnStart.prop("disabled", true);
+        $btnRedo.prop("disabled", true);
+        setStatus("ERROR", "Camera blocked");
+        setHint("Camera failed", "Reload after granting camera permission");
+      }
+
       throw e;
     }
   }
 
   function captureJpegBlob(q) {
+    if (!video || video.readyState < 2) return Promise.resolve(null);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     return new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", q));
   }
@@ -122,8 +173,15 @@
       return;
     }
 
+    const shell = document.querySelector(".cam-shell");
+    if (!shell) {
+      // If shell missing, avoid null deref
+      $box.hide();
+      return;
+    }
+
     const m = mapCoverBoxToScreen(face);
-    const wrapRect = document.querySelector(".cam-shell").getBoundingClientRect();
+    const wrapRect = shell.getBoundingClientRect();
 
     $box
       .removeClass("warn bad")
@@ -147,7 +205,6 @@
 
       if (!emp) {
         toastr.warning("Employee ID is required.");
-        running = false;
         return;
       }
 
@@ -168,11 +225,23 @@
 
       for (let i = 0; i < cfg.frames; i++) {
         const blob = await captureJpegBlob(cfg.burstQuality);
-        const scan = await postImage(base + "/Biometrics/ScanFrame", blob);
+        if (!blob) {
+          setHint("Camera not ready", "Wait a moment");
+          continue;
+        }
 
-        const count = scan && typeof scan.count === "number"
+        let scan = null;
+        try {
+          scan = await postImage(base + "/Biometrics/ScanFrame", blob);
+        } catch (xhrErr) {
+          setDot($netDot, "bad");
+          setHint("Server error", "ScanFrame failed");
+          break;
+        }
+
+        const count = (scan && typeof scan.count === "number")
           ? scan.count
-          : (scan.faces && scan.faces.length ? scan.faces.length : 0);
+          : (scan && scan.faces && scan.faces.length ? scan.faces.length : 0);
 
         if (count === 0) {
           setDot($dlibDot, "warn");
@@ -180,9 +249,10 @@
           showFaceBox(null, "bad");
           continue;
         }
+
         if (count > 1) {
           setDot($dlibDot, "bad");
-          setHint("One person only", "Others step away from the camera");
+          setHint("One person only", "Others step away");
           showFaceBox(null, "bad");
           continue;
         }
@@ -195,9 +265,13 @@
         const p = (scan && typeof scan.liveness === "number") ? scan.liveness : null;
         if (p !== null) {
           setDot($livDot, "good");
-          bestP = Math.max(bestP, p);
+
+          if (p > bestP) {
+            bestP = p;
+            bestBlob = blob;
+          }
+
           if (p >= cfg.perFrameLiveness) okCount++;
-          if (!bestBlob || p >= bestP) bestBlob = blob;
         } else {
           setDot($livDot, "warn");
         }
@@ -220,8 +294,17 @@
       setStatus("ENROLLING", "Saving face template");
       setHint("Please wait", "Saving record");
 
-      const enrollBlob = bestBlob; // best liveness frame
-      const res = await postImage(base + "/Biometrics/Enroll", enrollBlob, { employeeId: emp });
+      let res = null;
+      try {
+        res = await postImage(base + "/Biometrics/Enroll", bestBlob, { employeeId: emp });
+      } catch (xhrErr) {
+        setDot($netDot, "bad");
+        toastr.error("Enroll failed: server error");
+        setStatus("FAIL", "Redo scan");
+        setHint("Enroll failed", "Server error");
+        $btnRedo.removeClass("d-none");
+        return;
+      }
 
       if (res && res.ok === true) {
         toastr.success("Enrollment saved.");
@@ -254,6 +337,9 @@
     const v = ($empId.val() || "").toString().toUpperCase();
     $empId.val(v);
   });
+
+  // Cleanup
+  window.addEventListener("beforeunload", stopCamera);
 
   setStatus("Idle", "Ready");
 })();

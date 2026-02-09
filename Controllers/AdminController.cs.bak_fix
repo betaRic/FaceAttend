@@ -5,10 +5,10 @@ using System.Text;
 using System.Web.Mvc;
 using FaceAttend.Filters;
 using FaceAttend.Models;
-using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Storage;
 using Newtonsoft.Json;
 
+using FaceAttend.Services.Biometrics;
 namespace FaceAttend.Controllers
 {
     [AdminAuthorize]
@@ -43,7 +43,7 @@ namespace FaceAttend.Controllers
             Session["AdminUnlocked"] = true;
             Session["AdminUnlockedUtc"] = DateTime.UtcNow;
 
-            return Redirect((string)ViewBag.ReturnUrl);
+            return Redirect(ViewBag.ReturnUrl);
         }
 
         [HttpPost]
@@ -85,43 +85,46 @@ namespace FaceAttend.Controllers
         // ----- ACTIONS -----
 
         [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult DeleteEnrollment(string employeeId)
-        {
-            if (string.IsNullOrWhiteSpace(employeeId))
-            {
-                if (Request.IsAjaxRequest())
-                    return Json(new { ok = false, error = "NO_EMPLOYEE_ID" });
+[ValidateAntiForgeryToken]
+public ActionResult DeleteEnrollment(string employeeId)
+{
+    if (string.IsNullOrWhiteSpace(employeeId))
+    {
+        if (Request.IsAjaxRequest())
+            return Json(new { ok = false, error = "NO_EMPLOYEE_ID" });
 
-                return RedirectToAction("Enrolled");
-            }
+        return RedirectToAction("Enrolled");
+    }
 
-            _employees.Delete(employeeId.Trim().ToUpperInvariant());
-            EmployeeFaceIndex.Invalidate();
+    _employees.Delete(employeeId.Trim().ToUpperInvariant());
+    EmployeeFaceIndex.Invalidate();
 
-            if (Request.IsAjaxRequest())
-                return Json(new { ok = true });
+    if (Request.IsAjaxRequest())
+        return Json(new { ok = true });
 
-            return RedirectToAction("Enrolled");
-        }
+    return RedirectToAction("Enrolled");
+}
+
+    _employees.Delete(employeeId.Trim().ToUpperInvariant());
+
+    if (Request.IsAjaxRequest())
+        return Json(new { ok = true });
+
+    return RedirectToAction("Enrolled");
+}
 
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult ReEnroll(string employeeId)
         {
             if (string.IsNullOrWhiteSpace(employeeId))
-            {
-                if (Request.IsAjaxRequest())
-                    return Json(new { ok = false, error = "NO_EMPLOYEE_ID" });
-
-                return RedirectToAction("Enrolled");
-            }
+                return Json(new { ok = false, error = "NO_EMPLOYEE_ID" });
 
             var id = employeeId.Trim().ToUpperInvariant();
             _employees.Delete(id);
-            EmployeeFaceIndex.Invalidate();
 
-            // If you have a real enrollment wizard later, keep this route.
+                EmployeeFaceIndex.Invalidate();
+// If you have a real enrollment wizard later, keep this route.
             return Redirect("/Admin/Enroll?employeeId=" + Uri.EscapeDataString(id));
         }
 
@@ -164,21 +167,26 @@ namespace FaceAttend.Controllers
         }
 
         private static bool FixedTimeEquals(string a, string b)
-        {
-            if (a == null || b == null) return false;
+{
+    if (a == null || b == null) return false;
 
-            // Constant-time compare even if lengths differ
-            int diff = a.Length ^ b.Length;
-            int max = Math.Max(a.Length, b.Length);
+    // Constant-time compare even if lengths differ
+    int diff = a.Length ^ b.Length;
+    int max = Math.Max(a.Length, b.Length);
 
-            for (int i = 0; i < max; i++)
-            {
-                char ca = i < a.Length ? a[i] : (char)0;
-                char cb = i < b.Length ? b[i] : (char)0;
-                diff |= ca ^ cb;
-            }
+    for (int i = 0; i < max; i++)
+    {
+        char ca = i < a.Length ? a[i] : (char)0;
+        char cb = i < b.Length ? b[i] : (char)0;
+        diff |= ca ^ cb;
+    }
 
-            return diff == 0;
-        }
+    return diff == 0;
+}
     }
 }
+
+
+
+
+
