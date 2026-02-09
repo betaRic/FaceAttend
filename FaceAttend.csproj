@@ -199,6 +199,8 @@
   <ItemGroup>
     <Compile Include="App_Start\FilterConfig.cs" />
     <Compile Include="App_Start\RouteConfig.cs" />
+    <Compile Include="Controllers\AdminController.cs" />
+    <Compile Include="Controllers\AttendanceController.cs" />
     <Compile Include="Controllers\BiometricsController.cs" />
     <Compile Include="Controllers\KioskController.cs" />
     <Compile Include="Filters\AdminAuthorizeAttribute.cs" />
@@ -206,14 +208,17 @@
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
     <Compile Include="Models\EmployeeFaceRecord.cs" />
+    <Compile Include="Models\VisitorLogRecord.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
     <Compile Include="Services\Biometrics\DlibBiometrics.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
     <Compile Include="Services\Storage\IEmployeeRepository.cs" />
     <Compile Include="Services\Storage\JsonEmployeeRepository.cs" />
+    <Compile Include="Services\Storage\JsonVisitorRepository.cs" />
   </ItemGroup>
   <ItemGroup>
     <Content Include=".tools\nuget.exe" />
+    <Content Include="Content\admin.css" />
     <Content Include="Content\bootstrap-grid.css" />
     <Content Include="Content\bootstrap-grid.min.css" />
     <Content Include="Content\bootstrap-grid.rtl.css" />
@@ -233,7 +238,10 @@
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\toastr.css" />
     <Content Include="Content\toastr.min.css" />
+    <Content Include="Content\vendor\toastr\toastr.min.css" />
     <Content Include="Global.asax" />
+    <Content Include="Scripts\admin-enroll.js" />
+    <Content Include="Scripts\admin.js" />
     <Content Include="Scripts\bootstrap.bundle.js" />
     <Content Include="Scripts\bootstrap.bundle.min.js" />
     <Content Include="Scripts\bootstrap.esm.js" />
@@ -262,6 +270,8 @@
     <Content Include="Scripts\kiosk.js" />
     <Content Include="Scripts\toastr.js" />
     <Content Include="Scripts\toastr.min.js" />
+    <Content Include="Scripts\vendor\sweetalert2\sweetalert2.min.js" />
+    <Content Include="Scripts\vendor\toastr\toastr.min.js" />
     <Content Include="Web.config" />
     <Content Include="Web.Debug.config">
       <DependentUpon>Web.config</DependentUpon>
@@ -273,9 +283,14 @@
     <Content Include="Views\Shared\_ViewStart.cshtml" />
     <Content Include="Views\Shared\Error.cshtml" />
     <Content Include="Views\Kiosk\Index.cshtml" />
+    <Content Include="Views\Admin\Enroll.cshtml" />
+    <Content Include="Views\Admin\Enrolled.cshtml" />
+    <Content Include="Views\Admin\Unlock.cshtml" />
+    <Content Include="Views\Admin\Visitors.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="App_Data\_tmp\" />
+    <Folder Include="Content\vendor\sweetalert2\" />
     <Folder Include="Vendor\" />
   </ItemGroup>
   <ItemGroup>

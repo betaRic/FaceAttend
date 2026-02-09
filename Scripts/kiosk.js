@@ -150,6 +150,36 @@
     };
   }
 
+
+  // --- face box robustness ---
+  let _smoothBox = null;  // {left,top,width,height}
+  const SMOOTH = 0.35;    // 0..1 (higher = snappier)
+
+  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
+
+  function expandBox(box, padRatio) {
+    const padW = box.Width * padRatio;
+    const padH = box.Height * padRatio;
+    return {
+      Left: box.Left - padW,
+      Top: box.Top - padH,
+      Width: box.Width + (padW * 2),
+      Height: box.Height + (padH * 2)
+    };
+  }
+
+  function smoothBox(next) {
+    if (!_smoothBox) { _smoothBox = next; return _smoothBox; }
+    _smoothBox = {
+      left:  _smoothBox.left  + (next.left  - _smoothBox.left)  * SMOOTH,
+      top:   _smoothBox.top   + (next.top   - _smoothBox.top)   * SMOOTH,
+      width: _smoothBox.width + (next.width - _smoothBox.width) * SMOOTH,
+      height:_smoothBox.height+ (next.height- _smoothBox.height)* SMOOTH
+    };
+    return _smoothBox;
+  }
+
+  function resetSmoothBox() { _smoothBox = null; }
   function computeGuards(face) {
     const sw = canvas.width, sh = canvas.height;
 
@@ -165,28 +195,47 @@
     return { code: "OK", level: "good", msg: "Hold still", sub: "Scanning…", ratio, cx, cy };
   }
 
-  function showFaceUI(faceCount, faceBox, levelClass) {
-    if (faceCount === 1 && faceBox) {
-      $guide.removeClass("bad").addClass("good");
+    function showFaceUI(faceCount, faceBox, levelClass) {
+    const wrapRect = document.getElementById("wrap").getBoundingClientRect();
 
-      const m = mapCoverBoxToScreen(faceBox);
-      const wrapRect = document.getElementById("wrap").getBoundingClientRect();
+    if (faceCount === 1 && faceBox) {
+      // Hide static guide; show tracked box
+      $guide.addClass("hidden");
+
+      const padded = expandBox(faceBox, 0.18);
+      const m = mapCoverBoxToScreen(padded);
+
+      // Convert to wrap-local coords
+      let left = (m.left - wrapRect.left);
+      let top  = (m.top  - wrapRect.top);
+      let w    = m.width;
+      let h    = m.height;
+
+      // Clamp inside screen
+      left = clamp(left, 6, wrapRect.width  - w - 6);
+      top  = clamp(top,  6, wrapRect.height - h - 6);
+
+      const sm = smoothBox({ left, top, width: w, height: h });
 
       $box
         .removeClass("warn bad")
         .addClass(levelClass === "warn" ? "warn" : (levelClass === "bad" ? "bad" : ""))
         .css({
           display: "block",
-          left: (m.left - wrapRect.left) + "px",
-          top: (m.top - wrapRect.top) + "px",
-          width: m.width + "px",
-          height: m.height + "px"
+          width: sm.width + "px",
+          height: sm.height + "px",
+          transform: `translate3d(${sm.left}px, ${sm.top}px, 0)`
         });
 
       setDot($dlibDot, "good");
       return;
     }
 
+    // No single-face tracking -> show guide again and reset smoothing
+    $guide.removeClass("hidden");
+    resetSmoothBox();
+    $box.hide();
+  }
     // else
     $guide.removeClass("good").addClass("bad");
     $box.hide();
@@ -285,16 +334,18 @@
         const face = (scan.faces && scan.faces.length) ? scan.faces[0] : null;
 
         if (count === 0) {
-          showFaceUI(0, null, "bad");
-          setDot($dlibDot, "warn");
+          showFaceUI(0, null, "" );
+          resetSmoothBox();
+setDot($dlibDot, "warn");
           setHint("No face detected", "Look at the camera");
           if (debug) $("#debug").text("No face");
           continue;
         }
 
         if (count > 1) {
-          showFaceUI(count, null, "bad");
-          setDot($dlibDot, "bad");
+          showFaceUI(count, null, "" );
+          resetSmoothBox();
+setDot($dlibDot, "bad");
           setHint("One person only", "Others step away from the camera");
           if (debug) $("#debug").text("Multiple faces: " + count);
           continue;
@@ -374,6 +425,7 @@
   // Auto-start
   startFlow();
 })();
+
 
 
 
