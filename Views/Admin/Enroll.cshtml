@@ -1,0 +1,36 @@
+@{
+    Layout = null;
+    var employeeId = (string)ViewBag.EmployeeId ?? "";
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Enroll • FaceAttend Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link rel="stylesheet" href="@Url.Content("~/Content/bootstrap.min.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Content/admin.css")" />
+</head>
+<body class="admin-bg text-white">
+<div class="container py-4">
+    <div class="d-flex gap-2 justify-content-between align-items-center mb-3">
+        <div>
+            <div class="h4 mb-0">Enrollment</div>
+            <div class="text-white-50">Wizard will go here.</div>
+        </div>
+        <div class="d-flex gap-2">
+            <a class="btn btn-outline-light" href="@Url.Action("Enrolled","Admin")">Back</a>
+        </div>
+    </div>
+
+    <div class="glass rounded-4 p-3">
+        <div class="text-white-50 mb-2">Employee ID</div>
+        <div class="h5 mono">@employeeId</div>
+        <div class="text-white-50 mt-3">
+            Next step: we wire this to camera capture + Enroll endpoint.
+        </div>
+    </div>
+</div>
+</body>
+</html>

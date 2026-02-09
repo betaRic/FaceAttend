@@ -1,0 +1,95 @@
+@model IEnumerable<FaceAttend.Models.EmployeeFaceRecord>
+@{
+    Layout = null;
+    var list = (Model ?? Enumerable.Empty<FaceAttend.Models.EmployeeFaceRecord>()).ToList();
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Enrolled • FaceAttend Admin</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link rel="stylesheet" href="@Url.Content("~/Content/bootstrap.min.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Content/vendor/sweetalert2/sweetalert2.min.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Content/admin.css")" />
+</head>
+<body class="admin-bg text-white">
+<div class="container py-4">
+
+    <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+        <div>
+            <div class="h4 mb-0">Enrolled</div>
+            <div class="text-white-50">Total: @list.Count</div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-outline-light" href="@Url.Action("Visitors","Admin")">Visitors</a>
+            <a class="btn btn-outline-light" href="/Kiosk/Index">Kiosk</a>
+            @using (Html.BeginForm("Logout","Admin", FormMethod.Post))
+            {
+                @Html.AntiForgeryToken()
+                <button class="btn btn-light" type="submit">Logout</button>
+            }
+        </div>
+    </div>
+
+    <div class="glass rounded-4 p-3">
+        <div class="row g-2 align-items-center mb-3">
+            <div class="col-md-6">
+                <input id="qEnrolled" class="form-control" placeholder="Search employee ID..." />
+            </div>
+            <div class="col-md-6 text-md-end text-white-50 small">
+                Delete removes the saved template in App_Data.
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            <table id="tblEnrolled" class="table table-dark table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Employee ID</th>
+                        <th>Created (UTC)</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var r in list.OrderBy(x => x.EmployeeId))
+                {
+                    <tr>
+                        <td class="mono">@r.EmployeeId</td>
+                        <td class="text-white-50">@r.CreatedUtc</td>
+                        <td class="text-end">
+                            @using (Html.BeginForm("DeleteEnrollment","Admin", FormMethod.Post, new { @class="d-inline frmDelete" }))
+                            {
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="employeeId" value="@r.EmployeeId" />
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                            }
+                            @using (Html.BeginForm("ReEnroll","Admin", FormMethod.Post, new { @class="d-inline frmReenroll" }))
+                            {
+                                @Html.AntiForgeryToken()
+                                <input type="hidden" name="employeeId" value="@r.EmployeeId" />
+                                <button class="btn btn-sm btn-outline-warning" type="submit">Re-enroll</button>
+                            }
+                        </td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
+
+<script src="@Url.Content("~/Scripts/jquery-3.7.1.min.js")"></script>
+<script src="@Url.Content("~/Scripts/bootstrap.bundle.min.js")"></script>
+<script src="@Url.Content("~/Scripts/vendor/sweetalert2/sweetalert2.min.js")"></script>
+<script src="@Url.Content("~/Scripts/admin.js")"></script>
+<script>
+  FaceAttendAdmin.wireSearch("#qEnrolled", "#tblEnrolled");
+  FaceAttendAdmin.wireConfirmForms("form.frmDelete", "Delete enrollment?", "This will remove the saved template.");
+  FaceAttendAdmin.wireConfirmForms("form.frmReenroll", "Re-enroll?", "This will delete the saved template, then open enrollment.");
+</script>
+</body>
+</html>

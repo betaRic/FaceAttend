@@ -1,0 +1,23 @@
+:root{
+  --glass: rgba(18, 18, 20, .55);
+  --stroke: rgba(255,255,255,.14);
+}
+
+html, body { height:100%; }
+.admin-bg{
+  min-height:100vh;
+  background:
+    radial-gradient(ellipse at center, rgba(0,0,0,0) 30%, rgba(0,0,0,.55) 100%),
+    linear-gradient(to bottom, #0b0b0d, #0a0a0c);
+}
+
+.glass{
+  background: var(--glass);
+  border: 1px solid var(--stroke);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+}
+
+.table thead th { white-space: nowrap; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }

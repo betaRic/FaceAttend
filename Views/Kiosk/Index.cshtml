@@ -1,0 +1,77 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>FaceAttend Kiosk</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <link rel="stylesheet" href="@Url.Content("~/Content/bootstrap.min.css")" />
+
+    <link rel="stylesheet" href="@Url.Content("~/Content/vendor/toastr/toastr.min.css")" />
+    <link rel="stylesheet" href="@Url.Content("~/Content/vendor/sweetalert2/sweetalert2.min.css")" />
+
+    <link rel="stylesheet" href="@Url.Content("~/Content/kiosk.css")" />
+</head>
+<body>
+<div id="wrap">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="cap" width="640" height="480"></canvas>
+    <div class="kiosk-vignette"></div>
+
+    <!-- Top-left HUD -->
+    <div class="hud glass rounded-4 p-3 fade-in">
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="title">FaceAttend</div>
+            <span class="badge text-bg-dark border border-light-subtle">KIOSK</span>
+        </div>
+        <div id="clock" class="clock mt-1"></div>
+        <div id="status" class="status mt-2">STARTING…</div>
+        <div id="sub" class="sub">Preparing camera</div>
+
+        <div id="debugRow" class="mt-2">
+            <div class="sub">Debug</div>
+            <div id="debug" class="sub"></div>
+        </div>
+    </div>
+
+    <!-- Top-right badges -->
+    <div class="badges fade-in">
+        <div class="badge-pill glass">
+            <span id="dotCam" class="dot warn"></span> CAM
+        </div>
+        <div class="badge-pill glass">
+            <span id="dotDlib" class="dot warn"></span> DLIB
+        </div>
+        <div class="badge-pill glass">
+            <span id="dotLiv" class="dot warn"></span> LIV
+        </div>
+        <div class="badge-pill glass">
+            <span id="dotNet" class="dot warn"></span> NET
+        </div>
+    </div>
+
+    <!-- Center guide (just a guide) -->
+    <div id="guide" class="center-guide"></div>
+
+    <!-- Real face box (tracks detected face) -->
+    <div id="faceBox" class="facebox"></div>
+
+    <!-- Bottom hint -->
+    <div class="hint glass rounded-4">
+        <div class="msg" id="hintMsg">Center your face in the frame</div>
+        <div class="sub" id="hintSub">Hold still during scanning</div>
+    </div>
+</div>
+
+<script src="@Url.Content("~/Scripts/jquery-3.7.1.min.js")"></script>
+<script src="@Url.Content("~/Scripts/bootstrap.bundle.min.js")"></script>
+
+<script src="@Url.Content("~/Scripts/vendor/toastr/toastr.min.js")"></script>
+<script src="@Url.Content("~/Scripts/vendor/sweetalert2/sweetalert2.min.js")"></script>
+
+<script src="@Url.Content("~/Scripts/kiosk.js")"></script>
+</body>
+</html>
