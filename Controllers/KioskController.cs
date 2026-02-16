@@ -52,6 +52,8 @@ namespace FaceAttend.Controllers
                         ok = true,
                         gpsRequired = false,
                         allowed = true,
+                        officeId = fallback == null ? (int?)null : fallback.Id,
+                        officeName = fallback == null ? null : fallback.Name,
                         office = fallback == null ? null : new
                         {
                             id = fallback.Id,
@@ -81,6 +83,8 @@ namespace FaceAttend.Controllers
                     gpsRequired = true,
                     allowed = true,
                     reason = "OK",
+                    officeId = pick.Office.Id,
+                    officeName = pick.Office.Name,
                     office = new
                     {
                         id = pick.Office.Id,
@@ -110,12 +114,14 @@ namespace FaceAttend.Controllers
             {
                 using (var db = new FaceAttendDBEntities())
                 {
+                    bool gpsRequired = IsGpsRequired();
+
                     // GPS gate (mobile/tablet only)
                     Office office = null;
                     int radius = 0;
                     double dist = 0;
 
-                    if (IsGpsRequired())
+                    if (gpsRequired)
                     {
                         if (!lat.HasValue || !lon.HasValue)
                         {
@@ -124,7 +130,14 @@ namespace FaceAttend.Controllers
                                 ok = true,
                                 gpsRequired = true,
                                 allowed = false,
-                                reason = "GPS_REQUIRED"
+                                reason = "GPS_REQUIRED",
+                                faceCount = 0,
+                                count = 0,
+                                livenessScore = (float?)null,
+                                liveness = (float?)null,
+                                livenessPass = false,
+                                livenessOk = false,
+                                faceBox = (object)null
                             });
                         }
 
@@ -138,7 +151,14 @@ namespace FaceAttend.Controllers
                                 allowed = false,
                                 reason = pick.Reason,
                                 requiredAccuracy = pick.RequiredAccuracy,
-                                accuracy = accuracy
+                                accuracy = accuracy,
+                                faceCount = 0,
+                                count = 0,
+                                livenessScore = (float?)null,
+                                liveness = (float?)null,
+                                livenessPass = false,
+                                livenessOk = false,
+                                faceBox = (object)null
                             });
                         }
 
@@ -149,21 +169,65 @@ namespace FaceAttend.Controllers
 
                     path = SaveTemp(image);
 
+                    int imgW = 0;
+                    int imgH = 0;
+                    try
+                    {
+                        using (var bmp = new System.Drawing.Bitmap(path))
+                        {
+                            imgW = bmp.Width;
+                            imgH = bmp.Height;
+                        }
+                    }
+                    catch
+                    {
+                        // If we can't read image size, keep 0s.
+                    }
+
                     var dlib = new DlibBiometrics();
                     var faces = dlib.DetectFacesFromFile(path);
                     var count = faces == null ? 0 : faces.Length;
+
+                    // Pick the biggest face box (most stable for UI).
+                    DlibBiometrics.FaceBox best = null;
+                    if (faces != null && faces.Length > 0)
+                    {
+                        best = faces
+                            .OrderByDescending(f => (long)f.Width * (long)f.Height)
+                            .FirstOrDefault();
+                    }
+
+                    object faceBox = null;
+                    if (best != null)
+                    {
+                        faceBox = new
+                        {
+                            x = best.Left,
+                            y = best.Top,
+                            w = best.Width,
+                            h = best.Height,
+                            imgW = imgW,
+                            imgH = imgH
+                        };
+                    }
 
                     if (count != 1)
                     {
                         return Json(new
                         {
                             ok = true,
-                            gpsRequired = IsGpsRequired(),
-                            allowed = IsGpsRequired() ? true : true,
+                            gpsRequired = gpsRequired,
+                            allowed = true,
+                            officeId = office == null ? (int?)null : office.Id,
+                            officeName = office == null ? null : office.Name,
                             office = office == null ? null : new { id = office.Id, name = office.Name, radiusMeters = radius, distanceMeters = dist },
+                            faceCount = count,
                             count = count,
+                            livenessScore = (float?)null,
                             liveness = (float?)null,
-                            livenessOk = false
+                            livenessPass = false,
+                            livenessOk = false,
+                            faceBox = faceBox
                         });
                     }
 
@@ -178,12 +242,18 @@ namespace FaceAttend.Controllers
                     return Json(new
                     {
                         ok = true,
-                        gpsRequired = IsGpsRequired(),
+                        gpsRequired = gpsRequired,
                         allowed = true,
+                        officeId = office == null ? (int?)null : office.Id,
+                        officeName = office == null ? null : office.Name,
                         office = office == null ? null : new { id = office.Id, name = office.Name, radiusMeters = radius, distanceMeters = dist },
+                        faceCount = 1,
                         count = 1,
+                        livenessScore = p,
                         liveness = p,
-                        livenessOk = p >= th
+                        livenessPass = p >= th,
+                        livenessOk = p >= th,
+                        faceBox = faceBox
                     });
                 }
             }
@@ -338,8 +408,11 @@ namespace FaceAttend.Controllers
                         ok = true,
                         employeeId = emp.EmployeeId,
                         name = displayName,
+                        displayName = displayName,
                         eventType = rec.EventType,
                         message = rec.Message,
+                        officeId = office.Id,
+                        officeName = office.Name,
                         liveness = p,
                         distance = bestDist
                     });

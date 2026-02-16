@@ -18,6 +18,11 @@ html, body {
     width: 100%;
     height: 100%;
     object-fit: cover;
+}
+
+/* Mirror only the live video (selfie-style). Keep canvas un-mirrored so
+   overlay coordinates match what the server detects from the mirrored capture. */
+#kioskVideo {
     transform: scaleX(-1);
 }
 

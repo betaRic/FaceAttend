@@ -213,11 +213,30 @@
         const r = await fetch('/Kiosk/ResolveOffice', { method: 'POST', body: fd });
         const j = await r.json();
 
+        if (!j || j.ok !== true) {
+            boxSmooth = null;
+            latestFaceCount = 0;
+            latestLiveness = null;
+            setPrompt('Scan error.', (j && j.error) ? String(j.error) : 'Try again.');
+            return;
+        }
+
+        // Server can still deny scans (ex: GPS gate).
+        if (j.allowed === false) {
+            allowedArea = false;
+            officeLine.textContent = 'Not in allowed area';
+            showCenterBlock(true, 'Not in allowed area.', 'Move closer to a designated office.');
+            setPrompt('Not in allowed area.', 'Move closer to a designated office.');
+            return;
+        }
+
         allowedArea = !!j.allowed;
         if (allowedArea) {
-            currentOffice.id = j.officeId;
-            currentOffice.name = j.officeName;
-            officeLine.textContent = j.officeName || 'Office OK';
+            // Supports either { office: { id, name } } or flat officeId/officeName.
+            const off = j.office || null;
+            currentOffice.id = (off && typeof off.id !== 'undefined') ? off.id : j.officeId;
+            currentOffice.name = (off && off.name) ? off.name : j.officeName;
+            officeLine.textContent = currentOffice.name || 'Office OK';
             showCenterBlock(false);
         } else {
             currentOffice.id = null;
@@ -323,12 +342,27 @@
         fd.append('__RequestVerificationToken', token);
         fd.append('image', blob, 'frame.jpg');
 
-        // IMPORTANT: this must return faceBox to draw box
-        const r = await fetch('/Biometrics/ScanFrame', { method: 'POST', body: fd });
+        // If the server requires GPS (mobile/tablet), send it.
+        if (isMobile) {
+            if (gps.lat != null) fd.append('lat', gps.lat);
+            if (gps.lon != null) fd.append('lon', gps.lon);
+            if (gps.accuracy != null) fd.append('accuracy', gps.accuracy);
+        }
+
+        // Kiosk scan endpoint (NOT the admin Biometrics controller).
+        const r = await fetch('/Kiosk/ScanFrame', { method: 'POST', body: fd });
+
+        // If we got redirected (ex: to /Kiosk?unlock=1), JSON parsing will fail.
+        const ct = (r.headers.get('content-type') || '').toLowerCase();
+        if (!ct.includes('application/json')) {
+            throw new Error('Bad response (' + r.status + ')');
+        }
+
         const j = await r.json();
 
-        latestFaceCount = j.faceCount || 0;
-        latestLiveness = (typeof j.livenessScore === 'number') ? j.livenessScore : null;
+        // Server may return either the new or legacy field names.
+        latestFaceCount = (typeof j.faceCount === 'number') ? j.faceCount : (j.count || 0);
+        latestLiveness = (typeof j.livenessScore === 'number') ? j.livenessScore : ((typeof j.liveness === 'number') ? j.liveness : null);
 
         // Always visible liveness label
         livenessLine.textContent = 'Live: ' + (latestLiveness == null ? '--' : ceil2(latestLiveness));
@@ -383,7 +417,8 @@
         }
 
         // Anti spoof delay: require consecutive liveness passes
-        if (j.livenessPass === true) livenessStreak++;
+        const livePass = (j.livenessPass === true) || (j.livenessOk === true);
+        if (livePass) livenessStreak++;
         else livenessStreak = 0;
 
         if (livenessStreak < LIVENESS_STREAK_REQUIRED) {
@@ -418,10 +453,12 @@
             bottomCenter.classList.add('pulseSuccess');
             setTimeout(() => bottomCenter.classList.remove('pulseSuccess'), 900);
 
-            officeLine.textContent = j.officeName || officeLine.textContent;
+            const officeName = j.officeName || (j.office && j.office.name) || officeLine.textContent;
+            officeLine.textContent = officeName;
 
             // Main success prompt
-            const who = j.displayName ? ('Welcome, ' + j.displayName + '.') : 'Success.';
+            const displayName = j.displayName || j.name;
+            const who = displayName ? ('Welcome, ' + displayName + '.') : 'Success.';
             setPrompt(who, j.message || 'Recorded.');
 
             // cooldown
@@ -443,7 +480,8 @@
             await resolveOfficeIfNeeded();
             await pollScanFrame();
         } catch (e) {
-            // keep kiosk alive
+            // keep kiosk alive, but surface the issue
+            setPrompt('System error.', 'Reload the page or check the server.');
         } finally {
             setTimeout(loop, 100);
         }
