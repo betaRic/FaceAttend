@@ -1,16 +1,15 @@
-using System;
-using System.Configuration;
+﻿using System;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Web;
+using System.Web.Hosting;
+using FaceAttend.Services;
 using FaceRecognitionDotNet;
 
 namespace FaceAttend.Services.Biometrics
 {
-    public sealed class DlibBiometrics : IDisposable
+    public class DlibBiometrics
     {
-        public sealed class FaceBox
+        public class FaceBox
         {
             public int Left { get; set; }
             public int Top { get; set; }
@@ -18,95 +17,77 @@ namespace FaceAttend.Services.Biometrics
             public int Height { get; set; }
         }
 
-        private readonly FaceRecognition _fr;
-        private readonly string _tmpDir;
-        private readonly int _maxBytes;
+        private static readonly object _lock = new object();
+        private static FaceRecognition _fr;
+        private static Model _model;
 
         public DlibBiometrics()
         {
-            var modelsDir = ResolvePath(ConfigurationManager.AppSettings["Biometrics:DlibModelsDir"] ?? "~/App_Data/models/dlib");
-            if (!Directory.Exists(modelsDir))
-                throw new DirectoryNotFoundException("Dlib models folder not found: " + modelsDir);
-
-            FaceRecognition.InternalEncoding = Encoding.UTF8;
-            _fr = FaceRecognition.Create(modelsDir);
-
-            _tmpDir = ResolvePath("~/App_Data/_tmp");
-            Directory.CreateDirectory(_tmpDir);
-
-            if (int.TryParse(ConfigurationManager.AppSettings["Biometrics:MaxUploadBytes"], out var b) && b > 0)
-                _maxBytes = b;
-            else
-                _maxBytes = 10 * 1024 * 1024;
+            EnsureInit();
         }
 
-        public FaceBox[] DetectFaces(HttpPostedFileBase imageFile)
+        private static void EnsureInit()
         {
-            if (imageFile == null) return new FaceBox[0];
+            if (_fr != null) return;
 
-            var path = SaveToTemp(imageFile);
-            try
+            lock (_lock)
             {
-                return DetectFacesFromFile(path);
-            }
-            finally
-            {
-                SafeDelete(path);
+                if (_fr != null) return;
+
+                var modelsDir = AppSettings.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
+                var detector = AppSettings.GetString("Biometrics:DlibDetector", "hog");
+
+                var absModelsDir = HostingEnvironment.MapPath(modelsDir);
+                if (string.IsNullOrWhiteSpace(absModelsDir) || !Directory.Exists(absModelsDir))
+                    throw new InvalidOperationException("Dlib models directory not found: " + modelsDir);
+
+                _fr = FaceRecognition.Create(absModelsDir);
+
+                _model = detector.Equals("cnn", StringComparison.OrdinalIgnoreCase)
+                    ? Model.Cnn
+                    : Model.Hog;
             }
         }
 
         public FaceBox[] DetectFacesFromFile(string imagePath)
         {
-            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
-                return new FaceBox[0];
-
-            using (var img = FaceRecognition.LoadImageFile(imagePath))
+            EnsureInit();
+            lock (_lock)
             {
-                var model = ReadDetectorModel();
-                var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 1, model: model).ToArray();
-                return locs.Select(ToBox).ToArray();
-            }
-        }
+                using (var img = FaceRecognition.LoadImageFile(imagePath))
+                {
+                    // use 0 upsample to avoid instability on some machines
+                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
 
-        // Returns 128D encoding for exactly 1 face; otherwise null.
-        public double[] GetSingleFaceEncoding(HttpPostedFileBase imageFile, out string error)
-        {
-            error = null;
-            if (imageFile == null) { error = "NO_IMAGE"; return null; }
-
-            var path = SaveToTemp(imageFile);
-            try
-            {
-                return GetSingleFaceEncodingFromFile(path, out error);
-            }
-            finally
-            {
-                SafeDelete(path);
+                    return locs.Select(l => new FaceBox
+                    {
+                        Left = l.Left,
+                        Top = l.Top,
+                        Width = Math.Max(0, l.Right - l.Left),
+                        Height = Math.Max(0, l.Bottom - l.Top)
+                    }).ToArray();
+                }
             }
         }
 
         public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
         {
             error = null;
+            EnsureInit();
 
-            if (string.IsNullOrWhiteSpace(imagePath) || !File.Exists(imagePath))
+            lock (_lock)
             {
-                error = "NO_IMAGE";
-                return null;
-            }
+                using (var img = FaceRecognition.LoadImageFile(imagePath))
+                {
+                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
+                    if (locs.Length == 0) { error = "NO_FACE"; return null; }
+                    if (locs.Length > 1) { error = "MULTI_FACE"; return null; }
 
-            using (var img = FaceRecognition.LoadImageFile(imagePath))
-            {
-                var model = ReadDetectorModel();
-                var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 1, model: model).ToArray();
+                    var enc = _fr.FaceEncodings(img, new[] { locs[0] }).FirstOrDefault();
+                    if (enc == null) { error = "ENCODING_FAIL"; return null; }
 
-                if (locs.Length == 0) { error = "NO_FACE"; return null; }
-                if (locs.Length > 1) { error = "MULTIPLE_FACES"; return null; }
-
-                var enc = _fr.FaceEncodings(img, knownFaceLocation: locs).FirstOrDefault();
-                if (enc == null) { error = "ENCODING_FAILED"; return null; }
-
-                return enc.GetRawEncoding();
+                    return enc.GetRawEncoding();
+                }
             }
         }
 
@@ -116,7 +97,7 @@ namespace FaceAttend.Services.Biometrics
             double sum = 0;
             for (int i = 0; i < a.Length; i++)
             {
-                var d = a[i] - b[i];
+                double d = a[i] - b[i];
                 sum += d * d;
             }
             return Math.Sqrt(sum);
@@ -124,75 +105,25 @@ namespace FaceAttend.Services.Biometrics
 
         public static byte[] EncodeToBytes(double[] v)
         {
-            if (v == null) return null;
-            var bytes = new byte[v.Length * sizeof(double)];
-            Buffer.BlockCopy(v, 0, bytes, 0, bytes.Length);
+            if (v == null || v.Length != 128) return null;
+            var bytes = new byte[128 * 8];
+            for (int i = 0; i < 128; i++)
+            {
+                var b = BitConverter.GetBytes(v[i]);
+                Buffer.BlockCopy(b, 0, bytes, i * 8, 8);
+            }
             return bytes;
         }
 
         public static double[] DecodeFromBytes(byte[] bytes)
         {
-            if (bytes == null || bytes.Length % sizeof(double) != 0) return null;
-            var v = new double[bytes.Length / sizeof(double)];
-            Buffer.BlockCopy(bytes, 0, v, 0, bytes.Length);
-            return v;
-        }
-
-        private static Model ReadDetectorModel()
-        {
-            var s = (ConfigurationManager.AppSettings["Biometrics:DlibDetector"] ?? "hog").Trim().ToLowerInvariant();
-            return s == "cnn" ? Model.Cnn : Model.Hog;
-        }
-
-        private static FaceBox ToBox(Location loc)
-        {
-            return new FaceBox
+            if (bytes == null || bytes.Length != 128 * 8) return null;
+            var v = new double[128];
+            for (int i = 0; i < 128; i++)
             {
-                Left = loc.Left,
-                Top = loc.Top,
-                Width = loc.Right - loc.Left,
-                Height = loc.Bottom - loc.Top
-            };
-        }
-
-        private string SaveToTemp(HttpPostedFileBase file)
-        {
-            if (file == null) throw new ArgumentNullException(nameof(file));
-
-            if (file.ContentLength <= 0)
-                throw new InvalidDataException("EMPTY_IMAGE");
-
-            if (file.ContentLength > _maxBytes)
-                throw new InvalidDataException("IMAGE_TOO_LARGE");
-
-            var ext = (Path.GetExtension(file.FileName) ?? "").Trim().ToLowerInvariant();
-            if (ext != ".jpg" && ext != ".jpeg" && ext != ".png") ext = ".jpg";
-
-            var path = Path.Combine(_tmpDir, Guid.NewGuid().ToString("N") + ext);
-            file.SaveAs(path);
-            return path;
-        }
-
-        private static void SafeDelete(string path)
-        {
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
-                    File.Delete(path);
+                v[i] = BitConverter.ToDouble(bytes, i * 8);
             }
-            catch { }
-        }
-
-        private static string ResolvePath(string pathOrVirtual)
-        {
-            if (pathOrVirtual.StartsWith("~/"))
-                return HttpContext.Current.Server.MapPath(pathOrVirtual);
-            return pathOrVirtual;
-        }
-
-        public void Dispose()
-        {
-            _fr?.Dispose();
+            return v;
         }
     }
 }

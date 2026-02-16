@@ -1,0 +1,549 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<edmx:Edmx Version="3.0" xmlns:edmx="http://schemas.microsoft.com/ado/2009/11/edmx">
+  <!-- EF Runtime content -->
+  <edmx:Runtime>
+    <!-- SSDL content -->
+    <edmx:StorageModels>
+      <Schema Namespace="FaceAttendDBModel.Store" Provider="System.Data.SqlClient" ProviderManifestToken="2012" Alias="Self" xmlns:store="http://schemas.microsoft.com/ado/2007/12/edm/EntityStoreSchemaGenerator" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm/ssdl">
+        <EntityType Name="AttendanceLogs">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="bigint" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="EmployeeId" Type="int" Nullable="false" />
+          <Property Name="Timestamp" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="EventType" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="Source" Type="nvarchar" MaxLength="50" Nullable="false" />
+          <Property Name="EmployeeFullName" Type="nvarchar" MaxLength="200" />
+          <Property Name="Department" Type="nvarchar" MaxLength="100" />
+          <Property Name="OfficeId" Type="int" Nullable="false" />
+          <Property Name="OfficeType" Type="nvarchar" MaxLength="20" />
+          <Property Name="OfficeName" Type="nvarchar" MaxLength="200" />
+          <Property Name="GPSLatitude" Type="float" />
+          <Property Name="GPSLongitude" Type="float" />
+          <Property Name="GPSAccuracy" Type="float" />
+          <Property Name="WiFiSSID" Type="nvarchar" MaxLength="100" />
+          <Property Name="LocationVerified" Type="bit" Nullable="false" />
+          <Property Name="LocationError" Type="nvarchar" MaxLength="200" />
+          <Property Name="FaceDistance" Type="float" />
+          <Property Name="FaceSimilarity" Type="float" />
+          <Property Name="MatchThreshold" Type="float" />
+          <Property Name="LivenessScore" Type="float" />
+          <Property Name="LivenessResult" Type="nvarchar" MaxLength="20" />
+          <Property Name="LivenessError" Type="nvarchar" MaxLength="200" />
+          <Property Name="ClientIP" Type="nvarchar" MaxLength="50" />
+          <Property Name="UserAgent" Type="nvarchar" MaxLength="500" />
+          <Property Name="NeedsReview" Type="bit" Nullable="false" />
+          <Property Name="Notes" Type="nvarchar(max)" />
+        </EntityType>
+        <EntityType Name="Employees">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="EmployeeId" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="Department" Type="nvarchar" MaxLength="100" />
+          <Property Name="OfficeId" Type="int" Nullable="false" />
+          <Property Name="IsFlexi" Type="bit" Nullable="false" />
+          <Property Name="IsActive" Type="bit" Nullable="false" />
+          <Property Name="FaceEncodingBase64" Type="nvarchar(max)" />
+          <Property Name="EnrolledDate" Type="datetime2" Precision="7" />
+          <Property Name="LastModifiedDate" Type="datetime2" Precision="7" />
+          <Property Name="ModifiedBy" Type="nvarchar" MaxLength="100" />
+          <Property Name="FirstName" Type="nvarchar" MaxLength="100" Nullable="false" />
+          <Property Name="MiddleName" Type="nvarchar" MaxLength="100" />
+          <Property Name="LastName" Type="nvarchar" MaxLength="100" Nullable="false" />
+          <Property Name="Position" Type="nvarchar" MaxLength="150" Nullable="false" />
+        </EntityType>
+        <EntityType Name="Offices">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="Code" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="Name" Type="nvarchar" MaxLength="200" Nullable="false" />
+          <Property Name="Type" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="ProvinceName" Type="nvarchar" MaxLength="100" />
+          <Property Name="HUCCity" Type="nvarchar" MaxLength="100" />
+          <Property Name="Latitude" Type="float" Nullable="false" />
+          <Property Name="Longitude" Type="float" Nullable="false" />
+          <Property Name="RadiusMeters" Type="int" Nullable="false" />
+          <Property Name="WiFiSSID" Type="nvarchar" MaxLength="100" />
+          <Property Name="IsActive" Type="bit" Nullable="false" />
+          <Property Name="CreatedDate" Type="datetime2" Precision="7" Nullable="false" />
+        </EntityType>
+        <EntityType Name="SystemConfigurations">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="Key" Type="nvarchar" MaxLength="100" Nullable="false" />
+          <Property Name="Value" Type="nvarchar" MaxLength="500" />
+          <Property Name="DataType" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="Description" Type="nvarchar" MaxLength="500" />
+          <Property Name="ModifiedDate" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="ModifiedBy" Type="nvarchar" MaxLength="100" />
+        </EntityType>
+        <EntityType Name="VisitorLogs">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="bigint" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="VisitorId" Type="int" />
+          <Property Name="OfficeId" Type="int" Nullable="false" />
+          <Property Name="Timestamp" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="VisitorName" Type="nvarchar" MaxLength="200" Nullable="false" />
+          <Property Name="Purpose" Type="nvarchar" MaxLength="500" />
+          <Property Name="Source" Type="nvarchar" MaxLength="50" Nullable="false" />
+          <Property Name="ClientIP" Type="nvarchar" MaxLength="50" />
+          <Property Name="UserAgent" Type="nvarchar" MaxLength="500" />
+        </EntityType>
+        <EntityType Name="Visitors">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="Name" Type="nvarchar" MaxLength="200" Nullable="false" />
+          <Property Name="FaceEncodingBase64" Type="nvarchar(max)" />
+          <Property Name="VisitCount" Type="int" Nullable="false" />
+          <Property Name="FirstVisitDate" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="LastVisitDate" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="IsActive" Type="bit" Nullable="false" />
+        </EntityType>
+        <Association Name="FK_AttendanceLogs_Employees">
+          <End Role="Employees" Type="Self.Employees" Multiplicity="1" />
+          <End Role="AttendanceLogs" Type="Self.AttendanceLogs" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Employees">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="AttendanceLogs">
+              <PropertyRef Name="EmployeeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_AttendanceLogs_Offices">
+          <End Role="Offices" Type="Self.Offices" Multiplicity="1" />
+          <End Role="AttendanceLogs" Type="Self.AttendanceLogs" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Offices">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="AttendanceLogs">
+              <PropertyRef Name="OfficeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_Employees_Offices">
+          <End Role="Offices" Type="Self.Offices" Multiplicity="1" />
+          <End Role="Employees" Type="Self.Employees" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Offices">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="Employees">
+              <PropertyRef Name="OfficeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_VisitorLogs_Offices">
+          <End Role="Offices" Type="Self.Offices" Multiplicity="1" />
+          <End Role="VisitorLogs" Type="Self.VisitorLogs" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Offices">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="VisitorLogs">
+              <PropertyRef Name="OfficeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_VisitorLogs_Visitors">
+          <End Role="Visitors" Type="Self.Visitors" Multiplicity="0..1" />
+          <End Role="VisitorLogs" Type="Self.VisitorLogs" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Visitors">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="VisitorLogs">
+              <PropertyRef Name="VisitorId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <EntityContainer Name="FaceAttendDBModelStoreContainer">
+          <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLogs" Schema="dbo" store:Type="Tables" />
+          <EntitySet Name="Employees" EntityType="Self.Employees" Schema="dbo" store:Type="Tables" />
+          <EntitySet Name="Offices" EntityType="Self.Offices" Schema="dbo" store:Type="Tables" />
+          <EntitySet Name="SystemConfigurations" EntityType="Self.SystemConfigurations" Schema="dbo" store:Type="Tables" />
+          <EntitySet Name="VisitorLogs" EntityType="Self.VisitorLogs" Schema="dbo" store:Type="Tables" />
+          <EntitySet Name="Visitors" EntityType="Self.Visitors" Schema="dbo" store:Type="Tables" />
+          <AssociationSet Name="FK_AttendanceLogs_Employees" Association="Self.FK_AttendanceLogs_Employees">
+            <End Role="Employees" EntitySet="Employees" />
+            <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_AttendanceLogs_Offices" Association="Self.FK_AttendanceLogs_Offices">
+            <End Role="Offices" EntitySet="Offices" />
+            <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_Employees_Offices" Association="Self.FK_Employees_Offices">
+            <End Role="Offices" EntitySet="Offices" />
+            <End Role="Employees" EntitySet="Employees" />
+          </AssociationSet>
+          <AssociationSet Name="FK_VisitorLogs_Offices" Association="Self.FK_VisitorLogs_Offices">
+            <End Role="Offices" EntitySet="Offices" />
+            <End Role="VisitorLogs" EntitySet="VisitorLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_VisitorLogs_Visitors" Association="Self.FK_VisitorLogs_Visitors">
+            <End Role="Visitors" EntitySet="Visitors" />
+            <End Role="VisitorLogs" EntitySet="VisitorLogs" />
+          </AssociationSet>
+        </EntityContainer>
+      </Schema>
+    </edmx:StorageModels>
+    <!-- CSDL content -->
+    <edmx:ConceptualModels>
+      <Schema Namespace="FaceAttendDBModel" Alias="Self" annotation:UseStrongSpatialTypes="false" xmlns:annotation="http://schemas.microsoft.com/ado/2009/02/edm/annotation" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
+        <EntityType Name="AttendanceLog">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int64" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="EmployeeId" Type="Int32" Nullable="false" />
+          <Property Name="Timestamp" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="EventType" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Source" Type="String" MaxLength="50" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="EmployeeFullName" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="Department" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="OfficeId" Type="Int32" Nullable="false" />
+          <Property Name="OfficeType" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="OfficeName" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="GPSLatitude" Type="Double" />
+          <Property Name="GPSLongitude" Type="Double" />
+          <Property Name="GPSAccuracy" Type="Double" />
+          <Property Name="WiFiSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="LocationVerified" Type="Boolean" Nullable="false" />
+          <Property Name="LocationError" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="FaceDistance" Type="Double" />
+          <Property Name="FaceSimilarity" Type="Double" />
+          <Property Name="MatchThreshold" Type="Double" />
+          <Property Name="LivenessScore" Type="Double" />
+          <Property Name="LivenessResult" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="LivenessError" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="ClientIP" Type="String" MaxLength="50" FixedLength="false" Unicode="true" />
+          <Property Name="UserAgent" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
+          <Property Name="NeedsReview" Type="Boolean" Nullable="false" />
+          <Property Name="Notes" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <NavigationProperty Name="Employee" Relationship="Self.FK_AttendanceLogs_Employees" FromRole="AttendanceLogs" ToRole="Employees" />
+          <NavigationProperty Name="Office" Relationship="Self.FK_AttendanceLogs_Offices" FromRole="AttendanceLogs" ToRole="Offices" />
+        </EntityType>
+        <EntityType Name="Employee">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="EmployeeId" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Department" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="OfficeId" Type="Int32" Nullable="false" />
+          <Property Name="IsFlexi" Type="Boolean" Nullable="false" />
+          <Property Name="IsActive" Type="Boolean" Nullable="false" />
+          <Property Name="FaceEncodingBase64" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <Property Name="EnrolledDate" Type="DateTime" Precision="7" />
+          <Property Name="LastModifiedDate" Type="DateTime" Precision="7" />
+          <Property Name="ModifiedBy" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="FirstName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="MiddleName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="LastName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Position" Type="String" MaxLength="150" FixedLength="false" Unicode="true" Nullable="false" />
+          <NavigationProperty Name="AttendanceLogs" Relationship="Self.FK_AttendanceLogs_Employees" FromRole="Employees" ToRole="AttendanceLogs" />
+          <NavigationProperty Name="Office" Relationship="Self.FK_Employees_Offices" FromRole="Employees" ToRole="Offices" />
+        </EntityType>
+        <EntityType Name="Office">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="Code" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Name" Type="String" MaxLength="200" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Type" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="ProvinceName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="HUCCity" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="Latitude" Type="Double" Nullable="false" />
+          <Property Name="Longitude" Type="Double" Nullable="false" />
+          <Property Name="RadiusMeters" Type="Int32" Nullable="false" />
+          <Property Name="WiFiSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="IsActive" Type="Boolean" Nullable="false" />
+          <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
+          <NavigationProperty Name="AttendanceLogs" Relationship="Self.FK_AttendanceLogs_Offices" FromRole="Offices" ToRole="AttendanceLogs" />
+          <NavigationProperty Name="Employees" Relationship="Self.FK_Employees_Offices" FromRole="Offices" ToRole="Employees" />
+          <NavigationProperty Name="VisitorLogs" Relationship="Self.FK_VisitorLogs_Offices" FromRole="Offices" ToRole="VisitorLogs" />
+        </EntityType>
+        <EntityType Name="SystemConfiguration">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="Key" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Value" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
+          <Property Name="DataType" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Description" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
+          <Property Name="ModifiedDate" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="ModifiedBy" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+        </EntityType>
+        <EntityType Name="VisitorLog">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int64" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="VisitorId" Type="Int32" />
+          <Property Name="OfficeId" Type="Int32" Nullable="false" />
+          <Property Name="Timestamp" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="VisitorName" Type="String" MaxLength="200" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Purpose" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
+          <Property Name="Source" Type="String" MaxLength="50" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="ClientIP" Type="String" MaxLength="50" FixedLength="false" Unicode="true" />
+          <Property Name="UserAgent" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
+          <NavigationProperty Name="Office" Relationship="Self.FK_VisitorLogs_Offices" FromRole="VisitorLogs" ToRole="Offices" />
+          <NavigationProperty Name="Visitor" Relationship="Self.FK_VisitorLogs_Visitors" FromRole="VisitorLogs" ToRole="Visitors" />
+        </EntityType>
+        <EntityType Name="Visitor">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="Name" Type="String" MaxLength="200" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="FaceEncodingBase64" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <Property Name="VisitCount" Type="Int32" Nullable="false" />
+          <Property Name="FirstVisitDate" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="LastVisitDate" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="IsActive" Type="Boolean" Nullable="false" />
+          <NavigationProperty Name="VisitorLogs" Relationship="Self.FK_VisitorLogs_Visitors" FromRole="Visitors" ToRole="VisitorLogs" />
+        </EntityType>
+        <Association Name="FK_AttendanceLogs_Employees">
+          <End Role="Employees" Type="Self.Employee" Multiplicity="1" />
+          <End Role="AttendanceLogs" Type="Self.AttendanceLog" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Employees">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="AttendanceLogs">
+              <PropertyRef Name="EmployeeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_AttendanceLogs_Offices">
+          <End Role="Offices" Type="Self.Office" Multiplicity="1" />
+          <End Role="AttendanceLogs" Type="Self.AttendanceLog" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Offices">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="AttendanceLogs">
+              <PropertyRef Name="OfficeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_Employees_Offices">
+          <End Role="Offices" Type="Self.Office" Multiplicity="1" />
+          <End Role="Employees" Type="Self.Employee" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Offices">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="Employees">
+              <PropertyRef Name="OfficeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_VisitorLogs_Offices">
+          <End Role="Offices" Type="Self.Office" Multiplicity="1" />
+          <End Role="VisitorLogs" Type="Self.VisitorLog" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Offices">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="VisitorLogs">
+              <PropertyRef Name="OfficeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <Association Name="FK_VisitorLogs_Visitors">
+          <End Role="Visitors" Type="Self.Visitor" Multiplicity="0..1" />
+          <End Role="VisitorLogs" Type="Self.VisitorLog" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Visitors">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="VisitorLogs">
+              <PropertyRef Name="VisitorId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
+        <EntityContainer Name="FaceAttendDBEntities" annotation:LazyLoadingEnabled="true">
+          <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLog" />
+          <EntitySet Name="Employees" EntityType="Self.Employee" />
+          <EntitySet Name="Offices" EntityType="Self.Office" />
+          <EntitySet Name="SystemConfigurations" EntityType="Self.SystemConfiguration" />
+          <EntitySet Name="VisitorLogs" EntityType="Self.VisitorLog" />
+          <EntitySet Name="Visitors" EntityType="Self.Visitor" />
+          <AssociationSet Name="FK_AttendanceLogs_Employees" Association="Self.FK_AttendanceLogs_Employees">
+            <End Role="Employees" EntitySet="Employees" />
+            <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_AttendanceLogs_Offices" Association="Self.FK_AttendanceLogs_Offices">
+            <End Role="Offices" EntitySet="Offices" />
+            <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_Employees_Offices" Association="Self.FK_Employees_Offices">
+            <End Role="Offices" EntitySet="Offices" />
+            <End Role="Employees" EntitySet="Employees" />
+          </AssociationSet>
+          <AssociationSet Name="FK_VisitorLogs_Offices" Association="Self.FK_VisitorLogs_Offices">
+            <End Role="Offices" EntitySet="Offices" />
+            <End Role="VisitorLogs" EntitySet="VisitorLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_VisitorLogs_Visitors" Association="Self.FK_VisitorLogs_Visitors">
+            <End Role="Visitors" EntitySet="Visitors" />
+            <End Role="VisitorLogs" EntitySet="VisitorLogs" />
+          </AssociationSet>
+        </EntityContainer>
+      </Schema>
+    </edmx:ConceptualModels>
+    <!-- C-S mapping content -->
+    <edmx:Mappings>
+      <Mapping Space="C-S" xmlns="http://schemas.microsoft.com/ado/2009/11/mapping/cs">
+        <EntityContainerMapping StorageEntityContainer="FaceAttendDBModelStoreContainer" CdmEntityContainer="FaceAttendDBEntities">
+          <EntitySetMapping Name="AttendanceLogs">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
+              <MappingFragment StoreEntitySet="AttendanceLogs">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
+                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
+                <ScalarProperty Name="EventType" ColumnName="EventType" />
+                <ScalarProperty Name="Source" ColumnName="Source" />
+                <ScalarProperty Name="EmployeeFullName" ColumnName="EmployeeFullName" />
+                <ScalarProperty Name="Department" ColumnName="Department" />
+                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
+                <ScalarProperty Name="OfficeType" ColumnName="OfficeType" />
+                <ScalarProperty Name="OfficeName" ColumnName="OfficeName" />
+                <ScalarProperty Name="GPSLatitude" ColumnName="GPSLatitude" />
+                <ScalarProperty Name="GPSLongitude" ColumnName="GPSLongitude" />
+                <ScalarProperty Name="GPSAccuracy" ColumnName="GPSAccuracy" />
+                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
+                <ScalarProperty Name="LocationVerified" ColumnName="LocationVerified" />
+                <ScalarProperty Name="LocationError" ColumnName="LocationError" />
+                <ScalarProperty Name="FaceDistance" ColumnName="FaceDistance" />
+                <ScalarProperty Name="FaceSimilarity" ColumnName="FaceSimilarity" />
+                <ScalarProperty Name="MatchThreshold" ColumnName="MatchThreshold" />
+                <ScalarProperty Name="LivenessScore" ColumnName="LivenessScore" />
+                <ScalarProperty Name="LivenessResult" ColumnName="LivenessResult" />
+                <ScalarProperty Name="LivenessError" ColumnName="LivenessError" />
+                <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
+                <ScalarProperty Name="UserAgent" ColumnName="UserAgent" />
+                <ScalarProperty Name="NeedsReview" ColumnName="NeedsReview" />
+                <ScalarProperty Name="Notes" ColumnName="Notes" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="Employees">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.Employee">
+              <MappingFragment StoreEntitySet="Employees">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
+                <ScalarProperty Name="Department" ColumnName="Department" />
+                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
+                <ScalarProperty Name="IsFlexi" ColumnName="IsFlexi" />
+                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
+                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
+                <ScalarProperty Name="EnrolledDate" ColumnName="EnrolledDate" />
+                <ScalarProperty Name="LastModifiedDate" ColumnName="LastModifiedDate" />
+                <ScalarProperty Name="ModifiedBy" ColumnName="ModifiedBy" />
+                <ScalarProperty Name="FirstName" ColumnName="FirstName" />
+                <ScalarProperty Name="MiddleName" ColumnName="MiddleName" />
+                <ScalarProperty Name="LastName" ColumnName="LastName" />
+                <ScalarProperty Name="Position" ColumnName="Position" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="Offices">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.Office">
+              <MappingFragment StoreEntitySet="Offices">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="Code" ColumnName="Code" />
+                <ScalarProperty Name="Name" ColumnName="Name" />
+                <ScalarProperty Name="Type" ColumnName="Type" />
+                <ScalarProperty Name="ProvinceName" ColumnName="ProvinceName" />
+                <ScalarProperty Name="HUCCity" ColumnName="HUCCity" />
+                <ScalarProperty Name="Latitude" ColumnName="Latitude" />
+                <ScalarProperty Name="Longitude" ColumnName="Longitude" />
+                <ScalarProperty Name="RadiusMeters" ColumnName="RadiusMeters" />
+                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
+                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
+                <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="SystemConfigurations">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.SystemConfiguration">
+              <MappingFragment StoreEntitySet="SystemConfigurations">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="Key" ColumnName="Key" />
+                <ScalarProperty Name="Value" ColumnName="Value" />
+                <ScalarProperty Name="DataType" ColumnName="DataType" />
+                <ScalarProperty Name="Description" ColumnName="Description" />
+                <ScalarProperty Name="ModifiedDate" ColumnName="ModifiedDate" />
+                <ScalarProperty Name="ModifiedBy" ColumnName="ModifiedBy" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="VisitorLogs">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.VisitorLog">
+              <MappingFragment StoreEntitySet="VisitorLogs">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="VisitorId" ColumnName="VisitorId" />
+                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
+                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
+                <ScalarProperty Name="VisitorName" ColumnName="VisitorName" />
+                <ScalarProperty Name="Purpose" ColumnName="Purpose" />
+                <ScalarProperty Name="Source" ColumnName="Source" />
+                <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
+                <ScalarProperty Name="UserAgent" ColumnName="UserAgent" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+          <EntitySetMapping Name="Visitors">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.Visitor">
+              <MappingFragment StoreEntitySet="Visitors">
+                <ScalarProperty Name="Id" ColumnName="Id" />
+                <ScalarProperty Name="Name" ColumnName="Name" />
+                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
+                <ScalarProperty Name="VisitCount" ColumnName="VisitCount" />
+                <ScalarProperty Name="FirstVisitDate" ColumnName="FirstVisitDate" />
+                <ScalarProperty Name="LastVisitDate" ColumnName="LastVisitDate" />
+                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
+        </EntityContainerMapping>
+      </Mapping>
+    </edmx:Mappings>
+  </edmx:Runtime>
+  <!-- EF Designer content (DO NOT EDIT MANUALLY BELOW HERE) -->
+  <Designer xmlns="http://schemas.microsoft.com/ado/2009/11/edmx">
+    <Connection>
+      <DesignerInfoPropertySet>
+        <DesignerProperty Name="MetadataArtifactProcessing" Value="EmbedInOutputAssembly" />
+      </DesignerInfoPropertySet>
+    </Connection>
+    <Options>
+      <DesignerInfoPropertySet>
+        <DesignerProperty Name="ValidateOnBuild" Value="true" />
+        <DesignerProperty Name="EnablePluralization" Value="true" />
+        <DesignerProperty Name="IncludeForeignKeysInModel" Value="true" />
+        <DesignerProperty Name="UseLegacyProvider" Value="false" />
+        <DesignerProperty Name="CodeGenerationStrategy" Value="None" />
+      </DesignerInfoPropertySet>
+    </Options>
+    <!-- Diagram content (shape and connector positions) -->
+    <Diagrams></Diagrams>
+  </Designer>
+</edmx:Edmx>

@@ -1,0 +1,53 @@
+﻿@{
+    var url = (Request?.Url?.AbsolutePath ?? "").ToLowerInvariant();
+    Func<string, bool> isActive = (path) => url.StartsWith(path.ToLowerInvariant());
+}
+
+<nav class="admin-nav">
+    <div class="admin-nav-section">
+        <div class="admin-nav-title">Menu</div>
+
+        <a class="admin-nav-link @(isActive("/admin/dashboard") ? "active" : "")"
+           href="@Url.Action("Index","Dashboard", new { area = "Admin" })">
+            <i class="fa-solid fa-gauge-high me-2"></i>
+            Dashboard
+        </a>
+
+        <a class="admin-nav-link @(isActive("/admin/employees") ? "active" : "")"
+           href="@Url.Action("Index","Employees", new { area = "Admin" })">
+            <i class="fa-solid fa-users me-2"></i>
+            Employees
+        </a>
+
+
+        <a class="admin-nav-link @(isActive("/admin/offices") ? "active" : "")"
+           href="@Url.Action("Index","Offices", new { area = "Admin" })">
+            <i class="fa-solid fa-building me-2"></i>
+            Offices
+        </a>
+
+        <a class="admin-nav-link @(isActive("/admin/attendance") ? "active" : "")"
+           href="@Url.Action("Index","Attendance", new { area = "Admin" })">
+            <i class="fa-solid fa-clock me-2"></i>
+            Attendance
+        </a>
+
+        <a class="admin-nav-link @(isActive("/admin/visitors") ? "active" : "")"
+           href="@Url.Action("Index","Visitors", new { area = "Admin" })">
+            <i class="fa-solid fa-user-check me-2"></i>
+            Visitors
+        </a>
+    </div>
+
+    <hr class="admin-nav-sep" />
+
+    <div class="admin-nav-section">
+        <div class="admin-nav-title">Admin</div>
+
+        <a class="admin-nav-link @(isActive("/admin/settings") ? "active" : "")"
+           href="@Url.Action("Index","Settings", new { area = "Admin" })">
+            <i class="fa-solid fa-gear me-2"></i>
+            Settings
+        </a>
+    </div>
+</nav>

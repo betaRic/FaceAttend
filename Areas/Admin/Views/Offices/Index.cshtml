@@ -1,0 +1,53 @@
+@model System.Collections.Generic.List<Office>
+@{
+    ViewBag.Title = "Offices";
+    Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">Offices</h3>
+    <a class="btn btn-primary" href="@Url.Action("Create")">
+        Create Office
+    </a>
+</div>
+
+<div class="admin-card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Code</th>
+                        <th>Type</th>
+                        <th>Radius (m)</th>
+                        <th>Latitude</th>
+                        <th>Longitude</th>
+                        <th>Active</th>
+                        <th style="width: 110px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var o in Model)
+                    {
+                        <tr>
+                            <td>@o.Name</td>
+                            <td>@(o.Code ?? "-")</td>
+                            <td>@(o.Type ?? "-")</td>
+                            <td>@o.RadiusMeters</td>
+                            <td>@o.Latitude</td>
+                            <td>@o.Longitude</td>
+                            <td>@(o.IsActive ? "Yes" : "No")</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-primary"
+                                   href="@Url.Action("Edit", new { id = o.Id })">
+                                    Edit
+                                </a>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

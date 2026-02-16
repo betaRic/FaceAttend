@@ -1,39 +1,19 @@
-/* global $, Swal */
-(function(){
-  function wireSearch(inputSel, tableSel){
-    $(inputSel).on("input", function(){
-      const q = ($(this).val() || "").toLowerCase();
-      $(tableSel).find("tbody tr").each(function(){
-        const t = $(this).text().toLowerCase();
-        $(this).toggle(t.indexOf(q) >= 0);
-      });
-    });
-  }
+﻿(function () {
+    // Footer year
+    var y = document.getElementById("footerYear");
+    if (y) y.textContent = new Date().getFullYear();
 
-  function wireConfirmForms(selector, title, text){
-    $(document).on("submit", selector, async function(e){
-      e.preventDefault();
-      const form = this;
+    // Refresh button
+    var btn = document.getElementById("btnRefresh");
+    if (btn) {
+        btn.addEventListener("click", function () {
+            window.location.reload();
+        });
+    }
 
-      const r = await Swal.fire({
-        icon: "warning",
-        title: title,
-        text: text,
-        showCancelButton: true,
-        confirmButtonText: "Continue",
-        cancelButtonText: "Cancel",
-        reverseButtons: true
-      });
-
-      if (!r.isConfirmed) return;
-
-      // normal submit after confirm
-      form.submit();
-    });
-  }
-
-  window.FaceAttendAdmin = {
-    wireSearch,
-    wireConfirmForms
-  };
+    // Bootstrap tooltips (safe even if none exist)
+    if (window.bootstrap && bootstrap.Tooltip) {
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.forEach(function (el) { new bootstrap.Tooltip(el); });
+    }
 })();

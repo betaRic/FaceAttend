@@ -1,0 +1,92 @@
+@model System.Collections.Generic.List<Employee>
+@{
+    ViewBag.Title = "Employees";
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">
+        <i class="fa-solid fa-users me-2" aria-hidden="true"></i>
+        Employees
+    </h3>
+    <a class="btn btn-primary" href="@Url.Action("Create")">
+        <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>
+        Add employee
+    </a>
+</div>
+
+<div class="admin-card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>EmployeeId</th>
+                        <th>Name</th>
+                        <th>Office</th>
+                        <th>Status</th>
+                        <th>Face</th>
+                        <th style="width:280px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var e in Model)
+                    {
+                        <tr>
+                            <td>@e.EmployeeId</td>
+                            <td>
+                                @(e.LastName + ", " + e.FirstName + (string.IsNullOrWhiteSpace(e.MiddleName) ? "" : " " + e.MiddleName))
+                            </td>
+                            <td>
+                                @{
+                                    var names = ViewBag.OfficeNames as System.Collections.Generic.Dictionary<int, string>;
+                                    var officeName = (names != null && names.ContainsKey(e.OfficeId)) ? names[e.OfficeId] : "-";
+                                }
+                                @officeName
+                            </td>
+                            <td>
+                                @if (e.IsActive)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-secondary">Inactive</span>
+                                }
+                            </td>
+                            <td>
+                                @if (string.IsNullOrEmpty(e.FaceEncodingBase64))
+                                {
+                                    <span class="badge bg-warning text-dark">Not enrolled</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-primary">Enrolled</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-primary" href="@Url.Action("Enroll", new { id = e.Id })">
+                                    <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>
+                                    Enroll face
+                                </a>
+                                <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Edit", new { id = e.Id })">
+                                    <i class="fa-solid fa-pen me-1" aria-hidden="true"></i>
+                                    Edit
+                                </a>
+                                @using (Html.BeginForm("Delete", "Employees", FormMethod.Post, new { area = "Admin", @class = "d-inline" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@e.Id" />
+                                    <button class="btn btn-sm btn-outline-danger" type="submit"
+                                            onclick="return confirm('Deactivate this employee?');">
+                                        <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>
+                                        Deactivate
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

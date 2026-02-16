@@ -1,0 +1,75 @@
+@model FaceAttend.Areas.Admin.Models.OfficeEditVm
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <label class="form-label">Name</label>
+        @Html.TextBoxFor(m => m.Name, new { @class = "form-control", autocomplete = "off" })
+        @Html.ValidationMessageFor(m => m.Name, "", new { @class = "text-danger small" })
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Code</label>
+        @Html.TextBoxFor(m => m.Code, new { @class = "form-control", autocomplete = "off" })
+        @Html.ValidationMessageFor(m => m.Code, "", new { @class = "text-danger small" })
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Type</label>
+        @Html.TextBoxFor(m => m.Type, new { @class = "form-control", autocomplete = "off" })
+        @Html.ValidationMessageFor(m => m.Type, "", new { @class = "text-danger small" })
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Province</label>
+        @Html.TextBoxFor(m => m.ProvinceName, new { @class = "form-control", autocomplete = "off" })
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">HUC City</label>
+        @Html.TextBoxFor(m => m.HUCCity, new { @class = "form-control", autocomplete = "off" })
+    </div>
+
+    <div class="col-md-4">
+        <label class="form-label">WiFi SSID (optional)</label>
+        @Html.TextBoxFor(m => m.WiFiSSID, new { @class = "form-control", autocomplete = "off" })
+    </div>
+
+    <div class="col-md-2">
+        <label class="form-label">Radius (meters)</label>
+        @Html.TextBoxFor(m => m.RadiusMeters, new { @class = "form-control", type = "number", min = "1", max = "5000" })
+        @Html.ValidationMessageFor(m => m.RadiusMeters, "", new { @class = "text-danger small" })
+    </div>
+
+    <div class="col-md-3">
+        <label class="form-label">Latitude</label>
+        @Html.TextBoxFor(m => m.Latitude, new { @class = "form-control", id = "lat", type = "number", step = "0.0000001" })
+        @Html.ValidationMessageFor(m => m.Latitude, "", new { @class = "text-danger small" })
+    </div>
+
+    <div class="col-md-3">
+        <label class="form-label">Longitude</label>
+        @Html.TextBoxFor(m => m.Longitude, new { @class = "form-control", id = "lon", type = "number", step = "0.0000001" })
+        @Html.ValidationMessageFor(m => m.Longitude, "", new { @class = "text-danger small" })
+    </div>
+
+    <div class="col-md-2 d-flex align-items-end">
+        <div class="form-check">
+            @Html.CheckBoxFor(m => m.IsActive, new { @class = "form-check-input", id = "isActive" })
+            <label class="form-check-label" for="isActive">Active</label>
+        </div>
+    </div>
+</div>
+
+<hr class="my-3" />
+
+<div class="d-flex align-items-center justify-content-between mb-2">
+    <div>
+        <div class="fw-semibold">Location pin</div>
+        <div class="text-muted small">Click the map to place the pin. Drag to adjust. Radius is in meters.</div>
+    </div>
+    <button type="button" id="btnUseMyLocation" class="btn btn-outline-secondary btn-sm">
+        Use my location
+    </button>
+</div>
+
+<div id="map" style="height: 360px; border-radius: 12px; overflow: hidden; border: 1px solid #e6e6e6;"></div>

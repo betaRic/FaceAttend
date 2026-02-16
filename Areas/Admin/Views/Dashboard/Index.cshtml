@@ -1,0 +1,123 @@
+﻿@{
+    ViewBag.Title = "Dashboard";
+}
+
+<div class="d-flex align-items-start align-items-md-center justify-content-between gap-3 flex-wrap mb-3">
+    <div>
+        <h1 class="h3 mb-1">Dashboard</h1>
+        <div class="text-muted small">@DateTime.Now.ToString("dddd, MMM dd, yyyy")</div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="admin-card admin-kpi h-100">
+            <div class="card-body">
+                <div class="text-muted small">Employees</div>
+                <div class="fs-3 fw-semibold">-</div>
+                <div class="text-muted small mt-2">Active employees</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="admin-card admin-kpi h-100">
+            <div class="card-body">
+                <div class="text-muted small">Today Time-ins</div>
+                <div class="fs-3 fw-semibold">-</div>
+                <div class="text-muted small mt-2">Recorded today</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="admin-card admin-kpi h-100">
+            <div class="card-body">
+                <div class="text-muted small">Today Time-outs</div>
+                <div class="fs-3 fw-semibold">-</div>
+                <div class="text-muted small mt-2">Recorded today</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-md-6 col-xl-3">
+        <div class="admin-card admin-kpi h-100">
+            <div class="card-body">
+                <div class="text-muted small">Visitors</div>
+                <div class="fs-3 fw-semibold">-</div>
+                <div class="text-muted small mt-2">Known visitors</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-8">
+        <div class="admin-card h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="fw-semibold">Recent Attendance</div>
+                        <div class="text-muted small">Latest logs</div>
+                    </div>
+                    <a class="btn btn-outline-secondary btn-sm"
+                       href="@Url.Action("Index","Attendance", new { area="Admin" })">
+                        View all
+                    </a>
+                </div>
+
+                <div class="table-responsive mt-3">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Employee</th>
+                                <th>Event</th>
+                                <th>Office</th>
+                                <th class="text-end">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td colspan="5" class="text-muted">No records yet.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="text-muted small mt-2">
+                    We will fill this from AttendanceLogs next.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-xl-4">
+        <div class="admin-card h-100">
+            <div class="card-body">
+                <div class="fw-semibold">System Status</div>
+                <div class="text-muted small mb-3">Quick health checks</div>
+
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Database</div>
+                    <span class="badge bg-secondary">Unknown</span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Liveness Model</div>
+                    <span class="badge bg-secondary">Unknown</span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Dlib Models</div>
+                    <span class="badge bg-secondary">Unknown</span>
+                </div>
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Offline Assets</div>
+                    <span class="badge bg-success">OK</span>
+                </div>
+
+                <div class="text-muted small mt-3 border-top pt-3">
+                    Next: load these statuses from config + file checks.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+    

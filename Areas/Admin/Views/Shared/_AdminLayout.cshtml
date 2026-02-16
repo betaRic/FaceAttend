@@ -1,0 +1,107 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>@ViewBag.Title - FaceAttend Admin</title>
+
+    @Styles.Render("~/Content/css")
+    @Styles.Render("~/Content/admin")
+    @RenderSection("styles", required: false)
+    <script src="https://kit.fontawesome.com/ef7263a5d0.js" crossorigin="anonymous"></script>
+</head>
+<body class="admin-body">
+
+    <!-- Topbar -->
+    <header class="navbar navbar-dark bg-dark admin-topbar fixed-top">
+        <div class="container-fluid">
+            <button class="btn btn-outline-light d-lg-none me-2"
+                    type="button"
+                    data-bs-toggle="offcanvas"
+                    data-bs-target="#adminSidebar"
+                    aria-controls="adminSidebar"
+                    aria-label="Open menu">
+                <i class="fa-solid fa-bars"></i>
+            </button>
+
+            <a class="navbar-brand fw-semibold" href="@Url.Action("Index","Dashboard", new { area = "Admin" })">
+                FaceAttend Admin
+            </a>
+
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <a class="btn btn-outline-light btn-sm"
+                   href="@Url.Action("Index","Kiosk", new { area = "" })">
+                    <i class="fa-solid fa-desktop me-1"></i>Kiosk
+                </a>
+
+                <button id="btnRefresh"
+                        type="button"
+                        class="btn btn-outline-light btn-sm d-none d-md-inline-flex">
+                    <i class="fa-solid fa-rotate me-1"></i>Refresh
+                </button>
+
+                <!-- Admin dropdown (Bootstrap 5) -->
+                <div class="dropdown">
+                    <button class="btn btn-light btn-sm dropdown-toggle"
+                            type="button"
+                            data-bs-toggle="dropdown"
+                            aria-expanded="false">
+                        Admin
+                    </button>
+
+                    <ul class="dropdown-menu dropdown-menu-end shadow-sm">
+                        <li>
+                            <a class="dropdown-item" href="@Url.Action("Index","Settings", new { area = "Admin" })">
+                                Settings
+                            </a>
+                        </li>
+                        <li><hr class="dropdown-divider" /></li>
+                        <li>
+                            <a class="dropdown-item text-danger" href="@Url.Action("Lock","Kiosk", new { area = "" })">
+                                <i class="fa-solid fa-lock me-2"></i>Lock
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+        </div>
+    </header>
+
+    <!-- Page -->
+    <div class="admin-shell">
+        <!-- Sidebar: Offcanvas on mobile, fixed on desktop -->
+        <div class="offcanvas-lg offcanvas-start admin-sidebar"
+             tabindex="-1"
+             id="adminSidebar"
+             aria-labelledby="adminSidebarLabel">
+            <div class="offcanvas-header d-lg-none">
+                <h5 class="offcanvas-title" id="adminSidebarLabel">Menu</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+            </div>
+
+            <div class="offcanvas-body p-0">
+                @Html.Partial("~/Areas/Admin/Views/Shared/_AdminNav.cshtml")
+            </div>
+        </div>
+
+        <!-- Main -->
+        <main class="admin-main">
+            <div class="admin-content container-fluid">
+                @RenderBody()
+
+                <footer class="admin-footer mt-4">
+                    <div class="text-muted small">
+                        FaceAttend - Admin - <span id="footerYear"></span>
+                    </div>
+                </footer>
+            </div>
+        </main>
+    </div>
+
+    @Scripts.Render("~/bundles/jquery")
+    @Scripts.Render("~/bundles/bootstrap")
+    @Scripts.Render("~/bundles/admin")
+    @RenderSection("scripts", required: false)
+</body>
+</html>

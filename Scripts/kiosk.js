@@ -1,578 +1,465 @@
-/* global $, toastr, Swal */
 (function () {
-  const base = ""; // same-origin
+    const video = document.getElementById('kioskVideo');
+    const canvas = document.getElementById('overlayCanvas');
+    const ctx = canvas.getContext('2d');
 
-  const cfg = {
-    frames: 6,
-    perFrameLiveness: 0.75,
-    passOkFrames: 2,
-    passBest: 0.88,
+    const officeLine = document.getElementById('officeLine');
+    const timeLine = document.getElementById('timeLine');
+    const dateLine = document.getElementById('dateLine');
+    const livenessLine = document.getElementById('livenessLine');
 
-    // Guards based on face-box size in the captured frame
-    minFaceRatio: 0.12,
-    maxFaceRatio: 0.45,
+    const centerBlock = document.getElementById('centerBlock');
+    const mainPrompt = document.getElementById('mainPrompt');
+    const subPrompt = document.getElementById('subPrompt');
+    const bottomCenter = document.getElementById('bottomCenter');
 
-    // Guards based on face center position (0..1)
-    centerMin: 0.18,
-    centerMax: 0.82,
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
 
-    cooldownMs: 900,
+    // Behavior tuning
+    const SCANFRAME_MS = 350;                 // server ScanFrame polling
+    const RESOLVE_MS = 1200;                  // office resolve polling (mobile only)
+    const CAPTURE_COOLDOWN_MS = 3000;         // cooldown after attendance result
+    const LIVENESS_STREAK_REQUIRED = 2;       // anti spoof: consecutive liveness pass
+    const STABLE_FRAMES_REQUIRED = 4;         // anti spoof: stable frames
+    const STABLE_MAX_MOVE_PX = 10;            // anti spoof: max center move
+    const MIN_FACE_AREA_RATIO = 0.03;         // ignore tiny faces
+    const GUIDE_RADIUS_RATIO = 0.18;          // guide circle size
+    const CENTER_TOLERANCE_RATIO = 0.55;      // how close face center must be to guide center
 
-    burstQuality: 0.75,
-    identifyQuality: 0.90,
+    const ua = navigator.userAgent || '';
+    const isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
 
-    ajaxTimeoutMs: 8000,
+    let stream = null;
+    let lastScanAt = 0;
+    let lastResolveAt = 0;
+    let lastCaptureAt = 0;
 
-    // Stop infinite loops on permanent failures
-    maxFatalErrors: 3,
-    maxNetErrors: 3
-  };
+    let gps = { lat: null, lon: null, accuracy: null };
+    let allowedArea = !isMobile; // desktop allowed by default
+    let currentOffice = { id: null, name: null };
 
-  const $video = $("#cam");
-  const video = $video.get(0);
-  const canvas = document.getElementById("cap");
-  const ctx = canvas ? canvas.getContext("2d", { willReadFrequently: true }) : null;
+    // Face box from server (image coords)
+    let boxRaw = null;     // { x, y, w, h, imgW, imgH }
+    let boxSmooth = null;  // eased box in canvas coords
 
-  const $status = $("#status");
-  const $sub = $("#sub");
-  const $clock = $("#clock");
-  const $guide = $("#guide");
-  const $box = $("#faceBox");
+    // Anti spoof trackers
+    let lastCenters = [];
+    let stableFrames = 0;
+    let livenessStreak = 0;
 
-  const $hintMsg = $("#hintMsg");
-  const $hintSub = $("#hintSub");
+    // UI state
+    let latestLiveness = null;
+    let latestFaceCount = 0;
+    let pulseUntil = 0;
 
-  const $camDot = $("#dotCam");
-  const $dlibDot = $("#dotDlib");
-  const $livDot = $("#dotLiv");
-  const $netDot = $("#dotNet");
-
-  const debug = new URLSearchParams(location.search).get("debug") === "1";
-  if (!debug) $("#debugRow").hide();
-
-  toastr.options = {
-    closeButton: false,
-    newestOnTop: true,
-    progressBar: true,
-    positionClass: "toast-top-center",
-    timeOut: 1600,
-    extendedTimeOut: 700,
-    preventDuplicates: true
-  };
-
-  // Hard abort if the view is missing required elements
-  if (!video || !canvas || !ctx || !$status.length || !$hintMsg.length) {
-    // eslint-disable-next-line no-console
-    console.error("Kiosk UI elements missing. Check Kiosk/Index.cshtml IDs.");
-    return;
-  }
-
-  function setStatus(text, subText) {
-    $status.text(text).addClass("pulse");
-    setTimeout(() => $status.removeClass("pulse"), 200);
-    if (typeof subText === "string") $sub.text(subText);
-  }
-
-  function setHint(msg, subText) {
-    if (typeof msg === "string") $hintMsg.text(msg);
-    if (typeof subText === "string") $hintSub.text(subText);
-  }
-
-  function setDot($dot, state) {
-    $dot.removeClass("good bad warn");
-    if (state === "good") $dot.addClass("good");
-    else if (state === "bad") $dot.addClass("bad");
-    else $dot.addClass("warn");
-  }
-
-  function tickClock() { $clock.text(new Date().toLocaleString()); }
-  setInterval(tickClock, 1000);
-  tickClock();
-
-  let stream = null;
-  let running = false;
-  let coolingDown = false;
-
-  let fatal = false;
-  let cameraErrors = 0;
-  let netErrors = 0;
-
-  function stopCamera() {
-    try {
-      if (video) video.srcObject = null;
-    } catch (_) { /* ignore */ }
-
-    try {
-      if (stream) {
-        const tracks = stream.getTracks ? stream.getTracks() : [];
-        tracks.forEach(t => {
-          try { t.stop(); } catch (_) { /* ignore */ }
-        });
-      }
-    } catch (_) { /* ignore */ }
-
-    stream = null;
-    setDot($camDot, "warn");
-  }
-
-  function markFatal(title, subText, hint, hintSub) {
-    fatal = true;
-    stopCamera();
-    setStatus(title, subText || "");
-    setHint(hint || title, hintSub || subText || "");
-    setDot($netDot, "bad");
-    setDot($livDot, "warn");
-    setDot($dlibDot, "warn");
-  }
-
-  window.addEventListener("beforeunload", stopCamera);
-
-  // Hidden admin hotkey (silent)
-  $(document).on("keydown", function (e) {
-    if (e.ctrlKey && e.shiftKey && (e.key === "A" || e.key === "a")) {
-      window.location.href = "/Admin/Enrolled";
-    }
-  });
-
-  async function startCamera() {
-    if (fatal) throw new Error("FATAL");
-
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      setDot($camDot, "bad");
-      markFatal("NO CAMERA", "Browser has no camera support", "No camera API", "Use a supported browser/device");
-      throw new Error("NO_MEDIA_DEVICES");
+    function setPrompt(a, b) {
+        mainPrompt.textContent = a || '';
+        subPrompt.textContent = b || '';
     }
 
-    const constraints = {
-      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false
-    };
-
-    try {
-      stream = await navigator.mediaDevices.getUserMedia(constraints);
-      video.srcObject = stream;
-
-      await new Promise(res => { video.onloadedmetadata = () => res(); });
-
-      canvas.width = video.videoWidth || 640;
-      canvas.height = video.videoHeight || 480;
-
-      setDot($camDot, "good");
-      cameraErrors = 0;
-    } catch (err) {
-      // Always cleanup on camera failure (Deep QA)
-      stopCamera();
-      setDot($camDot, "bad");
-
-      cameraErrors++;
-      const blocked = err && (err.name === "NotAllowedError" || err.name === "SecurityError");
-      const title = blocked ? "Camera blocked" : "Camera error";
-      const text = blocked ? "Allow camera access, then reload the page." : ((err && err.message) ? err.message : "Camera failed.");
-
-      // After 3 camera failures, stop retrying
-      if (cameraErrors >= cfg.maxFatalErrors) {
-        markFatal("CAMERA BLOCKED", "Reload the page", "Camera blocked", "Allow camera permission then reload");
-      }
-
-      await Swal.fire({ icon: "error", title, text });
-      throw err;
-    }
-  }
-
-  function captureJpegBlob(quality) {
-    // Guard against drawImage crash if video is not ready
-    if (!video || video.readyState < 2) return Promise.resolve(null);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    return new Promise(resolve => canvas.toBlob(resolve, "image/jpeg", quality));
-  }
-
-  async function postImage(url, blob) {
-    const fd = new FormData();
-    fd.append("image", blob, "frame.jpg");
-
-    return $.ajax({
-      url,
-      method: "POST",
-      data: fd,
-      processData: false,
-      contentType: false,
-      timeout: cfg.ajaxTimeoutMs
-    });
-  }
-
-  async function postJson(url, payload) {
-    return $.ajax({
-      url,
-      method: "POST",
-      contentType: "application/json; charset=utf-8",
-      data: JSON.stringify(payload || {}),
-      timeout: cfg.ajaxTimeoutMs
-    });
-  }
-
-  function mapCoverBoxToScreen(box) {
-    const rect = video.getBoundingClientRect();
-    const vw = rect.width, vh = rect.height;
-    const sw = canvas.width, sh = canvas.height;
-
-    const scale = Math.max(vw / sw, vh / sh);
-    const dispW = sw * scale;
-    const dispH = sh * scale;
-    const offX = (vw - dispW) / 2;
-    const offY = (vh - dispH) / 2;
-
-    return {
-      left: rect.left + offX + (box.Left * scale),
-      top: rect.top + offY + (box.Top * scale),
-      width: box.Width * scale,
-      height: box.Height * scale
-    };
-  }
-
-  // --- face box robustness ---
-  let smooth = null;
-  const SMOOTH = 0.35;
-
-  function clamp(v, min, max) { return Math.max(min, Math.min(max, v)); }
-
-  function expandBox(box, padRatio) {
-    const padW = box.Width * padRatio;
-    const padH = box.Height * padRatio;
-    return {
-      Left: box.Left - padW,
-      Top: box.Top - padH,
-      Width: box.Width + (padW * 2),
-      Height: box.Height + (padH * 2)
-    };
-  }
-
-  function smoothBox(next) {
-    if (!smooth) { smooth = next; return smooth; }
-    smooth = {
-      left: smooth.left + (next.left - smooth.left) * SMOOTH,
-      top: smooth.top + (next.top - smooth.top) * SMOOTH,
-      width: smooth.width + (next.width - smooth.width) * SMOOTH,
-      height: smooth.height + (next.height - smooth.height) * SMOOTH
-    };
-    return smooth;
-  }
-
-  function resetSmoothBox() { smooth = null; }
-
-  function computeGuards(face) {
-    const sw = canvas.width, sh = canvas.height;
-
-    const ratio = face.Width / sw;
-    const cx = (face.Left + (face.Width / 2)) / sw;
-    const cy = (face.Top + (face.Height / 2)) / sh;
-
-    if (ratio < cfg.minFaceRatio) return { code: "TOO_FAR", level: "warn", msg: "Move closer", sub: "Center your face and step closer", ratio, cx, cy };
-    if (ratio > cfg.maxFaceRatio) return { code: "TOO_CLOSE", level: "warn", msg: "Move back", sub: "Step back a little", ratio, cx, cy };
-    if (cx < cfg.centerMin || cx > cfg.centerMax || cy < cfg.centerMin || cy > cfg.centerMax)
-      return { code: "OFF_CENTER", level: "warn", msg: "Center your face", sub: "Align your face with the guide", ratio, cx, cy };
-
-    return { code: "OK", level: "good", msg: "Hold still", sub: "Scanning…", ratio, cx, cy };
-  }
-
-  function showFaceUI(faceCount, faceBox, levelClass) {
-    const wrap = document.getElementById("wrap");
-    if (!wrap) return;
-
-    const wrapRect = wrap.getBoundingClientRect();
-
-    if (faceCount === 1 && faceBox) {
-      $guide.addClass("hidden");
-
-      const padded = expandBox(faceBox, 0.18);
-      const mapped = mapCoverBoxToScreen(padded);
-
-      let left = (mapped.left - wrapRect.left);
-      let top = (mapped.top - wrapRect.top);
-      let w = mapped.width;
-      let h = mapped.height;
-
-      // Keep box within wrap bounds where possible
-      const maxLeft = Math.max(6, wrapRect.width - w - 6);
-      const maxTop = Math.max(6, wrapRect.height - h - 6);
-
-      left = clamp(left, 6, maxLeft);
-      top = clamp(top, 6, maxTop);
-
-      const sm = smoothBox({ left, top, width: w, height: h });
-
-      $box
-        .removeClass("warn bad")
-        .addClass(levelClass === "warn" ? "warn" : (levelClass === "bad" ? "bad" : ""))
-        .css({
-          display: "block",
-          width: sm.width + "px",
-          height: sm.height + "px",
-          transform: `translate3d(${sm.left}px, ${sm.top}px, 0)`
-        });
-
-      return;
-    }
-
-    // No single-face tracking -> show guide again
-    $guide.removeClass("hidden");
-    resetSmoothBox();
-    $box.hide();
-  }
-
-  async function visitorPrompt() {
-    const r = await Swal.fire({
-      icon: "question",
-      title: "Not enrolled",
-      text: "If you are a visitor, tap Visitor. Otherwise tap Try again.",
-      showCancelButton: true,
-      confirmButtonText: "Visitor",
-      cancelButtonText: "Try again",
-      reverseButtons: true
-    });
-
-    if (!r.isConfirmed) return;
-
-    const r2 = await Swal.fire({
-      title: "Visitor",
-      html:
-        '<input id="vName" class="form-control mb-2" placeholder="Full name" />' +
-        '<input id="vPurpose" class="form-control" placeholder="Purpose (optional)" />',
-      focusConfirm: false,
-      showCancelButton: true,
-      confirmButtonText: "Continue",
-      cancelButtonText: "Cancel",
-      preConfirm: () => {
-        const name = (document.getElementById("vName").value || "").trim();
-        const purpose = (document.getElementById("vPurpose").value || "").trim();
-        if (!name) {
-          Swal.showValidationMessage("Full name is required");
-          return;
-        }
-        return { name, purpose };
-      }
-    });
-
-    if (!r2.isConfirmed) return;
-
-    const payload = { name: r2.value.name, purpose: r2.value.purpose };
-
-    try {
-      const resp = await postJson(base + "/Attendance/Visitor", payload);
-      if (resp && resp.ok === true) {
-        toastr.success("Visitor recorded. Please proceed to the office desk.");
-      } else {
-        toastr.warning("Visitor not saved. Please proceed to the office desk.");
-      }
-    } catch (_) {
-      toastr.warning("Visitor not saved. Please proceed to the office desk.");
-    }
-  }
-
-  function cooldownThenRestart() {
-    coolingDown = true;
-    setTimeout(() => {
-      try {
-        coolingDown = false;
-        // startFlow is async; we call it without await
-        startFlow();
-      } catch (e) {
-        // Deep QA: ensure coolingDown never gets stuck
-        coolingDown = false;
-        // eslint-disable-next-line no-console
-        console.error(e);
-      } finally {
-        coolingDown = false;
-      }
-    }, cfg.cooldownMs);
-  }
-
-  async function recordAttendance(idResp) {
-    if (!idResp || idResp.ok !== true || !idResp.employeeId) return { ok: false };
-
-    const payload = {
-      employeeId: idResp.employeeId,
-      source: "KIOSK",
-      distance: (typeof idResp.distance === "number") ? idResp.distance : null,
-      similarity: (typeof idResp.similarity === "number") ? idResp.similarity : null
-    };
-
-    try {
-      return await postJson(base + "/Attendance/Record", payload);
-    } catch (e) {
-      return { ok: false, error: (e && e.message) ? e.message : "RECORD_FAILED" };
-    }
-  }
-
-  async function startFlow() {
-    if (running || coolingDown || fatal) return;
-    running = true;
-
-    try {
-      setDot($netDot, "warn");
-      setStatus("STARTING…", "Preparing camera");
-      setHint("Center your face in the frame", "Hold still during scanning");
-
-      if (!stream) await startCamera();
-      if (fatal) return;
-
-      setDot($netDot, "good");
-      setStatus("SCANNING…", "Hold still");
-      setDot($livDot, "warn");
-
-      let okCount = 0;
-      let bestP = 0;
-      let sawLiveness = false;
-
-      for (let i = 0; i < cfg.frames; i++) {
-        const blob = await captureJpegBlob(cfg.burstQuality);
-        if (!blob) {
-          setHint("Camera not ready", "Wait a moment");
-          continue;
-        }
-
-        let scan;
-        try {
-          scan = await postImage(base + "/Biometrics/ScanFrame", blob);
-          setDot($netDot, "good");
-          netErrors = 0; // reset on successful server call
-        } catch (e) {
-          setDot($netDot, "bad");
-          netErrors++;
-          if (netErrors >= cfg.maxNetErrors) {
-            markFatal("SERVER OFFLINE", "Reload or check IIS", "Server not responding", "Check IIS and network");
+    function showCenterBlock(show, title, sub) {
+        if (!isMobile) {
+            centerBlock.classList.add('hidden');
             return;
-          }
-          throw e;
         }
-
-        if (scan && scan.ok === false) {
-          // Server responded with an explicit error
-          if (debug) $("#debug").text("ScanFrame error: " + (scan.error || "UNKNOWN"));
-          setDot($netDot, "warn");
-          setHint("Scan error", "Try again");
-          continue;
-        }
-
-        const count = (scan && typeof scan.count === "number")
-          ? scan.count
-          : (scan && scan.faces && scan.faces.length ? scan.faces.length : 0);
-
-        const face = (scan && scan.faces && scan.faces.length) ? scan.faces[0] : null;
-
-        if (count === 0) {
-          showFaceUI(0, null, "");
-          setDot($dlibDot, "warn");
-          setHint("No face detected", "Look at the camera");
-          if (debug) $("#debug").text("No face");
-          continue;
-        }
-
-        if (count > 1) {
-          showFaceUI(count, null, "");
-          setDot($dlibDot, "bad");
-          setHint("One person only", "Others step away from the camera");
-          if (debug) $("#debug").text("Multiple faces: " + count);
-          continue;
-        }
-
-        setDot($dlibDot, "good");
-
-        const g = computeGuards(face);
-        showFaceUI(1, face, g.level);
-        setHint(g.msg, g.sub);
-
-        if (debug) $("#debug").text(`Guard=${g.code} ratio=${g.ratio.toFixed(3)} cx=${g.cx.toFixed(2)} cy=${g.cy.toFixed(2)}`);
-
-        if (g.code !== "OK") continue;
-
-        const p = (scan && typeof scan.liveness === "number") ? scan.liveness : null;
-
-        if (p !== null) {
-          sawLiveness = true;
-          setDot($livDot, "good");
-          bestP = Math.max(bestP, p);
-          if (p >= cfg.perFrameLiveness) okCount++;
+        if (show) {
+            centerBlock.classList.remove('hidden');
+            centerBlock.querySelector('.blockTitle').textContent = title || 'Not in allowed area.';
+            centerBlock.querySelector('.blockSub').textContent = sub || 'Move closer to a designated office.';
         } else {
-          setDot($livDot, "warn");
+            centerBlock.classList.add('hidden');
         }
-
-        setStatus("SCANNING…", `ok ${okCount}/${cfg.passOkFrames} • best ${bestP.toFixed(2)}`);
-
-        if (okCount >= cfg.passOkFrames || bestP >= cfg.passBest) break;
-      }
-
-      const pass = (okCount >= cfg.passOkFrames) || (bestP >= cfg.passBest);
-
-      if (!pass) {
-        setDot($livDot, sawLiveness ? "bad" : "warn");
-        setStatus("TRY AGAIN", sawLiveness ? "Liveness did not pass" : "Liveness not available");
-        setHint("Scan failed", sawLiveness ? "Adjust position and try again" : "Server liveness not returned");
-        toastr.warning("Scan failed. Try again.");
-        cooldownThenRestart();
-        return;
-      }
-
-      setStatus("PASS", "Identifying…");
-      setHint("Please wait", "Checking your record");
-      toastr.success("Liveness PASS");
-
-      const blob2 = await captureJpegBlob(cfg.identifyQuality);
-      if (!blob2) throw new Error("NO_FRAME");
-
-      let id = null;
-      try {
-        id = await postImage(base + "/Biometrics/Identify", blob2);
-        netErrors = 0;
-      } catch (e) {
-        netErrors++;
-        if (netErrors >= cfg.maxNetErrors) {
-          markFatal("SERVER OFFLINE", "Reload or check IIS", "Server not responding", "Check IIS and network");
-          return;
-        }
-        throw e;
-      }
-
-      if (id && id.ok === true) {
-        setStatus("IDENTIFIED", "Recording attendance…");
-        setHint("Please wait", "Saving log");
-
-        const rec = await recordAttendance(id);
-
-        if (rec && rec.ok === true) {
-          setStatus("SUCCESS", "Attendance recorded");
-          setHint("Done", "You may proceed");
-          toastr.success("Attendance recorded");
-        } else {
-          setStatus("SUCCESS", "Identified (not saved)");
-          setHint("Done", "Please inform admin");
-          toastr.warning("Identified, but attendance was not saved.");
-        }
-
-        cooldownThenRestart();
-        return;
-      }
-
-      setStatus("NOT ENROLLED", "No matching record");
-      setHint("Not enrolled", "Go to admin for enrollment");
-      toastr.error("Not enrolled / No match");
-
-      await visitorPrompt();
-      cooldownThenRestart();
-    } catch (e) {
-      if (fatal) return;
-
-      setStatus("ERROR", "Please try again");
-      setHint("System error", "Try again");
-      toastr.error((e && e.message) ? e.message : "Error");
-
-      // Stop if repeated camera failures already marked fatal
-      if (cameraErrors >= cfg.maxFatalErrors) return;
-
-      cooldownThenRestart();
-    } finally {
-      running = false;
     }
-  }
 
-  startFlow();
+    function ceil2(num) {
+        if (typeof num !== 'number' || !isFinite(num)) return '--';
+        return (Math.ceil(num * 100) / 100).toFixed(2);
+    }
+
+    function nowText() {
+        const d = new Date();
+        timeLine.textContent = d.toLocaleTimeString('en-PH', { hour12: false });
+        dateLine.textContent = d.toLocaleDateString('en-PH');
+    }
+
+    function resizeCanvas() {
+        const w = canvas.clientWidth;
+        const h = canvas.clientHeight;
+        if (canvas.width !== w || canvas.height !== h) {
+            canvas.width = w;
+            canvas.height = h;
+        }
+    }
+
+    function lerp(a, b, t) {
+        return a + (b - a) * t;
+    }
+
+    function lerpBox(cur, tgt, t) {
+        if (!cur) return { ...tgt };
+        return {
+            x: lerp(cur.x, tgt.x, t),
+            y: lerp(cur.y, tgt.y, t),
+            w: lerp(cur.w, tgt.w, t),
+            h: lerp(cur.h, tgt.h, t)
+        };
+    }
+
+    function drawLoop() {
+        resizeCanvas();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Guide circle
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const guideR = Math.min(canvas.width, canvas.height) * GUIDE_RADIUS_RATIO;
+
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(cx, cy, guideR, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
+        // Bounding box
+        if (boxSmooth) {
+            const good = (latestFaceCount === 1);
+            const color = good ? '#00ff7a' : '#ffcc00';
+
+            ctx.save();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = color;
+
+            ctx.strokeRect(boxSmooth.x, boxSmooth.y, boxSmooth.w, boxSmooth.h);
+
+            // Pulse overlay on success
+            const t = Date.now();
+            if (t < pulseUntil) {
+                const p = 1 - ((pulseUntil - t) / 600);
+                const alpha = 0.55 * (1 - p);
+                ctx.globalAlpha = alpha;
+                ctx.lineWidth = 10;
+                ctx.strokeStyle = '#00ff7a';
+                ctx.strokeRect(boxSmooth.x - 6, boxSmooth.y - 6, boxSmooth.w + 12, boxSmooth.h + 12);
+            }
+
+            ctx.restore();
+        }
+
+        requestAnimationFrame(drawLoop);
+    }
+
+    async function startCamera() {
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: 'user' },
+            audio: false
+        });
+        video.srcObject = stream;
+        await video.play();
+    }
+
+    function startClock() {
+        nowText();
+        setInterval(nowText, 1000);
+    }
+
+    function startGpsIfMobile() {
+        if (!isMobile) return;
+
+        if (!('geolocation' in navigator)) {
+            allowedArea = false;
+            officeLine.textContent = 'GPS not available';
+            showCenterBlock(true, 'GPS not available.', 'Use a phone or tablet with GPS.');
+            return;
+        }
+
+        navigator.geolocation.watchPosition(
+            (pos) => {
+                gps.lat = pos.coords.latitude;
+                gps.lon = pos.coords.longitude;
+                gps.accuracy = pos.coords.accuracy;
+            },
+            () => {
+                gps.lat = null;
+                gps.lon = null;
+                gps.accuracy = null;
+            },
+            { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
+        );
+    }
+
+    async function resolveOfficeIfNeeded() {
+        if (!isMobile) return;
+
+        const t = Date.now();
+        if (t - lastResolveAt < RESOLVE_MS) return;
+        lastResolveAt = t;
+
+        if (gps.lat == null || gps.lon == null || gps.accuracy == null) {
+            allowedArea = false;
+            officeLine.textContent = 'Locating...';
+            showCenterBlock(true, 'Locating...', 'Turn on GPS and allow location.');
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('lat', gps.lat);
+        fd.append('lon', gps.lon);
+        fd.append('accuracy', gps.accuracy);
+
+        const r = await fetch('/Kiosk/ResolveOffice', { method: 'POST', body: fd });
+        const j = await r.json();
+
+        allowedArea = !!j.allowed;
+        if (allowedArea) {
+            currentOffice.id = j.officeId;
+            currentOffice.name = j.officeName;
+            officeLine.textContent = j.officeName || 'Office OK';
+            showCenterBlock(false);
+        } else {
+            currentOffice.id = null;
+            currentOffice.name = null;
+            officeLine.textContent = 'Not in allowed area';
+            showCenterBlock(true, 'Not in allowed area.', 'Move closer to a designated office.');
+        }
+    }
+
+    function captureFrameBlob() {
+        // Draw current video to an offscreen canvas (video is mirrored via CSS, but raw pixels are not mirrored)
+        const off = document.createElement('canvas');
+        off.width = video.videoWidth || 640;
+        off.height = video.videoHeight || 480;
+        const octx = off.getContext('2d');
+
+        // Mirror into pixel output to match what user sees
+        octx.translate(off.width, 0);
+        octx.scale(-1, 1);
+        octx.drawImage(video, 0, 0, off.width, off.height);
+
+        return new Promise((resolve) => {
+            off.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
+        });
+    }
+
+    function computeCanvasBox(raw) {
+        if (!raw || !raw.imgW || !raw.imgH) return null;
+        const sx = canvas.width / raw.imgW;
+        const sy = canvas.height / raw.imgH;
+        return {
+            x: raw.x * sx,
+            y: raw.y * sy,
+            w: raw.w * sx,
+            h: raw.h * sy
+        };
+    }
+
+    function isTooSmallFace(raw) {
+        if (!raw || !raw.imgW || !raw.imgH) return true;
+        const area = raw.w * raw.h;
+        const full = raw.imgW * raw.imgH;
+        const ratio = area / full;
+        return ratio < MIN_FACE_AREA_RATIO;
+    }
+
+    function centerOk(raw) {
+        if (!raw) return false;
+        const bx = boxSmooth ? (boxSmooth.x + boxSmooth.w / 2) : null;
+        const by = boxSmooth ? (boxSmooth.y + boxSmooth.h / 2) : null;
+        if (bx == null || by == null) return false;
+
+        const cx = canvas.width / 2;
+        const cy = canvas.height / 2;
+        const guideR = Math.min(canvas.width, canvas.height) * GUIDE_RADIUS_RATIO;
+
+        const dx = bx - cx;
+        const dy = by - cy;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        return dist <= guideR * CENTER_TOLERANCE_RATIO;
+    }
+
+    function updateStability() {
+        if (!boxSmooth) {
+            lastCenters = [];
+            stableFrames = 0;
+            return;
+        }
+        const c = { x: boxSmooth.x + boxSmooth.w / 2, y: boxSmooth.y + boxSmooth.h / 2 };
+        lastCenters.push(c);
+        if (lastCenters.length > 6) lastCenters.shift();
+
+        if (lastCenters.length < 2) {
+            stableFrames = 0;
+            return;
+        }
+
+        const a = lastCenters[lastCenters.length - 2];
+        const dx = c.x - a.x;
+        const dy = c.y - a.y;
+        const move = Math.sqrt(dx * dx + dy * dy);
+
+        if (move <= STABLE_MAX_MOVE_PX) stableFrames++;
+        else stableFrames = 0;
+    }
+
+    async function pollScanFrame() {
+        const t = Date.now();
+        if (t - lastScanAt < SCANFRAME_MS) return;
+        lastScanAt = t;
+
+        if (!allowedArea) {
+            setPrompt('Not in allowed area.', 'Move closer to a designated office.');
+            return;
+        }
+
+        if (!video.videoWidth || !video.videoHeight) return;
+
+        const blob = await captureFrameBlob();
+        if (!blob) return;
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('image', blob, 'frame.jpg');
+
+        // IMPORTANT: this must return faceBox to draw box
+        const r = await fetch('/Biometrics/ScanFrame', { method: 'POST', body: fd });
+        const j = await r.json();
+
+        latestFaceCount = j.faceCount || 0;
+        latestLiveness = (typeof j.livenessScore === 'number') ? j.livenessScore : null;
+
+        // Always visible liveness label
+        livenessLine.textContent = 'Live: ' + (latestLiveness == null ? '--' : ceil2(latestLiveness));
+
+        // Face box
+        boxRaw = j.faceBox || null;
+
+        if (!boxRaw || latestFaceCount === 0) {
+            boxSmooth = null;
+            livenessStreak = 0;
+            stableFrames = 0;
+            setPrompt('Ready.', 'Stand still. One face only.');
+            return;
+        }
+
+        // Convert to canvas coords and ease
+        const tgt = computeCanvasBox(boxRaw);
+        if (tgt) {
+            boxSmooth = lerpBox(boxSmooth, tgt, 0.35);
+        }
+
+        // Ignore small faces
+        if (isTooSmallFace(boxRaw)) {
+            livenessStreak = 0;
+            stableFrames = 0;
+            setPrompt('Move closer.', 'Face is too far.');
+            return;
+        }
+
+        if (latestFaceCount > 1) {
+            livenessStreak = 0;
+            stableFrames = 0;
+            setPrompt('Multiple faces detected.', 'One face only.');
+            return;
+        }
+
+        // Update stability
+        updateStability();
+
+        // Prompts
+        const centered = centerOk(boxRaw);
+        if (!centered) {
+            livenessStreak = 0;
+            setPrompt('Center your face.', 'Align your face inside the circle.');
+            return;
+        }
+
+        if (stableFrames < STABLE_FRAMES_REQUIRED) {
+            livenessStreak = 0;
+            setPrompt('Hold still.', 'Do not move.');
+            return;
+        }
+
+        // Anti spoof delay: require consecutive liveness passes
+        if (j.livenessPass === true) livenessStreak++;
+        else livenessStreak = 0;
+
+        if (livenessStreak < LIVENESS_STREAK_REQUIRED) {
+            setPrompt('Checking...', 'Hold still.');
+            return;
+        }
+
+        // Auto capture
+        if (Date.now() - lastCaptureAt < CAPTURE_COOLDOWN_MS) return;
+        await submitAttendance(blob);
+    }
+
+    async function submitAttendance(blob) {
+        lastCaptureAt = Date.now();
+        setPrompt('Processing...', 'Please wait.');
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('image', blob, 'capture.jpg');
+
+        if (isMobile) {
+            if (gps.lat != null) fd.append('lat', gps.lat);
+            if (gps.lon != null) fd.append('lon', gps.lon);
+            if (gps.accuracy != null) fd.append('accuracy', gps.accuracy);
+        }
+
+        const r = await fetch('/Kiosk/ScanAttendance', { method: 'POST', body: fd });
+        const j = await r.json();
+
+        if (j.ok) {
+            pulseUntil = Date.now() + 600;
+            bottomCenter.classList.add('pulseSuccess');
+            setTimeout(() => bottomCenter.classList.remove('pulseSuccess'), 900);
+
+            officeLine.textContent = j.officeName || officeLine.textContent;
+
+            // Main success prompt
+            const who = j.displayName ? ('Welcome, ' + j.displayName + '.') : 'Success.';
+            setPrompt(who, j.message || 'Recorded.');
+
+            // cooldown
+            setTimeout(() => {
+                livenessStreak = 0;
+                stableFrames = 0;
+                setPrompt('Ready.', 'Stand still. One face only.');
+            }, 1600);
+        } else {
+            livenessStreak = 0;
+            stableFrames = 0;
+            setPrompt(j.error || 'Failed.', 'Try again.');
+            setTimeout(() => setPrompt('Ready.', 'Stand still. One face only.'), 1600);
+        }
+    }
+
+    async function loop() {
+        try {
+            await resolveOfficeIfNeeded();
+            await pollScanFrame();
+        } catch (e) {
+            // keep kiosk alive
+        } finally {
+            setTimeout(loop, 100);
+        }
+    }
+
+    (async function init() {
+        startClock();
+        startGpsIfMobile();
+
+        try {
+            await startCamera();
+            setPrompt('Ready.', 'Stand still. One face only.');
+            drawLoop();
+            loop();
+        } catch (e) {
+            setPrompt('Camera blocked.', 'Allow camera permission.');
+        }
+    })();
 })();
