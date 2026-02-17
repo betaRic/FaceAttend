@@ -40,7 +40,7 @@ namespace FaceAttend.Controllers
         // GPS enforcement is active only on phones/tablets.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult ResolveOffice(double lat, double lon, double? accuracy)
+        public ActionResult ResolveOffice(double? lat, double? lon, double? accuracy)
         {
             using (var db = new FaceAttendDBEntities())
             {
@@ -63,7 +63,20 @@ namespace FaceAttend.Controllers
                     });
                 }
 
-                var pick = PickOffice(db, lat, lon, accuracy);
+                if (!lat.HasValue || !lon.HasValue)
+                {
+                    return Json(new
+                    {
+                        ok = true,
+                        gpsRequired = true,
+                        allowed = false,
+                        reason = "GPS_REQUIRED",
+                        requiredAccuracy = SystemConfigService.GetInt(db, "Location:GPSAccuracyRequired", AppSettings.GetInt("Location:GPSAccuracyRequired", 50)),
+                        accuracy = accuracy
+                    });
+                }
+
+                var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
                 if (!pick.Allowed)
                 {
                     return Json(new
@@ -236,7 +249,7 @@ namespace FaceAttend.Controllers
                     if (!scored.Ok)
                         return Json(new { ok = false, error = scored.Error, count = 1 });
 
-                    var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                    var th = (float)SystemConfigService.GetDouble(db, "Biometrics:LivenessThreshold", AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
                     var p = scored.Probability ?? 0f;
 
                     return Json(new
@@ -292,6 +305,7 @@ namespace FaceAttend.Controllers
                     Office office = null;
                     bool gpsRequired = IsGpsRequired();
                     bool locationVerified = false;
+                    int requiredAcc = 0;
 
                     if (gpsRequired)
                     {
@@ -304,6 +318,7 @@ namespace FaceAttend.Controllers
 
                         office = pick.Office;
                         locationVerified = true;
+                        requiredAcc = pick.RequiredAccuracy;
                     }
                     else
                     {
@@ -330,7 +345,7 @@ namespace FaceAttend.Controllers
                     if (!scored.Ok)
                         return Json(new { ok = false, error = scored.Error });
 
-                    var liveTh = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                    var liveTh = (float)SystemConfigService.GetDouble(db, "Biometrics:LivenessThreshold", AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
                     var p = scored.Probability ?? 0f;
                     if (p < liveTh)
                         return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p, threshold = liveTh });
@@ -343,7 +358,7 @@ namespace FaceAttend.Controllers
 
                     // Match
                     var tolFallback = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
-                    var tol = SystemConfigService.GetDouble(db, "DlibTolerance", tolFallback);
+                    var tol = SystemConfigService.GetDouble(db, "Biometrics:DlibTolerance", SystemConfigService.GetDouble(db, "DlibTolerance", tolFallback));
 
                     var entries = EmployeeFaceIndex.GetEntries(db);
                     if (entries == null || entries.Count == 0)
@@ -372,6 +387,42 @@ namespace FaceAttend.Controllers
                     var displayName = emp.LastName + ", " + emp.FirstName + (string.IsNullOrWhiteSpace(emp.MiddleName) ? "" : " " + emp.MiddleName);
                     var similarity = tol > 0 ? Math.Max(0.0, Math.Min(1.0, 1.0 - (bestDist / tol))) : (double?)null;
 
+                    // NeedsReview rules: keep record, but flag borderline scans.
+                    var nearMatchRatio = SystemConfigService.GetDouble(db, "NeedsReview:NearMatchRatio", 0.90);
+                    var livenessMargin = SystemConfigService.GetDouble(db, "NeedsReview:LivenessMargin", 0.03);
+                    var gpsMargin = SystemConfigService.GetInt(db, "NeedsReview:GPSAccuracyMargin", 10);
+
+                    bool needsReviewFlag = false;
+                    var reviewNotes = new System.Text.StringBuilder();
+
+                    if (tol > 0 && bestDist >= (tol * nearMatchRatio))
+                    {
+                        needsReviewFlag = true;
+                        reviewNotes.Append("Near match. Dist=").Append(bestDist.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(" of tol=").Append(tol.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(".");
+                    }
+
+                    if (p < (liveTh + livenessMargin))
+                    {
+                        if (reviewNotes.Length > 0) reviewNotes.Append(" ");
+                        needsReviewFlag = true;
+                        reviewNotes.Append("Near liveness. Score=").Append(p.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(" (th=").Append(liveTh.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)).Append(")");
+                    }
+
+                    if (gpsRequired && accuracy.HasValue && requiredAcc > 0)
+                    {
+                        var nearAcc = System.Math.Max(0, requiredAcc - gpsMargin);
+                        if (accuracy.Value >= nearAcc)
+                        {
+                            if (reviewNotes.Length > 0) reviewNotes.Append(" ");
+                            needsReviewFlag = true;
+                            reviewNotes.Append("Near GPS accuracy. Acc=").Append(accuracy.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))
+                                .Append("m (req=").Append(requiredAcc).Append("m)");
+                        }
+                    }
+
+
                     // Record
                     var log = new AttendanceLog
                     {
@@ -396,7 +447,10 @@ namespace FaceAttend.Controllers
                         ClientIP = (Request.UserHostAddress ?? ""),
                         UserAgent = (Request.UserAgent ?? ""),
 
-                        NeedsReview = false
+                        WiFiSSID = office.WiFiSSID,
+
+                        NeedsReview = needsReviewFlag,
+                        Notes = reviewNotes.Length == 0 ? null : reviewNotes.ToString()
                     };
 
                     var rec = AttendanceService.Record(db, log);
@@ -477,7 +531,7 @@ namespace FaceAttend.Controllers
 
         private Office GetFallbackOffice(FaceAttendDBEntities db)
         {
-            int preferred = AppSettings.GetInt("Kiosk:FallbackOfficeId", 0);
+            int preferred = SystemConfigService.GetInt(db, "Kiosk:FallbackOfficeId", AppSettings.GetInt("Kiosk:FallbackOfficeId", 0));
             if (preferred > 0)
             {
                 var chosen = db.Offices.FirstOrDefault(o => o.Id == preferred && o.IsActive);
@@ -489,7 +543,7 @@ namespace FaceAttend.Controllers
 
         private OfficePick PickOffice(FaceAttendDBEntities db, double lat, double lon, double? accuracy)
         {
-            int requiredAcc = AppSettings.GetInt("Location:GPSAccuracyRequired", 50);
+            int requiredAcc = SystemConfigService.GetInt(db, "Location:GPSAccuracyRequired", AppSettings.GetInt("Location:GPSAccuracyRequired", 50));
 
             if (accuracy.HasValue && accuracy.Value > requiredAcc)
             {
@@ -501,7 +555,7 @@ namespace FaceAttend.Controllers
                 };
             }
 
-            int defaultRadius = AppSettings.GetInt("Location:GPSRadiusDefault", 100);
+            int defaultRadius = SystemConfigService.GetInt(db, "Location:GPSRadiusDefault", AppSettings.GetInt("Location:GPSRadiusDefault", 100));
 
             var offices = db.Offices.Where(o => o.IsActive).ToList();
             if (offices == null || offices.Count == 0)

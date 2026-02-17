@@ -31,7 +31,7 @@ namespace FaceAttend.Services
             var startUtc = startLocal.ToUniversalTime();
             var endUtc = startLocal.AddDays(1).ToUniversalTime();
 
-            int minGapSeconds = AppSettings.GetInt("Attendance:MinGapSeconds", 10);
+            int minGapSeconds = SystemConfigService.GetInt(db, "Attendance:MinGapSeconds", AppSettings.GetInt("Attendance:MinGapSeconds", 10));
 
             var lastToday = db.AttendanceLogs
                 .Where(x => x.EmployeeId == log.EmployeeId && x.Timestamp >= startUtc && x.Timestamp < endUtc)

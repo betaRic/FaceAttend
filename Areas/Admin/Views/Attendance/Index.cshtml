@@ -1,10 +1,211 @@
+@model FaceAttend.Areas.Admin.Models.AttendanceIndexVm
+@using System.Web.Routing
+
 @{
     ViewBag.Title = "Attendance";
+
+    Func<int, string> pageUrl = (p) => Url.Action("Index", new
+    {
+        from = Model.From,
+        to = Model.To,
+        officeId = Model.OfficeId,
+        employee = Model.Employee,
+        eventType = Model.EventType,
+        needsReview = Model.NeedsReviewOnly ? (bool?)true : null,
+        page = p,
+        pageSize = Model.PageSize
+    });
+
+    var exportUrl = Url.Action("Export", new
+    {
+        from = Model.From,
+        to = Model.To,
+        officeId = Model.OfficeId,
+        employee = Model.Employee,
+        eventType = Model.EventType,
+        needsReview = Model.NeedsReviewOnly ? (bool?)true : null
+    });
 }
+
+@if (TempData["msg"] != null)
+{
+    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+<div class="admin-card mb-3">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+            <div>
+                <h4 class="mb-1">Attendance</h4>
+                <div class="text-muted small">@Model.ActiveRangeLabel · Total: @Model.Total · Needs review: @Model.TotalNeedsReview</div>
+            </div>
+
+            <div class="ms-auto d-flex align-items-center gap-2">
+                <a class="btn btn-outline-primary btn-sm" href="@exportUrl" target="_blank">
+                    <i class="fa-solid fa-file-export me-1"></i>Export CSV
+                </a>
+
+                @if (!Model.NeedsReviewOnly && Model.TotalNeedsReview > 0)
+                {
+                    <a class="btn btn-warning btn-sm" href="@Url.Action("Index", new { from = Model.From, to = Model.To, officeId = Model.OfficeId, employee = Model.Employee, eventType = Model.EventType, needsReview = true, pageSize = Model.PageSize })">
+                        <i class="fa-solid fa-triangle-exclamation me-1"></i>Review queue
+                    </a>
+                }
+            </div>
+        </div>
+
+        <hr />
+
+        <form method="get" action="@Url.Action("Index")" class="row g-2 align-items-end">
+            <div class="col-12 col-md-2">
+                <label class="form-label">From</label>
+                <input class="form-control" type="date" name="from" value="@Model.From" />
+            </div>
+
+            <div class="col-12 col-md-2">
+                <label class="form-label">To</label>
+                <input class="form-control" type="date" name="to" value="@Model.To" />
+            </div>
+
+            <div class="col-12 col-md-3">
+                <label class="form-label">Office</label>
+                @Html.DropDownList("officeId", Model.OfficeOptions, new { @class = "form-select" })
+            </div>
+
+            <div class="col-12 col-md-3">
+                <label class="form-label">Employee</label>
+                <input class="form-control" name="employee" value="@Model.Employee" placeholder="Name or employee ID" />
+            </div>
+
+            <div class="col-6 col-md-1">
+                <label class="form-label">Type</label>
+                <select class="form-select" name="eventType">
+                    <option value="ALL" @(Model.EventType == "ALL" ? "selected" : "")>All</option>
+                    <option value="IN" @(Model.EventType == "IN" ? "selected" : "")>IN</option>
+                    <option value="OUT" @(Model.EventType == "OUT" ? "selected" : "")>OUT</option>
+                </select>
+            </div>
+
+            <div class="col-6 col-md-1">
+                <label class="form-label">Rows</label>
+                <select class="form-select" name="pageSize">
+                    <option value="25" @(Model.PageSize == 25 ? "selected" : "")>25</option>
+                    <option value="50" @(Model.PageSize == 50 ? "selected" : "")>50</option>
+                    <option value="100" @(Model.PageSize == 100 ? "selected" : "")>100</option>
+                    <option value="200" @(Model.PageSize == 200 ? "selected" : "")>200</option>
+                </select>
+            </div>
+
+            <div class="col-12">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="true" name="needsReview" id="needsReview" @(Model.NeedsReviewOnly ? "checked" : "") />
+                    <label class="form-check-label" for="needsReview">Needs review only</label>
+                </div>
+            </div>
+
+            <div class="col-12 d-flex gap-2">
+                <button class="btn btn-primary" type="submit">
+                    <i class="fa-solid fa-filter me-1"></i>Apply
+                </button>
+                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
 
 <div class="admin-card">
     <div class="card-body">
-        <h4 class="mb-2">Attendance</h4>
-        <p class="text-muted mb-0">Placeholder page. Next step: load AttendanceLogs and show filters.</p>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="width:170px;">Time</th>
+                        <th>Employee</th>
+                        <th>Office</th>
+                        <th style="width:70px;">Type</th>
+                        <th style="width:120px;">Liveness</th>
+                        <th style="width:110px;">Distance</th>
+                        <th style="width:100px;">Location</th>
+                        <th style="width:120px;">Review</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @if (Model.Rows == null || Model.Rows.Count == 0)
+                {
+                    <tr>
+                        <td colspan="8" class="text-muted">No records found.</td>
+                    </tr>
+                }
+                else
+                {
+                    foreach (var r in Model.Rows)
+                    {
+                        var detailsUrl = Url.Action("Details", new { id = r.Id });
+                        <tr>
+                            <td>
+                                <a class="text-decoration-none" href="@detailsUrl">@r.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</a>
+                            </td>
+                            <td>
+                                <div class="fw-semibold">@r.EmployeeFullName</div>
+                                <div class="text-muted small">@r.EmployeeId @(!string.IsNullOrWhiteSpace(r.Department) ? ("· " + r.Department) : "")</div>
+                            </td>
+                            <td>@r.OfficeName</td>
+                            <td>
+                                <span class="badge @(r.EventType == "IN" ? "bg-success" : "bg-secondary")">@r.EventType</span>
+                            </td>
+                            <td>@(r.LivenessScore.HasValue ? r.LivenessScore.Value.ToString("0.000") : "-")</td>
+                            <td>@(r.FaceDistance.HasValue ? r.FaceDistance.Value.ToString("0.000") : "-")</td>
+                            <td>
+                                <span class="badge @(r.LocationVerified ? "bg-primary" : "bg-light text-dark")">@(r.LocationVerified ? "OK" : "N/A")</span>
+                            </td>
+                            <td>
+                                @if (r.NeedsReview)
+                                {
+                                    <span class="badge bg-warning text-dark">Needs review</span>
+                                }
+                                else
+                                {
+                                    <span class="text-muted">-</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                }
+                </tbody>
+            </table>
+        </div>
+
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+            <div class="text-muted small">
+                Page @Model.Page of @Model.TotalPages
+            </div>
+
+            <nav aria-label="Attendance pages">
+                <ul class="pagination pagination-sm mb-0">
+                    <li class="page-item @(Model.Page <= 1 ? "disabled" : "")">
+                        <a class="page-link" href="@pageUrl(Model.Page - 1)">Prev</a>
+                    </li>
+
+                    @{
+                        var start = Math.Max(1, Model.Page - 2);
+                        var end = Math.Min(Model.TotalPages, Model.Page + 2);
+                        for (int p = start; p <= end; p++)
+                        {
+                            <li class="page-item @(p == Model.Page ? "active" : "")">
+                                <a class="page-link" href="@pageUrl(p)">@p</a>
+                            </li>
+                        }
+                    }
+
+                    <li class="page-item @(Model.Page >= Model.TotalPages ? "disabled" : "")">
+                        <a class="page-link" href="@pageUrl(Model.Page + 1)">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        </div>
+
+        <div class="text-muted small mt-2">
+            Export is limited to 5,000 rows per download.
+        </div>
     </div>
 </div>

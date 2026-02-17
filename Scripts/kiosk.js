@@ -8,6 +8,13 @@
     const dateLine = document.getElementById('dateLine');
     const livenessLine = document.getElementById('livenessLine');
 
+    // Admin unlock UI (optional)
+    const unlockBackdrop = document.getElementById('unlockBackdrop');
+    const unlockPin = document.getElementById('unlockPin');
+    const unlockErr = document.getElementById('unlockErr');
+    const unlockCancel = document.getElementById('unlockCancel');
+    const unlockSubmit = document.getElementById('unlockSubmit');
+
     const centerBlock = document.getElementById('centerBlock');
     const mainPrompt = document.getElementById('mainPrompt');
     const subPrompt = document.getElementById('subPrompt');
@@ -23,8 +30,7 @@
     const STABLE_FRAMES_REQUIRED = 4;         // anti spoof: stable frames
     const STABLE_MAX_MOVE_PX = 10;            // anti spoof: max center move
     const MIN_FACE_AREA_RATIO = 0.03;         // ignore tiny faces
-    const GUIDE_RADIUS_RATIO = 0.18;          // guide circle size
-    const CENTER_TOLERANCE_RATIO = 0.55;      // how close face center must be to guide center
+    const SAFE_EDGE_MARGIN_RATIO = 0.05;      // keep full face in view
 
     const ua = navigator.userAgent || '';
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
@@ -51,6 +57,70 @@
     let latestLiveness = null;
     let latestFaceCount = 0;
     let pulseUntil = 0;
+
+    let unlockOpen = false;
+
+    function qs(v) {
+        return (v == null ? '' : String(v));
+    }
+
+    function isUnlockAvailable() {
+        return !!unlockBackdrop && !!unlockPin && !!unlockSubmit && !!unlockCancel && !!unlockErr;
+    }
+
+    function openUnlock() {
+        if (!isUnlockAvailable()) return;
+        unlockOpen = true;
+        unlockErr.textContent = '';
+        unlockPin.value = '';
+        unlockBackdrop.classList.remove('hidden');
+        setTimeout(() => unlockPin.focus(), 50);
+    }
+
+    function closeUnlock() {
+        if (!isUnlockAvailable()) return;
+        unlockOpen = false;
+        unlockBackdrop.classList.add('hidden');
+        unlockErr.textContent = '';
+        unlockPin.value = '';
+    }
+
+    async function submitUnlock() {
+        if (!isUnlockAvailable()) return;
+        const pin = (unlockPin.value || '').trim();
+        if (!pin) {
+            unlockErr.textContent = 'Enter PIN.';
+            unlockPin.focus();
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('pin', pin);
+        fd.append('returnUrl', document.body?.dataset?.returnUrl || '');
+
+        unlockSubmit.disabled = true;
+        unlockCancel.disabled = true;
+        unlockErr.textContent = '';
+
+        try {
+            const r = await fetch('/Kiosk/UnlockPin', { method: 'POST', body: fd });
+            const j = await r.json();
+            if (j && j.ok === true) {
+                const ru = (j.returnUrl || '').trim();
+                closeUnlock();
+                if (ru) window.location.href = ru;
+                return;
+            }
+            unlockErr.textContent = 'Invalid PIN.';
+            unlockPin.focus();
+        } catch {
+            unlockErr.textContent = 'Unlock failed.';
+        } finally {
+            unlockSubmit.disabled = false;
+            unlockCancel.disabled = false;
+        }
+    }
 
     function setPrompt(a, b) {
         mainPrompt.textContent = a || '';
@@ -108,20 +178,6 @@
     function drawLoop() {
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Guide circle
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const guideR = Math.min(canvas.width, canvas.height) * GUIDE_RADIUS_RATIO;
-
-        ctx.save();
-        ctx.globalAlpha = 0.35;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = '#ffffff';
-        ctx.beginPath();
-        ctx.arc(cx, cy, guideR, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
 
         // Bounding box
         if (boxSmooth) {
@@ -246,16 +302,34 @@
         }
     }
 
+    async function resolveOfficeDesktopOnce() {
+        if (isMobile) return;
+        if (currentOffice && currentOffice.name) return;
+
+        try {
+            const fd = new FormData();
+            fd.append('__RequestVerificationToken', token);
+            const r = await fetch('/Kiosk/ResolveOffice', { method: 'POST', body: fd });
+            const j = await r.json();
+            if (j && j.ok === true && j.allowed !== false) {
+                const off = j.office || null;
+                currentOffice.id = (off && typeof off.id !== 'undefined') ? off.id : j.officeId;
+                currentOffice.name = (off && off.name) ? off.name : j.officeName;
+                if (currentOffice.name) officeLine.textContent = currentOffice.name;
+            }
+        } catch {
+            // non-blocking
+        }
+    }
+
     function captureFrameBlob() {
-        // Draw current video to an offscreen canvas (video is mirrored via CSS, but raw pixels are not mirrored)
+        // Draw current video to an offscreen canvas.
+        // Important: do NOT mirror pixels. Mirroring is only for UI.
         const off = document.createElement('canvas');
         off.width = video.videoWidth || 640;
         off.height = video.videoHeight || 480;
         const octx = off.getContext('2d');
 
-        // Mirror into pixel output to match what user sees
-        octx.translate(off.width, 0);
-        octx.scale(-1, 1);
         octx.drawImage(video, 0, 0, off.width, off.height);
 
         return new Promise((resolve) => {
@@ -265,14 +339,29 @@
 
     function computeCanvasBox(raw) {
         if (!raw || !raw.imgW || !raw.imgH) return null;
-        const sx = canvas.width / raw.imgW;
-        const sy = canvas.height / raw.imgH;
-        return {
-            x: raw.x * sx,
-            y: raw.y * sy,
-            w: raw.w * sx,
-            h: raw.h * sy
-        };
+
+        // The video uses object-fit: cover.
+        // Map raw image coordinates into the displayed canvas using the same cover math.
+        const W = canvas.width;
+        const H = canvas.height;
+        const imgW = raw.imgW;
+        const imgH = raw.imgH;
+
+        const scale = Math.max(W / imgW, H / imgH);
+        const renderW = imgW * scale;
+        const renderH = imgH * scale;
+        const offX = (W - renderW) / 2;
+        const offY = (H - renderH) / 2;
+
+        let x = offX + (raw.x * scale);
+        const y = offY + (raw.y * scale);
+        const w = raw.w * scale;
+        const h = raw.h * scale;
+
+        // UI is selfie-mirrored (CSS). Mirror the box to match.
+        x = W - (x + w);
+
+        return { x, y, w, h };
     }
 
     function isTooSmallFace(raw) {
@@ -283,20 +372,15 @@
         return ratio < MIN_FACE_AREA_RATIO;
     }
 
-    function centerOk(raw) {
-        if (!raw) return false;
-        const bx = boxSmooth ? (boxSmooth.x + boxSmooth.w / 2) : null;
-        const by = boxSmooth ? (boxSmooth.y + boxSmooth.h / 2) : null;
-        if (bx == null || by == null) return false;
-
-        const cx = canvas.width / 2;
-        const cy = canvas.height / 2;
-        const guideR = Math.min(canvas.width, canvas.height) * GUIDE_RADIUS_RATIO;
-
-        const dx = bx - cx;
-        const dy = by - cy;
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        return dist <= guideR * CENTER_TOLERANCE_RATIO;
+    function faceFullyVisible() {
+        if (!boxSmooth) return false;
+        const m = Math.min(canvas.width, canvas.height) * SAFE_EDGE_MARGIN_RATIO;
+        if (boxSmooth.w <= 0 || boxSmooth.h <= 0) return false;
+        if (boxSmooth.x < m) return false;
+        if (boxSmooth.y < m) return false;
+        if ((boxSmooth.x + boxSmooth.w) > (canvas.width - m)) return false;
+        if ((boxSmooth.y + boxSmooth.h) > (canvas.height - m)) return false;
+        return true;
     }
 
     function updateStability() {
@@ -324,6 +408,7 @@
     }
 
     async function pollScanFrame() {
+        if (unlockOpen) return;
         const t = Date.now();
         if (t - lastScanAt < SCANFRAME_MS) return;
         lastScanAt = t;
@@ -403,10 +488,10 @@
         updateStability();
 
         // Prompts
-        const centered = centerOk(boxRaw);
-        if (!centered) {
+        if (!faceFullyVisible()) {
             livenessStreak = 0;
-            setPrompt('Center your face.', 'Align your face inside the circle.');
+            stableFrames = 0;
+            setPrompt('Move into frame.', 'Keep your full face in view.');
             return;
         }
 
@@ -477,6 +562,10 @@
 
     async function loop() {
         try {
+            if (unlockOpen) {
+                setTimeout(loop, 120);
+                return;
+            }
             await resolveOfficeIfNeeded();
             await pollScanFrame();
         } catch (e) {
@@ -490,12 +579,64 @@
     (async function init() {
         startClock();
         startGpsIfMobile();
+        resolveOfficeDesktopOnce();
+
+        // Unlock modal bindings (if present)
+        if (isUnlockAvailable()) {
+            unlockCancel.addEventListener('click', () => closeUnlock());
+            unlockSubmit.addEventListener('click', () => submitUnlock());
+            unlockBackdrop.addEventListener('click', (e) => {
+                if (e.target === unlockBackdrop) closeUnlock();
+            });
+            unlockPin.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    submitUnlock();
+                }
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeUnlock();
+                }
+            });
+        }
+
+        // Hotkeys: Ctrl+Shift+Space (primary), plus fallbacks for keyboards/OS that intercept it.
+        document.addEventListener('keydown', (e) => {
+            if (!isUnlockAvailable()) return;
+            if (unlockOpen) {
+                if (e.key === 'Escape') {
+                    e.preventDefault();
+                    closeUnlock();
+                }
+                return;
+            }
+
+            const isSpace = (e.code === 'Space') || (e.key === ' ') || (e.keyCode === 32);
+            const primary = e.ctrlKey && e.shiftKey && isSpace;
+            const fallback1 = e.ctrlKey && e.altKey && (e.code === 'KeyU' || e.key === 'u' || e.key === 'U');
+            const fallback2 = (e.code === 'F2');
+
+            if (primary || fallback1 || fallback2) {
+                e.preventDefault();
+                openUnlock();
+            }
+        }, true);
+
+        // Mouse fallback: double click brand.
+        const brand = document.querySelector('#topLeft .brand');
+        if (brand && isUnlockAvailable()) {
+            brand.addEventListener('dblclick', () => openUnlock());
+        }
 
         try {
             await startCamera();
             setPrompt('Ready.', 'Stand still. One face only.');
             drawLoop();
             loop();
+
+            // Auto-open unlock if redirected here.
+            const unlockHint = qs(document.body?.dataset?.unlockHint).toLowerCase();
+            if (unlockHint === 'true' || unlockHint === '1') openUnlock();
         } catch (e) {
             setPrompt('Camera blocked.', 'Allow camera permission.');
         }

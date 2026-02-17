@@ -1,9 +1,11 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Web.Hosting;
@@ -35,23 +37,23 @@ namespace FaceAttend.Services.Biometrics
                 EnsureSession();
             }
 
-            int inputSize = AppSettings.GetInt("Biometrics:LivenessInputSize", 128);
-            double cropScale = AppSettings.GetDouble("Biometrics:Liveness:CropScale", 2.7);
-            int realIndex = AppSettings.GetInt("Biometrics:Liveness:RealIndex", 1);
-            string outputType = AppSettings.GetString("Biometrics:Liveness:OutputType", "logits");
-            string normalize = AppSettings.GetString("Biometrics:Liveness:Normalize", "0_1");
-            string chanOrder = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
+            int inputSize = SystemConfigService.GetIntCached("Biometrics:LivenessInputSize", AppSettings.GetInt("Biometrics:LivenessInputSize", 128));
+            double cropScale = SystemConfigService.GetDoubleCached("Biometrics:Liveness:CropScale", AppSettings.GetDouble("Biometrics:Liveness:CropScale", 2.7));
+            int realIndex = SystemConfigService.GetIntCached("Biometrics:Liveness:RealIndex", AppSettings.GetInt("Biometrics:Liveness:RealIndex", 1));
+            string outputType = SystemConfigService.GetStringCached("Biometrics:Liveness:OutputType", AppSettings.GetString("Biometrics:Liveness:OutputType", "logits"));
+            string normalize = SystemConfigService.GetStringCached("Biometrics:Liveness:Normalize", AppSettings.GetString("Biometrics:Liveness:Normalize", "0_1"));
+            string chanOrder = SystemConfigService.GetStringCached("Biometrics:Liveness:ChannelOrder", AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB"));
 
             // Optional: take the best (or average) over multiple crop scales.
             // This lets you tune liveness behavior without changing the threshold.
-            var decision = AppSettings.GetString("Biometrics:Liveness:Decision", "max");
-            var multiCsv = AppSettings.GetString("Biometrics:Liveness:MultiCropScales", "");
+            var decision = SystemConfigService.GetStringCached("Biometrics:Liveness:Decision", AppSettings.GetString("Biometrics:Liveness:Decision", "max"));
+            var multiCsv = SystemConfigService.GetStringCached("Biometrics:Liveness:MultiCropScales", AppSettings.GetString("Biometrics:Liveness:MultiCropScales", ""));
             var scales = ParseScales(multiCsv);
             if (scales.Count == 0) scales.Add(cropScale);
 
-            int slowMs = AppSettings.GetInt("Biometrics:Liveness:SlowMs", 1200);
-            int timeoutMs = AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1500);
-            int gateWaitMs = AppSettings.GetInt("Biometrics:Liveness:GateWaitMs", 300);
+            int slowMs = SystemConfigService.GetIntCached("Biometrics:Liveness:SlowMs", AppSettings.GetInt("Biometrics:Liveness:SlowMs", 1200));
+            int timeoutMs = SystemConfigService.GetIntCached("Biometrics:Liveness:RunTimeoutMs", AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1500));
+            int gateWaitMs = SystemConfigService.GetIntCached("Biometrics:Liveness:GateWaitMs", AppSettings.GetInt("Biometrics:Liveness:GateWaitMs", 300));
 
             var sw = Stopwatch.StartNew();
             try
@@ -177,7 +179,7 @@ namespace FaceAttend.Services.Biometrics
                     g.SmoothingMode = SmoothingMode.HighQuality;
                     g.DrawImage(src, new Rectangle(0, 0, cw, ch), new Rectangle(left, top, cw, ch), GraphicsUnit.Pixel);
 
-                    using (var resized = new Bitmap(inputSize, inputSize))
+                    using (var resized = new Bitmap(inputSize, inputSize, PixelFormat.Format24bppRgb))
                     using (var gr = Graphics.FromImage(resized))
                     {
                         gr.CompositingQuality = CompositingQuality.HighQuality;
@@ -185,34 +187,71 @@ namespace FaceAttend.Services.Biometrics
                         gr.SmoothingMode = SmoothingMode.HighQuality;
                         gr.DrawImage(cropped, new Rectangle(0, 0, inputSize, inputSize));
 
-                        // NCHW: [1,3,H,W] with 0..1 normalization
-                        var t = new DenseTensor<float>(new[] { 1, 3, inputSize, inputSize });
-                        for (int y = 0; y < inputSize; y++)
-                        {
-                            for (int x = 0; x < inputSize; x++)
-                            {
-                                var c = resized.GetPixel(x, y); // RGB
-                                float r = c.R;
-                                float g2 = c.G;
-                                float b = c.B;
-
-                                // Channel order
-                                float c0 = r, c1 = g2, c2 = b;
-                                if (chanOrder.Equals("BGR", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    c0 = b; c1 = g2; c2 = r;
-                                }
-
-                                // Normalization
-                                Normalize(ref c0, ref c1, ref c2, normalize);
-
-                                t[0, 0, y, x] = c0;
-                                t[0, 1, y, x] = c1;
-                                t[0, 2, y, x] = c2;
-                            }
-                        }
-                        return t;
+                        return BuildTensorFromBitmap(resized, normalize, chanOrder);
                     }
+                }
+            }
+        }
+
+        // Faster than GetPixel(): uses LockBits + Marshal.Copy.
+        private static DenseTensor<float> BuildTensorFromBitmap(Bitmap bmp, string normalize, string chanOrder)
+        {
+            int w = bmp.Width;
+            int h = bmp.Height;
+
+            // NCHW: [1,3,H,W]
+            var t = new DenseTensor<float>(new[] { 1, 3, h, w });
+
+            var rect = new Rectangle(0, 0, w, h);
+            BitmapData data = null;
+            try
+            {
+                data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+                int stride = data.Stride;
+                int bytes = stride * h;
+
+                var buffer = new byte[bytes];
+                Marshal.Copy(data.Scan0, buffer, 0, bytes);
+
+                bool wantBgr = (chanOrder ?? "RGB").Trim().Equals("BGR", StringComparison.OrdinalIgnoreCase);
+
+                for (int y = 0; y < h; y++)
+                {
+                    int row = y * stride;
+                    for (int x = 0; x < w; x++)
+                    {
+                        int i = row + (x * 3);
+
+                        // Format24bppRgb = B,G,R byte order
+                        float b = buffer[i + 0];
+                        float g = buffer[i + 1];
+                        float r = buffer[i + 2];
+
+                        float c0, c1, c2;
+                        if (wantBgr)
+                        {
+                            c0 = b; c1 = g; c2 = r;
+                        }
+                        else
+                        {
+                            c0 = r; c1 = g; c2 = b;
+                        }
+
+                        Normalize(ref c0, ref c1, ref c2, normalize);
+
+                        t[0, 0, y, x] = c0;
+                        t[0, 1, y, x] = c1;
+                        t[0, 2, y, x] = c2;
+                    }
+                }
+
+                return t;
+            }
+            finally
+            {
+                if (data != null)
+                {
+                    try { bmp.UnlockBits(data); } catch { }
                 }
             }
         }

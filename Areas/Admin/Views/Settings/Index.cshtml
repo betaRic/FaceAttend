@@ -1,10 +1,239 @@
+@model FaceAttend.Areas.Admin.Models.SettingsVm
+
 @{
     ViewBag.Title = "Settings";
 }
 
+@if (!string.IsNullOrWhiteSpace(Model.SavedMessage))
+{
+    <div class="alert alert-success admin-card p-3 mb-3">@Model.SavedMessage</div>
+}
+
+@if (!string.IsNullOrWhiteSpace(Model.WarningMessage))
+{
+    <div class="alert alert-warning admin-card p-3 mb-3">@Model.WarningMessage</div>
+}
+
 <div class="admin-card">
     <div class="card-body">
-        <h4 class="mb-2">Settings</h4>
-        <p class="text-muted mb-0">Placeholder page. Next step: expose liveness and tolerance settings.</p>
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div>
+                <h4 class="mb-1">Settings</h4>
+                <div class="text-muted small">These values override web.config and apply across kiosk and admin.</div>
+            </div>
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index", "Dashboard", new { area = "Admin" })">
+                <i class="fa-solid fa-gauge-high me-1"></i>Dashboard
+            </a>
+        </div>
+
+        <hr />
+
+        @using (Html.BeginForm("Save", "Settings", new { area = "Admin" }, FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+
+            <div class="row g-4">
+                <div class="col-12 col-lg-6">
+                    <h5 class="mb-2">Biometrics</h5>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.DlibTolerance, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.DlibTolerance, new { @class = "form-control", type = "number", step = "0.01", min = "0.20", max = "1.00" })
+                        @Html.ValidationMessageFor(m => m.DlibTolerance, "", new { @class = "text-danger small" })
+                        <div class="text-muted small">Lower = stricter match. Typical: 0.55 to 0.65.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.LivenessThreshold, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.LivenessThreshold, new { @class = "form-control", type = "number", step = "0.01", min = "0", max = "1" })
+                        @Html.ValidationMessageFor(m => m.LivenessThreshold, "", new { @class = "text-danger small" })
+                        <div class="text-muted small">Higher = stricter liveness check. Typical: 0.70 to 0.85.</div>
+                    </div>
+
+                    <div class="border rounded-3 p-3">
+                        <div class="d-flex align-items-center justify-content-between">
+                            <div class="fw-semibold">Advanced liveness</div>
+                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#advLive">Toggle</button>
+                        </div>
+
+                        <div class="collapse mt-3" id="advLive">
+                            <div class="row g-2">
+                                <div class="col-12 col-md-6">
+                                    @Html.LabelFor(m => m.LivenessDecision, new { @class = "form-label" })
+                                    <select class="form-select" name="LivenessDecision">
+                                        <option value="max" @(Model.LivenessDecision != null && Model.LivenessDecision.Trim().ToLowerInvariant() == "max" ? "selected" : "")>max</option>
+                                        <option value="avg" @(Model.LivenessDecision != null && Model.LivenessDecision.Trim().ToLowerInvariant() == "avg" ? "selected" : "")>avg</option>
+                                    </select>
+                                    @Html.ValidationMessageFor(m => m.LivenessDecision, "", new { @class = "text-danger small" })
+                                    <div class="text-muted small">max is stricter. avg is smoother.</div>
+                                </div>
+
+                                <div class="col-12 col-md-6">
+                                    @Html.LabelFor(m => m.LivenessMultiCropScales, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessMultiCropScales, new { @class = "form-control", placeholder = "Example: 2.3,2.7,3.1" })
+                                    <div class="text-muted small">Leave blank to use defaults in code.</div>
+                                </div>
+                            </div>
+
+                            <div class="text-muted small mt-3">
+                                Only change the fields below if you know the expected input for your ONNX model.
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessInputSize, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessInputSize, new { @class = "form-control", type = "number", min = "64", max = "512" })
+                                    @Html.ValidationMessageFor(m => m.LivenessInputSize, "", new { @class = "text-danger small" })
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessCropScale, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessCropScale, new { @class = "form-control", type = "number", step = "0.1", min = "1.0", max = "5.0" })
+                                    @Html.ValidationMessageFor(m => m.LivenessCropScale, "", new { @class = "text-danger small" })
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessRealIndex, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessRealIndex, new { @class = "form-control", type = "number", min = "0", max = "10" })
+                                    @Html.ValidationMessageFor(m => m.LivenessRealIndex, "", new { @class = "text-danger small" })
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessOutputType, new { @class = "form-label" })
+                                    <select class="form-select" name="LivenessOutputType">
+                                        <option value="logits" @(Model.LivenessOutputType != null && Model.LivenessOutputType.Trim().ToLowerInvariant() == "logits" ? "selected" : "")>logits</option>
+                                        <option value="probs" @(Model.LivenessOutputType != null && Model.LivenessOutputType.Trim().ToLowerInvariant() == "probs" ? "selected" : "")>probs</option>
+                                    </select>
+                                    @Html.ValidationMessageFor(m => m.LivenessOutputType, "", new { @class = "text-danger small" })
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessNormalize, new { @class = "form-label" })
+                                    <select class="form-select" name="LivenessNormalize">
+                                        <option value="0_1" @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "0_1" ? "selected" : "")>0_1</option>
+                                        <option value="minus1_1" @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "minus1_1" ? "selected" : "")>minus1_1</option>
+                                        <option value="imagenet" @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "imagenet" ? "selected" : "")>imagenet</option>
+                                        <option value="none" @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "none" ? "selected" : "")>none</option>
+                                    </select>
+                                    @Html.ValidationMessageFor(m => m.LivenessNormalize, "", new { @class = "text-danger small" })
+                                </div>
+
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessChannelOrder, new { @class = "form-label" })
+                                    <select class="form-select" name="LivenessChannelOrder">
+                                        <option value="RGB" @(Model.LivenessChannelOrder != null && Model.LivenessChannelOrder.Trim().ToUpperInvariant() == "RGB" ? "selected" : "")>RGB</option>
+                                        <option value="BGR" @(Model.LivenessChannelOrder != null && Model.LivenessChannelOrder.Trim().ToUpperInvariant() == "BGR" ? "selected" : "")>BGR</option>
+                                    </select>
+                                    @Html.ValidationMessageFor(m => m.LivenessChannelOrder, "", new { @class = "text-danger small" })
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessRunTimeoutMs, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessRunTimeoutMs, new { @class = "form-control", type = "number", min = "200", max = "10000" })
+                                    @Html.ValidationMessageFor(m => m.LivenessRunTimeoutMs, "", new { @class = "text-danger small" })
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessGateWaitMs, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessGateWaitMs, new { @class = "form-control", type = "number", min = "0", max = "5000" })
+                                    @Html.ValidationMessageFor(m => m.LivenessGateWaitMs, "", new { @class = "text-danger small" })
+                                </div>
+                                <div class="col-12 col-md-4">
+                                    @Html.LabelFor(m => m.LivenessSlowMs, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessSlowMs, new { @class = "form-control", type = "number", min = "100", max = "10000" })
+                                    @Html.ValidationMessageFor(m => m.LivenessSlowMs, "", new { @class = "text-danger small" })
+                                </div>
+                            </div>
+
+                            <div class="row g-2 mt-2">
+                                <div class="col-12 col-md-6">
+                                    @Html.LabelFor(m => m.LivenessCircuitFailStreak, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessCircuitFailStreak, new { @class = "form-control", type = "number", min = "1", max = "10" })
+                                    @Html.ValidationMessageFor(m => m.LivenessCircuitFailStreak, "", new { @class = "text-danger small" })
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    @Html.LabelFor(m => m.LivenessCircuitDisableSeconds, new { @class = "form-label" })
+                                    @Html.TextBoxFor(m => m.LivenessCircuitDisableSeconds, new { @class = "form-control", type = "number", min = "0", max = "300" })
+                                    @Html.ValidationMessageFor(m => m.LivenessCircuitDisableSeconds, "", new { @class = "text-danger small" })
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-12 col-lg-6">
+                    <h5 class="mb-2">Location</h5>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.GPSAccuracyRequired, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.GPSAccuracyRequired, new { @class = "form-control", type = "number", min = "5", max = "5000" })
+                        @Html.ValidationMessageFor(m => m.GPSAccuracyRequired, "", new { @class = "text-danger small" })
+                        <div class="text-muted small">Lower = stricter. Example: 30 to 60.</div>
+                    </div>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.GPSRadiusDefault, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.GPSRadiusDefault, new { @class = "form-control", type = "number", min = "10", max = "10000" })
+                        @Html.ValidationMessageFor(m => m.GPSRadiusDefault, "", new { @class = "text-danger small" })
+                        <div class="text-muted small">Used only when an office has radius 0.</div>
+                    </div>
+
+                    <div class="mb-4">
+                        @Html.LabelFor(m => m.FallbackOfficeId, new { @class = "form-label" })
+                        @Html.DropDownListFor(m => m.FallbackOfficeId, Model.OfficeOptions, new { @class = "form-select" })
+                        @Html.ValidationMessageFor(m => m.FallbackOfficeId, "", new { @class = "text-danger small" })
+                        <div class="text-muted small">Desktop kiosks skip GPS. This office will be used for logs.</div>
+                    </div>
+
+                    <h5 class="mb-2">Attendance</h5>
+
+                    <div class="mb-3">
+                        @Html.LabelFor(m => m.MinGapSeconds, new { @class = "form-label" })
+                        @Html.TextBoxFor(m => m.MinGapSeconds, new { @class = "form-control", type = "number", min = "1", max = "600" })
+                        @Html.ValidationMessageFor(m => m.MinGapSeconds, "", new { @class = "text-danger small" })
+                        <div class="text-muted small">Prevents double taps and duplicate scans.</div>
+                    </div>
+
+                    <h5 class="mb-2">Review queue</h5>
+
+                    <div class="row g-2">
+                        <div class="col-12 col-md-6">
+                            @Html.LabelFor(m => m.NeedsReviewNearMatchRatio, new { @class = "form-label" })
+                            @Html.TextBoxFor(m => m.NeedsReviewNearMatchRatio, new { @class = "form-control", type = "number", step = "0.01", min = "0.50", max = "0.99" })
+                            @Html.ValidationMessageFor(m => m.NeedsReviewNearMatchRatio, "", new { @class = "text-danger small" })
+                        </div>
+                        <div class="col-12 col-md-6">
+                            @Html.LabelFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-label" })
+                            @Html.TextBoxFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-control", type = "number", step = "0.01", min = "0.00", max = "0.20" })
+                            @Html.ValidationMessageFor(m => m.NeedsReviewLivenessMargin, "", new { @class = "text-danger small" })
+                        </div>
+                        <div class="col-12">
+                            @Html.LabelFor(m => m.NeedsReviewGpsMargin, new { @class = "form-label" })
+                            @Html.TextBoxFor(m => m.NeedsReviewGpsMargin, new { @class = "form-control", type = "number", min = "0", max = "200" })
+                            @Html.ValidationMessageFor(m => m.NeedsReviewGpsMargin, "", new { @class = "text-danger small" })
+                        </div>
+                    </div>
+
+                    <div class="text-muted small mt-2">
+                        Records marked as NeedsReview show up in Attendance &gt; Review queue.
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4" />
+
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-floppy-disk me-1"></i>Save
+                </button>
+                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Reload</a>
+                <a class="btn btn-outline-primary" href="@Url.Action("Index", "Attendance", new { area = "Admin" })">
+                    <i class="fa-solid fa-clock me-1"></i>Go to Attendance
+                </a>
+            </div>
+        }
     </div>
 </div>
+
+@section scripts {
+    @Scripts.Render("~/bundles/jqueryval")
+}

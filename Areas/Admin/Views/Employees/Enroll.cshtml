@@ -180,6 +180,7 @@
 
     async function postScanFrame(blob){
         const fd = new FormData();
+        fd.append("__RequestVerificationToken", token());
         fd.append("image", blob, "frame.jpg");
 
         const res = await fetch("/Biometrics/ScanFrame", {

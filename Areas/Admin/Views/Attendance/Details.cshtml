@@ -1,0 +1,147 @@
+@model FaceAttend.Areas.Admin.Models.AttendanceDetailsVm
+
+@{
+    ViewBag.Title = "Attendance Details";
+    var backUrl = Url.Action("Index", "Attendance", new { area = "Admin" });
+}
+
+@if (TempData["msg"] != null)
+{
+    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+    <div>
+        <h4 class="mb-1">Attendance Details</h4>
+        <div class="text-muted small">ID: @Model.Id</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="@backUrl">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </a>
+
+        @if (Model.NeedsReview)
+        {
+            <span class="badge bg-warning text-dark align-self-center">Needs review</span>
+        }
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12 col-lg-8">
+        <div class="admin-card">
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-12 col-md-6">
+                        <div class="text-muted small">Time (local)</div>
+                        <div class="fw-semibold">@Model.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <div class="text-muted small">Event</div>
+                        <div class="fw-semibold">@Model.EventType</div>
+                    </div>
+
+                    <div class="col-12">
+                        <hr />
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <div class="text-muted small">Employee</div>
+                        <div class="fw-semibold">@Model.EmployeeFullName</div>
+                        <div class="text-muted small">@Model.EmployeeId @(!string.IsNullOrWhiteSpace(Model.Department) ? ("· " + Model.Department) : "")</div>
+                    </div>
+
+                    <div class="col-12 col-md-6">
+                        <div class="text-muted small">Office</div>
+                        <div class="fw-semibold">@Model.OfficeName</div>
+                        <div class="text-muted small">@Model.OfficeType</div>
+                    </div>
+
+                    <div class="col-12">
+                        <hr />
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <div class="text-muted small">Liveness</div>
+                        <div class="fw-semibold">@(Model.LivenessScore.HasValue ? Model.LivenessScore.Value.ToString("0.000") : "-")</div>
+                        <div class="text-muted small">@Model.LivenessResult @(!string.IsNullOrWhiteSpace(Model.LivenessError) ? ("· " + Model.LivenessError) : "")</div>
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <div class="text-muted small">Distance</div>
+                        <div class="fw-semibold">@(Model.FaceDistance.HasValue ? Model.FaceDistance.Value.ToString("0.000") : "-")</div>
+                        <div class="text-muted small">Threshold: @(Model.MatchThreshold.HasValue ? Model.MatchThreshold.Value.ToString("0.000") : "-")</div>
+                    </div>
+
+                    <div class="col-12 col-md-4">
+                        <div class="text-muted small">Location</div>
+                        <div class="fw-semibold">@(Model.LocationVerified ? "Verified" : "Not verified")</div>
+                        <div class="text-muted small">Accuracy: @(Model.GPSAccuracy.HasValue ? Model.GPSAccuracy.Value.ToString("0.0") + "m" : "-")</div>
+                    </div>
+
+                    <div class="col-12">
+                        <hr />
+                    </div>
+
+                    <div class="col-12">
+                        <div class="text-muted small">Notes</div>
+                        <div class="border rounded-3 p-2" style="min-height: 54px; white-space: pre-wrap;">@((Model.Notes ?? "").Trim())</div>
+                    </div>
+
+                    <div class="col-12">
+                        <div class="text-muted small">Client</div>
+                        <div class="small">IP: @Model.ClientIP</div>
+                        <div class="small text-muted" style="word-break: break-word;">UA: @Model.UserAgent</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12 col-lg-4">
+        <div class="admin-card">
+            <div class="card-body">
+                <h5 class="mb-2">Review</h5>
+                <div class="text-muted small mb-2">
+                    Use this when a scan looks suspicious but you still want to keep the record.
+                </div>
+
+                @if (Model.NeedsReview)
+                {
+                    using (Html.BeginForm("MarkReviewed", "Attendance", new { area = "Admin" }, FormMethod.Post))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+
+                        <label class="form-label">Note (optional)</label>
+                        <input class="form-control mb-2" name="note" placeholder="What did you check?" />
+
+                        <button type="submit" class="btn btn-success w-100">
+                            <i class="fa-solid fa-check me-1"></i>Mark as reviewed
+                        </button>
+                    }
+                }
+                else
+                {
+                    <div class="text-muted">This record is not in the review queue.</div>
+                }
+
+                <hr />
+
+                <div class="text-muted small">
+                    Source: @Model.Source
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-card mt-3">
+            <div class="card-body">
+                <h6 class="mb-2">Raw GPS</h6>
+                <div class="small">Lat: @(Model.GPSLatitude.HasValue ? Model.GPSLatitude.Value.ToString("0.000000") : "-")</div>
+                <div class="small">Lon: @(Model.GPSLongitude.HasValue ? Model.GPSLongitude.Value.ToString("0.000000") : "-")</div>
+                <div class="small text-muted">Error: @Model.LocationError</div>
+            </div>
+        </div>
+    </div>
+</div>

@@ -79,6 +79,7 @@
 
     async function postScanFrame(blob) {
         var fd = new FormData();
+        fd.append("__RequestVerificationToken", token());
         fd.append("image", blob, "frame.jpg");
 
         var res = await fetch(scanUrl, { method: "POST", body: fd });

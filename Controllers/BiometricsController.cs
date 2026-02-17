@@ -16,6 +16,7 @@ namespace FaceAttend.Controllers
     public class BiometricsController : Controller
     {
         [HttpPost]
+        [ValidateAntiForgeryToken]
         public ActionResult ScanFrame(HttpPostedFileBase image)
         {
             if (image == null || image.ContentLength <= 0)

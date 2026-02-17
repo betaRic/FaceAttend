@@ -13,9 +13,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kiosk - FaceAttend</title>
 
-    <link href="~/Content/kiosk.css" rel="stylesheet" />
+    <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
 </head>
-<body>
+<body data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
     @Html.AntiForgeryToken()
 
     <div id="kioskRoot">
@@ -45,9 +45,24 @@
             <div id="mainPrompt">Ready.</div>
             <div id="subPrompt">Stand still. One face only.</div>
         </div>
+
+        <div id="unlockBackdrop" class="hidden" aria-hidden="true">
+            <div id="unlockModal" role="dialog" aria-modal="true" aria-label="Admin unlock">
+                <div class="unlockTitle">Admin unlock</div>
+                <div class="unlockHint">Ctrl + Shift + Space to open. Esc to cancel.</div>
+
+                <input id="unlockPin" class="unlockInput" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter PIN" />
+                <div id="unlockErr" class="unlockErr"></div>
+
+                <div class="unlockActions">
+                    <button id="unlockCancel" type="button" class="btnGhost">Cancel</button>
+                    <button id="unlockSubmit" type="button" class="btnPrimary">Unlock</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="~/Scripts/jquery-3.7.1.min.js"></script>
-    <script src="~/Scripts/kiosk.js"></script>
+    <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="packages\SweetAlert2.1.0.1\build\SweetAlert2.props" Condition="Exists('packages\SweetAlert2.1.0.1\build\SweetAlert2.props')" />
+  <Import Project="packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props" Condition="Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props')" />
   <Import Project="packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props" Condition="Exists('packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props')" />
   <Import Project="packages\EntityFramework.6.4.4\build\EntityFramework.props" Condition="Exists('packages\EntityFramework.6.4.4\build\EntityFramework.props')" />
   <Import Project="packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.props" Condition="Exists('packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.props')" />
@@ -115,9 +115,6 @@
     </Reference>
     <Reference Include="Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
       <HintPath>packages\Newtonsoft.Json.13.0.4\lib\net45\Newtonsoft.Json.dll</HintPath>
-    </Reference>
-    <Reference Include="SweetAlert2, Version=1.0.1.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\SweetAlert2.1.0.1\lib\netstandard2.0\SweetAlert2.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Buffers, Version=4.0.5.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
@@ -392,6 +389,7 @@
     <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
+    <Content Include="libman.json" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
@@ -456,7 +454,8 @@
     <Error Condition="!Exists('packages\EntityFramework.6.4.4\build\EntityFramework.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\EntityFramework.6.4.4\build\EntityFramework.props'))" />
     <Error Condition="!Exists('packages\EntityFramework.6.4.4\build\EntityFramework.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\EntityFramework.6.4.4\build\EntityFramework.targets'))" />
     <Error Condition="!Exists('packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props'))" />
-    <Error Condition="!Exists('packages\SweetAlert2.1.0.1\build\SweetAlert2.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\SweetAlert2.1.0.1\build\SweetAlert2.props'))" />
+    <Error Condition="!Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props'))" />
+    <Error Condition="!Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets'))" />
   </Target>
   <Import Project="packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.4.1.0\build\net472\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.targets" Condition="Exists('packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.4.1.0\build\net472\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.targets')" />
   <Import Project="packages\DlibDotNet.19.21.0.20220724\build\net45\DlibDotNet.targets" Condition="Exists('packages\DlibDotNet.19.21.0.20220724\build\net45\DlibDotNet.targets')" />
@@ -464,4 +463,5 @@
   <Import Project="packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.Managed.targets" Condition="Exists('packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.Managed.targets')" />
   <Import Project="packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.targets" Condition="Exists('packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.targets')" />
   <Import Project="packages\EntityFramework.6.4.4\build\EntityFramework.targets" Condition="Exists('packages\EntityFramework.6.4.4\build\EntityFramework.targets')" />
+  <Import Project="packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets" Condition="Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets')" />
 </Project>
