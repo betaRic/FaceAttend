@@ -143,3 +143,49 @@ html {
         transition: none !important;
     }
 }
+
+/* Page transition */
+.admin-content {
+    animation: adminFadeIn .14s ease-out;
+}
+
+@keyframes adminFadeIn {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: none; }
+}
+
+/* Idle overlay */
+.idle-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 2000;
+    background: rgba(0,0,0,.55);
+    align-items: center;
+    justify-content: center;
+}
+
+.idle-card {
+    width: min(420px, calc(100% - 32px));
+    background: #fff;
+    border: 1px solid var(--admin-border);
+    border-radius: var(--admin-radius);
+    box-shadow: var(--admin-shadow);
+    padding: 18px 20px;
+    text-align: center;
+}
+
+.idle-title {
+    font-weight: 700;
+    font-size: 18px;
+    margin-bottom: 6px;
+}
+
+.idle-text {
+    color: rgba(0,0,0,.65);
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .admin-content {
+        animation: none;
+    }
+}

@@ -14,6 +14,9 @@
     const unlockErr = document.getElementById('unlockErr');
     const unlockCancel = document.getElementById('unlockCancel');
     const unlockSubmit = document.getElementById('unlockSubmit');
+    const unlockClose = document.getElementById('unlockClose');
+
+    const kioskRoot = document.getElementById('kioskRoot');
 
     const centerBlock = document.getElementById('centerBlock');
     const mainPrompt = document.getElementById('mainPrompt');
@@ -74,6 +77,8 @@
         unlockErr.textContent = '';
         unlockPin.value = '';
         unlockBackdrop.classList.remove('hidden');
+        unlockBackdrop.setAttribute('aria-hidden', 'false');
+        if (kioskRoot) kioskRoot.classList.add('unlockOpen');
         setTimeout(() => unlockPin.focus(), 50);
     }
 
@@ -81,6 +86,8 @@
         if (!isUnlockAvailable()) return;
         unlockOpen = false;
         unlockBackdrop.classList.add('hidden');
+        unlockBackdrop.setAttribute('aria-hidden', 'true');
+        if (kioskRoot) kioskRoot.classList.remove('unlockOpen');
         unlockErr.textContent = '';
         unlockPin.value = '';
     }
@@ -585,6 +592,7 @@
         if (isUnlockAvailable()) {
             unlockCancel.addEventListener('click', () => closeUnlock());
             unlockSubmit.addEventListener('click', () => submitUnlock());
+            if (unlockClose) unlockClose.addEventListener('click', () => closeUnlock());
             unlockBackdrop.addEventListener('click', (e) => {
                 if (e.target === unlockBackdrop) closeUnlock();
             });

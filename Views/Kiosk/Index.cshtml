@@ -47,9 +47,12 @@
         </div>
 
         <div id="unlockBackdrop" class="hidden" aria-hidden="true">
-            <div id="unlockModal" role="dialog" aria-modal="true" aria-label="Admin unlock">
-                <div class="unlockTitle">Admin unlock</div>
-                <div class="unlockHint">Ctrl + Shift + Space to open. Esc to cancel.</div>
+            <div id="unlockModal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+                <div class="unlockHeader">
+                    <div id="unlockTitle" class="unlockTitle">Admin unlock</div>
+                    <button id="unlockClose" type="button" class="unlockClose" aria-label="Close">×</button>
+                </div>
+                <div class="unlockHint">Enter PIN. Press Enter to unlock. Esc to cancel.</div>
 
                 <input id="unlockPin" class="unlockInput" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter PIN" />
                 <div id="unlockErr" class="unlockErr"></div>

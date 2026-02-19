@@ -17,7 +17,7 @@
 <div class="admin-card">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0">
+            <table class="table table-sm align-middle mb-0 js-datatable" data-dt-page-length="25" data-dt-no-sort-last="1">
                 <thead>
                     <tr>
                         <th>EmployeeId</th>
@@ -77,7 +77,9 @@
                                     @Html.AntiForgeryToken()
                                     <input type="hidden" name="id" value="@e.Id" />
                                     <button class="btn btn-sm btn-outline-danger" type="submit"
-                                            onclick="return confirm('Deactivate this employee?');">
+                                            data-confirm="Deactivate this employee?"
+                                            data-confirm-text="This will disable kiosk logins for this record."
+                                            data-confirm-icon="warning">
                                         <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>
                                         Deactivate
                                     </button>

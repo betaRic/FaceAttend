@@ -123,6 +123,9 @@
     <Reference Include="System.ComponentModel.Annotations, Version=4.2.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.ComponentModel.Annotations.4.7.0\lib\net461\System.ComponentModel.Annotations.dll</HintPath>
     </Reference>
+    <Reference Include="System.Configuration.ConfigurationManager, Version=10.0.0.3, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>packages\System.Configuration.ConfigurationManager.10.0.3\lib\net462\System.Configuration.ConfigurationManager.dll</HintPath>
+    </Reference>
     <Reference Include="System.Data" />
     <Reference Include="System.Drawing" />
     <Reference Include="System.Drawing.Common, Version=10.0.0.0, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
@@ -135,6 +138,7 @@
     <Reference Include="System.Numerics.Vectors, Version=4.1.6.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Numerics.Vectors.4.6.1\lib\net462\System.Numerics.Vectors.dll</HintPath>
     </Reference>
+    <Reference Include="System.Runtime.Caching" />
     <Reference Include="System.Runtime.CompilerServices.Unsafe, Version=6.0.3.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Runtime.CompilerServices.Unsafe.6.1.2\lib\net462\System.Runtime.CompilerServices.Unsafe.dll</HintPath>
     </Reference>
@@ -211,8 +215,11 @@
     <Compile Include="Areas\Admin\Controllers\SettingsController.cs" />
     <Compile Include="Areas\Admin\Controllers\UnlockController.cs" />
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
+    <Compile Include="Areas\Admin\Models\AttendanceDetailsVm.cs" />
+    <Compile Include="Areas\Admin\Models\AttendanceIndexVm.cs" />
     <Compile Include="Areas\Admin\Models\EmployeeEditVm.cs" />
     <Compile Include="Areas\Admin\Models\OfficeEditVm.cs" />
+    <Compile Include="Areas\Admin\Models\SettingsVm.cs" />
     <Compile Include="AttendanceLog.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
@@ -366,6 +373,18 @@
     <Content Include="Scripts\modernizr-2.8.3.js" />
     <Content Include="Scripts\toastr.js" />
     <Content Include="Scripts\toastr.min.js" />
+    <Content Include="Scripts\vendor\datatables\buttons.bootstrap5.min.css" />
+    <Content Include="Scripts\vendor\datatables\buttons.bootstrap5.min.js" />
+    <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.css" />
+    <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.js" />
+    <Content Include="Scripts\vendor\datatables\dataTables.min.js" />
+    <Content Include="Scripts\vendor\datatables\js\buttons.html5.min.js" />
+    <Content Include="Scripts\vendor\datatables\js\buttons.print.min.js" />
+    <Content Include="Scripts\vendor\datatables\js\dataTables.buttons.min.js" />
+    <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.css" />
+    <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.js" />
+    <Content Include="Scripts\vendor\sweetalert2\sweetalert2.all.min.js" />
+    <Content Include="Scripts\vendor\sweetalert2\sweetalert2.min.css" />
     <Content Include="Views\Kiosk\Index.cshtml" />
     <Content Include="Views\Shared\Error.cshtml" />
     <Content Include="Views\Web.config" />
@@ -382,7 +401,6 @@
     <Folder Include="App_Data\_tmp\" />
     <Folder Include="Models\" />
     <Folder Include="Vendor\" />
-    <Folder Include="Views\Biometrics\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
@@ -390,6 +408,7 @@
     <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="libman.json" />
+    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />

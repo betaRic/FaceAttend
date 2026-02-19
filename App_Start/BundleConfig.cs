@@ -1,4 +1,6 @@
+using System;
 using System.Linq;
+using System.Web.Hosting;
 using System.Web.Optimization;
 
 namespace FaceAttend
@@ -32,6 +34,25 @@ namespace FaceAttend
             bundles.Add(new ScriptBundle("~/bundles/toastr")
                 .Include("~/Scripts/toastr.min.js"));
 
+            // Vendor bundle (LibMan). Safe even if files are not restored yet.
+            var vendor = new ScriptBundle("~/bundles/vendor");
+            foreach (var p in new[]
+            {
+                "~/Scripts/vendor/sweetalert2/sweetalert2.all.min.js",
+
+                "~/Scripts/vendor/datatables/dataTables.min.js",
+                "~/Scripts/vendor/datatables/dataTables.bootstrap5.min.js",
+
+                "~/Scripts/vendor/datatables/js/dataTables.buttons.min.js",
+                "~/Scripts/vendor/datatables/js/buttons.html5.min.js",
+                "~/Scripts/vendor/datatables/js/buttons.print.min.js",
+                "~/Scripts/vendor/datatables/buttons.bootstrap5.min.js"
+            })
+            {
+                if (FileExists(p)) vendor.Include(p);
+            }
+            bundles.Add(vendor);
+
             bundles.Add(new ScriptBundle("~/bundles/admin")
                 .Include("~/Scripts/admin.js"));
 
@@ -49,6 +70,20 @@ namespace FaceAttend
                     "~/Content/site.css"
                 ));
 
+            // Vendor CSS (LibMan). Safe even if files are not restored yet.
+            var vendorCss = new StyleBundle("~/Content/vendor");
+            foreach (var p in new[]
+            {
+                "~/Scripts/vendor/sweetalert2/sweetalert2.min.css",
+
+                "~/Scripts/vendor/datatables/dataTables.bootstrap5.min.css",
+                "~/Scripts/vendor/datatables/buttons.bootstrap5.min.css"
+            })
+            {
+                if (FileExists(p)) vendorCss.Include(p);
+            }
+            bundles.Add(vendorCss);
+
             bundles.Add(new StyleBundle("~/Content/admin")
                 .Include("~/Content/admin.css"));
 
@@ -57,6 +92,12 @@ namespace FaceAttend
 
             // Leave disabled while debugging
             // BundleTable.EnableOptimizations = true;
+        }
+
+        private static bool FileExists(string virtualPath)
+        {
+            var p = HostingEnvironment.MapPath(virtualPath);
+            return !string.IsNullOrWhiteSpace(p) && System.IO.File.Exists(p);
         }
     }
 }

@@ -1,4 +1,4 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8" />
@@ -6,8 +6,10 @@
     <title>@ViewBag.Title - FaceAttend Admin</title>
 
     @Styles.Render("~/Content/css")
+    @Styles.Render("~/Content/vendor")
     @Styles.Render("~/Content/admin")
     @RenderSection("styles", required: false)
+
     <script src="https://kit.fontawesome.com/ef7263a5d0.js" crossorigin="anonymous"></script>
 </head>
 <body class="admin-body">
@@ -57,7 +59,11 @@
                         </li>
                         <li><hr class="dropdown-divider" /></li>
                         <li>
-                            <a class="dropdown-item text-danger" href="@Url.Action("Lock","Kiosk", new { area = "" })">
+                            <a class="dropdown-item text-danger"
+                               href="@Url.Action("Lock","Kiosk", new { area = "" })"
+                               data-confirm="Lock kiosk now?"
+                               data-confirm-text="This will lock the kiosk screen until it is unlocked using the PIN."
+                               data-confirm-icon="warning">
                                 <i class="fa-solid fa-lock me-2"></i>Lock
                             </a>
                         </li>
@@ -99,8 +105,28 @@
         </main>
     </div>
 
+    <!-- Idle overlay (front-end only) -->
+    <div id="idleOverlay" class="idle-overlay d-none" role="dialog" aria-modal="true" aria-label="Idle">
+        <div class="idle-card">
+            <div class="idle-title">
+                <i class="fa-regular fa-moon me-2" aria-hidden="true"></i>
+                Idle
+            </div>
+            <div class="idle-text">Click to continue.</div>
+        </div>
+    </div>
+
+    @if (TempData["msg"] != null)
+    {
+        <script>
+            window.__toastMsg = "@System.Web.HttpUtility.JavaScriptStringEncode(TempData["msg"].ToString())";
+        </script>
+    }
+
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/bootstrap")
+    @Scripts.Render("~/bundles/toastr")
+    @Scripts.Render("~/bundles/vendor")
     @Scripts.Render("~/bundles/admin")
     @RenderSection("scripts", required: false)
 </body>
