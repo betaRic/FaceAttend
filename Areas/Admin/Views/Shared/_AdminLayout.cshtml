@@ -59,13 +59,23 @@
                         </li>
                         <li><hr class="dropdown-divider" /></li>
                         <li>
-                            <a class="dropdown-item text-danger"
-                               href="@Url.Action("Lock","Kiosk", new { area = "" })"
-                               data-confirm="Lock kiosk now?"
-                               data-confirm-text="This will lock the kiosk screen until it is unlocked using the PIN."
-                               data-confirm-icon="warning">
-                                <i class="fa-solid fa-lock me-2"></i>Lock
-                            </a>
+                            <!--
+                                FIX (CSRF): The Lock action was previously a plain <a> link (GET request).
+                                GET requests that change server state are vulnerable to CSRF: an attacker
+                                can trick an admin into clicking a link that locks them out.
+                                Changed to a POST form with an anti-forgery token.
+                            -->
+                            @using (Html.BeginForm("Lock", "Kiosk", new { area = "" }, FormMethod.Post, new { @class = "d-block" }))
+                            {
+                                @Html.AntiForgeryToken()
+                                <button type="submit"
+                                        class="dropdown-item text-danger"
+                                        data-confirm="Lock kiosk now?"
+                                        data-confirm-text="This will lock the kiosk screen until it is unlocked using the PIN."
+                                        data-confirm-icon="warning">
+                                    <i class="fa-solid fa-lock me-2"></i>Lock
+                                </button>
+                            }
                         </li>
                     </ul>
                 </div>

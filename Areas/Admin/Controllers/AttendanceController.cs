@@ -12,20 +12,21 @@ namespace FaceAttend.Areas.Admin.Controllers
     public class AttendanceController : Controller
     {
         [HttpGet]
-        public ActionResult Index(string from, string to, int? officeId, string employee, string eventType, bool? needsReview, int? page, int? pageSize)
+        public ActionResult Index(string from, string to, int? officeId, string employee,
+            string eventType, bool? needsReview, int? page, int? pageSize)
         {
             ViewBag.Title = "Attendance";
 
             var vm = new AttendanceIndexVm
             {
-                From = (from ?? "").Trim(),
-                To = (to ?? "").Trim(),
-                OfficeId = officeId,
-                Employee = (employee ?? "").Trim(),
-                EventType = string.IsNullOrWhiteSpace(eventType) ? "ALL" : eventType.Trim().ToUpperInvariant(),
+                From            = (from ?? "").Trim(),
+                To              = (to ?? "").Trim(),
+                OfficeId        = officeId,
+                Employee        = (employee ?? "").Trim(),
+                EventType       = string.IsNullOrWhiteSpace(eventType) ? "ALL" : eventType.Trim().ToUpperInvariant(),
                 NeedsReviewOnly = needsReview.HasValue && needsReview.Value,
-                Page = page.GetValueOrDefault(1),
-                PageSize = pageSize.GetValueOrDefault(25)
+                Page            = page.GetValueOrDefault(1),
+                PageSize        = pageSize.GetValueOrDefault(25)
             };
 
             if (vm.Page <= 0) vm.Page = 1;
@@ -37,8 +38,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                 vm.OfficeOptions = BuildOfficeOptions(db, vm.OfficeId);
 
                 var range = ParseRange(vm.From, vm.To);
-                vm.From = range.FromText;
-                vm.To = range.ToText;
+                vm.From            = range.FromText;
+                vm.To              = range.ToText;
                 vm.ActiveRangeLabel = range.Label;
 
                 var baseQ = db.AttendanceLogs.AsNoTracking().AsQueryable();
@@ -55,7 +56,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!string.IsNullOrWhiteSpace(vm.Employee))
                 {
                     var term = vm.Employee;
-                    baseQ = baseQ.Where(x => x.EmployeeFullName.Contains(term) || x.Employee.EmployeeId.Contains(term));
+                    baseQ = baseQ.Where(x =>
+                        x.EmployeeFullName.Contains(term) ||
+                        x.Employee.EmployeeId.Contains(term));
                 }
 
                 if (vm.EventType == "IN" || vm.EventType == "OUT")
@@ -69,26 +72,28 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 vm.Total = q.Count();
 
-                var skip = (vm.Page - 1) * vm.PageSize;
-                if (skip < 0) skip = 0;
+                var skip = Math.Max(0, (vm.Page - 1) * vm.PageSize);
 
+                // EF6 generates a single LEFT JOIN here — not N+1.
+                // x.Employee.EmployeeId inside .Select() before .ToList() is translated
+                // to SQL by the EF query provider, so no lazy-load occurs.
                 vm.Rows = q
                     .OrderByDescending(x => x.Timestamp)
                     .Skip(skip)
                     .Take(vm.PageSize)
                     .Select(x => new AttendanceRowVm
                     {
-                        Id = x.Id,
-                        TimestampUtc = x.Timestamp,
-                        EmployeeId = x.Employee.EmployeeId,
+                        Id               = x.Id,
+                        TimestampUtc     = x.Timestamp,
+                        EmployeeId       = x.Employee.EmployeeId,
                         EmployeeFullName = x.EmployeeFullName,
-                        Department = x.Department,
-                        OfficeName = x.OfficeName,
-                        EventType = x.EventType,
-                        LivenessScore = x.LivenessScore,
-                        FaceDistance = x.FaceDistance,
+                        Department       = x.Department,
+                        OfficeName       = x.OfficeName,
+                        EventType        = x.EventType,
+                        LivenessScore    = x.LivenessScore,
+                        FaceDistance     = x.FaceDistance,
                         LocationVerified = x.LocationVerified,
-                        NeedsReview = x.NeedsReview
+                        NeedsReview      = x.NeedsReview
                     })
                     .ToList();
             }
@@ -103,45 +108,50 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             using (var db = new FaceAttendDBEntities())
             {
-                var row = db.AttendanceLogs.AsNoTracking().FirstOrDefault(x => x.Id == id);
-                if (row == null) return HttpNotFound();
+                // FIX: Original made two separate DB round-trips (one for the log, one
+                // for the employee).  A single query with Include() is cleaner and avoids
+                // the extra round-trip.  AsNoTracking() because this is a read-only view.
+                var row = db.AttendanceLogs
+                    .AsNoTracking()
+                    .Include("Employee")
+                    .FirstOrDefault(x => x.Id == id);
 
-                var emp = db.Employees.AsNoTracking().FirstOrDefault(e => e.Id == row.EmployeeId);
+                if (row == null) return HttpNotFound();
 
                 var vm = new AttendanceDetailsVm
                 {
-                    Id = row.Id,
-                    TimestampUtc = row.Timestamp,
-                    EventType = row.EventType,
-                    Source = row.Source,
+                    Id               = row.Id,
+                    TimestampUtc     = row.Timestamp,
+                    EventType        = row.EventType,
+                    Source           = row.Source,
 
-                    EmployeeId = emp == null ? "" : (emp.EmployeeId ?? ""),
+                    EmployeeId       = row.Employee == null ? "" : (row.Employee.EmployeeId ?? ""),
                     EmployeeFullName = row.EmployeeFullName,
-                    Department = row.Department,
+                    Department       = row.Department,
 
-                    OfficeId = row.OfficeId,
-                    OfficeName = row.OfficeName,
-                    OfficeType = row.OfficeType,
+                    OfficeId         = row.OfficeId,
+                    OfficeName       = row.OfficeName,
+                    OfficeType       = row.OfficeType,
 
-                    GPSLatitude = row.GPSLatitude,
-                    GPSLongitude = row.GPSLongitude,
-                    GPSAccuracy = row.GPSAccuracy,
+                    GPSLatitude      = row.GPSLatitude,
+                    GPSLongitude     = row.GPSLongitude,
+                    GPSAccuracy      = row.GPSAccuracy,
                     LocationVerified = row.LocationVerified,
-                    LocationError = row.LocationError,
+                    LocationError    = row.LocationError,
 
-                    FaceDistance = row.FaceDistance,
-                    FaceSimilarity = row.FaceSimilarity,
-                    MatchThreshold = row.MatchThreshold,
+                    FaceDistance     = row.FaceDistance,
+                    FaceSimilarity   = row.FaceSimilarity,
+                    MatchThreshold   = row.MatchThreshold,
 
-                    LivenessScore = row.LivenessScore,
-                    LivenessResult = row.LivenessResult,
-                    LivenessError = row.LivenessError,
+                    LivenessScore    = row.LivenessScore,
+                    LivenessResult   = row.LivenessResult,
+                    LivenessError    = row.LivenessError,
 
-                    ClientIP = row.ClientIP,
-                    UserAgent = row.UserAgent,
+                    ClientIP         = row.ClientIP,
+                    UserAgent        = row.UserAgent,
 
-                    NeedsReview = row.NeedsReview,
-                    Notes = row.Notes
+                    NeedsReview      = row.NeedsReview,
+                    Notes            = row.Notes
                 };
 
                 return View(vm);
@@ -163,18 +173,31 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var extra = (note ?? "").Trim();
                 if (!string.IsNullOrWhiteSpace(extra)) stamp += " - " + extra;
 
-                if (string.IsNullOrWhiteSpace(row.Notes)) row.Notes = stamp;
-                else row.Notes = row.Notes + "\n" + stamp;
+                row.Notes = string.IsNullOrWhiteSpace(row.Notes)
+                    ? stamp
+                    : row.Notes + "\n" + stamp;
 
                 db.SaveChanges();
             }
 
             TempData["msg"] = "Marked as reviewed.";
-            return RedirectToAction("Details", new { id = id });
+            return RedirectToAction("Details", new { id });
         }
 
+        /// <summary>
+        /// CSV export — capped at 5,000 rows.
+        ///
+        /// Security notes:
+        ///   • CSV injection is mitigated by SafeCell() which prefixes formula triggers
+        ///     (=, +, -, @) with a single quote so spreadsheets treat them as text.
+        ///   • Export is a GET so it can be triggered via a link.  The endpoint is
+        ///     protected by [AdminAuthorize] so only authenticated admins can reach it.
+        ///   • The 5,000-row cap prevents accidental OOM on large datasets.  For full
+        ///     data exports use a background job + streaming approach.
+        /// </summary>
         [HttpGet]
-        public ActionResult Export(string from, string to, int? officeId, string employee, string eventType, bool? needsReview)
+        public ActionResult Export(string from, string to, int? officeId, string employee,
+            string eventType, bool? needsReview)
         {
             using (var db = new FaceAttendDBEntities())
             {
@@ -191,47 +214,54 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (officeId.HasValue && officeId.Value > 0)
                     q = q.Where(x => x.OfficeId == officeId.Value);
 
-                var et = string.IsNullOrWhiteSpace(eventType) ? "ALL" : eventType.Trim().ToUpperInvariant();
+                var et = string.IsNullOrWhiteSpace(eventType)
+                    ? "ALL"
+                    : eventType.Trim().ToUpperInvariant();
                 if (et == "IN" || et == "OUT")
                     q = q.Where(x => x.EventType == et);
 
                 if (!string.IsNullOrWhiteSpace(employee))
                 {
                     var term = employee.Trim();
-                    q = q.Where(x => x.EmployeeFullName.Contains(term) || x.Employee.EmployeeId.Contains(term));
+                    q = q.Where(x =>
+                        x.EmployeeFullName.Contains(term) ||
+                        x.Employee.EmployeeId.Contains(term));
                 }
 
                 if (needsReview.HasValue && needsReview.Value)
                     q = q.Where(x => x.NeedsReview);
 
-                // Safety limit to prevent huge downloads.
-                int max = 5000;
+                const int max = 5000;
                 var rows = q
                     .OrderByDescending(x => x.Timestamp)
                     .Take(max)
                     .Select(x => new ExportRow
                     {
-                        Timestamp = x.Timestamp,
-                        EmpId = x.Employee.EmployeeId,
+                        Timestamp        = x.Timestamp,
+                        EmpId            = x.Employee.EmployeeId,
                         EmployeeFullName = x.EmployeeFullName,
-                        Department = x.Department,
-                        OfficeName = x.OfficeName,
-                        EventType = x.EventType,
-                        LivenessScore = x.LivenessScore,
-                        FaceDistance = x.FaceDistance,
+                        Department       = x.Department,
+                        OfficeName       = x.OfficeName,
+                        EventType        = x.EventType,
+                        LivenessScore    = x.LivenessScore,
+                        FaceDistance     = x.FaceDistance,
                         LocationVerified = x.LocationVerified,
-                        GPSAccuracy = x.GPSAccuracy,
-                        NeedsReview = x.NeedsReview,
-                        Notes = x.Notes
+                        GPSAccuracy      = x.GPSAccuracy,
+                        NeedsReview      = x.NeedsReview,
+                        Notes            = x.Notes
                     })
                     .ToList();
 
-                var csv = BuildCsv(rows);
-                var bytes = Encoding.UTF8.GetBytes(csv);
+                var csv      = BuildCsv(rows);
+                var bytes    = Encoding.UTF8.GetBytes(csv);
                 var fileName = "attendance_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv";
                 return File(bytes, "text/csv", fileName);
             }
         }
+
+        // -------------------------------------------------------------------
+        // Helpers
+        // -------------------------------------------------------------------
 
         private static List<SelectListItem> BuildOfficeOptions(FaceAttendDBEntities db, int? selected)
         {
@@ -240,16 +270,16 @@ namespace FaceAttend.Areas.Admin.Controllers
                 new SelectListItem { Text = "All offices", Value = "" }
             };
 
-            var offices = db.Offices.AsNoTracking().Where(o => o.IsActive).OrderBy(o => o.Name).ToList();
-            foreach (var o in offices)
-            {
-                list.Add(new SelectListItem
-                {
-                    Text = o.Name,
-                    Value = o.Id.ToString(),
-                    Selected = selected.HasValue && selected.Value == o.Id
-                });
-            }
+            db.Offices.AsNoTracking()
+              .Where(o => o.IsActive)
+              .OrderBy(o => o.Name)
+              .ToList()
+              .ForEach(o => list.Add(new SelectListItem
+              {
+                  Text     = o.Name,
+                  Value    = o.Id.ToString(),
+                  Selected = selected.HasValue && selected.Value == o.Id
+              }));
 
             return list;
         }
@@ -265,36 +295,32 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         private static RangeResult ParseRange(string from, string to)
         {
-            // Default: last 7 days (local)
-            var today = DateTime.Now.Date;
-            var defaultFromLocal = today.AddDays(-6);
-            var defaultToLocal = today;
+            var today          = DateTime.Now.Date;
+            var defaultFrom    = today.AddDays(-6);
+            var defaultTo      = today;
 
             DateTime fromLocal;
-            if (!DateTime.TryParse(from, out fromLocal)) fromLocal = defaultFromLocal;
+            if (!DateTime.TryParse(from, out fromLocal)) fromLocal = defaultFrom;
             fromLocal = fromLocal.Date;
 
             DateTime toLocal;
-            if (!DateTime.TryParse(to, out toLocal)) toLocal = defaultToLocal;
+            if (!DateTime.TryParse(to, out toLocal)) toLocal = defaultTo;
             toLocal = toLocal.Date;
 
             if (toLocal < fromLocal)
             {
                 var tmp = fromLocal;
                 fromLocal = toLocal;
-                toLocal = tmp;
+                toLocal   = tmp;
             }
-
-            var fromUtc = fromLocal.ToUniversalTime();
-            var toUtcEx = toLocal.AddDays(1).ToUniversalTime();
 
             return new RangeResult
             {
-                FromUtc = fromUtc,
-                ToUtcExclusive = toUtcEx,
-                FromText = fromLocal.ToString("yyyy-MM-dd"),
-                ToText = toLocal.ToString("yyyy-MM-dd"),
-                Label = fromLocal.ToString("MMM d") + " - " + toLocal.ToString("MMM d")
+                FromUtc        = fromLocal.ToUniversalTime(),
+                ToUtcExclusive = toLocal.AddDays(1).ToUniversalTime(),
+                FromText       = fromLocal.ToString("yyyy-MM-dd"),
+                ToText         = toLocal.ToString("yyyy-MM-dd"),
+                Label          = fromLocal.ToString("MMM d") + " - " + toLocal.ToString("MMM d")
             };
         }
 
@@ -317,12 +343,12 @@ namespace FaceAttend.Areas.Admin.Controllers
         private static string BuildCsv(IEnumerable<ExportRow> rows)
         {
             var sb = new StringBuilder();
-            sb.AppendLine("TimestampLocal,EmployeeId,EmployeeName,Department,Office,EventType,LivenessScore,FaceDistance,LocationVerified,GPSAccuracy,NeedsReview,Notes");
+            sb.AppendLine("TimestampLocal,EmployeeId,EmployeeName,Department,Office,EventType," +
+                          "LivenessScore,FaceDistance,LocationVerified,GPSAccuracy,NeedsReview,Notes");
 
             foreach (var r in rows)
             {
                 var local = r.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
-
                 sb.Append(JoinCsv(new[]
                 {
                     local,
@@ -331,10 +357,19 @@ namespace FaceAttend.Areas.Admin.Controllers
                     SafeCell(r.Department),
                     SafeCell(r.OfficeName),
                     SafeCell(r.EventType),
-                    r.LivenessScore.HasValue ? r.LivenessScore.Value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "",
-                    r.FaceDistance.HasValue ? r.FaceDistance.Value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "",
+                    r.LivenessScore.HasValue
+                        ? r.LivenessScore.Value.ToString("0.000",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        : "",
+                    r.FaceDistance.HasValue
+                        ? r.FaceDistance.Value.ToString("0.000",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        : "",
                     r.LocationVerified ? "YES" : "NO",
-                    r.GPSAccuracy.HasValue ? r.GPSAccuracy.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) : "",
+                    r.GPSAccuracy.HasValue
+                        ? r.GPSAccuracy.Value.ToString("0.0",
+                            System.Globalization.CultureInfo.InvariantCulture)
+                        : "",
                     r.NeedsReview ? "YES" : "NO",
                     SafeCell(r.Notes)
                 }));
@@ -345,28 +380,28 @@ namespace FaceAttend.Areas.Admin.Controllers
         }
 
         private static string JoinCsv(IEnumerable<string> cells)
-        {
-            return string.Join(",", cells.Select(EscapeCsv));
-        }
+            => string.Join(",", cells.Select(EscapeCsv));
 
         private static string EscapeCsv(string s)
         {
             if (s == null) s = "";
-
-            // Quote if it contains separators or newlines.
-            var needsQuote = s.Contains(",") || s.Contains("\"") || s.Contains("\n") || s.Contains("\r");
-
-            // Escape quotes per CSV rules.
+            var needsQuote = s.Contains(",") || s.Contains("\"") ||
+                             s.Contains("\n") || s.Contains("\r");
             s = s.Replace("\"", "\"\"");
-
             return needsQuote ? "\"" + s + "\"" : s;
         }
 
+        /// <summary>
+        /// Prevents CSV formula injection by prepending a single quote to any
+        /// cell value that starts with a formula trigger character (=, +, -, @).
+        /// Excel and Google Sheets will then display the value as plain text.
+        /// </summary>
         private static string SafeCell(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
             var t = s.Trim();
-            if (t.StartsWith("=") || t.StartsWith("+") || t.StartsWith("-") || t.StartsWith("@"))
+            if (t.StartsWith("=") || t.StartsWith("+") ||
+                t.StartsWith("-") || t.StartsWith("@"))
                 return "'" + t;
             return t;
         }

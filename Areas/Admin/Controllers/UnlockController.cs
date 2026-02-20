@@ -1,4 +1,4 @@
-﻿using System.Web.Mvc;
+using System.Web.Mvc;
 using FaceAttend.Filters;
 
 namespace FaceAttend.Areas.Admin.Controllers
@@ -8,16 +8,18 @@ namespace FaceAttend.Areas.Admin.Controllers
         [HttpGet]
         public ActionResult Index(string returnUrl)
         {
-            // Unlock UI lives in Kiosk.
-            return Redirect("/Kiosk?unlock=1&returnUrl=" + System.Web.HttpUtility.UrlEncode(returnUrl ?? "/Admin"));
+            // FIX (Open Redirect): sanitize returnUrl before embedding in redirect.
+            var safe = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
+            return Redirect("/Kiosk?unlock=1&returnUrl=" + System.Web.HttpUtility.UrlEncode(safe));
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult Index(string pin, string returnUrl)
         {
-            // Keep POST endpoint as a safe redirect.
-            return Redirect("/Kiosk?unlock=1&returnUrl=" + System.Web.HttpUtility.UrlEncode(returnUrl ?? "/Admin"));
+            // FIX (Open Redirect): sanitize returnUrl before embedding in redirect.
+            var safe = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
+            return Redirect("/Kiosk?unlock=1&returnUrl=" + System.Web.HttpUtility.UrlEncode(safe));
         }
     }
 }

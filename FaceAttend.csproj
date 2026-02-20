@@ -244,6 +244,8 @@
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
     </Compile>
     <Compile Include="Filters\AdminAuthorizeAttribute.cs" />
+    <Compile Include="Filters\RateLimitAttribute.cs" />
+    <Compile Include="Filters\SecurityHeadersAttribute.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
@@ -257,6 +259,7 @@
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
     <Compile Include="Services\GeoUtil.cs" />
+    <Compile Include="Services\Security\RateLimit.cs" />
     <Compile Include="Services\SystemConfigService.cs" />
     <Compile Include="SystemConfiguration.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>

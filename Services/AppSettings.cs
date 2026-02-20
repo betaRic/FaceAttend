@@ -22,5 +22,20 @@ namespace FaceAttend.Services
             var v = ConfigurationManager.AppSettings[key];
             return double.TryParse(v, NumberStyles.Any, CultureInfo.InvariantCulture, out var n) ? n : fallback;
         }
+
+        public static bool GetBool(string key, bool fallback)
+        {
+            var v = ConfigurationManager.AppSettings[key];
+            if (string.IsNullOrWhiteSpace(v)) return fallback;
+
+            v = v.Trim();
+            if (v == "1" || v.Equals("true", System.StringComparison.OrdinalIgnoreCase) || v.Equals("yes", System.StringComparison.OrdinalIgnoreCase))
+                return true;
+
+            if (v == "0" || v.Equals("false", System.StringComparison.OrdinalIgnoreCase) || v.Equals("no", System.StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            return fallback;
+        }
     }
 }

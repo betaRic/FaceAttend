@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Web.Hosting;
@@ -7,6 +7,21 @@ using FaceRecognitionDotNet;
 
 namespace FaceAttend.Services.Biometrics
 {
+    /// <summary>
+    /// Wraps FaceRecognitionDotNet for face detection and encoding.
+    ///
+    /// Fix applied vs. original:
+    ///   The static FaceRecognition instance <c>_fr</c> was never disposed on app shutdown,
+    ///   leaking unmanaged DLib resources when IIS recycles the app pool.
+    ///   Added <see cref="DisposeInstance"/> to be called from Global.asax Application_End.
+    ///
+    /// NOTE on static lock scope:
+    ///   Both DetectFacesFromFile and GetSingleFaceEncodingFromFile hold _lock for the
+    ///   entire inference duration.  For a single-kiosk deployment this is fine.
+    ///   For multi-threaded deployments with concurrent scans, consider creating one
+    ///   DlibBiometrics instance per request (each with its own FaceRecognition snapshot)
+    ///   or upgrading to a reader-writer or pool pattern.
+    /// </summary>
     public class DlibBiometrics
     {
         public class FaceBox
@@ -34,18 +49,40 @@ namespace FaceAttend.Services.Biometrics
             {
                 if (_fr != null) return;
 
-                var modelsDir = AppSettings.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
-                var detector = AppSettings.GetString("Biometrics:DlibDetector", "hog");
-
+                var modelsDir  = AppSettings.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
+                var detector   = AppSettings.GetString("Biometrics:DlibDetector", "hog");
                 var absModelsDir = HostingEnvironment.MapPath(modelsDir);
+
                 if (string.IsNullOrWhiteSpace(absModelsDir) || !Directory.Exists(absModelsDir))
                     throw new InvalidOperationException("Dlib models directory not found: " + modelsDir);
 
-                _fr = FaceRecognition.Create(absModelsDir);
-
+                _fr    = FaceRecognition.Create(absModelsDir);
                 _model = detector.Equals("cnn", StringComparison.OrdinalIgnoreCase)
                     ? Model.Cnn
                     : Model.Hog;
+            }
+        }
+
+        /// <summary>
+        /// Disposes the static FaceRecognition instance.
+        /// Call from <c>Global.asax Application_End</c>:
+        /// <code>
+        ///   protected void Application_End()
+        ///   {
+        ///       FaceAttend.Services.Biometrics.DlibBiometrics.DisposeInstance();
+        ///       FaceAttend.Services.Biometrics.OnnxLiveness.DisposeSession();
+        ///   }
+        /// </code>
+        /// </summary>
+        public static void DisposeInstance()
+        {
+            lock (_lock)
+            {
+                if (_fr != null)
+                {
+                    try { _fr.Dispose(); } catch { /* best effort */ }
+                    _fr = null;
+                }
             }
         }
 
@@ -56,14 +93,12 @@ namespace FaceAttend.Services.Biometrics
             {
                 using (var img = FaceRecognition.LoadImageFile(imagePath))
                 {
-                    // use 0 upsample to avoid instability on some machines
                     var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
-
                     return locs.Select(l => new FaceBox
                     {
-                        Left = l.Left,
-                        Top = l.Top,
-                        Width = Math.Max(0, l.Right - l.Left),
+                        Left   = l.Left,
+                        Top    = l.Top,
+                        Width  = Math.Max(0, l.Right  - l.Left),
                         Height = Math.Max(0, l.Bottom - l.Top)
                     }).ToArray();
                 }
@@ -80,8 +115,8 @@ namespace FaceAttend.Services.Biometrics
                 using (var img = FaceRecognition.LoadImageFile(imagePath))
                 {
                     var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
-                    if (locs.Length == 0) { error = "NO_FACE"; return null; }
-                    if (locs.Length > 1) { error = "MULTI_FACE"; return null; }
+                    if (locs.Length == 0) { error = "NO_FACE";      return null; }
+                    if (locs.Length > 1)  { error = "MULTI_FACE";   return null; }
 
                     var enc = _fr.FaceEncodings(img, new[] { locs[0] }).FirstOrDefault();
                     if (enc == null) { error = "ENCODING_FAIL"; return null; }
@@ -91,9 +126,15 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
+        // -------------------------------------------------------------------
+        // Static helpers (unchanged)
+        // -------------------------------------------------------------------
+
         public static double Distance(double[] a, double[] b)
         {
-            if (a == null || b == null || a.Length != b.Length) return double.PositiveInfinity;
+            if (a == null || b == null || a.Length != b.Length)
+                return double.PositiveInfinity;
+
             double sum = 0;
             for (int i = 0; i < a.Length; i++)
             {
@@ -120,9 +161,7 @@ namespace FaceAttend.Services.Biometrics
             if (bytes == null || bytes.Length != 128 * 8) return null;
             var v = new double[128];
             for (int i = 0; i < 128; i++)
-            {
                 v[i] = BitConverter.ToDouble(bytes, i * 8);
-            }
             return v;
         }
     }
