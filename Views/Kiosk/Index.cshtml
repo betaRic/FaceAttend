@@ -15,12 +15,22 @@
 
     <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
 </head>
-<body data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
+<body data-app-base="@Url.Content("~/")" data-nextgen="@((System.Configuration.ConfigurationManager.AppSettings["Kiosk:UseNextGen"] ?? "false"))" data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
     @Html.AntiForgeryToken()
 
     <div id="kioskRoot">
         <video id="kioskVideo" playsinline autoplay muted></video>
         <canvas id="overlayCanvas"></canvas>
+
+        <!-- Idle overlay (no server calls until a face/motion is detected locally) -->
+        <div id="idleOverlay" class="idleOverlay hidden" aria-hidden="true">
+            <div class="idleCard">
+                <div class="idleBrand">FaceAttend</div>
+                <div class="idleDot" aria-hidden="true"></div>
+                <div class="idleTitle">Idle</div>
+                <div class="idleSub">Look at the camera to start.</div>
+            </div>
+        </div>
 
         <div id="topLeft">
             <div class="brand">FaceAttend</div>
@@ -34,6 +44,7 @@
 
         <div id="topRight">
             <div id="livenessLine">Live: --</div>
+            <div id="scanEtaLine">ETA: --</div>
         </div>
 
         <div id="centerBlock" class="hidden">
@@ -66,6 +77,7 @@
     </div>
 
     <script src="~/Scripts/jquery-3.7.1.min.js"></script>
+    <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
     <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
 </body>
 </html>

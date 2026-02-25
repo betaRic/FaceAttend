@@ -1,0 +1,159 @@
+@model FaceAttend.Areas.Admin.Models.AttendanceIndexVm
+@using System.Linq
+
+@{
+    ViewBag.Title = "Attendance Summary";
+
+    var exportSummaryUrl = Url.Action("ExportSummaryCsv", new
+    {
+        from       = Model.From,
+        to         = Model.To,
+        officeId   = Model.OfficeId,
+        department = Model.Employee
+    });
+
+    var backUrl = Url.Action("Index", new
+    {
+        from     = Model.From,
+        to       = Model.To,
+        officeId = Model.OfficeId,
+        employee = Model.Employee
+    });
+}
+
+@if (TempData["msg"] != null)
+{
+    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+<div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+    <div>
+        <h4 class="mb-1">Attendance Summary</h4>
+        <div class="text-muted small">
+            @if (!string.IsNullOrWhiteSpace(Model.ActiveRangeLabel))
+            { @Model.ActiveRangeLabel }
+            @if (Model.OfficeId.HasValue && Model.OfficeId.Value > 0)
+            { <span>&nbsp;&middot;&nbsp;Office filter active</span> }
+            @if (!string.IsNullOrWhiteSpace(Model.Employee))
+            { <span>&nbsp;&middot;&nbsp;Dept: @Model.Employee</span> }
+        </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+        <a class="btn btn-outline-secondary btn-sm" href="@backUrl">
+            <i class="fa-solid fa-arrow-left me-1"></i>Back
+        </a>
+        <a class="btn btn-outline-primary btn-sm" href="@exportSummaryUrl" target="_blank">
+            <i class="fa-solid fa-file-export me-1"></i>Export Summary CSV
+        </a>
+    </div>
+</div>
+
+<div class="alert alert-info d-flex align-items-start gap-2 mb-3 p-3">
+    <i class="fa-solid fa-circle-info mt-1 flex-shrink-0"></i>
+    <div class="small">
+        <strong>How this report works:</strong>
+        Each row is a local calendar day.
+        Hours are computed from first IN to last OUT.
+        Net hours may deduct lunch after the threshold.
+        If an employee scanned IN but did not scan OUT, the status shows <strong>Open shift</strong>.
+        This report is limited to <strong>31 days</strong> per query.
+    </div>
+</div>
+
+@if (Model.EmployeeSummary == null || !Model.EmployeeSummary.Any())
+{
+    <div class="admin-card">
+        <div class="card-body text-muted py-4">
+            No attendance records for the selected range and filters.
+            Try broadening the date range or removing office/department filters.
+        </div>
+    </div>
+}
+else
+{
+    foreach (var emp in Model.EmployeeSummary)
+    {
+        <div class="admin-card mb-3">
+            <div class="card-body">
+
+                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+                    <div class="d-flex align-items-center flex-wrap gap-2">
+                        <span class="fw-semibold">@emp.EmployeeFullName</span>
+                        <span class="text-muted small">@emp.EmployeeId</span>
+                        @if (!string.IsNullOrWhiteSpace(emp.Department))
+                        {
+                            <span class="badge bg-light text-dark border">@emp.Department</span>
+                        }
+                    </div>
+                    <div class="text-muted small">
+                        @emp.Days.Count day@(emp.Days.Count == 1 ? "" : "s") in range
+                        @{
+                            double totalH = emp.Days
+                                .Where(d => (d.HoursNet ?? d.HoursRaw).HasValue)
+                                .Sum(d => (d.HoursNet ?? d.HoursRaw).Value);
+                            if (totalH > 0)
+                            {
+                                <span>&nbsp;&middot;&nbsp;@totalH.ToString("0.1") h net</span>
+                            }
+                        }
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width:120px;">Date</th>
+                                <th style="width:110px;">First IN</th>
+                                <th style="width:110px;">Last OUT</th>
+                                <th style="width:90px;">Hours</th>
+                                <th style="width:90px;">Late</th>
+                                <th style="width:110px;">Undertime</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var day in emp.Days)
+                            {
+                                bool hasIn = day.FirstInUtc.HasValue;
+                                bool hasOut = day.LastOutUtc.HasValue;
+
+                                <tr>
+                                    <td class="small fw-semibold text-nowrap">@day.DateLabel</td>
+                                    <td class="small">
+                                        @if (hasIn)
+                                        { <span class="badge bg-success">@day.FirstInDisplay</span> }
+                                        else
+                                        { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td class="small">
+                                        @if (hasOut)
+                                        { <span class="badge bg-secondary">@day.LastOutDisplay</span> }
+                                        else
+                                        { <span class="text-muted">—</span> }
+                                    </td>
+                                    <td class="small @(((day.HoursNet ?? day.HoursRaw).HasValue) ? "fw-semibold" : "text-muted")">@day.HoursDisplay</td>
+                                    <td class="small">@day.LateDisplay</td>
+                                    <td class="small">@day.UndertimeDisplay</td>
+                                    <td class="small">
+                                        <span class="badge @(day.StatusBadgeClass ?? "bg-light text-dark border")">@(day.StatusLabel ?? "—")</span>
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    }
+
+    <div class="text-muted small mt-1 mb-4">
+        Showing @Model.EmployeeSummary.Count employee@(Model.EmployeeSummary.Count == 1 ? "" : "s")
+        &nbsp;&middot;&nbsp;
+        Report limited to 31 days per query
+        &nbsp;&middot;&nbsp;
+        <a href="@exportSummaryUrl" target="_blank">Export as CSV</a>
+    </div>
+}

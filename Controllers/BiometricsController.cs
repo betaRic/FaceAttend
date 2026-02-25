@@ -1,12 +1,12 @@
 using System;
-using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web;
-using System.Web.Hosting;
 using System.Web.Mvc;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Security;   // SecureFileUpload (P2-F2)
 
 namespace FaceAttend.Controllers
 {
@@ -26,26 +26,36 @@ namespace FaceAttend.Controllers
             if (image.ContentLength > max)
                 return Json(new { ok = false, error = "TOO_LARGE" });
 
-            string path = null;
+            string path          = null;
+            string processedPath = null;
+            bool   isProcessed   = false;
             try
             {
-                path = SaveTemp(image);
+                // P2-F2: centralised file upload.
+                path = SecureFileUpload.SaveTemp(image, "u_", max);
+
+                // P3-F2: Resize large images before passing to Dlib HOG.
+                // If the image is within Biometrics:MaxImageDimension (default 1280px)
+                // on both axes, PreprocessForDetection returns the original path unchanged
+                // and sets isProcessed = false. No extra file is created in that case.
+                processedPath = ImagePreprocessor.PreprocessForDetection(
+                    path, "u_", out isProcessed);
 
                 var dlib  = new DlibBiometrics();
-                var faces = dlib.DetectFacesFromFile(path);
+                var faces = dlib.DetectFacesFromFile(processedPath);
                 var count = faces == null ? 0 : faces.Length;
 
                 if (count != 1)
                     return Json(new
                     {
-                        ok = true,
+                        ok         = true,
                         count,
                         liveness   = (float?)null,
                         livenessOk = false
                     });
 
                 var live   = new OnnxLiveness();
-                var scored = live.ScoreFromFile(path, faces[0]);
+                var scored = live.ScoreFromFile(processedPath, faces[0]);
                 if (!scored.Ok)
                     return Json(new { ok = false, error = scored.Error, count = 1 });
 
@@ -54,8 +64,8 @@ namespace FaceAttend.Controllers
 
                 return Json(new
                 {
-                    ok = true,
-                    count = 1,
+                    ok         = true,
+                    count      = 1,
                     liveness   = p,
                     livenessOk = p >= th
                 });
@@ -66,7 +76,10 @@ namespace FaceAttend.Controllers
             }
             finally
             {
-                TryDelete(path);
+                // P3-F2: Delete the resized temp if one was created.
+                ImagePreprocessor.Cleanup(processedPath, path);
+                // P2-F2: Delete the original upload temp.
+                SecureFileUpload.TryDelete(path);
             }
         }
 
@@ -79,67 +92,130 @@ namespace FaceAttend.Controllers
             if (string.IsNullOrWhiteSpace(employeeId))
                 return Json(new { ok = false, error = "NO_EMPLOYEE_ID" });
 
-            if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
+            // P1-F5: Validate employeeId against configured pattern and length limit.
+            var maxLen = AppSettings.GetInt("Biometrics:EmployeeIdMaxLen", 20);
+            var pattern = AppSettings.GetString(
+                "Biometrics:EmployeeIdPattern", @"^[A-Z0-9_-]{1,20}$");
 
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
+            if (employeeId.Length > maxLen)
+                return Json(new { ok = false, error = "EMPLOYEE_ID_TOO_LONG" });
 
-            string path = null;
+            if (!string.IsNullOrWhiteSpace(pattern) &&
+                !Regex.IsMatch(employeeId, pattern, RegexOptions.CultureInvariant))
+                return Json(new { ok = false, error = "EMPLOYEE_ID_INVALID_FORMAT" });
+
+            // Day 3: multi-encoding enrollment.
+            // Allow multiple uploaded images under the same field name ("image").
+            // Backward compatible: if only one image is posted, it still works.
+            var maxBytes = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var maxImages = AppSettings.GetInt("Biometrics:Enroll:MaxImages", 5);
+
+            var files = new System.Collections.Generic.List<HttpPostedFileBase>();
             try
             {
-                path = SaveTemp(image);
-
-                var dlib  = new DlibBiometrics();
-                var faces = dlib.DetectFacesFromFile(path);
-
-                if (faces == null || faces.Length == 0)
-                    return Json(new { ok = false, error = "NO_FACE" });
-                if (faces.Length > 1)
-                    return Json(new { ok = false, error = "MULTI_FACE" });
-
-                // Server-side liveness enforcement.
-                var live   = new OnnxLiveness();
-                var scored = live.ScoreFromFile(path, faces[0]);
-                if (!scored.Ok)
-                    return Json(new { ok = false, error = scored.Error });
-
-                var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
-                var p  = scored.Probability ?? 0f;
-                if (p < th)
-                    return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p });
-
-                string encErr;
-                var vec = dlib.GetSingleFaceEncodingFromFile(path, out encErr);
-                if (vec == null)
-                    return Json(new { ok = false, error = "ENCODING_FAIL: " + encErr });
-
-                var tol = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
-
-                using (var db = new FaceAttendDBEntities())
+                if (Request != null && Request.Files != null && Request.Files.Count > 0)
                 {
-                    var emp = db.Employees.FirstOrDefault(e => e.EmployeeId == employeeId);
-                    if (emp == null)
-                        return Json(new { ok = false, error = "EMPLOYEE_NOT_FOUND" });
+                    for (int i = 0; i < Request.Files.Count; i++)
+                    {
+                        var f = Request.Files[i];
+                        if (f == null || f.ContentLength <= 0) continue;
+                        files.Add(f);
+                        if (files.Count >= maxImages) break;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore and fall back to the single parameter.
+            }
 
-                    // Duplicate-face check:
-                    // Iterate every enrolled employee EXCEPT the one being re-enrolled.
-                    // This allows the employee to update their own face (re-enrollment)
-                    // while preventing them from registering a face that already belongs
-                    // to a different employee (impersonation).
-                    //
-                    // The `continue` on the matching employeeId is intentional and correct:
-                    // it skips the employee's OWN existing encoding so re-enrollment is
-                    // always allowed, but every OTHER employee's encoding is still checked.
-                    var entries = EmployeeFaceIndex.GetEntries(db);
+            if (files.Count == 0)
+            {
+                if (image == null || image.ContentLength <= 0)
+                    return Json(new { ok = false, error = "NO_IMAGE" });
+
+                files.Add(image);
+            }
+
+            foreach (var f in files)
+            {
+                if (f.ContentLength > maxBytes)
+                    return Json(new { ok = false, error = "TOO_LARGE" });
+            }
+
+            var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            var tol = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
+
+            var dlib = new DlibBiometrics();
+            var live = new OnnxLiveness();
+
+            var candidates = new System.Collections.Generic.List<EnrollCandidate>();
+
+            foreach (var f in files)
+            {
+                if (candidates.Count >= maxImages) break;
+
+                string path = null;
+                string processedPath = null;
+                bool isProcessed = false;
+
+                try
+                {
+                    path = SecureFileUpload.SaveTemp(f, "u_", maxBytes);
+                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "u_", out isProcessed);
+
+                    var faces = dlib.DetectFacesFromFile(processedPath);
+                    if (faces == null || faces.Length == 0) continue;
+                    if (faces.Length > 1) continue;
+
+                    var scored = live.ScoreFromFile(processedPath, faces[0]);
+                    if (!scored.Ok) continue;
+
+                    var p = scored.Probability ?? 0f;
+                    if (p < th) continue;
+
+                    string encErr;
+                    var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
+                    if (vec == null) continue;
+
+                    var area = Math.Max(0, faces[0].Width) * Math.Max(0, faces[0].Height);
+                    candidates.Add(new EnrollCandidate { Vec = vec, Liveness = p, Area = area });
+                }
+                catch
+                {
+                    // Skip bad frames.
+                }
+                finally
+                {
+                    ImagePreprocessor.Cleanup(processedPath, path);
+                    SecureFileUpload.TryDelete(path);
+                }
+            }
+
+            if (candidates.Count == 0)
+                return Json(new { ok = false, error = "NO_GOOD_FRAME" });
+
+            candidates = candidates
+                .OrderByDescending(c => c.Liveness)
+                .ThenByDescending(c => c.Area)
+                .Take(maxImages)
+                .ToList();
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var emp = db.Employees.FirstOrDefault(e => e.EmployeeId == employeeId);
+                if (emp == null)
+                    return Json(new { ok = false, error = "EMPLOYEE_NOT_FOUND" });
+
+                var entries = EmployeeFaceIndex.GetEntries(db);
+                foreach (var cand in candidates)
+                {
                     foreach (var e in entries)
                     {
-                        if (string.Equals(e.EmployeeId, employeeId,
-                                StringComparison.OrdinalIgnoreCase))
-                            continue;   // skip self — allows re-enrollment
+                        if (string.Equals(e.EmployeeId, employeeId, StringComparison.OrdinalIgnoreCase))
+                            continue;
 
-                        var dist = DlibBiometrics.Distance(vec, e.Vec);
+                        var dist = DlibBiometrics.Distance(cand.Vec, e.Vec);
                         if (dist <= tol)
                         {
                             return Json(new
@@ -151,79 +227,56 @@ namespace FaceAttend.Controllers
                             });
                         }
                     }
-
-                    var bytes = DlibBiometrics.EncodeToBytes(vec);
-                    emp.FaceEncodingBase64 = Convert.ToBase64String(bytes);
-                    emp.LastModifiedDate   = DateTime.UtcNow;
-                    emp.ModifiedBy         = "ADMIN";
-                    db.SaveChanges();
-
-                    EmployeeFaceIndex.Invalidate();
                 }
 
-                return Json(new { ok = true, liveness = p });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { ok = false, error = "ENROLL_ERROR: " + ex.Message });
-            }
-            finally
-            {
-                TryDelete(path);
+                var bestVec = candidates[0].Vec;
+                var bestBytes = DlibBiometrics.EncodeToBytes(bestVec);
+                emp.FaceEncodingBase64 = Convert.ToBase64String(bestBytes);
+                emp.EnrolledDate = emp.EnrolledDate ?? DateTime.UtcNow;
+                emp.LastModifiedDate = DateTime.UtcNow;
+                emp.ModifiedBy = "ADMIN";
+
+                var encList = candidates
+                    .Select(c => Convert.ToBase64String(DlibBiometrics.EncodeToBytes(c.Vec)))
+                    .ToList();
+
+                var encJson = Newtonsoft.Json.JsonConvert.SerializeObject(encList);
+
+                using (var tx = db.Database.BeginTransaction())
+                {
+                    db.SaveChanges();
+
+                    try
+                    {
+                        db.Database.ExecuteSqlCommand(
+                            "UPDATE Employees SET FaceEncodingsJson = @p0 WHERE EmployeeId = @p1",
+                            encJson,
+                            employeeId);
+                    }
+                    catch
+                    {
+                        // Column may not exist yet.
+                    }
+
+                    tx.Commit();
+                }
+
+                EmployeeFaceIndex.Invalidate();
+
+                return Json(new { ok = true, liveness = candidates[0].Liveness, savedVectors = encList.Count });
             }
         }
 
-        // -------------------------------------------------------------------
-        // Helpers
-        // -------------------------------------------------------------------
-
-        /// <summary>
-        /// Saves the uploaded image to a uniquely-named temp file.
-        ///
-        /// FIX (Path Traversal): the file name is generated entirely from a GUID —
-        /// the client-supplied filename is never incorporated into the path.
-        /// The resolved path is verified to be within the expected directory as a
-        /// defense-in-depth measure.
-        /// </summary>
-        private static string SaveTemp(HttpPostedFileBase image)
+        private class EnrollCandidate
         {
-            var tmpRel = "~/App_Data/tmp";
-            var tmp    = HostingEnvironment.MapPath(tmpRel);
-            if (string.IsNullOrWhiteSpace(tmp))
-                throw new InvalidOperationException("TMP_DIR_NOT_FOUND");
-
-            var expectedBase = Path.GetFullPath(tmp);
-            Directory.CreateDirectory(expectedBase);
-
-            // Derive extension from MIME type, not from the client filename.
-            string ext = ".jpg";
-            var ct = (image.ContentType ?? "").ToLowerInvariant().Trim();
-            if (ct == "image/png") ext = ".png";
-
-            var fileName     = "u_" + Guid.NewGuid().ToString("N") + ext;
-            var fullPath     = Path.Combine(expectedBase, fileName);
-            var resolvedPath = Path.GetFullPath(fullPath);
-
-            // Guard: ensure the path is strictly inside the temp directory.
-            if (!resolvedPath.StartsWith(
-                    expectedBase + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("PATH_TRAVERSAL_DETECTED");
-            }
-
-            image.SaveAs(resolvedPath);
-            return resolvedPath;
+            public double[] Vec { get; set; }
+            public float Liveness { get; set; }
+            public int Area { get; set; }
         }
 
-        private static void TryDelete(string path)
-        {
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
-                    System.IO.File.Delete(path);
-            }
-            catch { }
-        }
+
+        // All file handling goes through SecureFileUpload (P2-F2).
+        // ImagePreprocessor handles resize cleanup (P3-F2).
+        // No private SaveTemp() or TryDelete() — removed in P2-F2.
     }
 }

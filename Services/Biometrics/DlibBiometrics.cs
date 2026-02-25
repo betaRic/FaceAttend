@@ -126,7 +126,89 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        // -------------------------------------------------------------------
+        
+        /// <summary>
+        /// Detects exactly one face and returns both its bounding box and the underlying
+        /// FaceRecognitionDotNet <see cref="Location"/>. Use this to avoid running
+        /// FaceLocations twice in the kiosk pipeline.
+        /// </summary>
+        public bool TryDetectSingleFaceFromFile(
+            string imagePath,
+            out FaceBox faceBox,
+            out Location faceLocation,
+            out string error)
+        {
+            faceBox = null;
+            faceLocation = default(Location);
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                error = "BAD_IMAGE_PATH";
+                return false;
+            }
+
+            EnsureInit();
+
+            lock (_lock)
+            {
+                using (var img = FaceRecognition.LoadImageFile(imagePath))
+                {
+                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
+                    if (locs.Length == 0) { error = "NO_FACE"; return false; }
+                    if (locs.Length > 1)  { error = "MULTI_FACE"; return false; }
+
+                    var loc = locs[0];
+                    faceLocation = loc;
+
+                    faceBox = new FaceBox
+                    {
+                        Left   = loc.Left,
+                        Top    = loc.Top,
+                        Width  = Math.Max(0, loc.Right - loc.Left),
+                        Height = Math.Max(0, loc.Bottom - loc.Top)
+                    };
+
+                    return true;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Encodes a face using a known <see cref="Location"/> (skips FaceLocations).
+        /// Call this after liveness passes to avoid expensive work on spoof frames.
+        /// </summary>
+        public bool TryEncodeFromFileWithLocation(
+            string imagePath,
+            Location faceLocation,
+            out double[] embedding,
+            out string error)
+        {
+            embedding = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                error = "BAD_IMAGE_PATH";
+                return false;
+            }
+
+            EnsureInit();
+
+            lock (_lock)
+            {
+                using (var img = FaceRecognition.LoadImageFile(imagePath))
+                {
+                    var enc = _fr.FaceEncodings(img, new[] { faceLocation }).FirstOrDefault();
+                    if (enc == null) { error = "ENCODING_FAIL"; return false; }
+
+                    embedding = enc.GetRawEncoding();
+                    return true;
+                }
+            }
+        }
+
+// -------------------------------------------------------------------
         // Static helpers (unchanged)
         // -------------------------------------------------------------------
 

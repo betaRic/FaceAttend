@@ -1,12 +1,12 @@
 using System;
-using System.IO;
 using System.Linq;
+using System.Diagnostics;
 using System.Web;
-using System.Web.Hosting;
 using System.Web.Mvc;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Security;
 
 namespace FaceAttend.Controllers
 {
@@ -15,15 +15,11 @@ namespace FaceAttend.Controllers
         [HttpGet]
         public ActionResult Index(string returnUrl, int? unlock)
         {
-            // FIX (Open Redirect): sanitize before storing in ViewBag.
             ViewBag.ReturnUrl = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
             ViewBag.UnlockHint = (unlock ?? 0) == 1;
             return View();
         }
 
-        // FIX: Was public unauthenticated GET — exposed full GPS coordinates of
-        // every active office to anonymous clients.  Now requires admin auth and
-        // returns only what the kiosk UI actually needs.
         [HttpGet]
         [AdminAuthorize]
         public ActionResult ActiveOffices()
@@ -33,7 +29,7 @@ namespace FaceAttend.Controllers
                 var list = db.Offices
                     .Where(o => o.IsActive)
                     .OrderBy(o => o.Name)
-                    .Select(o => new { id = o.Id, name = o.Name })   // omit radius/GPS from response
+                    .Select(o => new { id = o.Id, name = o.Name })
                     .ToList();
 
                 return Json(new { ok = true, offices = list }, JsonRequestBehavior.AllowGet);
@@ -55,13 +51,7 @@ namespace FaceAttend.Controllers
                         gpsRequired = false,
                         allowed = true,
                         officeId = fallback == null ? (int?)null : fallback.Id,
-                        officeName = fallback == null ? null : fallback.Name,
-                        office = fallback == null ? null : new
-                        {
-                            id = fallback.Id,
-                            name = fallback.Name,
-                            radiusMeters = fallback.RadiusMeters
-                        }
+                        officeName = fallback == null ? null : fallback.Name
                     });
                 }
 
@@ -101,24 +91,18 @@ namespace FaceAttend.Controllers
                     allowed = true,
                     reason = "OK",
                     officeId = pick.Office.Id,
-                    officeName = pick.Office.Name,
-                    office = new
-                    {
-                        id = pick.Office.Id,
-                        name = pick.Office.Name,
-                        radiusMeters = pick.RadiusMeters,
-                        distanceMeters = pick.DistanceMeters
-                    }
+                    officeName = pick.Office.Name
                 });
             }
         }
 
-        // FIX: Rate-limited — 30 requests per minute per IP.
+        // ------------------------------------------------------------
+        // Cheap face detection endpoint (no liveness)
+        // ------------------------------------------------------------
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RateLimit(Name = "KioskScanFrame", MaxRequests = 30, WindowSeconds = 60)]
-        public ActionResult ScanFrame(
-            double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
+        [RateLimit(Name = "KioskDetectFace", MaxRequests = 180, WindowSeconds = 60, Burst = 60)]
+        public ActionResult DetectFace(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
         {
             if (image == null || image.ContentLength <= 0)
                 return Json(new { ok = false, error = "NO_IMAGE" });
@@ -128,15 +112,14 @@ namespace FaceAttend.Controllers
                 return Json(new { ok = false, error = "TOO_LARGE" });
 
             string path = null;
+            string processedPath = null;
+
             try
             {
                 using (var db = new FaceAttendDBEntities())
                 {
                     bool gpsRequired = IsGpsRequired();
-
                     Office office = null;
-                    int radius = 0;
-                    double dist = 0;
 
                     if (gpsRequired)
                     {
@@ -148,9 +131,12 @@ namespace FaceAttend.Controllers
                                 gpsRequired = true,
                                 allowed = false,
                                 reason = "GPS_REQUIRED",
-                                faceCount = 0, count = 0,
-                                livenessScore = (float?)null, liveness = (float?)null,
-                                livenessPass = false, livenessOk = false,
+                                faceCount = 0,
+                                count = 0,
+                                livenessScore = (float?)null,
+                                liveness = (float?)null,
+                                livenessPass = false,
+                                livenessOk = false,
                                 faceBox = (object)null
                             });
                         }
@@ -166,33 +152,171 @@ namespace FaceAttend.Controllers
                                 reason = pick.Reason,
                                 requiredAccuracy = pick.RequiredAccuracy,
                                 accuracy = accuracy,
-                                faceCount = 0, count = 0,
-                                livenessScore = (float?)null, liveness = (float?)null,
-                                livenessPass = false, livenessOk = false,
+                                faceCount = 0,
+                                count = 0,
+                                livenessScore = (float?)null,
+                                liveness = (float?)null,
+                                livenessPass = false,
+                                livenessOk = false,
                                 faceBox = (object)null
                             });
                         }
 
                         office = pick.Office;
-                        radius = pick.RadiusMeters;
-                        dist = pick.DistanceMeters;
                     }
 
-                    path = SaveTemp(image, "k_");
+                    path = SecureFileUpload.SaveTemp(image, "k_", max);
+
+                    bool isProcessed;
+                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "k_", out isProcessed);
 
                     int imgW = 0, imgH = 0;
                     try
                     {
-                        using (var bmp = new System.Drawing.Bitmap(path))
+                        using (var bmp = new System.Drawing.Bitmap(processedPath))
                         {
                             imgW = bmp.Width;
                             imgH = bmp.Height;
                         }
                     }
-                    catch { /* non-fatal — UI box will just be absent */ }
+                    catch { }
 
                     var dlib = new DlibBiometrics();
-                    var faces = dlib.DetectFacesFromFile(path);
+                    var faces = dlib.DetectFacesFromFile(processedPath);
+                    var count = faces == null ? 0 : faces.Length;
+
+                    DlibBiometrics.FaceBox best = null;
+                    if (faces != null && faces.Length > 0)
+                        best = faces.OrderByDescending(f => (long)f.Width * f.Height).FirstOrDefault();
+
+                    object faceBox = null;
+                    if (best != null)
+                        faceBox = new { x = best.Left, y = best.Top, w = best.Width, h = best.Height, imgW, imgH };
+
+                    return Json(new
+                    {
+                        ok = true,
+                        gpsRequired,
+                        allowed = true,
+                        officeId = office == null ? (int?)null : office.Id,
+                        officeName = office == null ? null : office.Name,
+                        faceCount = count,
+                        count,
+                        livenessScore = (float?)null,
+                        liveness = (float?)null,
+                        livenessPass = false,
+                        livenessOk = false,
+                        faceBox
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                var baseEx = ex.GetBaseException();
+                return Json(new
+                {
+                    ok = false,
+                    error = "SCAN_ERROR",
+                    detail = ex.Message,
+                    inner = baseEx == null ? null : baseEx.Message
+                });
+            }
+            finally
+            {
+                ImagePreprocessor.Cleanup(processedPath, path);
+                SecureFileUpload.TryDelete(path);
+            }
+        }
+
+        // ------------------------------------------------------------
+        // Liveness endpoint (heavier). Called only when face is stable.
+        // ------------------------------------------------------------
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [RateLimit(Name = "KioskScanFrame", MaxRequests = 120, WindowSeconds = 60, Burst = 40)]
+        public ActionResult ScanFrame(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
+        {
+            if (image == null || image.ContentLength <= 0)
+                return Json(new { ok = false, error = "NO_IMAGE" });
+
+            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            if (image.ContentLength > max)
+                return Json(new { ok = false, error = "TOO_LARGE" });
+
+            string path = null;
+            string processedPath = null;
+
+            try
+            {
+                using (var db = new FaceAttendDBEntities())
+                {
+                    bool gpsRequired = IsGpsRequired();
+                    Office office = null;
+
+                    if (gpsRequired)
+                    {
+                        if (!lat.HasValue || !lon.HasValue)
+                        {
+                            return Json(new
+                            {
+                                ok = true,
+                                gpsRequired = true,
+                                allowed = false,
+                                reason = "GPS_REQUIRED",
+                                faceCount = 0,
+                                count = 0,
+                                livenessScore = (float?)null,
+                                liveness = (float?)null,
+                                livenessPass = false,
+                                livenessOk = false,
+                                livenessThreshold = (float?)null,
+                                faceBox = (object)null
+                            });
+                        }
+
+                        var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
+                        if (!pick.Allowed)
+                        {
+                            return Json(new
+                            {
+                                ok = true,
+                                gpsRequired = true,
+                                allowed = false,
+                                reason = pick.Reason,
+                                requiredAccuracy = pick.RequiredAccuracy,
+                                accuracy = accuracy,
+                                faceCount = 0,
+                                count = 0,
+                                livenessScore = (float?)null,
+                                liveness = (float?)null,
+                                livenessPass = false,
+                                livenessOk = false,
+                                livenessThreshold = (float?)null,
+                                faceBox = (object)null
+                            });
+                        }
+
+                        office = pick.Office;
+                    }
+
+                    path = SecureFileUpload.SaveTemp(image, "k_", max);
+
+                    bool isProcessed;
+                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "k_", out isProcessed);
+
+                    int imgW = 0, imgH = 0;
+                    try
+                    {
+                        using (var bmp = new System.Drawing.Bitmap(processedPath))
+                        {
+                            imgW = bmp.Width;
+                            imgH = bmp.Height;
+                        }
+                    }
+                    catch { }
+
+                    var dlib = new DlibBiometrics();
+                    var faces = dlib.DetectFacesFromFile(processedPath);
                     var count = faces == null ? 0 : faces.Length;
 
                     DlibBiometrics.FaceBox best = null;
@@ -212,22 +336,26 @@ namespace FaceAttend.Controllers
                             allowed = true,
                             officeId = office == null ? (int?)null : office.Id,
                             officeName = office == null ? null : office.Name,
-                            office = office == null ? null : new { id = office.Id, name = office.Name, radiusMeters = radius, distanceMeters = dist },
-                            faceCount = count, count,
-                            livenessScore = (float?)null, liveness = (float?)null,
-                            livenessPass = false, livenessOk = false,
+                            faceCount = count,
+                            count,
+                            livenessScore = (float?)null,
+                            liveness = (float?)null,
+                            livenessPass = false,
+                            livenessOk = false,
+                            livenessThreshold = (float?)null,
                             faceBox
                         });
                     }
 
                     var live = new OnnxLiveness();
-                    var scored = live.ScoreFromFile(path, faces[0]);
+                    var scored = live.ScoreFromFile(processedPath, faces[0]);
                     if (!scored.Ok)
                         return Json(new { ok = false, error = scored.Error, count = 1 });
 
                     var th = (float)SystemConfigService.GetDouble(
                         db, "Biometrics:LivenessThreshold",
                         AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
+
                     var p = scored.Probability ?? 0f;
 
                     return Json(new
@@ -237,10 +365,13 @@ namespace FaceAttend.Controllers
                         allowed = true,
                         officeId = office == null ? (int?)null : office.Id,
                         officeName = office == null ? null : office.Name,
-                        office = office == null ? null : new { id = office.Id, name = office.Name, radiusMeters = radius, distanceMeters = dist },
-                        faceCount = 1, count = 1,
-                        livenessScore = p, liveness = p,
-                        livenessPass = p >= th, livenessOk = p >= th,
+                        faceCount = 1,
+                        count = 1,
+                        livenessScore = p,
+                        liveness = p,
+                        livenessPass = p >= th,
+                        livenessOk = p >= th,
+                        livenessThreshold = th,
                         faceBox
                     });
                 }
@@ -258,25 +389,48 @@ namespace FaceAttend.Controllers
             }
             finally
             {
-                TryDelete(path);
+                ImagePreprocessor.Cleanup(processedPath, path);
+                SecureFileUpload.TryDelete(path);
             }
         }
 
-        // FIX: Rate-limited — 10 requests per minute per IP.
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RateLimit(Name = "KioskScanAttendance", MaxRequests = 10, WindowSeconds = 60)]
-        public ActionResult ScanAttendance(
-            double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
+        [RateLimit(Name = "KioskAttend", MaxRequests = 20, WindowSeconds = 60, Burst = 10)]
+        public ActionResult Attend(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
         {
+            // Feature flag / rollback
+            if (!AppSettings.GetBool("Kiosk:UseNextGen", false))
+                return Json(new { ok = false, error = "NEXTGEN_DISABLED" });
+
+            return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult ScanAttendance(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
+        {
+            return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
+
+        }
+
+        
+        private ActionResult ScanAttendanceCore(double? lat, double? lon, double? accuracy, HttpPostedFileBase image, bool includePerfTimings)
+        {
+            var sw = Stopwatch.StartNew();
+            var timings = new System.Collections.Generic.Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+            System.Action<string> mark = key => { if (includePerfTimings) timings[key] = sw.ElapsedMilliseconds; };
+
             if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
+                return Json(new { ok = false, error = "NO_IMAGE", timings = includePerfTimings ? timings : null });
 
             var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
             if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
+                return Json(new { ok = false, error = "TOO_LARGE", timings = includePerfTimings ? timings : null });
 
             string path = null;
+            string processedPath = null;
+
             try
             {
                 using (var db = new FaceAttendDBEntities())
@@ -289,11 +443,11 @@ namespace FaceAttend.Controllers
                     if (gpsRequired)
                     {
                         if (!lat.HasValue || !lon.HasValue)
-                            return Json(new { ok = false, error = "GPS_REQUIRED" });
+                            return Json(new { ok = false, error = "GPS_REQUIRED", timings = includePerfTimings ? timings : null });
 
                         var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
                         if (!pick.Allowed)
-                            return Json(new { ok = false, error = pick.Reason });
+                            return Json(new { ok = false, error = pick.Reason, timings = includePerfTimings ? timings : null });
 
                         office = pick.Office;
                         locationVerified = true;
@@ -306,64 +460,111 @@ namespace FaceAttend.Controllers
                     }
 
                     if (office == null)
-                        return Json(new { ok = false, error = "NO_OFFICES" });
+                        return Json(new { ok = false, error = "NO_OFFICES", timings = includePerfTimings ? timings : null });
 
-                    path = SaveTemp(image, "k_");
+                    path = SecureFileUpload.SaveTemp(image, "k_", max);
+                    mark("saved_ms");
+
+                    bool isProcessed;
+                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "k_", out isProcessed);
+                    mark("preprocess_ms");
 
                     var dlib = new DlibBiometrics();
-                    var faces = dlib.DetectFacesFromFile(path);
-                    var count = faces == null ? 0 : faces.Length;
-                    if (count == 0) return Json(new { ok = false, error = "NO_FACE" });
-                    if (count > 1) return Json(new { ok = false, error = "MULTI_FACE" });
 
+                    // Detect exactly one face (no double detection later)
+                    DlibBiometrics.FaceBox faceBox;
+                    FaceRecognitionDotNet.Location faceLoc;
+                    string faceErr;
+
+                    if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLoc, out faceErr))
+                        return Json(new { ok = false, error = faceErr ?? "FACE_FAIL", timings = includePerfTimings ? timings : null });
+
+                    mark("dlib_detect_ms");
+
+                    // Liveness (server truth)
                     var live = new OnnxLiveness();
-                    var scored = live.ScoreFromFile(path, faces[0]);
-                    if (!scored.Ok)
-                        return Json(new { ok = false, error = scored.Error });
+                    var scored = live.ScoreFromFile(processedPath, faceBox);
+                    mark("liveness_ms");
 
-                    var liveTh = (float)SystemConfigService.GetDouble(
-                        db, "Biometrics:LivenessThreshold",
+                    if (!scored.Ok)
+                        return Json(new { ok = false, error = scored.Error, timings = includePerfTimings ? timings : null });
+
+                    var liveTh = (float)SystemConfigService.GetDoubleCached(
+                        "Biometrics:LivenessThreshold",
                         AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
+
                     var p = scored.Probability ?? 0f;
                     if (p < liveTh)
-                        return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p, threshold = liveTh });
+                        return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p, threshold = liveTh, timings = includePerfTimings ? timings : null });
 
+                    // Encode using known location (skips FaceLocations)
+                    double[] vec;
                     string encErr;
-                    var vec = dlib.GetSingleFaceEncodingFromFile(path, out encErr);
-                    if (vec == null)
-                        return Json(new { ok = false, error = "ENCODING_FAIL", detail = encErr });
+                    if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encErr) || vec == null)
+                        return Json(new { ok = false, error = "ENCODING_FAIL", detail = encErr, timings = includePerfTimings ? timings : null });
+
+                    mark("dlib_encode_ms");
 
                     var tolFallback = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
-                    var tol = SystemConfigService.GetDouble(db, "Biometrics:DlibTolerance",
-                                  SystemConfigService.GetDouble(db, "DlibTolerance", tolFallback));
+                    var tol = SystemConfigService.GetDoubleCached(
+                        "Biometrics:DlibTolerance",
+                        SystemConfigService.GetDoubleCached("DlibTolerance", tolFallback));
 
-                    var entries = EmployeeFaceIndex.GetEntries(db);
-                    if (entries == null || entries.Count == 0)
-                        return Json(new { ok = false, error = "NO_ENROLLED_EMPLOYEES" });
-
-                    EmployeeFaceIndex.Entry best = null;
-                    double bestDist = double.PositiveInfinity;
-                    foreach (var e in entries)
+                    double brightness = 128.0;
+                    int imgWidth = 0;
+                    try
                     {
-                        var d = DlibBiometrics.Distance(vec, e.Vec);
-                        if (d < bestDist) { bestDist = d; best = e; }
+                        using (var bmp = new System.Drawing.Bitmap(processedPath))
+                        {
+                            imgWidth = bmp.Width;
+                            long sum = 0;
+                            int samples = 0;
+                            for (int y = 0; y < bmp.Height; y += 8)
+                            for (int x = 0; x < bmp.Width; x += 8)
+                            {
+                                var px = bmp.GetPixel(x, y);
+                                sum += (px.R + px.G + px.B) / 3;
+                                samples++;
+                            }
+                            if (samples > 0) brightness = (double)sum / samples;
+                        }
+                    }
+                    catch { }
+
+                    var adaptiveTolEnabled = AppSettings.GetBool("Biometrics:FaceMatchTunerEnabled", false);
+                    if (adaptiveTolEnabled)
+                    {
+                        var adaptive = FaceMatchTuner.CalculateAdaptiveThreshold(
+                            baseTolerance: tol,
+                            imageBrightness: brightness,
+                            faceDetectionScore: 1.0,
+                            isMobile: IsGpsRequired(),
+                            imageWidth: imgWidth);
+
+                        tol = adaptive.AdjustedTolerance;
                     }
 
-                    if (best == null || bestDist > tol)
-                        return Json(new { ok = false, error = "NO_MATCH", distance = bestDist, threshold = tol });
+                    double bestDist;
+                    var bestEmpId = EmployeeFaceIndex.FindNearest(db, vec, tol, out bestDist);
+                    mark("match_ms");
 
-                    var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == best.EmployeeId && x.IsActive);
+                    if (bestEmpId == null || bestDist > tol)
+                        return Json(new { ok = false, error = "NO_MATCH", distance = bestDist, threshold = tol, timings = includePerfTimings ? timings : null });
+
+                    var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == bestEmpId && x.IsActive);
                     if (emp == null)
-                        return Json(new { ok = false, error = "EMPLOYEE_NOT_FOUND" });
+                        return Json(new { ok = false, error = "EMPLOYEE_NOT_FOUND", timings = includePerfTimings ? timings : null });
 
                     var displayName = emp.LastName + ", " + emp.FirstName +
                                       (string.IsNullOrWhiteSpace(emp.MiddleName) ? "" : " " + emp.MiddleName);
 
-                    double? similarity = tol > 0 ? Math.Max(0.0, Math.Min(1.0, 1.0 - (bestDist / tol))) : (double?)null;
+                    double? similarity = tol > 0
+                        ? Math.Max(0.0, Math.Min(1.0, 1.0 - (bestDist / tol)))
+                        : (double?)null;
 
-                    var nearMatchRatio = SystemConfigService.GetDouble(db, "NeedsReview:NearMatchRatio", 0.90);
-                    var livenessMargin = SystemConfigService.GetDouble(db, "NeedsReview:LivenessMargin", 0.03);
-                    var gpsMargin = SystemConfigService.GetInt(db, "NeedsReview:GPSAccuracyMargin", 10);
+                    var nearMatchRatio = SystemConfigService.GetDoubleCached("NeedsReview:NearMatchRatio", 0.90);
+                    var livenessMargin = SystemConfigService.GetDoubleCached("NeedsReview:LivenessMargin", 0.03);
+                    var gpsMargin = SystemConfigService.GetIntCached("NeedsReview:GPSAccuracyMargin", 10);
 
                     bool needsReviewFlag = false;
                     var reviewNotes = new System.Text.StringBuilder();
@@ -402,7 +603,6 @@ namespace FaceAttend.Controllers
                         }
                     }
 
-                    // DB safety: truncate strings to match column sizes.
                     var log = new AttendanceLog
                     {
                         EmployeeId = emp.Id,
@@ -433,8 +633,12 @@ namespace FaceAttend.Controllers
                     };
 
                     var rec = AttendanceService.Record(db, log);
+                    mark("db_ms");
+
                     if (!rec.Ok)
-                        return Json(new { ok = false, error = rec.Code, message = rec.Message });
+                        return Json(new { ok = false, error = rec.Code, message = rec.Message, timings = includePerfTimings ? timings : null });
+
+                    mark("total_ms");
 
                     return Json(new
                     {
@@ -447,7 +651,8 @@ namespace FaceAttend.Controllers
                         officeId = office.Id,
                         officeName = office.Name,
                         liveness = p,
-                        distance = bestDist
+                        distance = bestDist,
+                        timings = includePerfTimings ? timings : null
                     });
                 }
             }
@@ -459,32 +664,28 @@ namespace FaceAttend.Controllers
                     ok = false,
                     error = "SCAN_ERROR",
                     detail = ex.Message,
-                    inner = baseEx == null ? null : baseEx.Message
+                    inner = baseEx == null ? null : baseEx.Message,
+                    timings = includePerfTimings ? timings : null
                 });
             }
             finally
             {
-                TryDelete(path);
+                ImagePreprocessor.Cleanup(processedPath, path);
+                SecureFileUpload.TryDelete(path);
             }
         }
 
-        [HttpPost]
+[HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "UnlockPin", MaxRequests = 5, WindowSeconds = 60)]
         public ActionResult UnlockPin(string pin, string returnUrl)
         {
-            // FIX: sanitize returnUrl before echoing it back to the client.
             var safeReturn = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
             var ip = Request.UserHostAddress;
 
             if (!AdminAuthorizeAttribute.VerifyPin(pin, ip))
                 return Json(new { ok = false, error = "INVALID_PIN" });
 
-            // Session-fixation hardening:
-            //  1) Clear any existing auth marker on the current session.
-            //  2) Rotate the Session ID cookie.
-            //  3) Issue a one-time unlock cookie; the next request consumes it and
-            //     marks the NEW session as authed.
             AdminAuthorizeAttribute.ClearAuthedMarker(Session);
             AdminAuthorizeAttribute.RotateSessionId(HttpContext);
             AdminAuthorizeAttribute.IssueUnlockCookie(HttpContext, ip);
@@ -492,10 +693,6 @@ namespace FaceAttend.Controllers
             return Json(new { ok = true, returnUrl = safeReturn });
         }
 
-        // FIX: Changed from [HttpGet] to [HttpPost] + CSRF token.
-        // GET actions that change server state are vulnerable to CSRF.
-        // The admin layout _AdminLayout.cshtml must be updated to POST to this action
-        // (see the corresponding fix in that file).
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult Lock()
@@ -504,9 +701,9 @@ namespace FaceAttend.Controllers
             return RedirectToAction("Index");
         }
 
-        // -------------------------------------------------------------------
+        // ------------------------------------------------------------
         // Helpers
-        // -------------------------------------------------------------------
+        // ------------------------------------------------------------
 
         private class OfficePick
         {
@@ -528,6 +725,7 @@ namespace FaceAttend.Controllers
         {
             if (Request?.Browser != null && Request.Browser.IsMobileDevice)
                 return true;
+
             var ua = (Request?.UserAgent ?? "").ToLowerInvariant();
             return ua.Contains("android") || ua.Contains("iphone") ||
                    ua.Contains("ipad") || ua.Contains("ipod") ||
@@ -539,16 +737,17 @@ namespace FaceAttend.Controllers
             int preferred = SystemConfigService.GetInt(
                 db, "Kiosk:FallbackOfficeId",
                 AppSettings.GetInt("Kiosk:FallbackOfficeId", 0));
+
             if (preferred > 0)
             {
                 var chosen = db.Offices.FirstOrDefault(o => o.Id == preferred && o.IsActive);
                 if (chosen != null) return chosen;
             }
+
             return db.Offices.Where(o => o.IsActive).OrderBy(o => o.Name).FirstOrDefault();
         }
 
-        private OfficePick PickOffice(
-            FaceAttendDBEntities db, double lat, double lon, double? accuracy)
+        private OfficePick PickOffice(FaceAttendDBEntities db, double lat, double lon, double? accuracy)
         {
             int requiredAcc = SystemConfigService.GetInt(
                 db, "Location:GPSAccuracyRequired",
@@ -563,7 +762,7 @@ namespace FaceAttend.Controllers
 
             var offices = db.Offices.Where(o => o.IsActive).ToList();
             if (offices == null || offices.Count == 0)
-                return new OfficePick { Allowed = false, Reason = "NO_OFFICES" };
+                return new OfficePick { Allowed = false, Reason = "NO_OFFICES", RequiredAccuracy = requiredAcc };
 
             Office best = null;
             double bestDist = double.PositiveInfinity;
@@ -575,7 +774,9 @@ namespace FaceAttend.Controllers
                 double d = GeoUtil.DistanceMeters(lat, lon, o.Latitude, o.Longitude);
                 if (d <= radius && d < bestDist)
                 {
-                    best = o; bestDist = d; bestRadius = radius;
+                    best = o;
+                    bestDist = d;
+                    bestRadius = radius;
                 }
             }
 
@@ -591,57 +792,6 @@ namespace FaceAttend.Controllers
                 RadiusMeters = bestRadius,
                 RequiredAccuracy = requiredAcc
             };
-        }
-
-        /// <summary>
-        /// Saves an uploaded image to a secure temp directory.
-        ///
-        /// FIX (Path Traversal): the file name is generated entirely from a GUID —
-        /// the original filename from the client is never used in the path.
-        /// The resolved path is then verified to be inside the expected directory
-        /// as a defense-in-depth measure.
-        /// </summary>
-        private static string SaveTemp(HttpPostedFileBase image, string prefix = "t_")
-        {
-            var tmpRel = "~/App_Data/tmp";
-            var tmp = HostingEnvironment.MapPath(tmpRel);
-            if (string.IsNullOrWhiteSpace(tmp))
-                throw new InvalidOperationException("TMP_DIR_NOT_FOUND");
-
-            // Normalise the expected base path so Path.GetFullPath comparisons work.
-            var expectedBase = Path.GetFullPath(tmp);
-            Directory.CreateDirectory(expectedBase);
-
-            // Determine extension from MIME type, not from the client-supplied filename.
-            string ext = ".jpg";
-            var ct = (image.ContentType ?? "").ToLowerInvariant().Trim();
-            if (ct == "image/png") ext = ".png";
-            // Any other MIME type is treated as JPEG — SaveAs will just write the bytes.
-
-            var fileName = prefix + Guid.NewGuid().ToString("N") + ext;
-            var fullPath = Path.Combine(expectedBase, fileName);
-
-            // Verify the resolved path is strictly inside the temp directory.
-            var resolvedPath = Path.GetFullPath(fullPath);
-            if (!resolvedPath.StartsWith(
-                    expectedBase + Path.DirectorySeparatorChar,
-                    StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException("PATH_TRAVERSAL_DETECTED");
-            }
-
-            image.SaveAs(resolvedPath);
-            return resolvedPath;
-        }
-
-        private static void TryDelete(string path)
-        {
-            try
-            {
-                if (!string.IsNullOrWhiteSpace(path) && System.IO.File.Exists(path))
-                    System.IO.File.Delete(path);
-            }
-            catch { /* best effort */ }
         }
     }
 }

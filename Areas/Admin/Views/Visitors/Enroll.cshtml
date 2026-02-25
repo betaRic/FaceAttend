@@ -1,0 +1,272 @@
+@model Visitor
+@{
+    ViewBag.Title = "Enroll Visitor Face";
+}
+@using System.Configuration
+
+@{
+    var perFrame = ConfigurationManager.AppSettings["Biometrics:LivenessThreshold"] ?? "0.75";
+}
+
+<div class="admin-card">
+    <div class="card-body">
+        <div class="d-flex align-items-start justify-content-between">
+            <div>
+                <h4 class="mb-1">Enroll Visitor Face</h4>
+                <div class="text-muted">@Model.Name</div>
+            </div>
+            <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Back</a>
+        </div>
+
+        <hr />
+
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="mb-2 fw-semibold">Camera</div>
+                <div class="ratio ratio-16x9 bg-dark rounded overflow-hidden">
+                    <video id="cam" autoplay playsinline muted style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+                </div>
+
+                <div class="mt-2 d-flex gap-2 flex-wrap">
+                    <button class="btn btn-outline-primary" id="btnStart" type="button">Start Camera</button>
+                    <button class="btn btn-success" id="btnAuto" type="button" disabled>Auto: on</button>
+                    <button class="btn btn-primary" id="btnEnroll" type="button" disabled>Enroll now</button>
+                    <button class="btn btn-outline-secondary" id="btnStop" type="button" disabled>Stop</button>
+                </div>
+
+                <div class="mt-2" id="camStatus"></div>
+            </div>
+
+            <div class="col-lg-5">
+                <div class="mb-2 fw-semibold">Upload Photo</div>
+
+                @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
+                {
+                    @Html.AntiForgeryToken()
+                    <input type="file" class="form-control" id="file" accept="image/*" />
+                    <button class="btn btn-primary mt-2 w-100" id="btnUpload" type="button">Verify and Enroll Upload</button>
+                }
+
+                <div class="mt-2" id="upStatus"></div>
+
+                <div class="mt-3">
+                    <div class="small text-muted">Current:</div>
+                    <div class="fw-semibold">
+                        @(string.IsNullOrEmpty(Model.FaceEncodingBase64) ? "Not enrolled" : "Enrolled")
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <canvas id="cap" style="display:none;"></canvas>
+    </div>
+</div>
+
+@section scripts{
+<script>
+(function(){
+    const visitorId = @Model.Id;
+    const perFrame = parseFloat("@perFrame") || 0.75;
+
+    const autoIntervalMs = 320;
+    const passWindow = 5;
+    const passRequired = 2;
+
+    const cam = document.getElementById("cam");
+    const cap = document.getElementById("cap");
+
+    const btnStart = document.getElementById("btnStart");
+    const btnAuto = document.getElementById("btnAuto");
+    const btnEnroll = document.getElementById("btnEnroll");
+    const btnStop = document.getElementById("btnStop");
+
+    const camStatus = document.getElementById("camStatus");
+    const upStatus = document.getElementById("upStatus");
+
+    const file = document.getElementById("file");
+    const btnUpload = document.getElementById("btnUpload");
+
+    let stream = null;
+    let busy = false;
+
+    let autoOn = true;
+    let autoTimer = null;
+    let passHist = [];
+    let enrolled = false;
+
+    function token(){
+        const el = document.querySelector('input[name="__RequestVerificationToken"]');
+        return el ? el.value : "";
+    }
+
+    function setStatus(el, msg, kind){
+        el.innerHTML = '<div class="alert alert-' + kind + ' py-2 mb-0">' + msg + '</div>';
+    }
+
+    function setAutoUi(){
+        if (!btnAuto) return;
+        if (autoOn){
+            btnAuto.classList.remove("btn-outline-success");
+            btnAuto.classList.add("btn-success");
+            btnAuto.textContent = "Auto: on";
+        } else {
+            btnAuto.classList.remove("btn-success");
+            btnAuto.classList.add("btn-outline-success");
+            btnAuto.textContent = "Auto: off";
+        }
+    }
+
+    async function startCam(){
+        camStatus.innerHTML = "";
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
+        cam.srcObject = stream;
+
+        btnEnroll.disabled = false;
+        btnStop.disabled = false;
+        btnAuto.disabled = false;
+
+        startAuto();
+    }
+
+    function stopCam(){
+        stopAuto();
+        if (!stream) return;
+        stream.getTracks().forEach(t => t.stop());
+        stream = null;
+        cam.srcObject = null;
+
+        btnEnroll.disabled = true;
+        btnStop.disabled = true;
+        btnAuto.disabled = true;
+    }
+
+    function startAuto(){
+        autoOn = true;
+        enrolled = false;
+        passHist = [];
+        setAutoUi();
+
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = setInterval(autoTick, autoIntervalMs);
+        setStatus(camStatus, "Auto enroll is running. Hold still.", "info");
+    }
+
+    function stopAuto(){
+        autoOn = false;
+        setAutoUi();
+        if (autoTimer) clearInterval(autoTimer);
+        autoTimer = null;
+    }
+
+    async function captureJpegBlob(q){
+        const w = cam.videoWidth || 1280;
+        const h = cam.videoHeight || 720;
+        cap.width = w;
+        cap.height = h;
+        const c = cap.getContext("2d");
+        c.drawImage(cam, 0, 0, w, h);
+
+        return await new Promise((resolve) => cap.toBlob((b) => resolve(b), "image/jpeg", q));
+    }
+
+    async function postScanFrame(blob){
+        const fd = new FormData();
+        fd.append("__RequestVerificationToken", token());
+        fd.append("image", blob, "frame.jpg");
+
+        const res = await fetch("/Admin/Visitors/ScanFrame", { method: "POST", body: fd });
+        return await res.json();
+    }
+
+    async function postEnroll(blob){
+        const fd = new FormData();
+        fd.append("__RequestVerificationToken", token());
+        fd.append("id", String(visitorId));
+        fd.append("image", blob, "enroll.jpg");
+
+        const res = await fetch("/Admin/Visitors/EnrollFace", { method: "POST", body: fd });
+        return await res.json();
+    }
+
+    async function autoTick(){
+        if (!autoOn || enrolled || !stream || busy) return;
+
+        busy = true;
+        try{
+            const blob = await captureJpegBlob(0.75);
+            const r = await postScanFrame(blob);
+
+            if (!r || r.ok !== true){
+                setStatus(camStatus, (r && r.error) ? r.error : "Scan error", "danger");
+                passHist = [];
+                return;
+            }
+
+            if (r.count === 0){ setStatus(camStatus, "No face detected.", "warning"); passHist = []; return; }
+            if (r.count > 1){ setStatus(camStatus, "One person only.", "warning"); passHist = []; return; }
+
+            const p = (typeof r.liveness === "number") ? r.liveness : 0;
+            const pass = (r.livenessOk === true) && (p >= perFrame);
+
+            passHist.push(pass ? 1 : 0);
+            if (passHist.length > passWindow) passHist.shift();
+
+            const passed = passHist.reduce((a,b)=>a+b,0) >= passRequired;
+            setStatus(camStatus, "Liveness: " + p.toFixed(2) + (passed ? " (ok)" : " (checking)"), passed ? "success" : "info");
+
+            if (passed){
+                const enr = await postEnroll(blob);
+                if (enr && enr.ok === true){
+                    enrolled = true;
+                    setStatus(camStatus, "Enrolled. Liveness: " + (enr.liveness || 0).toFixed(2), "success");
+                } else {
+                    setStatus(camStatus, (enr && enr.error) ? enr.error : "Enroll failed", "danger");
+                }
+            }
+        } finally {
+            busy = false;
+        }
+    }
+
+    btnStart.addEventListener("click", startCam);
+    btnStop.addEventListener("click", stopCam);
+
+    btnAuto.addEventListener("click", function(){
+        autoOn = !autoOn;
+        setAutoUi();
+        if (autoOn) startAuto(); else stopAuto();
+    });
+
+    btnEnroll.addEventListener("click", async function(){
+        if (!stream || busy) return;
+        busy = true;
+        try{
+            const blob = await captureJpegBlob(0.85);
+            const enr = await postEnroll(blob);
+            if (enr && enr.ok === true){
+                enrolled = true;
+                setStatus(camStatus, "Enrolled. Liveness: " + (enr.liveness || 0).toFixed(2), "success");
+            } else {
+                setStatus(camStatus, (enr && enr.error) ? enr.error : "Enroll failed", "danger");
+            }
+        } finally { busy = false; }
+    });
+
+    btnUpload.addEventListener("click", async function(){
+        const f = file.files && file.files[0];
+        if (!f) { setStatus(upStatus, "Select an image first.", "warning"); return; }
+        const fd = new FormData();
+        fd.append("__RequestVerificationToken", token());
+        fd.append("id", String(visitorId));
+        fd.append("image", f, f.name);
+
+        const res = await fetch("/Admin/Visitors/EnrollFace", { method: "POST", body: fd });
+        const j = await res.json();
+        if (j && j.ok === true) setStatus(upStatus, "Enrolled. Liveness: " + (j.liveness || 0).toFixed(2), "success");
+        else setStatus(upStatus, (j && j.error) ? j.error : "Enroll failed", "danger");
+    });
+
+    setAutoUi();
+})();
+</script>
+}

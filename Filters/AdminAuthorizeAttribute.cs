@@ -7,6 +7,7 @@ using System.Web;
 using System.Web.Mvc;
 using System.Web.Security;
 using System.Web.SessionState;
+using FaceAttend.Services.Security;  // P1-F1: required for AdminAccessControl
 
 namespace FaceAttend.Filters
 {
@@ -17,6 +18,8 @@ namespace FaceAttend.Filters
     ///   1. PIN attempt lockout — brute-force protection per client IP.
     ///   2. Return-URL validation — prevents open-redirect via malicious returnUrl.
     ///   3. Session abandonment on clear — cleans up the entire session on Lock().
+    ///   4. [P1-F1] IP allowlist — AdminAccessControl.IsAllowed() called at the top
+    ///      of AuthorizeCore so blocked IPs never even reach the PIN layer.
     /// </summary>
     public class AdminAuthorizeAttribute : AuthorizeAttribute
     {
@@ -31,6 +34,19 @@ namespace FaceAttend.Filters
         protected override bool AuthorizeCore(HttpContextBase httpContext)
         {
             if (httpContext == null) return false;
+
+            // P1-F1 — IP allowlist check.
+            // Admin:AllowedIpRanges in Web.config (empty string = allow all IPs).
+            // AdminAccessControl.IsAllowed() also supports an emergency bypass file
+            // at ~/App_Data/emergency_bypass.txt for locked-out admins.
+            var clientIp = httpContext.Request?.UserHostAddress;
+            if (!AdminAccessControl.IsAllowed(clientIp))
+            {
+                // Store the block reason so HandleUnauthorizedRequest can log it
+                // or return a more informative response if needed.
+                httpContext.Items["AdminBlockReason"] = "IP_NOT_ALLOWED";
+                return false;
+            }
 
             var authedUtcObj = httpContext.Session?[SessionKeyAuthedUtc];
             if (!(authedUtcObj is DateTime authedUtc))
@@ -208,75 +224,53 @@ namespace FaceAttend.Filters
             }
 
             var issuedUtc = new DateTime(ticks, DateTimeKind.Utc);
-            var age = DateTime.UtcNow - issuedUtc;
-            if (age < TimeSpan.Zero || age > TimeSpan.FromSeconds(seconds))
+            if ((DateTime.UtcNow - issuedUtc) > TimeSpan.FromSeconds(seconds))
             {
                 ExpireUnlockCookie(httpContext);
                 return false;
             }
 
-            var expectedIp = (parts[1] ?? "").Trim();
+            var cookieIp = parts[1];
             var ip = (clientIp ?? "").Trim();
-            if (!string.Equals(expectedIp, ip, StringComparison.Ordinal))
+            if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
             {
                 ExpireUnlockCookie(httpContext);
                 return false;
             }
 
-            if (httpContext.Session != null)
-                MarkAuthed(httpContext.Session);
-
+            // Cookie is valid — consume it (expire immediately) and mark session.
             ExpireUnlockCookie(httpContext);
+            MarkAuthed(httpContext.Session);
             return true;
         }
 
         private static void ExpireUnlockCookie(HttpContextBase httpContext)
         {
-            try
+            var expired = new HttpCookie(UnlockCookieName, "")
             {
-                var expired = new HttpCookie(UnlockCookieName, "")
-                {
-                    Path = "/",
-                    Expires = DateTime.UtcNow.AddDays(-1),
-                    HttpOnly = true
-                };
-                httpContext.Response.Cookies.Set(expired);
-            }
-            catch
-            {
-                // best effort
-            }
+                HttpOnly = true,
+                Path = "/",
+                Expires = DateTime.UtcNow.AddDays(-1)
+            };
+            httpContext.Response.Cookies.Set(expired);
         }
 
         // -------------------------------------------------------------------
-        // PIN verification with lockout
+        // PIN verification
         // -------------------------------------------------------------------
 
-        // Tracks failed attempts per client IP.
-        // Key: client IP.  Value: (failCount, lockedUntilUtc).
         private static readonly ConcurrentDictionary<string, LockoutEntry> _lockouts =
-            new ConcurrentDictionary<string, LockoutEntry>(StringComparer.Ordinal);
+            new ConcurrentDictionary<string, LockoutEntry>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>
-        /// Verifies the supplied PIN against the configured hash.
-        /// Implements an IP-based lockout after a configurable number of failures.
-        /// </summary>
-        /// <param name="pin">Plain-text PIN entered by the user.</param>
-        /// <param name="clientIp">
-        ///   Caller's IP address used for the lockout bucket.
-        ///   Pass <c>null</c> to skip lockout (not recommended).
-        /// </param>
-        /// <returns><c>true</c> if the PIN is correct and the IP is not locked out.</returns>
-        public static bool VerifyPin(string pin, string clientIp = null)
+        public static bool VerifyPin(string pin, string ip)
         {
             pin = (pin ?? "").Trim();
             if (pin.Length == 0) return false;
 
-            var ip = (clientIp ?? "").Trim();
-            int maxAttempts = GetInt("Admin:MaxPinAttempts", 5);
-            int lockoutSeconds = GetInt("Admin:PinLockoutSeconds", 300);
+            var maxAttempts    = GetInt("Admin:PinMaxAttempts",    5);
+            var lockoutSeconds = GetInt("Admin:PinLockoutSeconds", 300);
 
-            // --- Lockout check ---
+            // --- Check lockout ---
             if (!string.IsNullOrEmpty(ip) && _lockouts.TryGetValue(ip, out var lockout))
             {
                 if (lockout.LockedUntil > DateTime.UtcNow)
@@ -349,7 +343,7 @@ namespace FaceAttend.Filters
             byte[] expected;
             try
             {
-                salt = Convert.FromBase64String(parts[2]);
+                salt     = Convert.FromBase64String(parts[2]);
                 expected = Convert.FromBase64String(parts[3]);
             }
             catch
@@ -357,7 +351,7 @@ namespace FaceAttend.Filters
                 return false;
             }
 
-            if (salt == null || salt.Length < 16) return false;
+            if (salt == null     || salt.Length < 16)     return false;
             if (expected == null || expected.Length < 16) return false;
 
             byte[] actual;
@@ -457,7 +451,7 @@ namespace FaceAttend.Filters
 
             public LockoutEntry(int failCount, DateTime lockedUntilUtc)
             {
-                FailCount = failCount;
+                FailCount  = failCount;
                 LockedUntil = lockedUntilUtc;
             }
 

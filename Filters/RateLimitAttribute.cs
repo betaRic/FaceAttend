@@ -5,68 +5,93 @@ using System.Web.Mvc;
 namespace FaceAttend.Filters
 {
     /// <summary>
-    /// Per-IP fixed-window rate limiter.
-    /// Returns HTTP 429 with JSON body { ok: false, error: "RATE_LIMIT_EXCEEDED" }
-    /// when the limit is exceeded.
+    /// Per-IP token-bucket rate limiter with burst capacity.
     ///
-    /// Usage:
-    ///   [RateLimit(Name = "ScanFrame", MaxRequests = 30, WindowSeconds = 60)]
-    ///   public ActionResult ScanFrame(...) { ... }
+    /// Token-bucket behavior:
+    ///   - Tokens refill continuously at a rate of MaxRequests/WindowSeconds per second.
+    ///   - Burst parameter adds extra initial capacity so sudden spikes are absorbed.
+    ///   - Each request consumes one token; requests when empty return HTTP 429.
+    ///   - Retry-After header contains the seconds until the next token is available.
+    ///
+    /// Notes:
+    ///   - Bucket key is (Name, IP). If you deploy behind a trusted reverse proxy,
+    ///     you may enable X-Forwarded-For parsing inside GetClientIp().
+    ///   - We clamp negative elapsed to 0 to guard against clock adjustments.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class,
                     AllowMultiple = true, Inherited = true)]
     public class RateLimitAttribute : ActionFilterAttribute
     {
-        // Use the process-level default cache so entries survive across requests
-        // but are automatically evicted when the window expires.
         private static readonly MemoryCache _cache = MemoryCache.Default;
+        private const string CachePrefix = "RATELIMIT_TB::";
 
-        // Prefix all keys so they never collide with other cache entries.
-        private const string CachePrefix = "RATELIMIT::";
-
-        /// <summary>
-        /// Logical name for this bucket. Use different names on different actions
-        /// so limits are tracked independently (e.g. "ScanFrame" vs "ScanAttendance").
-        /// </summary>
         public string Name { get; set; } = "default";
-
-        /// <summary>Maximum number of allowed requests within <see cref="WindowSeconds"/>.</summary>
         public int MaxRequests { get; set; } = 10;
-
-        /// <summary>Duration of the window in seconds.</summary>
         public int WindowSeconds { get; set; } = 60;
+        public int Burst { get; set; } = 0;
 
         public override void OnActionExecuting(ActionExecutingContext filterContext)
         {
+            // Fail-open for invalid configs.
+            if (MaxRequests <= 0 || WindowSeconds <= 0)
+            {
+                base.OnActionExecuting(filterContext);
+                return;
+            }
+
             var ip = GetClientIp(filterContext);
             var cacheKey = $"{CachePrefix}{Name}:{ip}";
 
-            var entry = GetOrAddEntry(cacheKey);
+            var bucket = GetOrCreateBucket(cacheKey);
 
-            bool limited;
-            lock (entry)
+            bool denied;
+            double retryAfterSecs;
+
+            lock (bucket)
             {
                 var now = DateTimeOffset.UtcNow;
+                var elapsed = (now - bucket.LastRefill).TotalSeconds;
+                if (elapsed < 0) elapsed = 0;
 
-                // Reset counter when the window has rolled over.
-                if (now >= entry.WindowEnd)
+                double rate = (double)MaxRequests / WindowSeconds; // tokens per second
+                if (rate <= 0)
                 {
-                    entry.Count = 0;
-                    entry.WindowEnd = now.AddSeconds(WindowSeconds);
+                    denied = false;
+                    retryAfterSecs = 0;
                 }
+                else
+                {
+                    bucket.Tokens = Math.Min(bucket.Tokens + elapsed * rate, MaxRequests + Burst);
+                    bucket.LastRefill = now;
 
-                entry.Count++;
-                limited = entry.Count > MaxRequests;
+                    if (bucket.Tokens >= 1.0)
+                    {
+                        bucket.Tokens -= 1.0;
+                        denied = false;
+                        retryAfterSecs = 0;
+                    }
+                    else
+                    {
+                        denied = true;
+                        retryAfterSecs = Math.Ceiling((1.0 - bucket.Tokens) / rate);
+                    }
+                }
             }
 
-            if (limited)
+            if (denied)
             {
                 var response = filterContext.HttpContext.Response;
                 response.StatusCode = 429;
-                response.AddHeader("Retry-After", WindowSeconds.ToString());
+                response.AddHeader("Retry-After", ((int)retryAfterSecs).ToString());
+
                 filterContext.Result = new JsonResult
                 {
-                    Data = new { ok = false, error = "RATE_LIMIT_EXCEEDED" },
+                    Data = new
+                    {
+                        ok = false,
+                        error = "RATE_LIMIT_EXCEEDED",
+                        retryAfter = (int)retryAfterSecs
+                    },
                     JsonRequestBehavior = JsonRequestBehavior.AllowGet
                 };
                 return;
@@ -75,64 +100,40 @@ namespace FaceAttend.Filters
             base.OnActionExecuting(filterContext);
         }
 
-        // -------------------------------------------------------------------
-        // Helpers
-        // -------------------------------------------------------------------
-
-        private RateLimitEntry GetOrAddEntry(string cacheKey)
+        private TokenBucket GetOrCreateBucket(string cacheKey)
         {
-            // Fast path — entry already exists.
-            if (_cache.Get(cacheKey) is RateLimitEntry existing)
+            if (_cache.Get(cacheKey) is TokenBucket existing)
                 return existing;
 
-            // Slow path — create and add atomically.
-            var newEntry = new RateLimitEntry
+            var newBucket = new TokenBucket
             {
-                Count = 0,
-                WindowEnd = DateTimeOffset.UtcNow.AddSeconds(WindowSeconds)
+                Tokens = MaxRequests + Burst,
+                LastRefill = DateTimeOffset.UtcNow
             };
 
-            // Cache expires slightly after the window so the counter is
-            // still available for the reset logic at the window boundary.
             var policy = new CacheItemPolicy
             {
-                AbsoluteExpiration = DateTimeOffset.UtcNow.AddSeconds(WindowSeconds + 30)
+                SlidingExpiration = TimeSpan.FromMinutes(2)
             };
 
-            // AddOrGetExisting is atomic: returns the existing item if another
-            // thread beat us to the Add, otherwise returns null (our item was added).
-            var raced = _cache.AddOrGetExisting(cacheKey, newEntry, policy) as RateLimitEntry;
-            return raced ?? newEntry;
+            var raced = _cache.AddOrGetExisting(cacheKey, newBucket, policy) as TokenBucket;
+            return raced ?? newBucket;
         }
 
-        /// <summary>
-        /// Returns the real client IP.  Does NOT trust X-Forwarded-For by default
-        /// because it can be spoofed unless you sit behind a trusted reverse proxy.
-        /// If you deploy behind a trusted proxy (nginx / Azure Front Door / AWS ALB),
-        /// uncomment the X-Forwarded-For branch and ensure the proxy strips the
-        /// header from untrusted sources.
-        /// </summary>
         private static string GetClientIp(ActionExecutingContext ctx)
         {
-            var request = ctx.HttpContext.Request;
-
-            // Uncomment if behind a trusted reverse proxy:
-            // var forwarded = request.Headers["X-Forwarded-For"];
+            // Only enable this if behind a trusted reverse proxy that strips spoofed headers.
+            // var forwarded = ctx.HttpContext.Request.Headers["X-Forwarded-For"];
             // if (!string.IsNullOrWhiteSpace(forwarded))
             //     return forwarded.Split(',')[0].Trim();
 
-            return request.UserHostAddress ?? "unknown";
+            return ctx.HttpContext.Request.UserHostAddress ?? "unknown";
         }
 
-        // -------------------------------------------------------------------
-        // Inner types
-        // -------------------------------------------------------------------
-
-        /// <summary>Mutable counter tracked per (Name, IP) pair.</summary>
-        private sealed class RateLimitEntry
+        private sealed class TokenBucket
         {
-            public int Count { get; set; }
-            public DateTimeOffset WindowEnd { get; set; }
+            public double Tokens { get; set; }
+            public DateTimeOffset LastRefill { get; set; }
         }
     }
 }

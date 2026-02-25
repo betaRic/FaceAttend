@@ -1,164 +1,238 @@
 (function () {
-    const video = document.getElementById('kioskVideo');
-    const canvas = document.getElementById('overlayCanvas');
+    'use strict';
+
+    // =========
+    // dom
+    // =========
+    const el = (id) => document.getElementById(id);
+
+    const video = el('kioskVideo');
+    const canvas = el('overlayCanvas');
     const ctx = canvas.getContext('2d');
 
-    const officeLine = document.getElementById('officeLine');
-    const timeLine = document.getElementById('timeLine');
-    const dateLine = document.getElementById('dateLine');
-    const livenessLine = document.getElementById('livenessLine');
+    const ui = {
+        officeLine: el('officeLine'),
+        timeLine: el('timeLine'),
+        dateLine: el('dateLine'),
+        livenessLine: el('livenessLine'),
+        scanEtaLine: el('scanEtaLine'),
 
-    // Admin unlock UI (optional)
-    const unlockBackdrop = document.getElementById('unlockBackdrop');
-    const unlockPin = document.getElementById('unlockPin');
-    const unlockErr = document.getElementById('unlockErr');
-    const unlockCancel = document.getElementById('unlockCancel');
-    const unlockSubmit = document.getElementById('unlockSubmit');
-    const unlockClose = document.getElementById('unlockClose');
+        unlockBackdrop: el('unlockBackdrop'),
+        unlockPin: el('unlockPin'),
+        unlockErr: el('unlockErr'),
+        unlockCancel: el('unlockCancel'),
+        unlockSubmit: el('unlockSubmit'),
+        unlockClose: el('unlockClose'),
 
-    const kioskRoot = document.getElementById('kioskRoot');
+        kioskRoot: el('kioskRoot'),
+        idleOverlay: el('idleOverlay'),
 
-    const centerBlock = document.getElementById('centerBlock');
-    const mainPrompt = document.getElementById('mainPrompt');
-    const subPrompt = document.getElementById('subPrompt');
-    const bottomCenter = document.getElementById('bottomCenter');
+        mainPrompt: el('mainPrompt'),
+        subPrompt: el('subPrompt'),
+    };
 
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    const appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
+    const nextGenEnabled = (document.body.getAttribute('data-nextgen') || 'false').toLowerCase() === 'true';
 
-    // Behavior tuning
-    const SCANFRAME_MS = 350;                 // server ScanFrame polling
-    const RESOLVE_MS = 1200;                  // office resolve polling (mobile only)
-    const CAPTURE_COOLDOWN_MS = 3000;         // cooldown after attendance result
-    const LIVENESS_STREAK_REQUIRED = 2;       // anti spoof: consecutive liveness pass
-    const STABLE_FRAMES_REQUIRED = 4;         // anti spoof: stable frames
-    const STABLE_MAX_MOVE_PX = 10;            // anti spoof: max center move
-    const MIN_FACE_AREA_RATIO = 0.03;         // ignore tiny faces
-    const SAFE_EDGE_MARGIN_RATIO = 0.05;      // keep full face in view
+    // =========
+    // config (kept small, only what is used)
+    // =========
+    const CFG = {
+        debug: false,
 
+        loopMs: 120,
+
+        mp: {
+            detectMinConf: 0.30,
+            acceptMinScore: 0.60,
+            stableFramesMin: 2,
+            stableNeededMs: 250,
+            multiMinAreaRatio: 0.015,
+        },
+
+        idle: {
+            senseMs: 250,
+            faceLostMs: 2000,
+            motionMin: 2.0,
+        },
+
+        server: {
+            detectMs: 450,
+            resolveMs: 1200,
+            captureCooldownMs: 3000,
+        },
+
+        gating: {
+            stableFramesRequired: 4,
+            stableMaxMovePx: 10,
+            minFaceAreaRatio: 0.03,
+            safeEdgeMarginRatio: 0.05,
+            centerMin: 0.12,
+            centerMax: 0.88,
+        },
+
+        antiSpoof: {
+            motionW: 64,
+            motionH: 48,
+            motionWindow: 6,
+            motionDiffMin: 1.2,
+        },
+
+        tasksVision: {
+            wasmBase: appBase + 'Scripts/vendor/mediapipe/tasks-vision/wasm',
+            modelPath: appBase + 'Scripts/vendor/mediapipe/tasks-vision/models/blaze_face_short_range.tflite',
+        },
+    };
+
+    const log = (...args) => { if (CFG.debug) console.log('[FaceAttend]', ...args); };
+
+    // =========
+    // endpoints (only used ones)
+    // =========
+    const EP = {
+        unlockPin: appBase + 'Kiosk/UnlockPin',
+        resolveOffice: appBase + 'Kiosk/ResolveOffice',
+        detectFace: appBase + 'Kiosk/DetectFace',
+        scanAttendance: appBase + 'Kiosk/ScanAttendance',
+        attend: appBase + 'Kiosk/Attend',
+    };
+
+    // =========
+    // state
+    // =========
     const ua = navigator.userAgent || '';
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
 
-    let stream = null;
-    let lastScanAt = 0;
-    let lastResolveAt = 0;
-    let lastCaptureAt = 0;
+    let nextGenActive = nextGenEnabled;
 
-    let gps = { lat: null, lon: null, accuracy: null };
-    let allowedArea = !isMobile; // desktop allowed by default
-    let currentOffice = { id: null, name: null };
+    const state = {
+        // ui flow
+        unlockOpen: false,
+        wasIdle: true,
 
-    // Face box from server (image coords)
-    let boxRaw = null;     // { x, y, w, h, imgW, imgH }
-    let boxSmooth = null;  // eased box in canvas coords
+        // gps/office
+        gps: { lat: null, lon: null, accuracy: null },
+        allowedArea: !isMobile,
+        currentOffice: { id: null, name: null },
+        lastResolveAt: 0,
 
-    // Anti spoof trackers
-    let lastCenters = [];
-    let stableFrames = 0;
-    let livenessStreak = 0;
+        // timing
+        backoffUntil: 0,
+        lastCaptureAt: 0,
+        lastDetectAt: 0,
 
-    // UI state
-    let latestLiveness = null;
-    let latestFaceCount = 0;
-    let pulseUntil = 0;
+        // box + stability
+        boxRaw: null,
+        boxSmooth: null,
+        lastCenters: [],
+        stableFrames: 0,
 
-    let unlockOpen = false;
+        // mp status
+        mpMode: 'none',         // 'tasks' | 'none'
+        mpReadyToFire: false,
+        mpStableStart: 0,
+        mpFaceSeenAt: 0,
+        faceStatus: 'none',     // 'none' | 'low' | 'good' | 'multi'
+        mpRawCount: 0,
+        mpAcceptedCount: 0,
 
-    function qs(v) {
-        return (v == null ? '' : String(v));
+        // legacy/server status
+        serverFaceSeenAt: 0,
+        faceCount: 0,
+
+        // liveness display (ui)
+        latestLiveness: null,
+        livenessThreshold: 0.75,
+
+        // motion history
+        motionDiffNow: null,
+        frameDiffs: [],
+
+        // in-flight
+        detectInFlight: false,
+        liveInFlight: false,
+
+        // local sensing
+        localSeenAt: 0,
+        localPresent: false,
+    };
+
+    // =========
+    // helpers
+    // =========
+    function pushLimited(arr, v, max) {
+        if (typeof v !== 'number' || !isFinite(v)) return;
+        arr.push(v);
+        while (arr.length > max) arr.shift();
     }
 
-    function isUnlockAvailable() {
-        return !!unlockBackdrop && !!unlockPin && !!unlockSubmit && !!unlockCancel && !!unlockErr;
-    }
-
-    function openUnlock() {
-        if (!isUnlockAvailable()) return;
-        unlockOpen = true;
-        unlockErr.textContent = '';
-        unlockPin.value = '';
-        unlockBackdrop.classList.remove('hidden');
-        unlockBackdrop.setAttribute('aria-hidden', 'false');
-        if (kioskRoot) kioskRoot.classList.add('unlockOpen');
-        setTimeout(() => unlockPin.focus(), 50);
-    }
-
-    function closeUnlock() {
-        if (!isUnlockAvailable()) return;
-        unlockOpen = false;
-        unlockBackdrop.classList.add('hidden');
-        unlockBackdrop.setAttribute('aria-hidden', 'true');
-        if (kioskRoot) kioskRoot.classList.remove('unlockOpen');
-        unlockErr.textContent = '';
-        unlockPin.value = '';
-    }
-
-    async function submitUnlock() {
-        if (!isUnlockAvailable()) return;
-        const pin = (unlockPin.value || '').trim();
-        if (!pin) {
-            unlockErr.textContent = 'Enter PIN.';
-            unlockPin.focus();
-            return;
-        }
-
-        const fd = new FormData();
-        fd.append('__RequestVerificationToken', token);
-        fd.append('pin', pin);
-        fd.append('returnUrl', document.body?.dataset?.returnUrl || '');
-
-        unlockSubmit.disabled = true;
-        unlockCancel.disabled = true;
-        unlockErr.textContent = '';
-
-        try {
-            const r = await fetch('/Kiosk/UnlockPin', { method: 'POST', body: fd });
-            const j = await r.json();
-            if (j && j.ok === true) {
-                const ru = (j.returnUrl || '').trim();
-                closeUnlock();
-                if (ru) window.location.href = ru;
-                return;
-            }
-            unlockErr.textContent = 'Invalid PIN.';
-            unlockPin.focus();
-        } catch {
-            unlockErr.textContent = 'Unlock failed.';
-        } finally {
-            unlockSubmit.disabled = false;
-            unlockCancel.disabled = false;
-        }
+    function avg(arr) {
+        if (!arr || arr.length === 0) return null;
+        let s = 0;
+        for (let i = 0; i < arr.length; i++) s += arr[i];
+        return s / arr.length;
     }
 
     function setPrompt(a, b) {
-        mainPrompt.textContent = a || '';
-        subPrompt.textContent = b || '';
+        if (ui.mainPrompt) ui.mainPrompt.textContent = a || '';
+        if (ui.subPrompt) ui.subPrompt.textContent = b || '';
     }
 
-    function showCenterBlock(show, title, sub) {
-        if (!isMobile) {
-            centerBlock.classList.add('hidden');
-            return;
-        }
-        if (show) {
-            centerBlock.classList.remove('hidden');
-            centerBlock.querySelector('.blockTitle').textContent = title || 'Not in allowed area.';
-            centerBlock.querySelector('.blockSub').textContent = sub || 'Move closer to a designated office.';
-        } else {
-            centerBlock.classList.add('hidden');
+    function safeSetPrompt(a, b) {
+        const now = Date.now();
+        if (state.liveInFlight) return;
+        if ((now - state.lastCaptureAt) < 800) return;
+        setPrompt(a, b);
+    }
+
+    function setEta(text) {
+        if (!ui.scanEtaLine) return;
+        ui.scanEtaLine.textContent = text || 'ETA: --';
+    }
+
+    function setIdleUi(idle) {
+        if (!ui.kioskRoot) return;
+        ui.kioskRoot.classList.toggle('kioskIdle', !!idle);
+
+        if (ui.idleOverlay) {
+            ui.idleOverlay.classList.toggle('hidden', !idle);
+            ui.idleOverlay.setAttribute('aria-hidden', idle ? 'false' : 'true');
         }
     }
 
-    function ceil2(num) {
-        if (typeof num !== 'number' || !isFinite(num)) return '--';
-        return (Math.ceil(num * 100) / 100).toFixed(2);
+    function setKioskMode(mode) {
+        try { ui.kioskRoot?.setAttribute('data-mode', mode || 'legacy'); } catch { }
     }
 
     function nowText() {
         const d = new Date();
-        timeLine.textContent = d.toLocaleTimeString('en-PH', { hour12: false });
-        dateLine.textContent = d.toLocaleDateString('en-PH');
+        if (ui.timeLine) ui.timeLine.textContent = d.toLocaleTimeString('en-PH', { hour12: false });
+        if (ui.dateLine) ui.dateLine.textContent = d.toLocaleDateString('en-PH');
     }
 
+    function startClock() {
+        nowText();
+        setInterval(nowText, 1000);
+    }
+
+    function setLiveness(p, th, cls) {
+        if (!ui.livenessLine) return;
+
+        const hasP = (typeof p === 'number') && isFinite(p);
+        const hasTh = (typeof th === 'number') && isFinite(th);
+
+        ui.livenessLine.textContent = hasP
+            ? ('Live: ' + p.toFixed(2) + (hasTh ? (' / ' + th.toFixed(2)) : ''))
+            : 'Live: --';
+
+        ui.livenessLine.classList.remove('live-pass', 'live-near', 'live-fail', 'live-unk');
+        ui.livenessLine.classList.add(cls || 'live-unk');
+    }
+
+    // =========
+    // box math
+    // =========
     function resizeCanvas() {
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
@@ -168,195 +242,30 @@
         }
     }
 
-    function lerp(a, b, t) {
-        return a + (b - a) * t;
-    }
-
+    function lerp(a, b, t) { return a + (b - a) * t; }
     function lerpBox(cur, tgt, t) {
         if (!cur) return { ...tgt };
         return {
             x: lerp(cur.x, tgt.x, t),
             y: lerp(cur.y, tgt.y, t),
             w: lerp(cur.w, tgt.w, t),
-            h: lerp(cur.h, tgt.h, t)
+            h: lerp(cur.h, tgt.h, t),
         };
-    }
-
-    function drawLoop() {
-        resizeCanvas();
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-        // Bounding box
-        if (boxSmooth) {
-            const good = (latestFaceCount === 1);
-            const color = good ? '#00ff7a' : '#ffcc00';
-
-            ctx.save();
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = color;
-
-            ctx.strokeRect(boxSmooth.x, boxSmooth.y, boxSmooth.w, boxSmooth.h);
-
-            // Pulse overlay on success
-            const t = Date.now();
-            if (t < pulseUntil) {
-                const p = 1 - ((pulseUntil - t) / 600);
-                const alpha = 0.55 * (1 - p);
-                ctx.globalAlpha = alpha;
-                ctx.lineWidth = 10;
-                ctx.strokeStyle = '#00ff7a';
-                ctx.strokeRect(boxSmooth.x - 6, boxSmooth.y - 6, boxSmooth.w + 12, boxSmooth.h + 12);
-            }
-
-            ctx.restore();
-        }
-
-        requestAnimationFrame(drawLoop);
-    }
-
-    async function startCamera() {
-        stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: 'user' },
-            audio: false
-        });
-        video.srcObject = stream;
-        await video.play();
-    }
-
-    function startClock() {
-        nowText();
-        setInterval(nowText, 1000);
-    }
-
-    function startGpsIfMobile() {
-        if (!isMobile) return;
-
-        if (!('geolocation' in navigator)) {
-            allowedArea = false;
-            officeLine.textContent = 'GPS not available';
-            showCenterBlock(true, 'GPS not available.', 'Use a phone or tablet with GPS.');
-            return;
-        }
-
-        navigator.geolocation.watchPosition(
-            (pos) => {
-                gps.lat = pos.coords.latitude;
-                gps.lon = pos.coords.longitude;
-                gps.accuracy = pos.coords.accuracy;
-            },
-            () => {
-                gps.lat = null;
-                gps.lon = null;
-                gps.accuracy = null;
-            },
-            { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
-        );
-    }
-
-    async function resolveOfficeIfNeeded() {
-        if (!isMobile) return;
-
-        const t = Date.now();
-        if (t - lastResolveAt < RESOLVE_MS) return;
-        lastResolveAt = t;
-
-        if (gps.lat == null || gps.lon == null || gps.accuracy == null) {
-            allowedArea = false;
-            officeLine.textContent = 'Locating...';
-            showCenterBlock(true, 'Locating...', 'Turn on GPS and allow location.');
-            return;
-        }
-
-        const fd = new FormData();
-        fd.append('__RequestVerificationToken', token);
-        fd.append('lat', gps.lat);
-        fd.append('lon', gps.lon);
-        fd.append('accuracy', gps.accuracy);
-
-        const r = await fetch('/Kiosk/ResolveOffice', { method: 'POST', body: fd });
-        const j = await r.json();
-
-        if (!j || j.ok !== true) {
-            boxSmooth = null;
-            latestFaceCount = 0;
-            latestLiveness = null;
-            setPrompt('Scan error.', (j && j.error) ? String(j.error) : 'Try again.');
-            return;
-        }
-
-        // Server can still deny scans (ex: GPS gate).
-        if (j.allowed === false) {
-            allowedArea = false;
-            officeLine.textContent = 'Not in allowed area';
-            showCenterBlock(true, 'Not in allowed area.', 'Move closer to a designated office.');
-            setPrompt('Not in allowed area.', 'Move closer to a designated office.');
-            return;
-        }
-
-        allowedArea = !!j.allowed;
-        if (allowedArea) {
-            // Supports either { office: { id, name } } or flat officeId/officeName.
-            const off = j.office || null;
-            currentOffice.id = (off && typeof off.id !== 'undefined') ? off.id : j.officeId;
-            currentOffice.name = (off && off.name) ? off.name : j.officeName;
-            officeLine.textContent = currentOffice.name || 'Office OK';
-            showCenterBlock(false);
-        } else {
-            currentOffice.id = null;
-            currentOffice.name = null;
-            officeLine.textContent = 'Not in allowed area';
-            showCenterBlock(true, 'Not in allowed area.', 'Move closer to a designated office.');
-        }
-    }
-
-    async function resolveOfficeDesktopOnce() {
-        if (isMobile) return;
-        if (currentOffice && currentOffice.name) return;
-
-        try {
-            const fd = new FormData();
-            fd.append('__RequestVerificationToken', token);
-            const r = await fetch('/Kiosk/ResolveOffice', { method: 'POST', body: fd });
-            const j = await r.json();
-            if (j && j.ok === true && j.allowed !== false) {
-                const off = j.office || null;
-                currentOffice.id = (off && typeof off.id !== 'undefined') ? off.id : j.officeId;
-                currentOffice.name = (off && off.name) ? off.name : j.officeName;
-                if (currentOffice.name) officeLine.textContent = currentOffice.name;
-            }
-        } catch {
-            // non-blocking
-        }
-    }
-
-    function captureFrameBlob() {
-        // Draw current video to an offscreen canvas.
-        // Important: do NOT mirror pixels. Mirroring is only for UI.
-        const off = document.createElement('canvas');
-        off.width = video.videoWidth || 640;
-        off.height = video.videoHeight || 480;
-        const octx = off.getContext('2d');
-
-        octx.drawImage(video, 0, 0, off.width, off.height);
-
-        return new Promise((resolve) => {
-            off.toBlob((b) => resolve(b), 'image/jpeg', 0.92);
-        });
     }
 
     function computeCanvasBox(raw) {
         if (!raw || !raw.imgW || !raw.imgH) return null;
 
-        // The video uses object-fit: cover.
-        // Map raw image coordinates into the displayed canvas using the same cover math.
         const W = canvas.width;
         const H = canvas.height;
+
         const imgW = raw.imgW;
         const imgH = raw.imgH;
 
         const scale = Math.max(W / imgW, H / imgH);
         const renderW = imgW * scale;
         const renderH = imgH * scale;
+
         const offX = (W - renderW) / 2;
         const offY = (H - renderH) / 2;
 
@@ -365,7 +274,7 @@
         const w = raw.w * scale;
         const h = raw.h * scale;
 
-        // UI is selfie-mirrored (CSS). Mirror the box to match.
+        // mirror (video is mirrored, canvas is not)
         x = W - (x + w);
 
         return { x, y, w, h };
@@ -373,158 +282,657 @@
 
     function isTooSmallFace(raw) {
         if (!raw || !raw.imgW || !raw.imgH) return true;
-        const area = raw.w * raw.h;
-        const full = raw.imgW * raw.imgH;
-        const ratio = area / full;
-        return ratio < MIN_FACE_AREA_RATIO;
+        const ratio = (raw.w * raw.h) / (raw.imgW * raw.imgH);
+        return ratio < CFG.gating.minFaceAreaRatio;
     }
 
     function faceFullyVisible() {
-        if (!boxSmooth) return false;
-        const m = Math.min(canvas.width, canvas.height) * SAFE_EDGE_MARGIN_RATIO;
-        if (boxSmooth.w <= 0 || boxSmooth.h <= 0) return false;
-        if (boxSmooth.x < m) return false;
-        if (boxSmooth.y < m) return false;
-        if ((boxSmooth.x + boxSmooth.w) > (canvas.width - m)) return false;
-        if ((boxSmooth.y + boxSmooth.h) > (canvas.height - m)) return false;
+        if (!state.boxSmooth) return false;
+        const m = Math.min(canvas.width, canvas.height) * CFG.gating.safeEdgeMarginRatio;
+
+        const b = state.boxSmooth;
+        if (b.w <= 0 || b.h <= 0) return false;
+        if (b.x < m) return false;
+        if (b.y < m) return false;
+        if ((b.x + b.w) > (canvas.width - m)) return false;
+        if ((b.y + b.h) > (canvas.height - m)) return false;
         return true;
     }
 
     function updateStability() {
-        if (!boxSmooth) {
-            lastCenters = [];
-            stableFrames = 0;
-            return;
-        }
-        const c = { x: boxSmooth.x + boxSmooth.w / 2, y: boxSmooth.y + boxSmooth.h / 2 };
-        lastCenters.push(c);
-        if (lastCenters.length > 6) lastCenters.shift();
-
-        if (lastCenters.length < 2) {
-            stableFrames = 0;
+        if (!state.boxSmooth) {
+            state.lastCenters = [];
+            state.stableFrames = 0;
             return;
         }
 
-        const a = lastCenters[lastCenters.length - 2];
-        const dx = c.x - a.x;
-        const dy = c.y - a.y;
-        const move = Math.sqrt(dx * dx + dy * dy);
+        const b = state.boxSmooth;
+        const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
 
-        if (move <= STABLE_MAX_MOVE_PX) stableFrames++;
-        else stableFrames = 0;
+        state.lastCenters.push(c);
+        if (state.lastCenters.length > 6) state.lastCenters.shift();
+
+        if (state.lastCenters.length < 2) {
+            state.stableFrames = 0;
+            return;
+        }
+
+        const a = state.lastCenters[state.lastCenters.length - 2];
+        const move = Math.hypot(c.x - a.x, c.y - a.y);
+
+        state.stableFrames = (move <= CFG.gating.stableMaxMovePx)
+            ? Math.min(state.stableFrames + 1, CFG.gating.stableFramesRequired)
+            : 0;
     }
 
-    async function pollScanFrame() {
-        if (unlockOpen) return;
-        const t = Date.now();
-        if (t - lastScanAt < SCANFRAME_MS) return;
-        lastScanAt = t;
+    function drawLoop() {
+        resizeCanvas();
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (!allowedArea) {
+        if (state.boxSmooth) {
+            const good = (state.faceStatus === 'good');
+            const color = good ? '#00ff7a' : '#ffcc00';
+
+            ctx.save();
+            ctx.lineWidth = 4;
+            ctx.strokeStyle = color;
+            ctx.strokeRect(state.boxSmooth.x, state.boxSmooth.y, state.boxSmooth.w, state.boxSmooth.h);
+            ctx.restore();
+        }
+
+        requestAnimationFrame(drawLoop);
+    }
+
+    function resetScanState() {
+        state.boxRaw = null;
+        state.boxSmooth = null;
+        state.lastCenters = [];
+        state.stableFrames = 0;
+
+        state.faceStatus = 'none';
+        state.mpRawCount = 0;
+        state.mpAcceptedCount = 0;
+        state.mpReadyToFire = false;
+        state.mpStableStart = 0;
+
+        state.faceCount = 0;
+
+        state.frameDiffs = [];
+
+        state.latestLiveness = null;
+        setLiveness(null, null, 'live-unk');
+        setEta('ETA: --');
+    }
+
+    // =========
+    // motion sense (single owner of updateSenseDiff, no double sampling)
+    // =========
+    const senseCanvas = document.createElement('canvas');
+    senseCanvas.width = CFG.antiSpoof.motionW;
+    senseCanvas.height = CFG.antiSpoof.motionH;
+    const senseCtx = senseCanvas.getContext('2d', { willReadFrequently: true });
+    let lastSenseData = null;
+
+    function updateSenseDiff() {
+        if (!video.videoWidth || !video.videoHeight) return null;
+
+        senseCtx.drawImage(video, 0, 0, CFG.antiSpoof.motionW, CFG.antiSpoof.motionH);
+        const data = senseCtx.getImageData(0, 0, CFG.antiSpoof.motionW, CFG.antiSpoof.motionH).data;
+
+        if (!lastSenseData) {
+            lastSenseData = new Uint8ClampedArray(data);
+            return null;
+        }
+
+        let sum = 0;
+        for (let i = 0; i < data.length; i += 4) {
+            sum += Math.abs(data[i] - lastSenseData[i]);
+            sum += Math.abs(data[i + 1] - lastSenseData[i + 1]);
+            sum += Math.abs(data[i + 2] - lastSenseData[i + 2]);
+        }
+
+        lastSenseData.set(data);
+        return sum / (CFG.antiSpoof.motionW * CFG.antiSpoof.motionH * 3);
+    }
+
+    async function localSenseLoop() {
+        try {
+            if (!video.videoWidth || !video.videoHeight) return;
+
+            const diff = updateSenseDiff();
+            state.motionDiffNow = diff;
+
+            if (diff != null) pushLimited(state.frameDiffs, diff, CFG.antiSpoof.motionWindow);
+
+            if (diff != null && diff >= CFG.idle.motionMin) {
+                state.localSeenAt = Date.now();
+            }
+
+            state.localPresent = (Date.now() - state.localSeenAt) <= CFG.idle.faceLostMs;
+        } finally {
+            setTimeout(localSenseLoop, CFG.idle.senseMs);
+        }
+    }
+
+    // =========
+    // camera capture
+    // =========
+    const captureCanvas = document.createElement('canvas');
+    const captureCtx = captureCanvas.getContext('2d');
+
+    function captureFrameBlob(quality = 0.85) {
+        const W = 640, H = 480;
+        captureCanvas.width = W;
+        captureCanvas.height = H;
+        captureCtx.drawImage(video, 0, 0, W, H);
+
+        return new Promise((resolve) => {
+            captureCanvas.toBlob((b) => resolve(b), 'image/jpeg', quality);
+        });
+    }
+
+    // =========
+    // mediapipe tasks adapter (only tasks mode, simpler)
+    // =========
+    const mp = {
+        vision: null,
+        detector: null,
+        failStreak: 0,
+
+        async init() {
+            if (!nextGenActive) {
+                state.mpMode = 'none';
+                setKioskMode('legacy');
+                return;
+            }
+
+            const hasTasks = (typeof window.MpFilesetResolver === 'function' && typeof window.MpFaceDetectorTask === 'function');
+            if (!hasTasks) {
+                nextGenActive = false;
+                state.mpMode = 'none';
+                setKioskMode('legacy');
+                return;
+            }
+
+            try {
+                this.vision = await window.MpFilesetResolver.forVisionTasks(CFG.tasksVision.wasmBase);
+
+                try {
+                    this.detector = await window.MpFaceDetectorTask.createFromOptions(this.vision, {
+                        baseOptions: { modelAssetPath: CFG.tasksVision.modelPath, delegate: 'GPU' },
+                        runningMode: 'VIDEO',
+                        minDetectionConfidence: CFG.mp.detectMinConf,
+                    });
+                } catch {
+                    this.detector = await window.MpFaceDetectorTask.createFromOptions(this.vision, {
+                        baseOptions: { modelAssetPath: CFG.tasksVision.modelPath, delegate: 'CPU' },
+                        runningMode: 'VIDEO',
+                        minDetectionConfidence: CFG.mp.detectMinConf,
+                    });
+                }
+
+                state.mpMode = 'tasks';
+                setKioskMode('nextgen');
+                log('mp mode: tasks');
+            } catch (e) {
+                console.warn('[FaceAttend] tasks init failed, using legacy', e);
+                this.vision = null;
+                this.detector = null;
+                nextGenActive = false;
+                state.mpMode = 'none';
+                setKioskMode('legacy');
+            }
+        },
+
+        tick() {
+            if (state.mpMode !== 'tasks') return;
+            if (!this.detector) return;
+
+            try {
+                const t = performance.now();
+                const res = this.detector.detectForVideo(video, t);
+                const list = toNormDetectionsFromTasks(res?.detections || []);
+                handleMpDetections(list);
+                this.failStreak = 0;
+            } catch (e) {
+                this.failStreak++;
+                if (this.failStreak >= 5) {
+                    console.warn('[FaceAttend] tasks detect failed, switching off nextgen', e);
+                    nextGenActive = false;
+                    state.mpMode = 'none';
+                    setKioskMode('legacy');
+                }
+            }
+        },
+    };
+
+    function toNormDetectionsFromTasks(dets) {
+        const vw = video.videoWidth || 1;
+        const vh = video.videoHeight || 1;
+
+        return (dets || [])
+            .map((d) => {
+                const score = (d?.categories && d.categories.length > 0) ? (d.categories[0].score ?? 0) : 0;
+                const bb = d?.boundingBox;
+                if (!bb) return null;
+
+                const xCenter = (bb.originX + (bb.width / 2)) / vw;
+                const yCenter = (bb.originY + (bb.height / 2)) / vh;
+                const width = bb.width / vw;
+                const height = bb.height / vh;
+
+                return { score, bbox: { xCenter, yCenter, width, height } };
+            })
+            .filter(x => x && x.bbox && isFinite(x.score));
+    }
+
+    // =========
+    // mp gating
+    // =========
+    function handleMpDetections(normList) {
+        const now = Date.now();
+        state.mpReadyToFire = false;
+
+        if (!normList || normList.length === 0) {
+            state.faceStatus = 'none';
+            state.mpRawCount = 0;
+            state.mpAcceptedCount = 0;
+
+            state.mpStableStart = 0;
+            state.mpFaceSeenAt = 0;
+
+            state.boxRaw = null;
+            state.boxSmooth = null;
+            state.lastCenters = [];
+            state.stableFrames = 0;
+            return;
+        }
+
+        const rawScored = normList
+            .filter(x => x.bbox)
+            .sort((a, b) => b.score - a.score);
+
+        state.mpRawCount = rawScored.length;
+        state.mpFaceSeenAt = now;
+
+        const bestRaw = rawScored[0];
+        const accepted = rawScored.filter(x => x.score >= CFG.mp.acceptMinScore);
+        state.mpAcceptedCount = accepted.length;
+
+        // update box always (yellow guidance)
+        {
+            const b = bestRaw.bbox;
+            const imgW = video.videoWidth;
+            const imgH = video.videoHeight;
+
+            const w = b.width * imgW;
+            const h = b.height * imgH;
+            const x = (b.xCenter - b.width / 2) * imgW;
+            const y = (b.yCenter - b.height / 2) * imgH;
+
+            state.boxRaw = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), imgW, imgH };
+            const tgt = computeCanvasBox(state.boxRaw);
+            if (tgt) state.boxSmooth = lerpBox(state.boxSmooth, tgt, 0.35);
+        }
+
+        updateStability();
+
+        // multiple faces
+        if (rawScored.length > 1) {
+            const second = rawScored[1];
+            const area2 = (second.bbox.width || 0) * (second.bbox.height || 0);
+            if (second.score >= CFG.mp.acceptMinScore && area2 >= CFG.mp.multiMinAreaRatio) {
+                state.faceStatus = 'multi';
+                state.mpStableStart = 0;
+                safeSetPrompt('Multiple faces detected.', 'One face only.');
+                return;
+            }
+        }
+
+        // low confidence
+        if (accepted.length === 0) {
+            state.faceStatus = 'low';
+            state.mpStableStart = 0;
+
+            if (state.boxRaw && isTooSmallFace(state.boxRaw)) {
+                safeSetPrompt('Move closer.', 'Face is too far.');
+            } else {
+                safeSetPrompt('Look at the camera.', 'Improve lighting or move closer.');
+            }
+            return;
+        }
+
+        // good confidence
+        state.faceStatus = 'good';
+
+        const b = accepted[0].bbox;
+
+        if (isTooSmallFace(state.boxRaw)) {
+            state.mpStableStart = 0;
+            safeSetPrompt('Move closer.', 'Face is too far.');
+            return;
+        }
+
+        if (!faceFullyVisible()) {
+            state.mpStableStart = 0;
+            safeSetPrompt('Move into frame.', 'Keep your full face in view.');
+            return;
+        }
+
+        if (b.xCenter < CFG.gating.centerMin || b.xCenter > CFG.gating.centerMax ||
+            b.yCenter < CFG.gating.centerMin || b.yCenter > CFG.gating.centerMax) {
+            state.mpStableStart = 0;
+            safeSetPrompt('Center your face.', '');
+            return;
+        }
+
+        // motion gate (anti-spoof)
+        if (state.frameDiffs.length >= CFG.antiSpoof.motionWindow) {
+            const motionAvg = avg(state.frameDiffs);
+            if (motionAvg != null && motionAvg < CFG.antiSpoof.motionDiffMin) {
+                state.mpStableStart = 0;
+                safeSetPrompt('Move slightly.', 'Breathe naturally.');
+                return;
+            }
+        }
+
+        // stability gate
+        if (state.stableFrames < CFG.mp.stableFramesMin) {
+            state.mpStableStart = 0;
+            safeSetPrompt('Hold still.', '');
+            return;
+        }
+
+        if (state.mpStableStart === 0) state.mpStableStart = now;
+        if ((now - state.mpStableStart) < CFG.mp.stableNeededMs) {
+            safeSetPrompt('Hold still.', '');
+            return;
+        }
+
+        state.mpReadyToFire = true;
+    }
+
+    // =========
+    // eta
+    // =========
+    function updateEta(facePresent, useNextGen) {
+        if (!facePresent) { setEta('ETA: idle'); return; }
+
+        if (useNextGen) {
+            if (!state.boxRaw || state.faceStatus === 'none') { setEta('ETA: waiting'); return; }
+            if (state.faceStatus === 'low') { setEta('ETA: improve lighting'); return; }
+            if (state.faceStatus === 'multi') { setEta('ETA: one face only'); return; }
+
+            const need = CFG.mp.stableFramesMin;
+            const st = Math.min(state.stableFrames, need);
+            const msLeft = (state.mpStableStart > 0)
+                ? Math.max(0, CFG.mp.stableNeededMs - (Date.now() - state.mpStableStart))
+                : CFG.mp.stableNeededMs;
+
+            setEta('ETA: hold still ' + st + '/' + need + ' (' + (msLeft / 1000).toFixed(1) + 's)');
+            return;
+        }
+
+        if (!state.boxRaw || state.faceCount === 0) { setEta('ETA: waiting'); return; }
+        setEta('ETA: scanning');
+    }
+
+    // =========
+    // unlock ui
+    // =========
+    function isUnlockAvailable() {
+        return !!ui.unlockBackdrop && !!ui.unlockPin && !!ui.unlockSubmit && !!ui.unlockCancel && !!ui.unlockErr;
+    }
+
+    function openUnlock() {
+        if (!isUnlockAvailable()) return;
+        state.unlockOpen = true;
+        ui.unlockErr.textContent = '';
+        ui.unlockPin.value = '';
+        ui.unlockBackdrop.classList.remove('hidden');
+        ui.unlockBackdrop.setAttribute('aria-hidden', 'false');
+        ui.kioskRoot?.classList.add('unlockOpen');
+        setTimeout(() => ui.unlockPin.focus(), 50);
+    }
+
+    function closeUnlock() {
+        if (!isUnlockAvailable()) return;
+        state.unlockOpen = false;
+        ui.unlockBackdrop.classList.add('hidden');
+        ui.unlockBackdrop.setAttribute('aria-hidden', 'true');
+        ui.kioskRoot?.classList.remove('unlockOpen');
+        ui.unlockErr.textContent = '';
+        ui.unlockPin.value = '';
+    }
+
+    async function submitUnlock() {
+        if (!isUnlockAvailable()) return;
+
+        const pin = (ui.unlockPin.value || '').trim();
+        if (!pin) { ui.unlockErr.textContent = 'Enter PIN.'; ui.unlockPin.focus(); return; }
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('pin', pin);
+        fd.append('returnUrl', document.body?.dataset?.returnUrl || '');
+
+        ui.unlockSubmit.disabled = true;
+        ui.unlockCancel.disabled = true;
+        ui.unlockErr.textContent = '';
+
+        try {
+            const r = await fetch(EP.unlockPin, { method: 'POST', body: fd });
+            const j = await r.json();
+            if (j && j.ok === true) {
+                const ru = (j.returnUrl || '').trim();
+                closeUnlock();
+                if (ru) window.location.href = ru;
+                return;
+            }
+            ui.unlockErr.textContent = 'Invalid PIN.';
+            ui.unlockPin.focus();
+        } catch {
+            ui.unlockErr.textContent = 'Unlock failed.';
+        } finally {
+            ui.unlockSubmit.disabled = false;
+            ui.unlockCancel.disabled = false;
+        }
+    }
+
+    function wireUnlockUi() {
+        if (!isUnlockAvailable()) return;
+
+        ui.unlockCancel.addEventListener('click', closeUnlock);
+        ui.unlockSubmit.addEventListener('click', submitUnlock);
+        if (ui.unlockClose) ui.unlockClose.addEventListener('click', closeUnlock);
+
+        ui.unlockBackdrop.addEventListener('click', (e) => {
+            if (e.target === ui.unlockBackdrop) closeUnlock();
+        });
+
+        ui.unlockPin.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') { e.preventDefault(); submitUnlock(); }
+            if (e.key === 'Escape') { e.preventDefault(); closeUnlock(); }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (!isUnlockAvailable()) return;
+            if (state.unlockOpen) return;
+
+            const isSpace = (e.code === 'Space') || (e.key === ' ') || (e.keyCode === 32);
+            if (e.ctrlKey && e.shiftKey && isSpace) {
+                e.preventDefault();
+                openUnlock();
+            }
+        }, true);
+
+        document.querySelector('#topLeft .brand')?.addEventListener('dblclick', openUnlock);
+    }
+
+    // =========
+    // gps + office resolve
+    // =========
+    function startGpsIfMobile() {
+        if (!isMobile) return;
+        if (!('geolocation' in navigator)) {
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS not available';
+            return;
+        }
+
+        navigator.geolocation.watchPosition(
+            (pos) => {
+                state.gps.lat = pos.coords.latitude;
+                state.gps.lon = pos.coords.longitude;
+                state.gps.accuracy = pos.coords.accuracy;
+            },
+            () => {
+                state.gps.lat = null;
+                state.gps.lon = null;
+                state.gps.accuracy = null;
+            },
+            { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
+        );
+    }
+
+    async function resolveOfficeIfNeeded() {
+        if (!isMobile) return;
+        if (!state.localPresent) return;
+
+        const t = Date.now();
+        if (t - state.lastResolveAt < CFG.server.resolveMs) return;
+        state.lastResolveAt = t;
+
+        if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'Locating.';
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('lat', state.gps.lat);
+        fd.append('lon', state.gps.lon);
+        fd.append('accuracy', state.gps.accuracy);
+
+        const r = await fetch(EP.resolveOffice, { method: 'POST', body: fd });
+        const j = await r.json();
+
+        if (!j || j.ok !== true) {
+            resetScanState();
+            setPrompt('Scan error.', (j && j.error) ? String(j.error) : 'Try again.');
+            return;
+        }
+
+        if (j.allowed === false) {
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'Not in allowed area';
             setPrompt('Not in allowed area.', 'Move closer to a designated office.');
             return;
         }
 
-        if (!video.videoWidth || !video.videoHeight) return;
+        state.allowedArea = !!j.allowed;
+        if (state.allowedArea) {
+            state.currentOffice.id = j.officeId;
+            state.currentOffice.name = j.officeName;
+            if (ui.officeLine) ui.officeLine.textContent = state.currentOffice.name || 'Office OK';
+        }
+    }
 
-        const blob = await captureFrameBlob();
-        if (!blob) return;
+    async function resolveOfficeDesktopOnce() {
+        if (isMobile) return;
+        if (state.currentOffice && state.currentOffice.name) return;
 
+        try {
+            const fd = new FormData();
+            fd.append('__RequestVerificationToken', token);
+            const r = await fetch(EP.resolveOffice, { method: 'POST', body: fd });
+            const j = await r.json();
+            if (j && j.ok === true && j.allowed !== false) {
+                state.currentOffice.id = j.officeId;
+                state.currentOffice.name = j.officeName;
+                if (ui.officeLine && state.currentOffice.name) ui.officeLine.textContent = state.currentOffice.name;
+            }
+        } catch { }
+    }
+
+    // =========
+    // legacy detect (kept)
+    // =========
+    async function postFrame(endpoint, blob) {
         const fd = new FormData();
         fd.append('__RequestVerificationToken', token);
         fd.append('image', blob, 'frame.jpg');
 
-        // If the server requires GPS (mobile/tablet), send it.
         if (isMobile) {
-            if (gps.lat != null) fd.append('lat', gps.lat);
-            if (gps.lon != null) fd.append('lon', gps.lon);
-            if (gps.accuracy != null) fd.append('accuracy', gps.accuracy);
+            if (state.gps.lat != null) fd.append('lat', state.gps.lat);
+            if (state.gps.lon != null) fd.append('lon', state.gps.lon);
+            if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
         }
 
-        // Kiosk scan endpoint (NOT the admin Biometrics controller).
-        const r = await fetch('/Kiosk/ScanFrame', { method: 'POST', body: fd });
+        const r = await fetch(endpoint, { method: 'POST', body: fd });
 
-        // If we got redirected (ex: to /Kiosk?unlock=1), JSON parsing will fail.
+        if (r.status === 429) {
+            const ra = parseInt(r.headers.get('Retry-After') || '0', 10);
+            state.backoffUntil = Date.now() + ((isFinite(ra) && ra > 0) ? ra * 1000 : 2000);
+            return { ok: false, error: 'TOO_MANY_REQUESTS', retryAfter: ra || 2 };
+        }
+
         const ct = (r.headers.get('content-type') || '').toLowerCase();
         if (!ct.includes('application/json')) {
-            throw new Error('Bad response (' + r.status + ')');
+            return { ok: false, error: 'BAD_RESPONSE', status: r.status };
         }
 
-        const j = await r.json();
-
-        // Server may return either the new or legacy field names.
-        latestFaceCount = (typeof j.faceCount === 'number') ? j.faceCount : (j.count || 0);
-        latestLiveness = (typeof j.livenessScore === 'number') ? j.livenessScore : ((typeof j.liveness === 'number') ? j.liveness : null);
-
-        // Always visible liveness label
-        livenessLine.textContent = 'Live: ' + (latestLiveness == null ? '--' : ceil2(latestLiveness));
-
-        // Face box
-        boxRaw = j.faceBox || null;
-
-        if (!boxRaw || latestFaceCount === 0) {
-            boxSmooth = null;
-            livenessStreak = 0;
-            stableFrames = 0;
-            setPrompt('Ready.', 'Stand still. One face only.');
-            return;
-        }
-
-        // Convert to canvas coords and ease
-        const tgt = computeCanvasBox(boxRaw);
-        if (tgt) {
-            boxSmooth = lerpBox(boxSmooth, tgt, 0.35);
-        }
-
-        // Ignore small faces
-        if (isTooSmallFace(boxRaw)) {
-            livenessStreak = 0;
-            stableFrames = 0;
-            setPrompt('Move closer.', 'Face is too far.');
-            return;
-        }
-
-        if (latestFaceCount > 1) {
-            livenessStreak = 0;
-            stableFrames = 0;
-            setPrompt('Multiple faces detected.', 'One face only.');
-            return;
-        }
-
-        // Update stability
-        updateStability();
-
-        // Prompts
-        if (!faceFullyVisible()) {
-            livenessStreak = 0;
-            stableFrames = 0;
-            setPrompt('Move into frame.', 'Keep your full face in view.');
-            return;
-        }
-
-        if (stableFrames < STABLE_FRAMES_REQUIRED) {
-            livenessStreak = 0;
-            setPrompt('Hold still.', 'Do not move.');
-            return;
-        }
-
-        // Anti spoof delay: require consecutive liveness passes
-        const livePass = (j.livenessPass === true) || (j.livenessOk === true);
-        if (livePass) livenessStreak++;
-        else livenessStreak = 0;
-
-        if (livenessStreak < LIVENESS_STREAK_REQUIRED) {
-            setPrompt('Checking...', 'Hold still.');
-            return;
-        }
-
-        // Auto capture
-        if (Date.now() - lastCaptureAt < CAPTURE_COOLDOWN_MS) return;
-        await submitAttendance(blob);
+        return await r.json();
     }
 
-    async function submitAttendance(blob) {
-        lastCaptureAt = Date.now();
+    async function pollDetectFace() {
+        if (state.detectInFlight) return;
+
+        const t = Date.now();
+        if (t - state.lastDetectAt < CFG.server.detectMs) return;
+        state.lastDetectAt = t;
+
+        state.detectInFlight = true;
+        try {
+            const blob = await captureFrameBlob();
+            if (!blob) return;
+
+            const j = await postFrame(EP.detectFace, blob);
+            if (!j || j.ok !== true) return;
+
+            state.faceCount = (typeof j.faceCount === 'number') ? j.faceCount : (j.count || 0);
+            state.boxRaw = j.faceBox || null;
+
+            if (!state.boxRaw || state.faceCount === 0) {
+                state.boxSmooth = null;
+                state.stableFrames = 0;
+                setPrompt('Ready.', 'Look at the camera.');
+                return;
+            }
+
+            state.serverFaceSeenAt = Date.now();
+
+            const tgt = computeCanvasBox(state.boxRaw);
+            if (tgt) state.boxSmooth = lerpBox(state.boxSmooth, tgt, 0.35);
+
+            updateStability();
+
+            if (state.faceCount > 1) { setPrompt('Multiple faces detected.', 'One face only.'); return; }
+            if (!faceFullyVisible()) { setPrompt('Move into frame.', 'Keep your full face in view.'); return; }
+            if (state.stableFrames < CFG.gating.stableFramesRequired) { setPrompt('Hold still.', 'Do not move.'); return; }
+
+            setPrompt('Checking...', 'Hold still.');
+        } finally {
+            state.detectInFlight = false;
+        }
+    }
+
+    // =========
+    // attendance submit (updates liveness line)
+    // =========
+    async function submitAttendance(blob, endpoint) {
+        state.lastCaptureAt = Date.now();
         setPrompt('Processing...', 'Please wait.');
 
         const fd = new FormData();
@@ -532,121 +940,171 @@
         fd.append('image', blob, 'capture.jpg');
 
         if (isMobile) {
-            if (gps.lat != null) fd.append('lat', gps.lat);
-            if (gps.lon != null) fd.append('lon', gps.lon);
-            if (gps.accuracy != null) fd.append('accuracy', gps.accuracy);
+            if (state.gps.lat != null) fd.append('lat', state.gps.lat);
+            if (state.gps.lon != null) fd.append('lon', state.gps.lon);
+            if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
         }
 
-        const r = await fetch('/Kiosk/ScanAttendance', { method: 'POST', body: fd });
-        const j = await r.json();
-
-        if (j.ok) {
-            pulseUntil = Date.now() + 600;
-            bottomCenter.classList.add('pulseSuccess');
-            setTimeout(() => bottomCenter.classList.remove('pulseSuccess'), 900);
-
-            const officeName = j.officeName || (j.office && j.office.name) || officeLine.textContent;
-            officeLine.textContent = officeName;
-
-            // Main success prompt
-            const displayName = j.displayName || j.name;
-            const who = displayName ? ('Welcome, ' + displayName + '.') : 'Success.';
-            setPrompt(who, j.message || 'Recorded.');
-
-            // cooldown
-            setTimeout(() => {
-                livenessStreak = 0;
-                stableFrames = 0;
-                setPrompt('Ready.', 'Stand still. One face only.');
-            }, 1600);
-        } else {
-            livenessStreak = 0;
-            stableFrames = 0;
-            setPrompt(j.error || 'Failed.', 'Try again.');
-            setTimeout(() => setPrompt('Ready.', 'Stand still. One face only.'), 1600);
-        }
-    }
-
-    async function loop() {
         try {
-            if (unlockOpen) {
-                setTimeout(loop, 120);
+            const url = endpoint || EP.scanAttendance;
+            const r = await fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' });
+            if (r.status === 429) {
+                setPrompt('System busy.', 'Please wait.');
                 return;
             }
-            await resolveOfficeIfNeeded();
-            await pollScanFrame();
-        } catch (e) {
-            // keep kiosk alive, but surface the issue
+
+            const j = await r.json();
+
+            // liveness ui update (this is what was missing)
+            if (j && typeof j.liveness === 'number') {
+                const p = Number(j.liveness);
+                const th = (j.threshold != null) ? Number(j.threshold) : state.livenessThreshold;
+
+                if (isFinite(th)) state.livenessThreshold = th;
+                state.latestLiveness = p;
+
+                let cls = 'live-unk';
+                if (j.ok === true) cls = 'live-pass';
+                else if (j.error === 'LIVENESS_FAIL') cls = (isFinite(th) && p >= (th - 0.03)) ? 'live-near' : 'live-fail';
+
+                setLiveness(p, th, cls);
+            }
+
+            if (j && j.ok) {
+                const displayName = j.displayName || j.name;
+                setPrompt(displayName ? ('Welcome, ' + displayName + '.') : 'Success.', j.message || 'Recorded.');
+                setTimeout(() => setPrompt('Ready.', 'Look at the camera.'), 1600);
+            } else {
+                const err = j?.error || 'Failed.';
+                if (err === 'LIVENESS_FAIL') {
+                    setPrompt('Liveness failed.', 'Move naturally and try again.');
+                } else {
+                    setPrompt(err, 'Try again.');
+                }
+                setTimeout(() => setPrompt('Ready.', 'Look at the camera.'), 1600);
+            }
+        } catch {
             setPrompt('System error.', 'Reload the page or check the server.');
-        } finally {
-            setTimeout(loop, 100);
         }
     }
 
+    // =========
+    // camera
+    // =========
+    async function startCamera() {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+                facingMode: 'user',
+                width: { ideal: 640, max: 640 },
+                height: { ideal: 480, max: 480 },
+                frameRate: { ideal: 15, max: 15 },
+            },
+            audio: false,
+        });
+        video.srcObject = stream;
+        await video.play();
+    }
+
+    // =========
+    // main loop
+    // =========
+    async function loop() {
+        try {
+            if (state.unlockOpen) return;
+            if (!video.videoWidth || !video.videoHeight) return;
+
+            const now = Date.now();
+            const useNextGen = nextGenActive && (state.mpMode === 'tasks');
+
+            if (useNextGen) mp.tick();
+
+            const facePresent = useNextGen
+                ? ((state.mpFaceSeenAt > 0 && (now - state.mpFaceSeenAt) < CFG.idle.faceLostMs) || state.localPresent)
+                : state.localPresent;
+
+            if (!facePresent) {
+                if (!state.wasIdle) {
+                    resetScanState();
+                    setPrompt('Idle.', 'Look at the camera.');
+                    setEta('ETA: idle');
+                }
+                state.wasIdle = true;
+                setIdleUi(true);
+                return;
+            }
+
+            if (state.wasIdle) {
+                resetScanState();
+                setPrompt('Ready.', 'Look at the camera.');
+            }
+            state.wasIdle = false;
+
+            setIdleUi(false);
+
+            await resolveOfficeIfNeeded();
+            if (!state.allowedArea) { updateEta(true, useNextGen); return; }
+
+            if (now < state.backoffUntil) {
+                setPrompt('System busy.', 'Please wait.');
+                updateEta(true, useNextGen);
+                return;
+            }
+
+            if (useNextGen) {
+                if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
+                    const blob = await captureFrameBlob(0.85);
+                    if (blob) {
+                        state.mpReadyToFire = false;
+                        state.mpStableStart = 0;
+
+                        state.liveInFlight = true;
+                        try {
+                            await submitAttendance(blob, EP.attend);
+                        } finally {
+                            state.liveInFlight = false;
+                        }
+                    }
+                }
+            } else {
+                await pollDetectFace();
+            }
+
+            updateEta(true, useNextGen);
+        } catch (e) {
+            if (CFG.debug) console.warn('[FaceAttend] loop error', e);
+            setPrompt('System error.', 'Reload the page or check the server.');
+            setEta('ETA: --');
+        } finally {
+            setTimeout(loop, CFG.loopMs);
+        }
+    }
+
+    // =========
+    // init
+    // =========
     (async function init() {
         startClock();
         startGpsIfMobile();
         resolveOfficeDesktopOnce();
-
-        // Unlock modal bindings (if present)
-        if (isUnlockAvailable()) {
-            unlockCancel.addEventListener('click', () => closeUnlock());
-            unlockSubmit.addEventListener('click', () => submitUnlock());
-            if (unlockClose) unlockClose.addEventListener('click', () => closeUnlock());
-            unlockBackdrop.addEventListener('click', (e) => {
-                if (e.target === unlockBackdrop) closeUnlock();
-            });
-            unlockPin.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    submitUnlock();
-                }
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    closeUnlock();
-                }
-            });
-        }
-
-        // Hotkeys: Ctrl+Shift+Space (primary), plus fallbacks for keyboards/OS that intercept it.
-        document.addEventListener('keydown', (e) => {
-            if (!isUnlockAvailable()) return;
-            if (unlockOpen) {
-                if (e.key === 'Escape') {
-                    e.preventDefault();
-                    closeUnlock();
-                }
-                return;
-            }
-
-            const isSpace = (e.code === 'Space') || (e.key === ' ') || (e.keyCode === 32);
-            const primary = e.ctrlKey && e.shiftKey && isSpace;
-            const fallback1 = e.ctrlKey && e.altKey && (e.code === 'KeyU' || e.key === 'u' || e.key === 'U');
-            const fallback2 = (e.code === 'F2');
-
-            if (primary || fallback1 || fallback2) {
-                e.preventDefault();
-                openUnlock();
-            }
-        }, true);
-
-        // Mouse fallback: double click brand.
-        const brand = document.querySelector('#topLeft .brand');
-        if (brand && isUnlockAvailable()) {
-            brand.addEventListener('dblclick', () => openUnlock());
-        }
+        wireUnlockUi();
 
         try {
             await startCamera();
-            setPrompt('Ready.', 'Stand still. One face only.');
-            drawLoop();
-            loop();
+            await mp.init();
 
-            // Auto-open unlock if redirected here.
-            const unlockHint = qs(document.body?.dataset?.unlockHint).toLowerCase();
-            if (unlockHint === 'true' || unlockHint === '1') openUnlock();
-        } catch (e) {
+            setIdleUi(true);
+            setPrompt('Idle.', 'Look at the camera.');
+            setEta('ETA: idle');
+            setLiveness(null, null, 'live-unk');
+
+            drawLoop();
+            localSenseLoop();
+            loop();
+        } catch {
+            setIdleUi(false);
             setPrompt('Camera blocked.', 'Allow camera permission.');
+            setEta('ETA: --');
         }
     })();
+
 })();

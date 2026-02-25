@@ -1,0 +1,29 @@
+@{
+    ViewBag.Title = "Add Visitor";
+}
+
+@if (TempData["msg"] != null)
+{
+    <div class="alert alert-warning admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+<div class="admin-card">
+    <div class="card-body">
+        <h4 class="mb-3">Add Visitor</h4>
+
+        @using (Html.BeginForm("Create", "Visitors", new { area = "Admin" }, FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+
+            <div class="mb-3">
+                <label class="form-label">Name</label>
+                <input class="form-control" name="name" placeholder="Visitor name" />
+            </div>
+
+            <div class="d-flex gap-2">
+                <button class="btn btn-primary" type="submit">Save</button>
+                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Cancel</a>
+            </div>
+        }
+    </div>
+</div>

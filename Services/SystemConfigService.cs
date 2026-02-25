@@ -8,7 +8,15 @@ namespace FaceAttend.Services
     public static class SystemConfigService
     {
         private static readonly MemoryCache Cache = MemoryCache.Default;
-        private const int DefaultCacheSeconds = 15;
+
+        // P2-F5: Increased from 15 to 300 seconds (5 minutes).
+        // Config values (liveness threshold, GPS radius, DlibTolerance, etc.) change
+        // only when an admin saves settings — Upsert() and Delete() both call
+        // Invalidate(key) immediately, so live changes are never delayed by this cache.
+        // At 15 s with 50 concurrent scans during shift change, the DB was being
+        // queried for the same config keys many times per window for values that
+        // almost never change. 300 s eliminates the vast majority of those reads.
+        private const int DefaultCacheSeconds = 300;
 
         public static string GetRaw(FaceAttendDBEntities db, string key)
         {
@@ -91,26 +99,26 @@ namespace FaceAttend.Services
             {
                 row = new SystemConfiguration
                 {
-                    Key = key.Trim(),
-                    Value = (value ?? "").Trim(),
-                    DataType = (dataType ?? "string").Trim(),
+                    Key         = key.Trim(),
+                    Value       = (value ?? "").Trim(),
+                    DataType    = (dataType ?? "string").Trim(),
                     Description = (description ?? "").Trim(),
                     ModifiedDate = now,
-                    ModifiedBy = (modifiedBy ?? "ADMIN").Trim()
+                    ModifiedBy  = (modifiedBy ?? "ADMIN").Trim()
                 };
                 db.SystemConfigurations.Add(row);
             }
             else
             {
                 row.Value = (value ?? "").Trim();
-                if (!string.IsNullOrWhiteSpace(dataType)) row.DataType = dataType.Trim();
+                if (!string.IsNullOrWhiteSpace(dataType))    row.DataType    = dataType.Trim();
                 if (!string.IsNullOrWhiteSpace(description)) row.Description = description.Trim();
                 row.ModifiedDate = now;
-                row.ModifiedBy = (modifiedBy ?? "ADMIN").Trim();
+                row.ModifiedBy   = (modifiedBy ?? "ADMIN").Trim();
             }
 
             db.SaveChanges();
-            Invalidate(key);
+            Invalidate(key);   // always bust the cache immediately on write
         }
 
         public static void Delete(FaceAttendDBEntities db, string key)
@@ -123,7 +131,7 @@ namespace FaceAttend.Services
 
             db.SystemConfigurations.Remove(row);
             db.SaveChanges();
-            Invalidate(key);
+            Invalidate(key);   // always bust the cache immediately on delete
         }
 
         // ---- Cached access (for code paths that don't have a DB context) ----
@@ -178,7 +186,7 @@ namespace FaceAttend.Services
         {
             if (string.IsNullOrWhiteSpace(key)) return null;
 
-            var k = CacheKey(key);
+            var k   = CacheKey(key);
             var hit = Cache.Get(k) as string;
             if (hit != null) return hit;
 
@@ -193,7 +201,11 @@ namespace FaceAttend.Services
                 val = null;
             }
 
-            var policy = new CacheItemPolicy { AbsoluteExpiration = DateTimeOffset.UtcNow.AddSeconds(cacheSeconds <= 0 ? DefaultCacheSeconds : cacheSeconds) };
+            var policy = new CacheItemPolicy
+            {
+                AbsoluteExpiration = DateTimeOffset.UtcNow.AddSeconds(
+                    cacheSeconds <= 0 ? DefaultCacheSeconds : cacheSeconds)
+            };
             Cache.Set(k, val ?? "", policy);
 
             return val;

@@ -1,0 +1,111 @@
+@model System.Collections.Generic.List<dynamic>
+@{
+    ViewBag.Title = "Visitor Logs";
+
+    var officeOptions = ViewBag.OfficeOptions as System.Collections.Generic.List<System.Web.Mvc.SelectListItem>;
+    var from = (ViewBag.From as string) ?? "";
+    var to = (ViewBag.To as string) ?? "";
+    var q = (ViewBag.Query as string) ?? "";
+    var officeId = ViewBag.OfficeId;
+    var knownOnly = (bool)(ViewBag.KnownOnly ?? false);
+
+    var exportUrl = Url.Action("ExportLogsCsv", new { from, to, officeId, q, knownOnly });
+}
+
+@if (TempData["msg"] != null)
+{
+    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">
+        <i class="fa-solid fa-clipboard-list me-2" aria-hidden="true"></i>
+        Visitor Logs
+    </h3>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary" href="@exportUrl" target="_blank">Export CSV</a>
+        @using (Html.BeginForm("Purge", "Visitors", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
+        {
+            @Html.AntiForgeryToken()
+            <button class="btn btn-outline-danger" type="submit"
+                    data-confirm="Purge old visitor logs?"
+                    data-confirm-text="This will delete visitor log rows older than the retention setting."
+                    data-confirm-icon="warning">
+                Purge old logs
+            </button>
+        }
+    </div>
+</div>
+
+<div class="admin-card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label">From</label>
+                <input class="form-control" name="from" value="@from" placeholder="yyyy-mm-dd" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">To</label>
+                <input class="form-control" name="to" value="@to" placeholder="yyyy-mm-dd" />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Office</label>
+                @Html.DropDownList("officeId", officeOptions, new { @class = "form-select" })
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Search</label>
+                <input class="form-control" name="q" value="@q" placeholder="Name or purpose..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Known</label>
+                <select class="form-select" name="knownOnly">
+                    <option value="false" @(knownOnly ? "" : "selected")>All</option>
+                    <option value="true" @(knownOnly ? "selected" : "")>Known only</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-outline-primary w-100" type="submit">Apply</button>
+                <a class="btn btn-outline-secondary w-100" href="@Url.Action("Index")">Visitors</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="admin-card">
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 js-datatable" data-dt-page-length="25">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Visitor</th>
+                        <th>Known</th>
+                        <th>Office</th>
+                        <th>Purpose</th>
+                        <th>Source</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Model)
+                    {
+                        DateTime ts = r.Timestamp;
+                        string name = r.VisitorName;
+                        bool known = r.VisitorId != null;
+                        string office = r.OfficeName;
+                        string purpose = r.Purpose;
+                        string source = r.Source;
+
+                        <tr>
+                            <td>@ts.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
+                            <td class="fw-semibold">@name</td>
+                            <td>@(known ? "YES" : "NO")</td>
+                            <td>@office</td>
+                            <td>@purpose</td>
+                            <td>@source</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

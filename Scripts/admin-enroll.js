@@ -1,204 +1,400 @@
 (function () {
-    var root = document.getElementById("enrollRoot");
-    if (!root) return;
+  // face enroll wizard, (upload or live scan), auto enroll, minimal buttons
+  // note: clicking a mode card counts as a user gesture, so camera/file permission works better.
 
-    var empId = (root.getAttribute("data-employee-id") || "").trim();
-    var perFrame = parseFloat(root.getAttribute("data-per-frame") || "0.75") || 0.75;
-    var scanUrl = root.getAttribute("data-scan-url") || "/Biometrics/ScanFrame";
-    var enrollUrl = root.getAttribute("data-enroll-url") || "/Biometrics/Enroll";
+  var root = document.getElementById("enrollRoot");
+  if (!root) return;
 
-    var cam = document.getElementById("cam");
-    var cap = document.getElementById("cap");
-    var btnStart = document.getElementById("btnStart");
-    var btnScan = document.getElementById("btnScan");
-    var btnStop = document.getElementById("btnStop");
-    var camStatus = document.getElementById("camStatus");
-    var upStatus = document.getElementById("upStatus");
+  // ------------------------
+  // config from data- attrs
+  // ------------------------
+  var empId = (root.getAttribute("data-employee-id") || "").trim();
+  var perFrame = parseFloat(root.getAttribute("data-per-frame") || "0.75");
+  if (!isFinite(perFrame) || perFrame <= 0) perFrame = 0.75;
 
-    var file = document.getElementById("file");
-    var btnUpload = document.getElementById("btnUpload");
+  var scanUrl = root.getAttribute("data-scan-url") || "/Biometrics/ScanFrame";
+  var enrollUrl = root.getAttribute("data-enroll-url") || "/Biometrics/Enroll";
 
-    var stream = null;
-    var busy = false;
+  // ------------------------
+  // dom
+  // ------------------------
+  function el(id) { return document.getElementById(id); }
 
-    function token() {
-        var el = document.querySelector('input[name="__RequestVerificationToken"]');
-        return el ? el.value : "";
+  var wizard = el("enrollWizard");
+  var livePane = el("livePane");
+  var uploadPane = el("uploadPane");
+
+  var cam = el("cam");
+  var cap = el("cap");
+  var camStatus = el("camStatus");
+  var upStatus = el("upStatus");
+
+  var file = el("file");
+
+  // ------------------------
+  // state
+  // ------------------------
+  var stream = null;
+  var busy = false;
+  var enrolled = false;
+
+  // auto enroll tuning
+  var AUTO_INTERVAL_MS = 320;
+  var PASS_WINDOW = 5;
+  var PASS_REQUIRED = 2;
+
+  // multi-encoding enrollment
+  var ENROLL_MAX_IMAGES = 5;
+  var ENROLL_COLLECT_TRIES = 12;
+  var ENROLL_COLLECT_DELAY_MS = 140;
+
+  var autoTimer = null;
+  var passHist = [];
+
+  function token() {
+    var t = document.querySelector('input[name="__RequestVerificationToken"]');
+    return t ? t.value : "";
+  }
+
+  function setStatus(target, html, kind) {
+    if (!target) return;
+    target.innerHTML = '<div class="alert alert-' + kind + ' py-2 mb-0">' + html + '</div>';
+  }
+
+  function clearStatus(target) {
+    if (!target) return;
+    target.innerHTML = "";
+  }
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function showWizard(show) {
+    if (!wizard) return;
+    wizard.classList.toggle("d-none", !show);
+  }
+
+  function showPane(pane, show) {
+    if (!pane) return;
+    pane.classList.toggle("d-none", !show);
+  }
+
+  // ------------------------
+  // camera
+  // ------------------------
+  async function startCam() {
+    clearStatus(camStatus);
+
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+      throw new Error("camera api not available");
     }
 
-    function setStatus(el, html, kind) {
-        if (!el) return;
-        el.innerHTML = '<div class="alert alert-' + kind + ' py-2 mb-0">' + html + '</div>';
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user" },
+      audio: false
+    });
+
+    cam.srcObject = stream;
+
+    // in some browsers need play() for video to start
+    try { await cam.play(); } catch { }
+
+    setStatus(camStatus, "camera ready, auto enroll running, hold still.", "info");
+  }
+
+  function stopCam() {
+    stopAuto();
+
+    if (stream) {
+      try { stream.getTracks().forEach(function (t) { t.stop(); }); } catch { }
     }
 
-    function clearStatus(el) {
-        if (el) el.innerHTML = "";
+    stream = null;
+    enrolled = false;
+    passHist = [];
+
+    if (cam) cam.srcObject = null;
+  }
+
+  // ------------------------
+  // capture + server calls
+  // ------------------------
+  async function captureJpegBlob(quality) {
+    var w = cam.videoWidth || 1280;
+    var h = cam.videoHeight || 720;
+
+    cap.width = w;
+    cap.height = h;
+
+    var ctx = cap.getContext("2d");
+    ctx.drawImage(cam, 0, 0, w, h);
+
+    return await new Promise(function (resolve) {
+      cap.toBlob(function (b) { resolve(b); }, "image/jpeg", quality);
+    });
+  }
+
+  async function postScanFrame(blob) {
+    var fd = new FormData();
+    fd.append("__RequestVerificationToken", token());
+    fd.append("image", blob, "frame.jpg");
+
+    var res = await fetch(scanUrl, { method: "POST", body: fd });
+    return await res.json();
+  }
+
+  async function postEnrollMany(blobs) {
+    var fd = new FormData();
+    fd.append("__RequestVerificationToken", token());
+    fd.append("employeeId", empId);
+
+    if (!blobs || !blobs.length) return { ok: false, error: "NO_IMAGE" };
+
+    for (var i = 0; i < blobs.length; i++) {
+      fd.append("image", blobs[i], "enroll_" + (i + 1) + ".jpg");
     }
 
-    async function startCam() {
-        clearStatus(camStatus);
+    var res = await fetch(enrollUrl, { method: "POST", body: fd });
+    return await res.json();
+  }
 
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia)
-            throw new Error("Camera API not available");
+  async function collectGoodEnrollFrames() {
+    var frames = [];
 
-        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-        cam.srcObject = stream;
+    for (var i = 0; i < ENROLL_COLLECT_TRIES; i++) {
+      var blob = await captureJpegBlob(0.80);
+      var r = await postScanFrame(blob);
 
-        btnScan.disabled = false;
-        btnStop.disabled = false;
+      if (!r || r.ok !== true) { await sleep(ENROLL_COLLECT_DELAY_MS); continue; }
+      if (r.count !== 1) { await sleep(ENROLL_COLLECT_DELAY_MS); continue; }
+
+      var p = (typeof r.liveness === "number") ? r.liveness : 0;
+
+      if (r.livenessOk === true && p >= perFrame) {
+        frames.push({ blob: blob, p: p });
+        frames.sort(function (a, b) { return b.p - a.p; });
+        if (frames.length > ENROLL_MAX_IMAGES) frames.length = ENROLL_MAX_IMAGES;
+        if (frames.length >= ENROLL_MAX_IMAGES && frames[0].p >= 0.90) break;
+      }
+
+      await sleep(ENROLL_COLLECT_DELAY_MS);
     }
 
-    function stopCam() {
-        if (!stream) return;
-        stream.getTracks().forEach(function (t) { t.stop(); });
-        stream = null;
-        cam.srcObject = null;
+    return frames.map(function (x) { return x.blob; });
+  }
 
-        btnScan.disabled = true;
-        btnStop.disabled = true;
+  // ------------------------
+  // auto enroll logic (live)
+  // ------------------------
+  function startAuto() {
+    stopAuto();
+    enrolled = false;
+    passHist = [];
+    autoTimer = setInterval(autoTick, AUTO_INTERVAL_MS);
+  }
+
+  function stopAuto() {
+    if (autoTimer) clearInterval(autoTimer);
+    autoTimer = null;
+  }
+
+  async function autoTick() {
+    if (enrolled) return;
+    if (!stream) return;
+    if (busy) return;
+
+    busy = true;
+    try {
+      var blob = await captureJpegBlob(0.75);
+      var r = await postScanFrame(blob);
+
+      if (!r || r.ok !== true) {
+        setStatus(camStatus, (r && r.error) ? r.error : "scan error", "danger");
+        passHist = [];
+        return;
+      }
+
+      if (r.count === 0) {
+        setStatus(camStatus, "no face detected.", "warning");
+        passHist = [];
+        return;
+      }
+
+      if (r.count > 1) {
+        setStatus(camStatus, "one person only.", "warning");
+        passHist = [];
+        return;
+      }
+
+      var p = (typeof r.liveness === "number") ? r.liveness : 0;
+      var pass = (r.livenessOk === true) && (p >= perFrame);
+
+      passHist.push(pass ? 1 : 0);
+      if (passHist.length > PASS_WINDOW) passHist.shift();
+
+      var sum = 0;
+      for (var i = 0; i < passHist.length; i++) sum += passHist[i];
+
+      var need = Math.max(0, PASS_REQUIRED - sum);
+
+      if (pass) {
+        setStatus(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, ready in " + need + " good frame(s).", "success");
+      } else {
+        setStatus(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, improve lighting.", "warning");
+      }
+
+      if (sum < PASS_REQUIRED) return;
+
+      setStatus(camStatus, "collecting frames...", "info");
+      var frames = await collectGoodEnrollFrames();
+      if (!frames || !frames.length) {
+        setStatus(camStatus, "could not collect enough good frames, try again.", "danger");
+        passHist = [];
+        return;
+      }
+
+      setStatus(camStatus, "saving enrollment (" + frames.length + " frame(s))...", "info");
+      var saved = await postEnrollMany(frames);
+
+      if (saved && saved.ok === true) {
+        enrolled = true;
+        setStatus(camStatus, "enrollment saved.", "success");
+        stopAuto();
+        return;
+      }
+
+      setStatus(camStatus, (saved && saved.error) ? saved.error : "enroll failed", "danger");
+      passHist = [];
+    } catch (e) {
+      setStatus(camStatus, "auto enroll failed: " + (e && e.message ? e.message : e), "danger");
+      passHist = [];
+    } finally {
+      busy = false;
+    }
+  }
+
+  // ------------------------
+  // upload enroll (auto)
+  // ------------------------
+  async function enrollUploadAuto() {
+    if (busy) return;
+
+    if (!file || !file.files || !file.files[0]) {
+      setStatus(upStatus, "choose an image first.", "warning");
+      return;
     }
 
-    function sleep(ms) {
-        return new Promise(function (r) { setTimeout(r, ms); });
+    busy = true;
+    try {
+      setStatus(upStatus, "verifying...", "info");
+
+      var imgs = Array.prototype.slice.call(file.files || [], 0, ENROLL_MAX_IMAGES);
+      var fd = new FormData();
+      fd.append("__RequestVerificationToken", token());
+      fd.append("employeeId", empId);
+
+      imgs.forEach(function (f, i) {
+        fd.append("image", f, f.name || ("upload_" + (i + 1) + ".jpg"));
+      });
+
+      var res = await fetch(enrollUrl, { method: "POST", body: fd });
+      var r = await res.json();
+
+      if (r && r.ok === true) {
+        setStatus(upStatus, "enrollment saved.", "success");
+      } else {
+        setStatus(upStatus, (r && r.error) ? r.error : "enroll failed", "danger");
+      }
+    } catch (e) {
+      setStatus(upStatus, "upload failed: " + (e && e.message ? e.message : e), "danger");
+    } finally {
+      busy = false;
     }
+  }
 
-    async function captureJpegBlob(quality) {
-        var w = cam.videoWidth || 1280;
-        var h = cam.videoHeight || 720;
+  // ------------------------
+  // wizard wiring
+  // ------------------------
+  function chooseMode(mode) {
+    // hide wizard, show correct pane
+    showWizard(false);
 
-        cap.width = w;
-        cap.height = h;
+    if (mode === "live") {
+      showPane(uploadPane, false);
+      showPane(livePane, true);
 
-        var ctx = cap.getContext("2d");
-        ctx.drawImage(cam, 0, 0, w, h);
-
-        return await new Promise(function (resolve) {
-            cap.toBlob(function (b) { resolve(b); }, "image/jpeg", quality);
-        });
-    }
-
-    async function postScanFrame(blob) {
-        var fd = new FormData();
-        fd.append("__RequestVerificationToken", token());
-        fd.append("image", blob, "frame.jpg");
-
-        var res = await fetch(scanUrl, { method: "POST", body: fd });
-        return await res.json();
-    }
-
-    async function postEnroll(blob, filename) {
-        var fd = new FormData();
-        fd.append("__RequestVerificationToken", token());
-        fd.append("employeeId", empId);
-        fd.append("image", blob, filename || "enroll.jpg");
-
-        var res = await fetch(enrollUrl, { method: "POST", body: fd });
-        return await res.json();
-    }
-
-    async function scanAndEnroll() {
-        if (!stream) return;
-        if (busy) return;
-        busy = true;
-
+      // this click is the "gesture", so start camera here
+      (async function () {
         try {
-            setStatus(camStatus, "Scanning... hold still.", "info");
-
-            var okCount = 0;
-            var best = 0;
-            var lastBlob = null;
-
-            for (var i = 0; i < 15; i++) {
-                lastBlob = await captureJpegBlob(0.85);
-                var r = await postScanFrame(lastBlob);
-
-                if (!r || r.ok !== true) {
-                    setStatus(camStatus, (r && r.error) ? r.error : "Scan error", "danger");
-                    busy = false;
-                    return;
-                }
-
-                if (r.count === 0) {
-                    setStatus(camStatus, "No face detected.", "warning");
-                    continue;
-                }
-
-                if (r.count > 1) {
-                    setStatus(camStatus, "One person only.", "warning");
-                    continue;
-                }
-
-                var p = (typeof r.liveness === "number") ? r.liveness : 0;
-                if (p > best) best = p;
-
-                if (r.livenessOk === true && p >= perFrame) okCount++;
-
-                var kind = r.livenessOk ? "success" : "warning";
-                setStatus(camStatus, "Face ok. Liveness: <b>" + p.toFixed(2) + "</b> (best " + best.toFixed(2) + ")", kind);
-
-                if (okCount >= 2 || best >= 0.88) break;
-                await sleep(220);
-            }
-
-            if (okCount < 2 && best < 0.88) {
-                setStatus(camStatus, "Liveness failed. Try again with better lighting.", "danger");
-                busy = false;
-                return;
-            }
-
-            setStatus(camStatus, "Saving enrollment...", "info");
-            var saved = await postEnroll(lastBlob, "enroll.jpg");
-
-            if (saved && saved.ok === true) {
-                setStatus(camStatus, "Enrollment saved.", "success");
-            } else {
-                setStatus(camStatus, (saved && saved.error) ? saved.error : "Enroll failed", "danger");
-            }
+          await startCam();
+          startAuto();
         } catch (e) {
-            setStatus(camStatus, "Camera scan failed: " + e.message, "danger");
-        } finally {
-            busy = false;
+          stopCam();
+          showWizard(true);
+          showPane(livePane, false);
+          setStatus(camStatus, "camera blocked: " + (e && e.message ? e.message : e) + ", try again.", "danger");
         }
+      })();
+
+      return;
     }
 
-    async function enrollUpload() {
-        if (busy) return;
-        if (!file.files || !file.files[0]) {
-            setStatus(upStatus, "Choose an image first.", "warning");
-            return;
-        }
+    if (mode === "upload") {
+      stopCam();
+      showPane(livePane, false);
+      showPane(uploadPane, true);
+      clearStatus(upStatus);
 
-        busy = true;
-        try {
-            setStatus(upStatus, "Verifying...", "info");
+      if (file) {
+        try { file.focus(); } catch { }
+      }
 
-            var img = file.files[0];
-            var res = await postEnroll(img, img.name || "upload.jpg");
-
-            if (res && res.ok === true) {
-                setStatus(upStatus, "Enrollment saved.", "success");
-            } else {
-                setStatus(upStatus, (res && res.error) ? res.error : "Enroll failed", "danger");
-            }
-        } catch (e) {
-            setStatus(upStatus, "Upload failed: " + e.message, "danger");
-        } finally {
-            busy = false;
-        }
+      return;
     }
+  }
 
-    if (btnStart) {
-        btnStart.addEventListener("click", async function () {
-            try {
-                await startCam();
-                setStatus(camStatus, "Camera ready.", "success");
-            } catch (e) {
-                setStatus(camStatus, "Camera blocked: " + e.message, "danger");
-            }
+  function wireWizard() {
+    if (!wizard) return;
+
+    var cards = wizard.querySelectorAll("[data-enroll-mode]");
+    for (var i = 0; i < cards.length; i++) {
+      (function (card) {
+        function go() {
+          var mode = (card.getAttribute("data-enroll-mode") || "").trim();
+          chooseMode(mode);
+        }
+
+        card.addEventListener("click", go);
+
+        // keyboard
+        card.addEventListener("keydown", function (e) {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            go();
+          }
         });
+      })(cards[i]);
     }
+  }
 
-    if (btnStop) btnStop.addEventListener("click", stopCam);
-    if (btnScan) btnScan.addEventListener("click", scanAndEnroll);
-    if (btnUpload) btnUpload.addEventListener("click", enrollUpload);
+  function wireUpload() {
+    if (!file) return;
+    file.addEventListener("change", function () {
+      // auto enroll as soon as files are chosen
+      enrollUploadAuto();
+    });
+  }
+
+  // cleanup when leaving
+  window.addEventListener("beforeunload", function () {
+    stopCam();
+  });
+
+  // init: wizard first, hide panes
+  showWizard(true);
+  showPane(livePane, false);
+  showPane(uploadPane, false);
+
+  setStatus(camStatus, "choose a method above.", "info");
+  wireWizard();
+  wireUpload();
 })();

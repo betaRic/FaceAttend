@@ -1,6 +1,8 @@
-﻿@{
+@{
     var url = (Request?.Url?.AbsolutePath ?? "").ToLowerInvariant();
-    Func<string, bool> isActive = (path) => url.StartsWith(path.ToLowerInvariant());
+
+    Func<string, bool> isActive = (path) =>
+        url.StartsWith((path ?? "").ToLowerInvariant());
 }
 
 <nav class="admin-nav">
@@ -19,7 +21,6 @@
             Employees
         </a>
 
-
         <a class="admin-nav-link @(isActive("/admin/offices") ? "active" : "")"
            href="@Url.Action("Index","Offices", new { area = "Admin" })">
             <i class="fa-solid fa-building me-2"></i>
@@ -32,10 +33,22 @@
             Attendance
         </a>
 
+        <a class="admin-nav-link @(isActive("/admin/attendance/summaryreport") ? "active" : "")"
+           href="@Url.Action("SummaryReport","Attendance", new { area = "Admin" })">
+            <i class="fa-solid fa-chart-column me-2"></i>
+            Attendance Summary
+        </a>
+
         <a class="admin-nav-link @(isActive("/admin/visitors") ? "active" : "")"
            href="@Url.Action("Index","Visitors", new { area = "Admin" })">
             <i class="fa-solid fa-user-check me-2"></i>
             Visitors
+        </a>
+
+        <a class="admin-nav-link @(isActive("/admin/visitors/logs") ? "active" : "")"
+           href="@Url.Action("Logs","Visitors", new { area = "Admin" })">
+            <i class="fa-solid fa-clipboard-list me-2"></i>
+            Visitor Logs
         </a>
     </div>
 

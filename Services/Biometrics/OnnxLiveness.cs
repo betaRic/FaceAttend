@@ -48,6 +48,19 @@ namespace FaceAttend.Services.Biometrics
         private static bool _stuck = false;
 
         // -------------------------------------------------------------------
+
+        /// <summary>
+        /// Preloads the ONNX session so the first kiosk scan does not pay model init cost.
+        /// Safe to call multiple times.
+        /// </summary>
+        public static void WarmUp()
+        {
+            lock (_lock)
+            {
+                try { EnsureSession(); } catch { /* best effort */ }
+            }
+        }
+
         // Public API
         // -------------------------------------------------------------------
 

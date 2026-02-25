@@ -1,11 +1,12 @@
-﻿@{
+@model FaceAttend.Areas.Admin.Models.DashboardViewModel
+@{
     ViewBag.Title = "Dashboard";
 }
 
 <div class="d-flex align-items-start align-items-md-center justify-content-between gap-3 flex-wrap mb-3">
     <div>
         <h1 class="h3 mb-1">Dashboard</h1>
-        <div class="text-muted small">@DateTime.Now.ToString("dddd, MMM dd, yyyy")</div>
+        <div class="text-muted small">@Model.TodayDateDisplay</div>
     </div>
 </div>
 
@@ -14,7 +15,7 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Employees</div>
-                <div class="fs-3 fw-semibold">-</div>
+                <div class="fs-3 fw-semibold">@Model.TotalEmployees</div>
                 <div class="text-muted small mt-2">Active employees</div>
             </div>
         </div>
@@ -24,7 +25,7 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Today Time-ins</div>
-                <div class="fs-3 fw-semibold">-</div>
+                <div class="fs-3 fw-semibold">@Model.TodayTimeIns</div>
                 <div class="text-muted small mt-2">Recorded today</div>
             </div>
         </div>
@@ -34,7 +35,7 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Today Time-outs</div>
-                <div class="fs-3 fw-semibold">-</div>
+                <div class="fs-3 fw-semibold">@Model.TodayTimeOuts</div>
                 <div class="text-muted small mt-2">Recorded today</div>
             </div>
         </div>
@@ -44,11 +45,26 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Visitors</div>
-                <div class="fs-3 fw-semibold">-</div>
+                <div class="fs-3 fw-semibold">@Model.TotalVisitors</div>
                 <div class="text-muted small mt-2">Known visitors</div>
             </div>
         </div>
     </div>
+
+    @if (Model.PendingReviews > 0)
+    {
+        <div class="col-12">
+            <div class="alert alert-warning d-flex align-items-center gap-2 mb-0" role="alert">
+                <i class="bi bi-exclamation-triangle-fill"></i>
+                <div>
+                    <strong>@Model.PendingReviews attendance @(Model.PendingReviews == 1 ? "record" : "records")</strong>
+                    flagged for review.
+                    <a href="@Url.Action("Index", "Attendance", new { area = "Admin", needsReview = true })"
+                       class="alert-link ms-1">Review now &rarr;</a>
+                </div>
+            </div>
+        </div>
+    }
 
     <div class="col-12 col-xl-8">
         <div class="admin-card h-100">
@@ -56,10 +72,10 @@
                 <div class="d-flex align-items-center justify-content-between">
                     <div>
                         <div class="fw-semibold">Recent Attendance</div>
-                        <div class="text-muted small">Latest logs</div>
+                        <div class="text-muted small">Latest @(Model.RecentLogs.Count > 0 ? Model.RecentLogs.Count.ToString() : "0") logs</div>
                     </div>
                     <a class="btn btn-outline-secondary btn-sm"
-                       href="@Url.Action("Index","Attendance", new { area="Admin" })">
+                       href="@Url.Action("Index", "Attendance", new { area = "Admin" })">
                         View all
                     </a>
                 </div>
@@ -76,15 +92,46 @@
                             </tr>
                         </thead>
                         <tbody>
-                            <tr>
-                                <td colspan="5" class="text-muted">No records yet.</td>
-                            </tr>
+                            @if (Model.RecentLogs.Count == 0)
+                            {
+                                <tr>
+                                    <td colspan="5" class="text-muted">No records yet.</td>
+                                </tr>
+                            }
+                            else
+                            {
+                                foreach (var row in Model.RecentLogs)
+                                {
+                                    <tr>
+                                        <td class="text-nowrap">@row.TimestampLocalDisplay</td>
+                                        <td>
+                                            <div class="fw-semibold small">@row.EmployeeFullName</div>
+                                            @if (!string.IsNullOrWhiteSpace(row.EmployeeId))
+                                            {
+                                                <div class="text-muted small">@row.EmployeeId</div>
+                                            }
+                                        </td>
+                                        <td>
+                                            <span class="badge @row.EventTypeBadgeClass">@row.EventType</span>
+                                        </td>
+                                        <td class="small text-muted">@row.OfficeName</td>
+                                        <td class="text-end">
+                                            @if (row.NeedsReview)
+                                            {
+                                                <span class="badge bg-warning text-dark" title="Flagged for review">
+                                                    Review
+                                                </span>
+                                            }
+                                            else
+                                            {
+                                                <span class="badge bg-success">OK</span>
+                                            }
+                                        </td>
+                                    </tr>
+                                }
+                            }
                         </tbody>
                     </table>
-                </div>
-
-                <div class="text-muted small mt-2">
-                    We will fill this from AttendanceLogs next.
                 </div>
             </div>
         </div>
@@ -98,26 +145,60 @@
 
                 <div class="d-flex align-items-center justify-content-between py-2 border-top">
                     <div>Database</div>
-                    <span class="badge bg-secondary">Unknown</span>
-                </div>
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Liveness Model</div>
-                    <span class="badge bg-secondary">Unknown</span>
-                </div>
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Dlib Models</div>
-                    <span class="badge bg-secondary">Unknown</span>
-                </div>
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Offline Assets</div>
-                    <span class="badge bg-success">OK</span>
+                    @if (Model.DatabaseHealthy)
+                    {
+                        <span class="badge bg-success">OK</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-danger">Error</span>
+                    }
                 </div>
 
-                <div class="text-muted small mt-3 border-top pt-3">
-                    Next: load these statuses from config + file checks.
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Liveness Model</div>
+                    @if (Model.LivenessModelLoaded)
+                    {
+                        <span class="badge bg-success">OK</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-danger" title="minifasnet.onnx not found">Missing</span>
+                    }
                 </div>
+
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Dlib Models</div>
+                    @if (Model.DlibModelsLoaded)
+                    {
+                        <span class="badge bg-success">OK</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-danger" title="No .dat files in Biometrics:DlibModelsDir">Missing</span>
+                    }
+                </div>
+
+                <div class="d-flex align-items-center justify-content-between py-2 border-top">
+                    <div>Offline Assets</div>
+                    @if (Model.OfflineAssetsOk)
+                    {
+                        <span class="badge bg-success">OK</span>
+                    }
+                    else
+                    {
+                        <span class="badge bg-warning text-dark">Check</span>
+                    }
+                </div>
+
+                @if (Model.TotalTodayScans > 0)
+                {
+                    <div class="text-muted small mt-3 border-top pt-3">
+                        @Model.TotalTodayScans total scan@(Model.TotalTodayScans == 1 ? "" : "s") today
+                        (@Model.TodayTimeIns in / @Model.TodayTimeOuts out)
+                    </div>
+                }
             </div>
         </div>
     </div>
 </div>
-    

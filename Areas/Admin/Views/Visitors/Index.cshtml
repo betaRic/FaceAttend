@@ -1,10 +1,105 @@
+@model System.Collections.Generic.List<Visitor>
 @{
     ViewBag.Title = "Visitors";
+    var q = (ViewBag.Query as string) ?? "";
+    var showInactive = (bool)(ViewBag.ShowInactive ?? false);
 }
+
+@if (TempData["msg"] != null)
+{
+    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <h3 class="mb-0">
+        <i class="fa-solid fa-user-check me-2" aria-hidden="true"></i>
+        Visitors
+    </h3>
+    <a class="btn btn-primary" href="@Url.Action("Create")">
+        <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>
+        Add visitor
+    </a>
+</div>
+
+<div class="admin-card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-6">
+                <label class="form-label">Search</label>
+                <input class="form-control" name="q" value="@q" placeholder="Name contains..." />
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Show</label>
+                <select class="form-select" name="showInactive">
+                    <option value="false" @(showInactive ? "" : "selected")>Active only</option>
+                    <option value="true" @(showInactive ? "selected" : "")>Active + inactive</option>
+                </select>
+            </div>
+            <div class="col-md-3 d-flex gap-2">
+                <button class="btn btn-outline-primary w-100" type="submit">Apply</button>
+                <a class="btn btn-outline-secondary w-100" href="@Url.Action("Logs")">Logs</a>
+            </div>
+        </form>
+    </div>
+</div>
 
 <div class="admin-card">
     <div class="card-body">
-        <h4 class="mb-2">Visitors</h4>
-        <p class="text-muted mb-0">Placeholder page. Next step: list visitor records and retention.</p>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0 js-datatable" data-dt-page-length="25" data-dt-no-sort-last="1">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>Status</th>
+                        <th>Face</th>
+                        <th>Visits</th>
+                        <th>Last visit</th>
+                        <th style="width:320px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var v in Model)
+                    {
+                        <tr>
+                            <td class="fw-semibold">@v.Name</td>
+                            <td>
+                                @if (v.IsActive) { <span class="badge bg-success">Active</span> }
+                                else { <span class="badge bg-secondary">Inactive</span> }
+                            </td>
+                            <td>
+                                @if (string.IsNullOrEmpty(v.FaceEncodingBase64))
+                                { <span class="badge bg-warning text-dark">Not enrolled</span> }
+                                else
+                                { <span class="badge bg-primary">Enrolled</span> }
+                            </td>
+                            <td>@v.VisitCount</td>
+                            <td>@v.LastVisitDate.ToLocalTime().ToString("yyyy-MM-dd")</td>
+                            <td class="text-end">
+                                <a class="btn btn-sm btn-outline-primary" href="@Url.Action("Enroll", new { id = v.Id })">
+                                    <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>
+                                    Enroll face
+                                </a>
+                                <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Edit", new { id = v.Id })">
+                                    <i class="fa-solid fa-pen me-1" aria-hidden="true"></i>
+                                    Edit
+                                </a>
+                                @using (Html.BeginForm("Deactivate", "Visitors", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@v.Id" />
+                                    <button class="btn btn-sm btn-outline-danger" type="submit"
+                                            data-confirm="Deactivate this visitor?"
+                                            data-confirm-text="This will prevent matching this visitor at the kiosk."
+                                            data-confirm-icon="warning">
+                                        <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>
+                                        Deactivate
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
     </div>
 </div>
