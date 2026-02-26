@@ -56,9 +56,28 @@
     return t ? t.value : "";
   }
 
-  function setStatus(target, html, kind) {
+  function setStatusHtml(target, html, kind) {
     if (!target) return;
-    target.innerHTML = '<div class="alert alert-' + kind + ' py-2 mb-0">' + html + '</div>';
+    var k = (kind || "info").toString();
+    target.innerHTML = '<div class="alert alert-' + k + ' py-2 mb-0">' + (html || "") + '</div>';
+  }
+
+  function setStatusText(target, text, kind) {
+    if (!target) return;
+    var k = (kind || "info").toString();
+    var msg = (text || "").toString();
+
+    var wrap = document.createElement("div");
+    wrap.className = "alert alert-" + k + " py-2 mb-0";
+    wrap.textContent = msg;
+
+    target.innerHTML = "";
+    target.appendChild(wrap);
+  }
+
+  // default: safe text only
+  function setStatus(target, text, kind) {
+    setStatusText(target, text, kind);
   }
 
   function clearStatus(target) {
@@ -237,9 +256,9 @@
       var need = Math.max(0, PASS_REQUIRED - sum);
 
       if (pass) {
-        setStatus(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, ready in " + need + " good frame(s).", "success");
+        setStatusHtml(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, ready in " + need + " good frame(s).", "success");
       } else {
-        setStatus(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, improve lighting.", "warning");
+        setStatusHtml(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, improve lighting.", "warning");
       }
 
       if (sum < PASS_REQUIRED) return;

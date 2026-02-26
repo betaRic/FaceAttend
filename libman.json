@@ -49,6 +49,14 @@
         "responsive.bootstrap5.min.js",
         "responsive.bootstrap5.min.css"
       ]
+    },
+    {
+      "library": "datatables.net-responsive-dt@3.0.5",
+      "destination": "Scripts/vendor/datatables",
+      "files": [
+        "responsive.dataTables.min.js",
+        "responsive.dataTables.min.css"
+      ]
     }
   ]
 }

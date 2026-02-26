@@ -4,30 +4,74 @@ using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
+using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using System.Globalization;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
     [AdminAuthorize]
     public class EmployeesController : Controller
     {
-        public ActionResult Index()
+        public ActionResult Index(string q, int? page, bool? showInactive)
         {
             using (var db = new FaceAttendDBEntities())
             {
+                int pageSize = AppSettings.GetInt("Employees:PageSize", 200);
+                if (pageSize < 25) pageSize = 25;
+                if (pageSize > 1000) pageSize = 1000;
+
+                int p = page.GetValueOrDefault(1);
+                if (p < 1) p = 1;
+
+                bool includeInactive = showInactive.HasValue && showInactive.Value;
+
+                var baseQ = db.Employees.AsNoTracking().AsQueryable();
+
+                if (!includeInactive)
+                    baseQ = baseQ.Where(e => e.IsActive);
+
+                if (!string.IsNullOrWhiteSpace(q))
+                {
+                    var term = q.Trim();
+                    baseQ = baseQ.Where(e =>
+                        e.EmployeeId.Contains(term) ||
+                        e.FirstName.Contains(term) ||
+                        e.LastName.Contains(term) ||
+                        e.MiddleName.Contains(term) ||
+                        e.Department.Contains(term) ||
+                        e.Position.Contains(term));
+                }
+
+                var total = baseQ.Count();
+                var totalPages = (int)Math.Ceiling(total / (double)pageSize);
+                if (totalPages <= 0) totalPages = 1;
+                if (p > totalPages) p = totalPages;
+
+                var skip = Math.Max(0, (p - 1) * pageSize);
+
                 // Avoid relying on EF navigation naming when there are multiple Office FKs.
                 // Always use OfficeId as the employee office.
-                var employees = db.Employees
+                var employees = baseQ
                     .OrderBy(e => e.EmployeeId)
+                    .Skip(skip)
+                    .Take(pageSize)
                     .ToList();
 
                 var officeIds = employees.Select(e => e.OfficeId).Distinct().ToList();
-                var offices = db.Offices
+                var offices = db.Offices.AsNoTracking()
                     .Where(o => officeIds.Contains(o.Id))
                     .ToList()
                     .ToDictionary(o => o.Id, o => o.Name);
 
                 ViewBag.OfficeNames = offices;
+
+                ViewBag.Q = q ?? "";
+                ViewBag.Page = p;
+                ViewBag.PageSize = pageSize;
+                ViewBag.Total = total;
+                ViewBag.ShowInactive = includeInactive;
+
                 return View(employees);
             }
         }
@@ -197,6 +241,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (emp == null) return HttpNotFound();
                 var office = db.Offices.FirstOrDefault(o => o.Id == emp.OfficeId);
                 ViewBag.OfficeName = office != null ? office.Name : "-";
+
+                var perFrame = SystemConfigService.GetDouble(db, "Biometrics:LivenessThreshold", 0.75);
+                ViewBag.PerFrame = perFrame.ToString("0.00####", CultureInfo.InvariantCulture);
+
                 return View(emp);
             }
         }

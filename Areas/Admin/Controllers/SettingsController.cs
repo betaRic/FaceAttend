@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 
@@ -81,7 +82,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 if (!ModelState.IsValid)
                 {
-                    vm.OfficeOptions = BuildOfficeOptions(db, vm.FallbackOfficeId);
+                    vm.OfficeOptions = AdminQueryHelper.BuildOfficeOptionsWithAuto(db, vm.FallbackOfficeId);
                     return View("Index", vm);
                 }
 
@@ -345,7 +346,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 VisitorMaxRecords            = visMaxRec,
                 VisitorRetentionYears        = visRetYears,
 
-                OfficeOptions = BuildOfficeOptions(db, fb)
+                OfficeOptions = AdminQueryHelper.BuildOfficeOptionsWithAuto(db, fb)
             };
 
             // Warn if legacy key exists so it can be cleaned up.
@@ -360,31 +361,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             return vm;
         }
 
-        private static System.Collections.Generic.List<SelectListItem> BuildOfficeOptions(
-            FaceAttendDBEntities db, int selected)
-        {
-            var list = new System.Collections.Generic.List<SelectListItem>
-            {
-                new SelectListItem
-                {
-                    Text     = "Auto (first active office)",
-                    Value    = "0",
-                    Selected = selected <= 0
-                }
-            };
-
-            db.Offices.AsNoTracking()
-              .Where(o => o.IsActive)
-              .OrderBy(o => o.Name)
-              .ToList()
-              .ForEach(o => list.Add(new SelectListItem
-              {
-                  Text     = o.Name,
-                  Value    = o.Id.ToString(),
-                  Selected = selected == o.Id
-              }));
-
-            return list;
-        }
+        
     }
 }

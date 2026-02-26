@@ -51,6 +51,13 @@ namespace FaceAttend
             {
                 if (FileExists(p)) vendor.Include(p);
             }
+
+            // DataTables Responsive extension (core + Bootstrap 5 integration)
+            var respCore = "~/Scripts/vendor/datatables/responsive.dataTables.min.js";
+            var respBs5  = "~/Scripts/vendor/datatables/responsive.bootstrap5.min.js";
+            if (FileExists(respCore)) vendor.Include(respCore);
+            if (FileExists(respCore) && FileExists(respBs5)) vendor.Include(respBs5);
+
             bundles.Add(vendor);
 
             bundles.Add(new ScriptBundle("~/bundles/admin")
@@ -83,6 +90,11 @@ namespace FaceAttend
             {
                 if (FileExists(p)) vendorCss.Include(p);
             }
+
+            var respCoreCss = "~/Scripts/vendor/datatables/responsive.dataTables.min.css";
+            var respBs5Css  = "~/Scripts/vendor/datatables/responsive.bootstrap5.min.css";
+            if (FileExists(respCoreCss)) vendorCss.Include(respCoreCss);
+            if (FileExists(respCoreCss) && FileExists(respBs5Css)) vendorCss.Include(respBs5Css);
             bundles.Add(vendorCss);
 
             bundles.Add(new StyleBundle("~/Content/admin")

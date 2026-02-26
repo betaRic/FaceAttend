@@ -236,6 +236,7 @@
     <Compile Include="Areas\Admin\Controllers\SettingsController.cs" />
     <Compile Include="Areas\Admin\Controllers\UnlockController.cs" />
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
+    <Compile Include="Areas\Admin\Helpers\AdminQueryHelper.cs" />
     <Compile Include="Areas\Admin\Models\AttendanceDetailsVm.cs" />
     <Compile Include="Areas\Admin\Models\AttendanceIndexVm.cs" />
     <Compile Include="Areas\Admin\Models\DashboardViewModel.cs" />
@@ -283,6 +284,7 @@
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
     <Compile Include="Services\Biometrics\FaceMatchTuner.cs" />
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
+    <Compile Include="Services\Biometrics\ScanFramePipeline.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
     <Compile Include="Services\GeoUtil.cs" />

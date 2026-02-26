@@ -1,9 +1,28 @@
 @model System.Collections.Generic.List<Employee>
 @{
     ViewBag.Title = "Employees";
+
+    var q = (ViewBag.Q ?? "").ToString();
+    var showInactive = ViewBag.ShowInactive != null && (bool)ViewBag.ShowInactive;
+
+    int page = ViewBag.Page == null ? 1 : System.Convert.ToInt32(ViewBag.Page);
+    int pageSize = ViewBag.PageSize == null ? 200 : System.Convert.ToInt32(ViewBag.PageSize);
+    int total = ViewBag.Total == null ? Model.Count : System.Convert.ToInt32(ViewBag.Total);
+
+    int totalPages = (int)System.Math.Ceiling(total / (double)pageSize);
+    if (totalPages < 1) totalPages = 1;
+    if (page < 1) page = 1;
+    if (page > totalPages) page = totalPages;
+
+    int start = total == 0 ? 0 : ((page - 1) * pageSize) + 1;
+    int end = System.Math.Min(page * pageSize, total);
+
+    int startPage = System.Math.Max(1, page - 3);
+    int endPage = System.Math.Min(totalPages, startPage + 6);
+    if (endPage - startPage < 6) startPage = System.Math.Max(1, endPage - 6);
 }
 
-<div class="d-flex align-items-center justify-content-between mb-3">
+<div class="d-flex align-items-center justify-content-between mb-2">
     <h3 class="mb-0">
         <i class="fa-solid fa-users me-2" aria-hidden="true"></i>
         Employees
@@ -14,10 +33,39 @@
     </a>
 </div>
 
+@using (Html.BeginForm("Index", "Employees", FormMethod.Get, new { area = "Admin", @class = "row g-2 align-items-end mb-3" }))
+{
+    <div class="col-sm-6 col-md-5">
+        <label class="form-label">Search</label>
+        <input class="form-control" name="q" value="@q" placeholder="EmployeeId, name, department" />
+    </div>
+
+    <div class="col-sm-3 col-md-3">
+        <div class="form-check mt-4">
+            <input class="form-check-input" type="checkbox" id="showInactive" name="showInactive" value="true" @(showInactive ? "checked" : "") />
+            <label class="form-check-label" for="showInactive">Show inactive</label>
+        </div>
+    </div>
+
+    <div class="col-sm-3 col-md-4 text-sm-end">
+        <button class="btn btn-outline-primary" type="submit">Apply</button>
+        <a class="btn btn-outline-secondary ms-1" href="@Url.Action("Index")">Reset</a>
+    </div>
+}
+
+@if (total > 0)
+{
+    <div class="text-muted mb-2">Showing @start-@end of @total</div>
+}
+else
+{
+    <div class="text-muted mb-2">No employees found.</div>
+}
+
 <div class="admin-card">
     <div class="card-body">
         <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 js-datatable" data-dt-page-length="25" data-dt-no-sort-last="1">
+            <table class="table table-sm align-middle mb-0" data-dt-no-sort-last="1">
                 <thead>
                     <tr>
                         <th>EmployeeId</th>
@@ -90,5 +138,27 @@
                 </tbody>
             </table>
         </div>
+
+        @if (totalPages > 1)
+        {
+            <nav class="mt-3" aria-label="Employees pagination">
+                <ul class="pagination mb-0">
+                    <li class="page-item @(page <= 1 ? "disabled" : "")">
+                        <a class="page-link" href="@Url.Action("Index", new { q = q, showInactive = showInactive, page = page - 1 })">Prev</a>
+                    </li>
+
+                    @for (int p = startPage; p <= endPage; p++)
+                    {
+                        <li class="page-item @(p == page ? "active" : "")">
+                            <a class="page-link" href="@Url.Action("Index", new { q = q, showInactive = showInactive, page = p })">@p</a>
+                        </li>
+                    }
+
+                    <li class="page-item @(page >= totalPages ? "disabled" : "")">
+                        <a class="page-link" href="@Url.Action("Index", new { q = q, showInactive = showInactive, page = page + 1 })">Next</a>
+                    </li>
+                </ul>
+            </nav>
+        }
     </div>
 </div>

@@ -2,11 +2,9 @@
 @{
     ViewBag.Title = "Enroll Face";
 }
-@using System.Configuration
-
 @{
     // Client-side scan tuning (server still enforces liveness in Enroll)
-    var perFrame = ConfigurationManager.AppSettings["Biometrics:LivenessThreshold"] ?? "0.75";
+    var perFrame = (ViewBag.PerFrame ?? "0.75").ToString();
 }
 
 <div class="admin-card">
@@ -62,7 +60,7 @@
                                     <div class="fw-semibold">Upload photo</div>
                                 </div>
                                 <div class="text-muted mt-2">
-                                    choose 1–5 images, auto verify + enroll
+                                    choose 1-5 images, auto verify + enroll
                                 </div>
                             </div>
                         </div>

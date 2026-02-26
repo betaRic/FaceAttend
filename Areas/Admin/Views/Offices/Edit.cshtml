@@ -2,10 +2,20 @@
 @{
     ViewBag.Title = "Edit Office";
     Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
+
+    var hasLeafletCss = System.IO.File.Exists(Server.MapPath("~/Content/vendor/leaflet/leaflet.min.css"));
+    var hasLeafletJs = System.IO.File.Exists(Server.MapPath("~/Scripts/vendor/leaflet/leaflet.min.js"));
 }
 
 @section styles {
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    @if (hasLeafletCss)
+    {
+        <link rel="stylesheet" href="~/Content/vendor/leaflet/leaflet.min.css" />
+    }
+    else
+    {
+        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    }
 }
 
 <div class="admin-card">
@@ -28,83 +38,13 @@
 </div>
 
 @section scripts {
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    <script>
-        (function () {
-            var latEl = document.getElementById("lat");
-            var lonEl = document.getElementById("lon");
-            var radiusEl = document.getElementById("RadiusMeters");
-            var btnMyLoc = document.getElementById("btnUseMyLocation");
-
-            var lat = parseFloat(latEl.value) || 6.116386;
-            var lon = parseFloat(lonEl.value) || 125.171617;
-            var radius = parseInt(radiusEl.value, 10) || 100;
-
-            var map = L.map("map").setView([lat, lon], 16);
-
-            L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-                maxZoom: 19
-            }).addTo(map);
-
-            var marker = L.marker([lat, lon], { draggable: true }).addTo(map);
-            var circle = L.circle([lat, lon], { radius: radius }).addTo(map);
-
-            function syncInputs(newLat, newLon) {
-                latEl.value = newLat.toFixed(7);
-                lonEl.value = newLon.toFixed(7);
-            }
-
-            function syncMap() {
-                var newLat = parseFloat(latEl.value);
-                var newLon = parseFloat(lonEl.value);
-                if (!isFinite(newLat) || !isFinite(newLon)) return;
-
-                marker.setLatLng([newLat, newLon]);
-                circle.setLatLng([newLat, newLon]);
-                map.panTo([newLat, newLon]);
-            }
-
-            function syncRadius() {
-                var r = parseInt(radiusEl.value, 10);
-                if (!isFinite(r) || r <= 0) r = 100;
-                circle.setRadius(r);
-            }
-
-            map.on("click", function (e) {
-                marker.setLatLng(e.latlng);
-                circle.setLatLng(e.latlng);
-                syncInputs(e.latlng.lat, e.latlng.lng);
-            });
-
-            marker.on("drag", function (e) {
-                var pos = e.target.getLatLng();
-                circle.setLatLng(pos);
-                syncInputs(pos.lat, pos.lng);
-            });
-
-            latEl.addEventListener("change", syncMap);
-            lonEl.addEventListener("change", syncMap);
-            radiusEl.addEventListener("change", syncRadius);
-
-            if (btnMyLoc) {
-                btnMyLoc.addEventListener("click", function () {
-                    if (!navigator.geolocation) return;
-
-                    btnMyLoc.disabled = true;
-
-                    navigator.geolocation.getCurrentPosition(
-                        function (p) {
-                            btnMyLoc.disabled = false;
-                            syncInputs(p.coords.latitude, p.coords.longitude);
-                            syncMap();
-                        },
-                        function () {
-                            btnMyLoc.disabled = false;
-                        },
-                        { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-                    );
-                });
-            }
-        })();
-    </script>
+    @if (hasLeafletJs)
+    {
+        <script src="~/Scripts/vendor/leaflet/leaflet.min.js"></script>
+    }
+    else
+    {
+        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    }
+    <script src="~/Scripts/admin-office-map.js"></script>
 }

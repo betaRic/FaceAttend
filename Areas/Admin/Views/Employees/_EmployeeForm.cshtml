@@ -1,0 +1,57 @@
+﻿
+@model EmployeeEditVm
+
+<div class="row g-3">
+    <div class="col-md-4">
+        <label class="form-label">EmployeeId</label>
+        @Html.TextBoxFor(m => m.EmployeeId, new { @class = "form-control", placeholder = "EMP-001" })
+        @Html.ValidationMessageFor(m => m.EmployeeId, "", new { @class = "text-danger" })
+    </div>
+
+    <div class="col-md-8">
+        <label class="form-label">First name</label>
+        @Html.TextBoxFor(m => m.FirstName, new { @class = "form-control" })
+        @Html.ValidationMessageFor(m => m.FirstName, "", new { @class = "text-danger" })
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Middle name</label>
+        @Html.TextBoxFor(m => m.MiddleName, new { @class = "form-control" })
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Last name</label>
+        @Html.TextBoxFor(m => m.LastName, new { @class = "form-control" })
+        @Html.ValidationMessageFor(m => m.LastName, "", new { @class = "text-danger" })
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Position</label>
+        @Html.TextBoxFor(m => m.Position, new { @class = "form-control" })
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Department</label>
+        @Html.TextBoxFor(m => m.Department, new { @class = "form-control" })
+    </div>
+
+    <div class="col-md-6">
+        <label class="form-label">Assigned office</label>
+        @Html.DropDownListFor(m => m.OfficeId, (SelectList)ViewBag.Offices, "Select office", new { @class = "form-select" })
+        @Html.ValidationMessageFor(m => m.OfficeId, "", new { @class = "text-danger" })
+    </div>
+
+    <div class="col-md-6">
+        <div class="form-check mt-4">
+            @Html.CheckBoxFor(m => m.IsFlexi, new { @class = "form-check-input" })
+            <label class="form-check-label">Flexi schedule</label>
+        </div>
+    </div>
+
+    <div class="col-md-6">
+        <div class="form-check mt-4">
+            @Html.CheckBoxFor(m => m.IsActive, new { @class = "form-check-input" })
+            <label class="form-check-label">Active</label>
+        </div>
+    </div>
+</div>

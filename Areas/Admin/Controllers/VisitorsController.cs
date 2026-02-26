@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Data.Entity;
 using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.Mvc;
 using FaceAttend.Filters;
+using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Security;
@@ -31,13 +33,22 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!(showInactive ?? false))
                     baseQ = baseQ.Where(v => v.IsActive);
 
+                var cap = AppSettings.GetInt("Visitors:MaxListRows", 500);
+                if (cap < 50) cap = 50;
+                if (cap > 5000) cap = 5000;
+
                 var list = baseQ
                     .OrderByDescending(v => v.LastVisitDate)
-                    .Take(10000)
+                    .Take(cap + 1)
                     .ToList();
+
+                var truncated = list.Count > cap;
+                if (truncated) list = list.Take(cap).ToList();
 
                 ViewBag.Query = q;
                 ViewBag.ShowInactive = (showInactive ?? false);
+                ViewBag.Truncated = truncated;
+                ViewBag.Cap = cap;
 
                 return View(list);
             }
@@ -90,6 +101,10 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 var v = db.Visitors.FirstOrDefault(x => x.Id == id);
                 if (v == null) return HttpNotFound();
+
+                var perFrame = SystemConfigService.GetDouble(db, "Biometrics:LivenessThreshold", 0.75);
+                ViewBag.PerFrame = perFrame.ToString("0.00####", CultureInfo.InvariantCulture);
+
                 return View(v);
             }
         }
@@ -157,49 +172,8 @@ namespace FaceAttend.Areas.Admin.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult ScanFrame(HttpPostedFileBase image)
         {
-            if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
-
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
-
-            string path = null;
-            string processedPath = null;
-
-            try
-            {
-                path = SecureFileUpload.SaveTemp(image, "v_", max);
-
-                bool isProcessed;
-                processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
-
-                var dlib = new DlibBiometrics();
-                var faces = dlib.DetectFacesFromFile(processedPath);
-                var count = faces == null ? 0 : faces.Length;
-
-                if (count != 1)
-                    return Json(new { ok = true, count, liveness = (float?)null, livenessOk = false });
-
-                var live = new OnnxLiveness();
-                var scored = live.ScoreFromFile(processedPath, faces[0]);
-                if (!scored.Ok)
-                    return Json(new { ok = false, error = scored.Error, count = 1 });
-
-                var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
-                var p = scored.Probability ?? 0f;
-
-                return Json(new { ok = true, count = 1, liveness = p, livenessOk = p >= th });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { ok = false, error = "SCAN_ERROR", detail = ex.Message });
-            }
-            finally
-            {
-                ImagePreprocessor.Cleanup(processedPath, path);
-                SecureFileUpload.TryDelete(path);
-            }
+            var result = ScanFramePipeline.Run(image, "v_");
+            return Json(result);
         }
 
         [HttpPost]
@@ -292,6 +266,168 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
+
+        private class EnrollCandidate
+        {
+            public double[] Vec   { get; set; }
+            public float    Liveness { get; set; }
+            public int      Area  { get; set; }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult EnrollWizard(string employeeId, HttpPostedFileBase image)
+        {
+            // Wizard reuses admin-enroll.js, so it posts "employeeId".
+            // For visitors, this is the Visitor.Id value.
+            var idText = (employeeId ?? "").Trim();
+
+            int id;
+            if (!int.TryParse(idText, out id) || id <= 0)
+                return Json(new { ok = false, error = "NO_VISITOR_ID" });
+
+            var maxBytes  = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var maxImages = AppSettings.GetInt("Biometrics:Enroll:MaxImages", 5);
+
+            var files = new List<HttpPostedFileBase>();
+            try
+            {
+                if (Request != null && Request.Files != null && Request.Files.Count > 0)
+                {
+                    for (int i = 0; i < Request.Files.Count; i++)
+                    {
+                        var f = Request.Files[i];
+                        if (f == null || f.ContentLength <= 0) continue;
+
+                        files.Add(f);
+                        if (files.Count >= maxImages) break;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore and fall back to the single parameter.
+            }
+
+            if (files.Count == 0 && image != null && image.ContentLength > 0)
+                files.Add(image);
+
+            if (files.Count == 0)
+                return Json(new { ok = false, error = "NO_IMAGE" });
+
+            foreach (var f in files)
+            {
+                if (f.ContentLength > maxBytes)
+                    return Json(new { ok = false, error = "TOO_LARGE" });
+            }
+
+            var th = (float)SystemConfigService.GetDoubleCached("Biometrics:LivenessThreshold", 0.75);
+
+            var tol = AppSettings.GetDouble("Visitors:DlibTolerance",
+                AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60));
+
+            var candidates = new List<EnrollCandidate>();
+
+            var dlib = new DlibBiometrics();
+            var live = new OnnxLiveness();
+
+            foreach (var f in files)
+            {
+                string path = null;
+                string processedPath = null;
+
+                try
+                {
+                    path = SecureFileUpload.SaveTemp(f, "v_", maxBytes);
+
+                    bool isProcessed;
+                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
+
+                    var faces = dlib.DetectFacesFromFile(processedPath);
+
+                    if (faces == null || faces.Length == 0) continue;
+                    if (faces.Length > 1) continue;
+
+                    var scored = live.ScoreFromFile(processedPath, faces[0]);
+                    if (!scored.Ok) continue;
+
+                    var p = scored.Probability ?? 0f;
+                    if (p < th) continue;
+
+                    string encErr;
+                    var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
+                    if (vec == null) continue;
+
+                    var area = Math.Max(1, faces[0].Width * faces[0].Height);
+
+                    candidates.Add(new EnrollCandidate
+                    {
+                        Vec      = vec,
+                        Liveness = p,
+                        Area     = area
+                    });
+                }
+                catch
+                {
+                    // Ignore a single bad frame.
+                }
+                finally
+                {
+                    ImagePreprocessor.Cleanup(processedPath, path);
+                    SecureFileUpload.TryDelete(path);
+                }
+            }
+
+            if (candidates.Count == 0)
+                return Json(new { ok = false, error = "NO_VALID_FACE" });
+
+            // Pick best (highest liveness, then largest face box).
+            var best = candidates
+                .OrderByDescending(x => x.Liveness)
+                .ThenByDescending(x => x.Area)
+                .First();
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var v = db.Visitors.FirstOrDefault(x => x.Id == id);
+                if (v == null) return Json(new { ok = false, error = "VISITOR_NOT_FOUND" });
+
+                var entries = VisitorFaceIndex.GetEntries(db);
+
+                // Duplicate check against other visitors using all candidates.
+                foreach (var c in candidates)
+                {
+                    foreach (var e in entries)
+                    {
+                        if (e.VisitorId == id) continue;
+
+                        var dist = DlibBiometrics.Distance(c.Vec, e.Vec);
+                        if (dist <= tol)
+                        {
+                            return Json(new
+                            {
+                                ok = false,
+                                error = "FACE_ALREADY_ENROLLED",
+                                matchVisitorId = e.VisitorId,
+                                matchName = e.Name,
+                                distance = dist
+                            });
+                        }
+                    }
+                }
+
+                var bytes = DlibBiometrics.EncodeToBytes(best.Vec);
+                v.FaceEncodingBase64 = Convert.ToBase64String(bytes);
+                db.SaveChanges();
+
+                VisitorFaceIndex.Invalidate();
+            }
+
+            return Json(new { ok = true, liveness = best.Liveness });
+        }
+
+
+
         [HttpGet]
         public ActionResult Logs(string from, string to, int? officeId, string q, bool? knownOnly)
         {
@@ -299,7 +435,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             using (var db = new FaceAttendDBEntities())
             {
-                var range = ParseRange((from ?? "").Trim(), (to ?? "").Trim());
+                var range = AdminQueryHelper.ParseRange((from ?? "").Trim(), (to ?? "").Trim());
 
                 var logs = db.VisitorLogs.AsNoTracking().AsQueryable();
 
@@ -335,7 +471,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 ViewBag.OfficeId = officeId;
                 ViewBag.Query = q;
                 ViewBag.KnownOnly = (knownOnly ?? false);
-                ViewBag.OfficeOptions = BuildOfficeOptions(db, officeId);
+                ViewBag.OfficeOptions = AdminQueryHelper.BuildOfficeOptions(db, officeId);
 
                 return View(rows);
             }
@@ -346,7 +482,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         {
             using (var db = new FaceAttendDBEntities())
             {
-                var range = ParseRange((from ?? "").Trim(), (to ?? "").Trim());
+                var range = AdminQueryHelper.ParseRange((from ?? "").Trim(), (to ?? "").Trim());
 
                 var logs = db.VisitorLogs.AsNoTracking().AsQueryable();
 
@@ -385,11 +521,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                     sb.AppendLine(string.Join(",", new[]
                     {
                         EscapeCsv(r.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")),
-                        EscapeCsv(r.VisitorName ?? ""),
+                        EscapeCsv(SafeCell(r.VisitorName ?? "")),
                         EscapeCsv(r.VisitorId.HasValue ? "YES" : "NO"),
-                        EscapeCsv(r.OfficeName ?? ""),
-                        EscapeCsv(r.Purpose ?? ""),
-                        EscapeCsv(r.Source ?? "")
+                        EscapeCsv(SafeCell(r.OfficeName ?? "")),
+                        EscapeCsv(SafeCell(r.Purpose ?? "")),
+                        EscapeCsv(SafeCell(r.Source ?? ""))
                     }));
                 }
 
@@ -416,60 +552,13 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         // Helpers
 
-        private class RangeResult
+        private static string SafeCell(string s)
         {
-            public DateTime? FromUtc { get; set; }
-            public DateTime? ToUtcExclusive { get; set; }
-            public string FromText { get; set; }
-            public string ToText { get; set; }
-        }
-
-        private static RangeResult ParseRange(string from, string to)
-        {
-            DateTime fromLocal, toLocal;
-            var today = DateTime.Now.Date;
-
-            if (!DateTime.TryParse(from, out fromLocal)) fromLocal = today.AddDays(-6);
-            if (!DateTime.TryParse(to, out toLocal)) toLocal = today;
-
-            fromLocal = fromLocal.Date;
-            toLocal = toLocal.Date;
-
-            if (toLocal < fromLocal)
-            {
-                var tmp = fromLocal;
-                fromLocal = toLocal;
-                toLocal = tmp;
-            }
-
-            return new RangeResult
-            {
-                FromUtc = fromLocal.ToUniversalTime(),
-                ToUtcExclusive = toLocal.AddDays(1).ToUniversalTime(),
-                FromText = fromLocal.ToString("yyyy-MM-dd"),
-                ToText = toLocal.ToString("yyyy-MM-dd")
-            };
-        }
-
-        private static List<SelectListItem> BuildOfficeOptions(FaceAttendDBEntities db, int? selected)
-        {
-            var list = new List<SelectListItem>
-            {
-                new SelectListItem { Text = "All offices", Value = "" }
-            };
-
-            db.Offices.AsNoTracking()
-                .Where(o => o.IsActive)
-                .OrderBy(o => o.Name)
-                .ToList()
-                .ForEach(o => list.Add(new SelectListItem
-                {
-                    Text = o.Name,
-                    Value = o.Id.ToString(),
-                    Selected = selected.HasValue && selected.Value == o.Id
-                }));
-
-            return list;
+            if (string.IsNullOrEmpty(s)) return "";
+            var t = s.Trim();
+            if (t.StartsWith("=") || t.StartsWith("+") || t.StartsWith("-") || t.StartsWith("@"))
+                return "'" + t;
+            return t;
         }
 
         private static string EscapeCsv(string s)

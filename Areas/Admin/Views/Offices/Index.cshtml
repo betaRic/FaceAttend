@@ -1,13 +1,16 @@
 @model System.Collections.Generic.List<Office>
 @{
     ViewBag.Title = "Offices";
-    Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
 }
 
 <div class="d-flex align-items-center justify-content-between mb-3">
-    <h3 class="mb-0">Offices</h3>
+    <h3 class="mb-0">
+        <i class="fa-solid fa-building me-2" aria-hidden="true"></i>
+        Offices
+    </h3>
     <a class="btn btn-primary" href="@Url.Action("Create")">
-        Create Office
+        <i class="fa-solid fa-plus me-1" aria-hidden="true"></i>
+        Create office
     </a>
 </div>
 
@@ -23,7 +26,7 @@
                         <th>Radius (m)</th>
                         <th>Latitude</th>
                         <th>Longitude</th>
-                        <th>Active</th>
+                        <th>Status</th>
                         <th style="width: 110px;"></th>
                     </tr>
                 </thead>
@@ -31,18 +34,20 @@
                     @foreach (var o in Model)
                     {
                         <tr>
-                            <td>@o.Name</td>
+                            <td class="fw-semibold">@o.Name</td>
                             <td>@(o.Code ?? "-")</td>
                             <td>@(o.Type ?? "-")</td>
                             <td>@o.RadiusMeters</td>
-                            <td>@o.Latitude</td>
-                            <td>@o.Longitude</td>
-                            <td>@(o.IsActive ? "Yes" : "No")</td>
+                            <td>@o.Latitude.ToString("F4")</td>
+                            <td>@o.Longitude.ToString("F4")</td>
+                            <td>
+                                @if (o.IsActive)
+                                {<span class="badge bg-success">Active</span> }
+                                else
+                                { <span class="badge bg-secondary">Inactive</span>}
+                            </td>
                             <td class="text-end">
-                                <a class="btn btn-sm btn-outline-primary"
-                                   href="@Url.Action("Edit", new { id = o.Id })">
-                                    Edit
-                                </a>
+                                <a class="btn btn-sm btn-outline-primary" href="@Url.Action("Edit", new { id = o.Id })">Edit</a>
                             </td>
                         </tr>
                     }

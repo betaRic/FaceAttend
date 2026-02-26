@@ -58,25 +58,24 @@ namespace FaceAttend.Areas.Admin.Controllers
                     // Recent attendance — last 10 records across all employees,
                     // newest first. Projected to the slim RecentAttendanceRow DTO
                     // so EF doesn't load the entire entity graph.
-                    vm.RecentLogs = db.AttendanceLogs
-                        .OrderByDescending(l => l.Timestamp)
+                    vm.RecentLogs =
+                        (from l in db.AttendanceLogs
+                         join e in db.Employees on l.EmployeeId equals e.Id into ej
+                         from e in ej.DefaultIfEmpty()
+                         orderby l.Timestamp descending
+                         select new RecentAttendanceRow
+                         {
+                             Id               = l.Id,
+                             TimestampUtc     = l.Timestamp,
+                             EmployeeId       = (e != null ? e.EmployeeId : ""),
+                             EmployeeFullName = l.EmployeeFullName,
+                             EventType        = l.EventType,
+                             OfficeName       = l.OfficeName,
+                             NeedsReview      = l.NeedsReview
+                         })
                         .Take(10)
-                        .Select(l => new RecentAttendanceRow
-                        {
-                            Id               = l.Id,
-                            TimestampUtc     = l.Timestamp,
-                            EmployeeId       = db.Employees
-                                                 .Where(e => e.Id == l.EmployeeId)
-                                                 .Select(e => e.EmployeeId)
-                                                 .FirstOrDefault(),
-                            EmployeeFullName = l.EmployeeFullName,
-                            EventType        = l.EventType,
-                            OfficeName       = l.OfficeName,
-                            NeedsReview      = l.NeedsReview
-                        })
                         .ToList();
-
-                    vm.DatabaseHealthy = true;
+vm.DatabaseHealthy = true;
                 }
             }
             catch

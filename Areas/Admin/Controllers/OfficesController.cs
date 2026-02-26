@@ -9,6 +9,7 @@ namespace FaceAttend.Areas.Admin.Controllers
     [AdminAuthorize]
     public class OfficesController : Controller
     {
+        [HttpGet]
         public ActionResult Index()
         {
             using (var db = new FaceAttendDBEntities())
@@ -73,6 +74,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 db.Offices.Add(o);
                 db.SaveChanges();
 
+                TempData["msg"] = "Office created.";
                 return RedirectToAction("Index");
             }
         }
@@ -140,6 +142,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 db.SaveChanges();
 
+                TempData["msg"] = "Office updated.";
                 return RedirectToAction("Index");
             }
         }

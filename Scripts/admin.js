@@ -148,9 +148,11 @@
 
             var noSortLast = $t.attr("data-dt-no-sort-last") === "1";
 
+            var stateSave = $t.attr("data-dt-state-save") === "1";
+
             var opts = {
                 pageLength: pageLen,
-                stateSave: true,
+                stateSave: stateSave,
                 autoWidth: false,
                 order: [],
                 language: {

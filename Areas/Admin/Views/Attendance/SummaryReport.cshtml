@@ -9,15 +9,14 @@
         from       = Model.From,
         to         = Model.To,
         officeId   = Model.OfficeId,
-        department = Model.Employee
+        department = Model.DepartmentFilter
     });
 
     var backUrl = Url.Action("Index", new
     {
         from     = Model.From,
         to       = Model.To,
-        officeId = Model.OfficeId,
-        employee = Model.Employee
+        officeId = Model.OfficeId
     });
 }
 
@@ -33,9 +32,9 @@
             @if (!string.IsNullOrWhiteSpace(Model.ActiveRangeLabel))
             { @Model.ActiveRangeLabel }
             @if (Model.OfficeId.HasValue && Model.OfficeId.Value > 0)
-            { <span>&nbsp;&middot;&nbsp;Office filter active</span> }
-            @if (!string.IsNullOrWhiteSpace(Model.Employee))
-            { <span>&nbsp;&middot;&nbsp;Dept: @Model.Employee</span> }
+            { <span class="ms-2"><i class="fa-solid fa-circle fa-2xs me-1" aria-hidden="true"></i>Office filter active</span> }
+            @if (!string.IsNullOrWhiteSpace(Model.DepartmentFilter))
+            { <span class="ms-2"><i class="fa-solid fa-circle fa-2xs me-1" aria-hidden="true"></i>Dept: @Model.DepartmentFilter</span> }
         </div>
     </div>
 

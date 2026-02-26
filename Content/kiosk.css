@@ -6,6 +6,11 @@ html, body {
     font-family: Arial, sans-serif;
 }
 
+.hidden {
+    display: none !important;
+}
+
+
 #kioskRoot {
     position: fixed;
     inset: 0;

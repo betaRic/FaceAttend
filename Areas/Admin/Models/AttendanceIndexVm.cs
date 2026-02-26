@@ -119,6 +119,9 @@ namespace FaceAttend.Areas.Admin.Models
         [Display(Name = "Employee")]
         public string Employee { get; set; }
 
+        [Display(Name = "Department")]
+        public string DepartmentFilter { get; set; }
+
         [Display(Name = "Type")]
         public string EventType { get; set; }
 

@@ -3,9 +3,9 @@ using System.Collections.Concurrent;
 
 namespace FaceAttend.Services.Security
 {
-    // Simple in-memory fixed-window rate limiter.
-    // Good enough for a single IIS instance.
-    // If you scale out to multiple servers, move this to a shared store (Redis/SQL).
+    // Deprecated: this helper is not used by the app.
+    // The live endpoints use Filters/RateLimitAttribute (token bucket) instead.
+    // Safe to delete from the project when convenient.
     public static class RateLimit
     {
         private class Counter

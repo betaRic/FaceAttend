@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text;
 using System.Web.Mvc;
 using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 
@@ -40,9 +41,9 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             using (var db = new FaceAttendDBEntities())
             {
-                vm.OfficeOptions = BuildOfficeOptions(db, vm.OfficeId);
+                vm.OfficeOptions = AdminQueryHelper.BuildOfficeOptions(db, vm.OfficeId);
 
-                var range = ParseRange(vm.From, vm.To);
+                var range = AdminQueryHelper.ParseRange(vm.From, vm.To);
                 vm.From             = range.FromText;
                 vm.To               = range.ToText;
                 vm.ActiveRangeLabel = range.Label;
@@ -71,15 +72,23 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (vm.EventType == "IN" || vm.EventType == "OUT")
                     baseQ = baseQ.Where(x => x.EventType == vm.EventType);
 
-                vm.TotalNeedsReview = baseQ.Count(x => x.NeedsReview);
+                // Counts: compute in one DB round-trip.
+                var counts = baseQ
+                    .GroupBy(_ => 1)
+                    .Select(g => new
+                    {
+                        Total = g.Count(),
+                        Needs = g.Count(x => x.NeedsReview)
+                    })
+                    .FirstOrDefault();
+
+                var baseTotal = counts == null ? 0 : counts.Total;
+                vm.TotalNeedsReview = counts == null ? 0 : counts.Needs;
+                vm.Total = vm.NeedsReviewOnly ? vm.TotalNeedsReview : baseTotal;
 
                 // ── Apply NeedsReviewOnly filter for pagination ───────────────────
 
-                var q = baseQ;
-                if (vm.NeedsReviewOnly)
-                    q = q.Where(x => x.NeedsReview);
-
-                vm.Total = q.Count();
+                var q = vm.NeedsReviewOnly ? baseQ.Where(x => x.NeedsReview) : baseQ;
 
                 var skip = Math.Max(0, (vm.Page - 1) * vm.PageSize);
 
@@ -108,7 +117,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 // Computed from baseQ (un-paged, before NeedsReviewOnly filter)
                 // so the stats represent the full filtered dataset.
 
-                if (vm.Total > 0 || baseQ.Any())
+                if (baseTotal > 0)
                 {
                     vm.ShowSummary = true;
 
@@ -122,6 +131,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                             InCnt  = g.Count(x => x.EventType == "IN"),
                             OutCnt = g.Count(x => x.EventType == "OUT")
                         })
+                        .OrderByDescending(g => g.Date)
+                        .Take(14)
+                        .ToList();
+
+                    dailyRaw = dailyRaw
                         .OrderBy(g => g.Date)
                         .ToList();
 
@@ -156,26 +170,27 @@ namespace FaceAttend.Areas.Admin.Controllers
                         .ToList();
 
                     // Attendance rate — only when today falls inside the filter window.
-                    vm.TotalActiveEmployees = db.Employees.Count(e => e.IsActive);
-
                     var todayUtc    = DateTime.UtcNow.Date;
-                    var tomorrowUtc = todayUtc.AddDays(1);
 
                     bool todayInRange =
                         (!range.FromUtc.HasValue       || todayUtc >= range.FromUtc.Value.Date) &&
                         (!range.ToUtcExclusive.HasValue || todayUtc <  range.ToUtcExclusive.Value.Date.AddDays(1));
 
-                    if (todayInRange && vm.TotalActiveEmployees > 0)
+                    if (todayInRange)
                     {
-                        // Count today's INs from the already-filtered baseQ,
-                        // so office/employee filters are respected.
-                        int todayIns = baseQ.Count(x =>
-                            x.Timestamp >= todayUtc &&
-                            x.Timestamp <  tomorrowUtc &&
-                            x.EventType  == "IN");
+                        vm.TotalActiveEmployees = db.Employees.Count(e => e.IsActive);
 
-                        vm.AttendanceRatePercent =
-                            (int)Math.Min(100, Math.Round(100.0 * todayIns / vm.TotalActiveEmployees));
+                        if (vm.TotalActiveEmployees > 0)
+                        {
+                            // Use dailyRaw (already computed) to avoid an extra COUNT query.
+                            var todayRow = dailyRaw
+                                .FirstOrDefault(x => x.Date.HasValue && x.Date.Value == todayUtc);
+
+                            int todayIns = todayRow == null ? 0 : todayRow.InCnt;
+
+                            vm.AttendanceRatePercent =
+                                (int)Math.Min(100, Math.Round(100.0 * todayIns / vm.TotalActiveEmployees));
+                        }
                     }
                 }
             }
@@ -284,7 +299,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                 From            = (from ?? "").Trim(),
                 To              = (to ?? "").Trim(),
                 OfficeId        = officeId,
-                Employee        = (department ?? "").Trim(),
+                Employee        = "",
+                DepartmentFilter = (department ?? "").Trim(),
                 IsSummaryReport = true,
                 Page            = 1,
                 PageSize        = 200
@@ -292,9 +308,9 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             using (var db = new FaceAttendDBEntities())
             {
-                vm.OfficeOptions = BuildOfficeOptions(db, vm.OfficeId);
+                vm.OfficeOptions = AdminQueryHelper.BuildOfficeOptions(db, vm.OfficeId);
 
-                var range = ParseRange(vm.From, vm.To);
+                var range = AdminQueryHelper.ParseRange(vm.From, vm.To);
                 vm.From             = range.FromText;
                 vm.To               = range.ToText;
                 vm.ActiveRangeLabel = range.Label;
@@ -317,8 +333,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                     q = q.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
                 if (officeId.HasValue && officeId.Value > 0)
                     q = q.Where(x => x.OfficeId == officeId.Value);
-                if (!string.IsNullOrWhiteSpace(department))
-                    q = q.Where(x => x.Department.Contains(department));
+                var deptTerm = (department ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(deptTerm))
+                    q = q.Where(x => x.Department.Contains(deptTerm));
+
+                int cap = AppSettings.GetInt("Attendance:SummaryExportMaxRawRows", 50000);
+                if (cap < 1000) cap = 1000;
+                if (cap > 200000) cap = 200000;
 
                 var raw = q
                     .Select(x => new RawLog
@@ -386,7 +407,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         {
             using (var db = new FaceAttendDBEntities())
             {
-                var range = ParseRange((from ?? "").Trim(), (to ?? "").Trim());
+                var range = AdminQueryHelper.ParseRange((from ?? "").Trim(), (to ?? "").Trim());
 
                 var q = db.AttendanceLogs.AsNoTracking().AsQueryable();
 
@@ -420,7 +441,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 var rows = q
                     .OrderByDescending(x => x.Timestamp)
-                    .Take(max)
+                    .Take(max + 1)
                     .Select(x => new ExportRow
                     {
                         Timestamp        = x.Timestamp,
@@ -439,9 +460,14 @@ namespace FaceAttend.Areas.Admin.Controllers
                     })
                     .ToList();
 
+                bool truncated = rows.Count > max;
+                if (truncated) rows = rows.Take(max).ToList();
+
                 var csv      = BuildCsv(rows);
                 var bytes    = Encoding.UTF8.GetBytes(csv);
-                var fileName = "attendance_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv";
+                var fileName = truncated
+                    ? ("attendance_truncated_" + max + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv")
+                    : ("attendance_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv");
                 return File(bytes, "text/csv", fileName);
             }
         }
@@ -459,7 +485,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         {
             using (var db = new FaceAttendDBEntities())
             {
-                var range = ParseRange((from ?? "").Trim(), (to ?? "").Trim());
+                var range = AdminQueryHelper.ParseRange((from ?? "").Trim(), (to ?? "").Trim());
 
                 // 31-day cap
                 if ((range.ToLocalDate - range.FromLocalDate).TotalDays > 31)
@@ -478,8 +504,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                     q = q.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
                 if (officeId.HasValue && officeId.Value > 0)
                     q = q.Where(x => x.OfficeId == officeId.Value);
-                if (!string.IsNullOrWhiteSpace(department))
-                    q = q.Where(x => x.Department.Contains(department));
+                var deptTerm = (department ?? "").Trim();
+                if (!string.IsNullOrWhiteSpace(deptTerm))
+                    q = q.Where(x => x.Department.Contains(deptTerm));
+
+                int cap = AppSettings.GetInt("Attendance:SummaryExportMaxRawRows", 50000);
+                if (cap < 1000) cap = 1000;
+                if (cap > 200000) cap = 200000;
 
                 var raw = q
                     .Select(x => new RawLog
@@ -492,8 +523,15 @@ namespace FaceAttend.Areas.Admin.Controllers
                     })
                     .OrderBy(x => x.EmpId)
                     .ThenBy(x => x.Timestamp)
-                    .Take(50000)
+                    .Take(cap + 1)
                     .ToList();
+
+                if (raw.Count > cap)
+                {
+                    var msg = "Error: too many rows for summary export. Narrow the date range or add filters. Max raw rows: " + cap + ".";
+                    var bytesErr = Encoding.UTF8.GetBytes(msg);
+                    return File(bytesErr, "text/plain", "attendance_summary_error.txt");
+                }
 
                 var dates = Enumerable.Range(0, (range.ToLocalDate - range.FromLocalDate).Days + 1)
                     .Select(i => range.FromLocalDate.AddDays(i))
@@ -543,115 +581,16 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         // ── Private helpers ──────────────────────────────────────────────────────
 
-        private static List<SelectListItem> BuildOfficeOptions(
-            FaceAttendDBEntities db, int? selected)
-        {
-            var list = new List<SelectListItem>
-            {
-                new SelectListItem { Text = "All offices", Value = "" }
-            };
+        
 
-            db.Offices.AsNoTracking()
-              .Where(o => o.IsActive)
-              .OrderBy(o => o.Name)
-              .ToList()
-              .ForEach(o => list.Add(new SelectListItem
-              {
-                  Text     = o.Name,
-                  Value    = o.Id.ToString(),
-                  Selected = selected.HasValue && selected.Value == o.Id
-              }));
-
-            return list;
-        }
-
-        private class RangeResult
-        {
-            public DateTime? FromUtc         { get; set; }
-            public DateTime? ToUtcExclusive  { get; set; }
-            public DateTime  FromLocalDate   { get; set; }
-            public DateTime  ToLocalDate     { get; set; }
-            public string    FromText        { get; set; }
-            public string    ToText          { get; set; }
-            public string    Label           { get; set; }
-        }
+        
 
         /// <summary>
         /// Parses the from/to strings into UTC boundaries.
         /// Accepts named presets: "today", "thisweek", "lastweek", "thismonth".
         /// Falls back to DateTime.TryParse for arbitrary date strings.
         /// </summary>
-        private static RangeResult ParseRange(string from, string to)
-        {
-            var today       = DateTime.Now.Date;
-            var defaultFrom = today.AddDays(-6);
-            var defaultTo   = today;
-
-            DateTime fromLocal;
-            DateTime toLocal;
-
-            // ── Named preset handling ────────────────────────────────────────────
-            switch ((from ?? "").Trim().ToLowerInvariant())
-            {
-                case "today":
-                    fromLocal = today;
-                    toLocal   = today;
-                    break;
-
-                case "thisweek":
-                    // Week starts Monday; DayOfWeek.Sunday == 0.
-                    int dow1    = (int)today.DayOfWeek;
-                    int offset1 = dow1 == 0 ? -6 : -(dow1 - 1);
-                    fromLocal   = today.AddDays(offset1);
-                    toLocal     = today;
-                    break;
-
-                case "lastweek":
-                    int dow2    = (int)today.DayOfWeek;
-                    int offset2 = dow2 == 0 ? -6 : -(dow2 - 1);
-                    toLocal     = today.AddDays(offset2 - 1);   // last day of last week
-                    fromLocal   = toLocal.AddDays(-6);           // first day of last week
-                    break;
-
-                case "thismonth":
-                    fromLocal = new DateTime(today.Year, today.Month, 1);
-                    toLocal   = today;
-                    break;
-
-                default:
-                    // Arbitrary date string — try parse, fall back to defaults.
-                    if (!DateTime.TryParse(from, out fromLocal)) fromLocal = defaultFrom;
-                    fromLocal = fromLocal.Date;
-
-                    if (!DateTime.TryParse(to, out toLocal)) toLocal = defaultTo;
-                    toLocal = toLocal.Date;
-                    break;
-            }
-
-            // Ensure from <= to.
-            if (toLocal < fromLocal)
-            {
-                var tmp = fromLocal;
-                fromLocal = toLocal;
-                toLocal   = tmp;
-            }
-
-            // Build a human-readable label.
-            var label = fromLocal == toLocal
-                ? fromLocal.ToString("MMM d, yyyy")
-                : fromLocal.ToString("MMM d") + " – " + toLocal.ToString("MMM d, yyyy");
-
-            return new RangeResult
-            {
-                FromUtc        = fromLocal.ToUniversalTime(),
-                ToUtcExclusive = toLocal.AddDays(1).ToUniversalTime(),
-                FromLocalDate  = fromLocal,
-                ToLocalDate    = toLocal,
-                FromText       = fromLocal.ToString("yyyy-MM-dd"),
-                ToText         = toLocal.ToString("yyyy-MM-dd"),
-                Label          = label
-            };
-        }
+        
 
         // ── Reporting policy + daily computation ───────────────────────────────
 

@@ -3,6 +3,8 @@
     ViewBag.Title = "Visitors";
     var q = (ViewBag.Query as string) ?? "";
     var showInactive = (bool)(ViewBag.ShowInactive ?? false);
+    var truncated = (bool)(ViewBag.Truncated ?? false);
+    var cap = (int)(ViewBag.Cap ?? 0);
 }
 
 @if (TempData["msg"] != null)
@@ -42,6 +44,13 @@
         </form>
     </div>
 </div>
+
+@if (truncated && cap > 0)
+{
+    <div class="alert alert-info admin-card p-3 mb-3" role="alert">
+        Showing first @cap visitor record(s). Use search to narrow the list.
+    </div>
+}
 
 <div class="admin-card">
     <div class="card-body">

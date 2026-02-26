@@ -15,6 +15,9 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Employees</div>
+                <div class="text-muted mt-2">
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                </div>
                 <div class="fs-3 fw-semibold">@Model.TotalEmployees</div>
                 <div class="text-muted small mt-2">Active employees</div>
             </div>
@@ -25,6 +28,9 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Today Time-ins</div>
+                <div class="text-muted mt-2">
+                    <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
+                </div>
                 <div class="fs-3 fw-semibold">@Model.TodayTimeIns</div>
                 <div class="text-muted small mt-2">Recorded today</div>
             </div>
@@ -35,6 +41,9 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Today Time-outs</div>
+                <div class="text-muted mt-2">
+                    <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+                </div>
                 <div class="fs-3 fw-semibold">@Model.TodayTimeOuts</div>
                 <div class="text-muted small mt-2">Recorded today</div>
             </div>
@@ -45,6 +54,9 @@
         <div class="admin-card admin-kpi h-100">
             <div class="card-body">
                 <div class="text-muted small">Visitors</div>
+                <div class="text-muted mt-2">
+                    <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+                </div>
                 <div class="fs-3 fw-semibold">@Model.TotalVisitors</div>
                 <div class="text-muted small mt-2">Known visitors</div>
             </div>
@@ -55,12 +67,12 @@
     {
         <div class="col-12">
             <div class="alert alert-warning d-flex align-items-center gap-2 mb-0" role="alert">
-                <i class="bi bi-exclamation-triangle-fill"></i>
+                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
                 <div>
                     <strong>@Model.PendingReviews attendance @(Model.PendingReviews == 1 ? "record" : "records")</strong>
                     flagged for review.
                     <a href="@Url.Action("Index", "Attendance", new { area = "Admin", needsReview = true })"
-                       class="alert-link ms-1">Review now &rarr;</a>
+                       class="alert-link ms-1">Review now <i class="fa-solid fa-arrow-right ms-1" aria-hidden="true"></i></a>
                 </div>
             </div>
         </div>

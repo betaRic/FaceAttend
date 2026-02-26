@@ -19,68 +19,8 @@ namespace FaceAttend.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult ScanFrame(HttpPostedFileBase image)
         {
-            if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
-
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
-
-            string path          = null;
-            string processedPath = null;
-            bool   isProcessed   = false;
-            try
-            {
-                // P2-F2: centralised file upload.
-                path = SecureFileUpload.SaveTemp(image, "u_", max);
-
-                // P3-F2: Resize large images before passing to Dlib HOG.
-                // If the image is within Biometrics:MaxImageDimension (default 1280px)
-                // on both axes, PreprocessForDetection returns the original path unchanged
-                // and sets isProcessed = false. No extra file is created in that case.
-                processedPath = ImagePreprocessor.PreprocessForDetection(
-                    path, "u_", out isProcessed);
-
-                var dlib  = new DlibBiometrics();
-                var faces = dlib.DetectFacesFromFile(processedPath);
-                var count = faces == null ? 0 : faces.Length;
-
-                if (count != 1)
-                    return Json(new
-                    {
-                        ok         = true,
-                        count,
-                        liveness   = (float?)null,
-                        livenessOk = false
-                    });
-
-                var live   = new OnnxLiveness();
-                var scored = live.ScoreFromFile(processedPath, faces[0]);
-                if (!scored.Ok)
-                    return Json(new { ok = false, error = scored.Error, count = 1 });
-
-                var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
-                var p  = scored.Probability ?? 0f;
-
-                return Json(new
-                {
-                    ok         = true,
-                    count      = 1,
-                    liveness   = p,
-                    livenessOk = p >= th
-                });
-            }
-            catch (Exception ex)
-            {
-                return Json(new { ok = false, error = "SCAN_ERROR: " + ex.Message });
-            }
-            finally
-            {
-                // P3-F2: Delete the resized temp if one was created.
-                ImagePreprocessor.Cleanup(processedPath, path);
-                // P2-F2: Delete the original upload temp.
-                SecureFileUpload.TryDelete(path);
-            }
+            var result = ScanFramePipeline.Run(image, "u_");
+            return Json(result);
         }
 
         [HttpPost]
