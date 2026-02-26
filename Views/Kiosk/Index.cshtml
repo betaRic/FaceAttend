@@ -14,6 +14,8 @@
     <title>Kiosk - FaceAttend</title>
 
     <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
+
+    <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
 </head>
 <body data-app-base="@Url.Content("~/")" data-nextgen="@((System.Configuration.ConfigurationManager.AppSettings["Kiosk:UseNextGen"] ?? "false"))" data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
     @Html.AntiForgeryToken()
@@ -73,11 +75,36 @@
                     <button id="unlockSubmit" type="button" class="btnPrimary">Unlock</button>
                 </div>
             </div>
+
         </div>
+
+        <div id="visitorBackdrop" class="hidden" aria-hidden="true">
+            <div id="visitorModal" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
+                <div class="unlockHeader">
+                    <div id="visitorTitle" class="unlockTitle">Visitor</div>
+                    <button id="visitorClose" type="button" class="unlockClose" aria-label="Close">X</button>
+                </div>
+                <div class="unlockHint">Please fill this up. Press Enter to submit. Esc to cancel.</div>
+
+                <div id="visitorNameRow">
+                    <input id="visitorName" class="unlockInput" type="text" autocomplete="name" placeholder="Full name" />
+                </div>
+
+                <input id="visitorPurpose" class="unlockInput" type="text" autocomplete="off" placeholder="Reason for visit" />
+                <div id="visitorErr" class="unlockErr"></div>
+
+                <div class="unlockActions">
+                    <button id="visitorCancel" type="button" class="btnGhost">Cancel</button>
+                    <button id="visitorSubmit" type="button" class="btnPrimary">Submit</button>
+                </div>
+            </div>
+        </div>
+
     </div>
 
     <script src="~/Scripts/jquery-3.7.1.min.js"></script>
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
+    <script src="@Url.Content("~/Scripts/vendor/toastify/toastify.min.js")"></script>
     <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
 </body>
 </html>

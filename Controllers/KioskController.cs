@@ -1,8 +1,10 @@
 using System;
 using System.Linq;
 using System.Diagnostics;
+using System.Runtime.Caching;
 using System.Web;
 using System.Web.Mvc;
+using FaceAttend;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
@@ -12,7 +14,31 @@ namespace FaceAttend.Controllers
 {
     public class KioskController : Controller
     {
-        [HttpGet]
+        
+
+        private class VisitorScanCacheItem
+        {
+            public double[] Vec { get; set; }
+            public int OfficeId { get; set; }
+            public int? VisitorId { get; set; }
+            public string VisitorName { get; set; }
+        }
+
+        private static readonly MemoryCache _visitorScanCache = MemoryCache.Default;
+        private const string VisitorScanPrefix = "VISITORSCAN::";
+
+        private static int GetVisitorScanTtlSeconds()
+        {
+            var s = AppSettings.GetInt("Kiosk:VisitorScanTtlSeconds", 180);
+            return s < 30 ? 30 : s;
+        }
+
+        private static string NewScanId()
+        {
+            return Guid.NewGuid().ToString("N");
+        }
+
+[HttpGet]
         public ActionResult Index(string returnUrl, int? unlock)
         {
             ViewBag.ReturnUrl = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
@@ -36,14 +62,34 @@ namespace FaceAttend.Controllers
             }
         }
 
-        [HttpPost]
+                [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult ResolveOffice(double? lat, double? lon, double? accuracy)
         {
             using (var db = new FaceAttendDBEntities())
             {
-                if (!IsGpsRequired())
+                // GPS is required only on mobile devices, but we still use GPS on desktop
+                // when the browser provides coordinates.
+                bool gpsRequired = IsGpsRequired();
+                bool hasCoords = lat.HasValue && lon.HasValue;
+
+                if (!hasCoords)
                 {
+                    if (gpsRequired)
+                    {
+                        return Json(new
+                        {
+                            ok = true,
+                            gpsRequired = true,
+                            allowed = false,
+                            reason = "GPS_REQUIRED",
+                            requiredAccuracy = SystemConfigService.GetInt(
+                                db, "Location:GPSAccuracyRequired",
+                                AppSettings.GetInt("Location:GPSAccuracyRequired", 50)),
+                            accuracy = accuracy
+                        });
+                    }
+
                     var fallback = GetFallbackOffice(db);
                     return Json(new
                     {
@@ -55,28 +101,13 @@ namespace FaceAttend.Controllers
                     });
                 }
 
-                if (!lat.HasValue || !lon.HasValue)
-                {
-                    return Json(new
-                    {
-                        ok = true,
-                        gpsRequired = true,
-                        allowed = false,
-                        reason = "GPS_REQUIRED",
-                        requiredAccuracy = SystemConfigService.GetInt(
-                            db, "Location:GPSAccuracyRequired",
-                            AppSettings.GetInt("Location:GPSAccuracyRequired", 50)),
-                        accuracy = accuracy
-                    });
-                }
-
                 var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
                 if (!pick.Allowed)
                 {
                     return Json(new
                     {
                         ok = true,
-                        gpsRequired = true,
+                        gpsRequired = gpsRequired,
                         allowed = false,
                         reason = pick.Reason,
                         requiredAccuracy = pick.RequiredAccuracy,
@@ -87,7 +118,7 @@ namespace FaceAttend.Controllers
                 return Json(new
                 {
                     ok = true,
-                    gpsRequired = true,
+                    gpsRequired = gpsRequired,
                     allowed = true,
                     reason = "OK",
                     officeId = pick.Office.Id,
@@ -95,6 +126,7 @@ namespace FaceAttend.Controllers
                 });
             }
         }
+
 
         // ------------------------------------------------------------
         // Cheap face detection endpoint (no liveness)
@@ -121,33 +153,17 @@ namespace FaceAttend.Controllers
                     bool gpsRequired = IsGpsRequired();
                     Office office = null;
 
-                    if (gpsRequired)
+                    // Use GPS on any device if coords are provided.
+                    // Only require GPS when gpsRequired == true (mobile devices).
+                    if (lat.HasValue && lon.HasValue)
                     {
-                        if (!lat.HasValue || !lon.HasValue)
-                        {
-                            return Json(new
-                            {
-                                ok = true,
-                                gpsRequired = true,
-                                allowed = false,
-                                reason = "GPS_REQUIRED",
-                                faceCount = 0,
-                                count = 0,
-                                livenessScore = (float?)null,
-                                liveness = (float?)null,
-                                livenessPass = false,
-                                livenessOk = false,
-                                faceBox = (object)null
-                            });
-                        }
-
                         var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
                         if (!pick.Allowed)
                         {
                             return Json(new
                             {
                                 ok = true,
-                                gpsRequired = true,
+                                gpsRequired = gpsRequired,
                                 allowed = false,
                                 reason = pick.Reason,
                                 requiredAccuracy = pick.RequiredAccuracy,
@@ -164,7 +180,27 @@ namespace FaceAttend.Controllers
 
                         office = pick.Office;
                     }
-
+                    else if (gpsRequired)
+                    {
+                        return Json(new
+                        {
+                            ok = true,
+                            gpsRequired = true,
+                            allowed = false,
+                            reason = "GPS_REQUIRED",
+                            requiredAccuracy = SystemConfigService.GetInt(
+                                db, "Location:GPSAccuracyRequired",
+                                AppSettings.GetInt("Location:GPSAccuracyRequired", 50)),
+                            accuracy = accuracy,
+                            faceCount = 0,
+                            count = 0,
+                            livenessScore = (float?)null,
+                            liveness = (float?)null,
+                            livenessPass = false,
+                            livenessOk = false,
+                            faceBox = (object)null
+                        });
+                    }
                     path = SecureFileUpload.SaveTemp(image, "k_", max);
 
                     bool isProcessed;
@@ -253,34 +289,17 @@ namespace FaceAttend.Controllers
                     bool gpsRequired = IsGpsRequired();
                     Office office = null;
 
-                    if (gpsRequired)
+                    // Use GPS on any device if coords are provided.
+                    // Only require GPS when gpsRequired == true (mobile devices).
+                    if (lat.HasValue && lon.HasValue)
                     {
-                        if (!lat.HasValue || !lon.HasValue)
-                        {
-                            return Json(new
-                            {
-                                ok = true,
-                                gpsRequired = true,
-                                allowed = false,
-                                reason = "GPS_REQUIRED",
-                                faceCount = 0,
-                                count = 0,
-                                livenessScore = (float?)null,
-                                liveness = (float?)null,
-                                livenessPass = false,
-                                livenessOk = false,
-                                livenessThreshold = (float?)null,
-                                faceBox = (object)null
-                            });
-                        }
-
                         var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
                         if (!pick.Allowed)
                         {
                             return Json(new
                             {
                                 ok = true,
-                                gpsRequired = true,
+                                gpsRequired = gpsRequired,
                                 allowed = false,
                                 reason = pick.Reason,
                                 requiredAccuracy = pick.RequiredAccuracy,
@@ -298,7 +317,28 @@ namespace FaceAttend.Controllers
 
                         office = pick.Office;
                     }
-
+                    else if (gpsRequired)
+                    {
+                        return Json(new
+                        {
+                            ok = true,
+                            gpsRequired = true,
+                            allowed = false,
+                            reason = "GPS_REQUIRED",
+                            requiredAccuracy = SystemConfigService.GetInt(
+                                db, "Location:GPSAccuracyRequired",
+                                AppSettings.GetInt("Location:GPSAccuracyRequired", 50)),
+                            accuracy = accuracy,
+                            faceCount = 0,
+                            count = 0,
+                            livenessScore = (float?)null,
+                            liveness = (float?)null,
+                            livenessPass = false,
+                            livenessOk = false,
+                            livenessThreshold = (float?)null,
+                            faceBox = (object)null
+                        });
+                    }
                     path = SecureFileUpload.SaveTemp(image, "k_", max);
 
                     bool isProcessed;
@@ -440,11 +480,10 @@ namespace FaceAttend.Controllers
                     bool locationVerified = false;
                     int requiredAcc = 0;
 
-                    if (gpsRequired)
+                    // If GPS coords are provided (mobile or desktop), prefer picking the nearest office.
+                    // GPS is required only on mobile devices.
+                    if (lat.HasValue && lon.HasValue)
                     {
-                        if (!lat.HasValue || !lon.HasValue)
-                            return Json(new { ok = false, error = "GPS_REQUIRED", timings = includePerfTimings ? timings : null });
-
                         var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
                         if (!pick.Allowed)
                             return Json(new { ok = false, error = pick.Reason, timings = includePerfTimings ? timings : null });
@@ -453,12 +492,15 @@ namespace FaceAttend.Controllers
                         locationVerified = true;
                         requiredAcc = pick.RequiredAccuracy;
                     }
+                    else if (gpsRequired)
+                    {
+                        return Json(new { ok = false, error = "GPS_REQUIRED", timings = includePerfTimings ? timings : null });
+                    }
                     else
                     {
                         office = GetFallbackOffice(db);
                         locationVerified = false;
                     }
-
                     if (office == null)
                         return Json(new { ok = false, error = "NO_OFFICES", timings = includePerfTimings ? timings : null });
 
@@ -549,7 +591,62 @@ namespace FaceAttend.Controllers
                     mark("match_ms");
 
                     if (bestEmpId == null || bestDist > tol)
-                        return Json(new { ok = false, error = "NO_MATCH", distance = bestDist, threshold = tol, timings = includePerfTimings ? timings : null });
+                    {
+                        // Unknown employee -> visitor flow (known visitor or new visitor)
+                        double vTol = AppSettings.GetDouble("Visitors:DlibTolerance", tol);
+
+                        int? bestVisitorId = null;
+                        string bestVisitorName = null;
+                        double bestVisitorDist = double.PositiveInfinity;
+
+                        try
+                        {
+                            var entries = VisitorFaceIndex.GetEntries(db);
+                            foreach (var e in entries)
+                            {
+                                var d = DlibBiometrics.Distance(vec, e.Vec);
+                                if (d < bestVisitorDist)
+                                {
+                                    bestVisitorDist = d;
+                                    bestVisitorId = e.VisitorId;
+                                    bestVisitorName = e.Name;
+                                }
+                            }
+                        }
+                        catch
+                        {
+                            // If visitor index fails, we still allow "new visitor" flow.
+                        }
+
+                        bool isKnownVisitor = bestVisitorId.HasValue && bestVisitorDist <= vTol;
+
+                        var scanId = NewScanId();
+                        var key = VisitorScanPrefix + scanId;
+
+                        _visitorScanCache.Set(
+                            key,
+                            new VisitorScanCacheItem
+                            {
+                                Vec = vec,
+                                OfficeId = office.Id,
+                                VisitorId = isKnownVisitor ? bestVisitorId : (int?)null,
+                                VisitorName = isKnownVisitor ? bestVisitorName : null
+                            },
+                            DateTimeOffset.UtcNow.AddSeconds(GetVisitorScanTtlSeconds()));
+
+                        return Json(new
+                        {
+                            ok = true,
+                            mode = "VISITOR",
+                            scanId,
+                            isKnown = isKnownVisitor,
+                            visitorName = isKnownVisitor ? bestVisitorName : null,
+                            distance = bestVisitorDist,
+                            threshold = vTol,
+                            liveness = p,
+                            timings = includePerfTimings ? timings : null
+                        });
+                    }
 
                     var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == bestEmpId && x.IsActive);
                     if (emp == null)
@@ -636,7 +733,23 @@ namespace FaceAttend.Controllers
                     mark("db_ms");
 
                     if (!rec.Ok)
+                    {
+                        if (string.Equals(rec.Code, "TOO_SOON", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var minGapSeconds = SystemConfigService.GetInt(
+                                db, "Attendance:MinGapSeconds",
+                                AppSettings.GetInt("Attendance:MinGapSeconds", 180));
+
+                            var mins = (minGapSeconds >= 60) ? (minGapSeconds / 60) : 0;
+                            var msg = mins > 0
+                                ? ("Already scanned. Please wait " + mins + " minute(s).")
+                                : ("Already scanned. Please wait " + minGapSeconds + " second(s).");
+
+                            return Json(new { ok = false, error = rec.Code, message = msg, timings = includePerfTimings ? timings : null });
+                        }
+
                         return Json(new { ok = false, error = rec.Code, message = rec.Message, timings = includePerfTimings ? timings : null });
+                    }
 
                     mark("total_ms");
 
@@ -672,6 +785,98 @@ namespace FaceAttend.Controllers
             {
                 ImagePreprocessor.Cleanup(processedPath, path);
                 SecureFileUpload.TryDelete(path);
+            }
+        }
+
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        [RateLimit(Name = "KioskSubmitVisitor", MaxRequests = 30, WindowSeconds = 60, Burst = 10)]
+        public ActionResult SubmitVisitor(string scanId, string name, string purpose)
+        {
+            scanId = (scanId ?? "").Trim();
+            if (string.IsNullOrWhiteSpace(scanId))
+                return Json(new { ok = false, error = "SCAN_ID_REQUIRED", message = "Scan ID is required." });
+
+            var key = VisitorScanPrefix + scanId;
+            var item = _visitorScanCache.Get(key) as VisitorScanCacheItem;
+
+            if (item == null || item.Vec == null || item.Vec.Length != 128)
+                return Json(new { ok = false, error = "SCAN_EXPIRED", message = "Scan expired. Please scan again." });
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var ip = Request.UserHostAddress ?? "";
+                var ua = Request.UserAgent ?? "";
+
+                try
+                {
+                    VisitorService.RecordResult res;
+
+                    if (item.VisitorId.HasValue)
+                    {
+                        res = VisitorService.RecordVisit(
+                            db,
+                            item.VisitorId.Value,
+                            item.OfficeId,
+                            purpose,
+                            ip,
+                            ua);
+                    }
+                    else
+                    {
+                        name = (name ?? "").Trim();
+                        if (string.IsNullOrWhiteSpace(name))
+                            return Json(new { ok = false, error = "NAME_REQUIRED", message = "Name is required." });
+
+                        var now = DateTime.UtcNow;
+
+                        var bytes = DlibBiometrics.EncodeToBytes(item.Vec);
+                        var b64 = bytes == null ? null : Convert.ToBase64String(bytes);
+
+                        if (string.IsNullOrWhiteSpace(b64))
+                            return Json(new { ok = false, error = "ENCODE_ERROR", message = "Could not save face." });
+
+                        var v = new Visitor
+                        {
+                            Name = name,
+                            FaceEncodingBase64 = b64,
+                            VisitCount = 0,
+                            FirstVisitDate = now,
+                            LastVisitDate = now,
+                            IsActive = true
+                        };
+
+                        db.Visitors.Add(v);
+                        db.SaveChanges();
+
+                        VisitorFaceIndex.Invalidate();
+
+                        res = VisitorService.RecordVisit(
+                            db,
+                            v.Id,
+                            item.OfficeId,
+                            purpose,
+                            ip,
+                            ua);
+                    }
+
+                    _visitorScanCache.Remove(key);
+
+                    return Json(new
+                    {
+                        ok = res.Ok,
+                        mode = "VISITOR_RECORDED",
+                        isKnown = res.IsKnown,
+                        visitorName = res.VisitorName,
+                        message = res.Message,
+                        error = res.Ok ? null : res.Code
+                    });
+                }
+                catch
+                {
+                    return Json(new { ok = false, error = "VISITOR_SAVE_ERROR", message = "Could not save visitor." });
+                }
             }
         }
 
@@ -753,7 +958,10 @@ namespace FaceAttend.Controllers
                 db, "Location:GPSAccuracyRequired",
                 AppSettings.GetInt("Location:GPSAccuracyRequired", 50));
 
-            if (accuracy.HasValue && accuracy.Value > requiredAcc)
+            if (!accuracy.HasValue)
+                return new OfficePick { Allowed = false, Reason = "GPS_ACCURACY", RequiredAccuracy = requiredAcc };
+
+            if (accuracy.Value > requiredAcc)
                 return new OfficePick { Allowed = false, Reason = "GPS_ACCURACY", RequiredAccuracy = requiredAcc };
 
             int defaultRadius = SystemConfigService.GetInt(

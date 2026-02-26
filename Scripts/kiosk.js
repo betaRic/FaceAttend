@@ -24,6 +24,16 @@
         unlockSubmit: el('unlockSubmit'),
         unlockClose: el('unlockClose'),
 
+
+        visitorBackdrop: el('visitorBackdrop'),
+        visitorNameRow: el('visitorNameRow'),
+        visitorName: el('visitorName'),
+        visitorPurpose: el('visitorPurpose'),
+        visitorErr: el('visitorErr'),
+        visitorCancel: el('visitorCancel'),
+        visitorSubmit: el('visitorSubmit'),
+        visitorClose: el('visitorClose'),
+
         kioskRoot: el('kioskRoot'),
         idleOverlay: el('idleOverlay'),
 
@@ -63,6 +73,12 @@
             captureCooldownMs: 3000,
         },
 
+        postScan: {
+            holdMs: 5000,
+            requireFaceGoneMs: 1200,
+            toastMs: 6500,
+        },
+
         gating: {
             stableFramesRequired: 4,
             stableMaxMovePx: 10,
@@ -96,6 +112,7 @@
         detectFace: appBase + 'Kiosk/DetectFace',
         scanAttendance: appBase + 'Kiosk/ScanAttendance',
         attend: appBase + 'Kiosk/Attend',
+        submitVisitor: appBase + 'Kiosk/SubmitVisitor',
     };
 
     // =========
@@ -111,6 +128,13 @@
         unlockOpen: false,
         wasIdle: true,
 
+
+        visitorOpen: false,
+        pendingVisitor: null,
+
+        scanBlockUntil: 0,
+        requireFaceGone: false,
+        faceGoneSince: 0,
         // gps/office
         gps: { lat: null, lon: null, accuracy: null },
         allowedArea: !isMobile,
@@ -185,6 +209,155 @@
         if ((now - state.lastCaptureAt) < 800) return;
         setPrompt(a, b);
     }
+
+    function toast(type, text) {
+        const msg = (text || '').toString().trim();
+        if (!msg) return;
+
+        if (window.Toastify) {
+            const isOk = type === 'success';
+            Toastify({
+                text: msg,
+                duration: CFG.postScan.toastMs,
+                close: true,
+                gravity: 'bottom',
+                position: 'right',
+                stopOnFocus: true,
+                style: { background: isOk ? '#16a34a' : (type === 'info' ? '#2563eb' : '#dc2626') },
+            }).showToast();
+        } else {
+            console.log('[toast]', type, msg);
+        }
+    }
+
+    const toastSuccess = (t) => toast('success', t);
+    const toastError   = (t) => toast('error', t);
+    const toastInfo    = (t) => toast('info', t);
+
+    function armPostScanHold(ms) {
+        const now = Date.now();
+        const hold = (typeof ms === 'number' && isFinite(ms) && ms > 0) ? ms : CFG.postScan.holdMs;
+
+        state.scanBlockUntil = Math.max(state.scanBlockUntil || 0, now + hold);
+        state.requireFaceGone = true;
+        state.faceGoneSince = 0;
+    }
+
+    function openVisitorModal(payload) {
+        if (state.unlockOpen) return;
+        if (state.visitorOpen) return;
+        state.visitorOpen = true;
+        state.pendingVisitor = payload || null;
+
+        if (ui.visitorErr) ui.visitorErr.textContent = '';
+
+        const isKnown = !!payload?.isKnown;
+        const name = payload?.visitorName || '';
+
+        if (ui.visitorNameRow) ui.visitorNameRow.classList.toggle('hidden', isKnown);
+        if (ui.visitorName) {
+            ui.visitorName.value = name;
+            ui.visitorName.disabled = isKnown;
+        }
+
+        if (ui.visitorPurpose) ui.visitorPurpose.value = '';
+
+        if (ui.visitorBackdrop) {
+            ui.visitorBackdrop.classList.remove('hidden');
+            ui.visitorBackdrop.setAttribute('aria-hidden', 'false');
+        }
+
+        setPrompt('Visitor.', isKnown ? 'Enter reason for visit.' : 'Enter name and reason for visit.');
+        setEta('ETA: paused');
+
+        setTimeout(() => {
+            if (!isKnown && ui.visitorName) ui.visitorName.focus();
+            else ui.visitorPurpose?.focus();
+        }, 50);
+    }
+
+    function closeVisitorModal() {
+        state.visitorOpen = false;
+        state.pendingVisitor = null;
+
+        if (ui.visitorBackdrop) {
+            ui.visitorBackdrop.classList.add('hidden');
+            ui.visitorBackdrop.setAttribute('aria-hidden', 'true');
+        }
+
+        armPostScanHold(1500);
+        setPrompt('Ready.', 'Stand still. One face only.');
+    }
+
+    async function submitVisitorForm() {
+        const scanId = state.pendingVisitor?.scanId || '';
+        const isKnown = !!state.pendingVisitor?.isKnown;
+
+        const name = (ui.visitorName?.value || '').trim();
+        const purpose = (ui.visitorPurpose?.value || '').trim();
+
+        if (!scanId) {
+            toastError('Visitor scan expired. Please scan again.');
+            closeVisitorModal();
+            return;
+        }
+
+        if (!isKnown && !name) {
+            if (ui.visitorErr) ui.visitorErr.textContent = 'Name is required.';
+            ui.visitorName?.focus();
+            return;
+        }
+
+        if (!purpose) {
+            if (ui.visitorErr) ui.visitorErr.textContent = 'Reason is required.';
+            ui.visitorPurpose?.focus();
+            return;
+        }
+
+        const fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('scanId', scanId);
+        if (!isKnown) fd.append('name', name);
+        fd.append('purpose', purpose);
+
+        try {
+            const r = await fetch(EP.submitVisitor, { method: 'POST', body: fd, credentials: 'same-origin' });
+            if (r.status === 429) {
+                toastError('System busy. Please wait.');
+                return;
+            }
+            const j = await r.json();
+
+            if (j && j.ok) {
+                toastSuccess(j.message || 'Visitor saved.');
+                closeVisitorModal();
+                armPostScanHold(CFG.postScan.holdMs);
+            } else {
+                toastError(j?.message || j?.error || 'Could not save visitor.');
+            }
+        } catch {
+            toastError('System error. Please try again.');
+        }
+    }
+
+    function wireVisitorUi() {
+        const close = () => closeVisitorModal();
+
+        ui.visitorCancel?.addEventListener('click', close);
+        ui.visitorClose?.addEventListener('click', close);
+        ui.visitorSubmit?.addEventListener('click', () => submitVisitorForm());
+
+        ui.visitorBackdrop?.addEventListener('click', (e) => {
+            if (e.target === ui.visitorBackdrop) close();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (!state.visitorOpen) return;
+            if (e.key === 'Escape') { e.preventDefault(); close(); }
+            if (e.key === 'Enter')  { e.preventDefault(); submitVisitorForm(); }
+        });
+    }
+
 
     function setEta(text) {
         if (!ui.scanEtaLine) return;
@@ -535,6 +708,13 @@
 
         if (!normList || normList.length === 0) {
             state.faceStatus = 'none';
+
+            if (state.requireFaceGone) {
+                if (!state.faceGoneSince) state.faceGoneSince = now;
+            } else {
+                state.faceGoneSince = 0;
+            }
+
             state.mpRawCount = 0;
             state.mpAcceptedCount = 0;
 
@@ -554,6 +734,9 @@
 
         state.mpRawCount = rawScored.length;
         state.mpFaceSeenAt = now;
+
+        // face present resets face-gone timer
+        state.faceGoneSince = 0;
 
         const bestRaw = rawScored[0];
         const accepted = rawScored.filter(x => x.score >= CFG.mp.acceptMinScore);
@@ -686,6 +869,7 @@
 
     function openUnlock() {
         if (!isUnlockAvailable()) return;
+        if (state.visitorOpen) closeVisitorModal();
         state.unlockOpen = true;
         ui.unlockErr.textContent = '';
         ui.unlockPin.value = '';
@@ -762,6 +946,7 @@
             const isSpace = (e.code === 'Space') || (e.key === ' ') || (e.keyCode === 32);
             if (e.ctrlKey && e.shiftKey && isSpace) {
                 e.preventDefault();
+                if (state.visitorOpen) closeVisitorModal();
                 openUnlock();
             }
         }, true);
@@ -772,11 +957,20 @@
     // =========
     // gps + office resolve
     // =========
-    function startGpsIfMobile() {
-        if (!isMobile) return;
+    function startGpsIfAvailable() {
         if (!('geolocation' in navigator)) {
             state.allowedArea = false;
             if (ui.officeLine) ui.officeLine.textContent = 'GPS not available';
+            if (!isMobile) resolveOfficeDesktopOnce();
+            return;
+        }
+
+        // Geolocation only works on HTTPS (or localhost).
+        const isSecure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        if (!isSecure) {
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS';
+            if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
 
@@ -786,17 +980,25 @@
                 state.gps.lon = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
             },
-            () => {
+            (err) => {
                 state.gps.lat = null;
                 state.gps.lon = null;
                 state.gps.accuracy = null;
+
+                let msg = 'GPS error';
+                if (err && err.code === 1) msg = 'GPS denied';
+                else if (err && err.code === 2) msg = 'GPS unavailable';
+                else if (err && err.code === 3) msg = 'GPS timeout';
+
+                state.allowedArea = false;
+                if (ui.officeLine) ui.officeLine.textContent = msg;
+                if (!isMobile) resolveOfficeDesktopOnce();
             },
             { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
         );
     }
 
     async function resolveOfficeIfNeeded() {
-        if (!isMobile) return;
         if (!state.localPresent) return;
 
         const t = Date.now();
@@ -804,6 +1006,13 @@
         state.lastResolveAt = t;
 
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
+            // Desktop kiosks: GPS may be unavailable. Fall back to server default office.
+            if (!isMobile) {
+                await resolveOfficeDesktopOnce();
+                if (state.allowedArea !== false) state.allowedArea = true;
+                return;
+            }
+
             state.allowedArea = false;
             if (ui.officeLine) ui.officeLine.textContent = 'Locating.';
             return;
@@ -849,6 +1058,7 @@
             const r = await fetch(EP.resolveOffice, { method: 'POST', body: fd });
             const j = await r.json();
             if (j && j.ok === true && j.allowed !== false) {
+                state.allowedArea = true;
                 state.currentOffice.id = j.officeId;
                 state.currentOffice.name = j.officeName;
                 if (ui.officeLine && state.currentOffice.name) ui.officeLine.textContent = state.currentOffice.name;
@@ -864,11 +1074,9 @@
         fd.append('__RequestVerificationToken', token);
         fd.append('image', blob, 'frame.jpg');
 
-        if (isMobile) {
-            if (state.gps.lat != null) fd.append('lat', state.gps.lat);
-            if (state.gps.lon != null) fd.append('lon', state.gps.lon);
-            if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
-        }
+        if (state.gps.lat != null) fd.append('lat', state.gps.lat);
+        if (state.gps.lon != null) fd.append('lon', state.gps.lon);
+        if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
 
         const r = await fetch(endpoint, { method: 'POST', body: fd });
 
@@ -907,6 +1115,9 @@
             if (!state.boxRaw || state.faceCount === 0) {
                 state.boxSmooth = null;
                 state.stableFrames = 0;
+
+                if (state.requireFaceGone && !state.faceGoneSince) state.faceGoneSince = Date.now();
+
                 setPrompt('Ready.', 'Look at the camera.');
                 return;
             }
@@ -939,11 +1150,9 @@
         fd.append('__RequestVerificationToken', token);
         fd.append('image', blob, 'capture.jpg');
 
-        if (isMobile) {
-            if (state.gps.lat != null) fd.append('lat', state.gps.lat);
-            if (state.gps.lon != null) fd.append('lon', state.gps.lon);
-            if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
-        }
+        if (state.gps.lat != null) fd.append('lat', state.gps.lat);
+        if (state.gps.lon != null) fd.append('lon', state.gps.lon);
+        if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
 
         try {
             const url = endpoint || EP.scanAttendance;
@@ -970,18 +1179,43 @@
                 setLiveness(p, th, cls);
             }
 
+            // visitor mode
+            if (j && j.mode === 'VISITOR') {
+                if (state.unlockOpen) return;
+                if (state.visitorOpen) return;
+                openVisitorModal({
+                    scanId: j.scanId,
+                    isKnown: !!j.isKnown,
+                    visitorName: j.visitorName || '',
+                });
+                return;
+            }
+
             if (j && j.ok) {
-                const displayName = j.displayName || j.name;
-                setPrompt(displayName ? ('Welcome, ' + displayName + '.') : 'Success.', j.message || 'Recorded.');
-                setTimeout(() => setPrompt('Ready.', 'Look at the camera.'), 1600);
+                const displayName = j.displayName || j.name || '';
+                const msg = (j.message || 'Recorded.').toString();
+                toastSuccess(displayName ? (displayName + ' — ' + msg) : msg);
+
+                setPrompt('Ready.', 'Stand still. One face only.');
+                armPostScanHold(CFG.postScan.holdMs);
             } else {
-                const err = j?.error || 'Failed.';
-                if (err === 'LIVENESS_FAIL') {
-                    setPrompt('Liveness failed.', 'Move naturally and try again.');
+                const err = (j?.error || 'Failed.').toString();
+
+                if (err === 'TOO_SOON') {
+                    toastError(j?.message || 'Already scanned. Please wait before scanning again.');
+                    armPostScanHold(CFG.postScan.holdMs);
+                } else if (err === 'LIVENESS_FAIL') {
+                    toastError('Liveness failed. Move naturally and try again.');
+                    armPostScanHold(1500);
+                } else if (err === 'NO_MATCH') {
+                    toastError('No match. Please fill the visitor form.');
+                    armPostScanHold(1500);
                 } else {
-                    setPrompt(err, 'Try again.');
+                    toastError(j?.message || err);
+                    armPostScanHold(1500);
                 }
-                setTimeout(() => setPrompt('Ready.', 'Look at the camera.'), 1600);
+
+                setPrompt('Ready.', 'Stand still. One face only.');
             }
         } catch {
             setPrompt('System error.', 'Reload the page or check the server.');
@@ -1050,6 +1284,31 @@
                 return;
             }
 
+
+            if (state.visitorOpen) {
+                updateEta(true, useNextGen);
+                return;
+            }
+
+            if (now < (state.scanBlockUntil || 0)) {
+                safeSetPrompt('Please wait.', 'Next scan will be ready soon.');
+                updateEta(true, useNextGen);
+                return;
+            }
+
+            if (state.requireFaceGone) {
+                const goneForMs = state.faceGoneSince ? (now - state.faceGoneSince) : 0;
+                if (goneForMs >= CFG.postScan.requireFaceGoneMs) {
+                    state.requireFaceGone = false;
+                    state.faceGoneSince = 0;
+                    setPrompt('Ready.', 'Stand still. One face only.');
+                } else {
+                    safeSetPrompt('Step away.', 'Move away from the camera.');
+                    updateEta(true, useNextGen);
+                    return;
+                }
+            }
+
             if (useNextGen) {
                 if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
                     const blob = await captureFrameBlob(0.85);
@@ -1084,10 +1343,11 @@
     // =========
     (async function init() {
         startClock();
-        startGpsIfMobile();
+        startGpsIfAvailable();
         resolveOfficeDesktopOnce();
         wireUnlockUi();
 
+        wireVisitorUi();
         try {
             await startCamera();
             await mp.init();
