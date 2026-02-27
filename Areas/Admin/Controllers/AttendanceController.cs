@@ -279,6 +279,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
 
             TempData["msg"] = "Marked as reviewed.";
+            TempData["msgKind"] = "success";
             return RedirectToAction("Details", new { id });
         }
 
@@ -320,6 +321,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (daySpan > 31)
                 {
                     TempData["msg"] = "Summary report is limited to 31 days. Please narrow your date range.";
+                    TempData["msgKind"] = "warning";
                     return RedirectToAction("Index", new { from = vm.From, to = vm.To, officeId });
                 }
 

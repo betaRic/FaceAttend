@@ -1,4 +1,4 @@
-@model System.Collections.Generic.List<dynamic>
+@model System.Collections.Generic.List<FaceAttend.Areas.Admin.Models.VisitorLogRowVm>
 @{
     ViewBag.Title = "Visitor Logs";
 
@@ -12,10 +12,7 @@
     var exportUrl = Url.Action("ExportLogsCsv", new { from, to, officeId, q, knownOnly });
 }
 
-@if (TempData["msg"] != null)
-{
-    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
-}
+
 
 <div class="d-flex align-items-center justify-content-between mb-3">
     <h3 class="mb-0">
@@ -88,12 +85,12 @@
                 <tbody>
                     @foreach (var r in Model)
                     {
-                        DateTime ts = r.Timestamp;
-                        string name = r.VisitorName;
-                        bool known = r.VisitorId != null;
-                        string office = r.OfficeName;
-                        string purpose = r.Purpose;
-                        string source = r.Source;
+                        var ts = r.TimestampUtc;
+                        var name = r.VisitorName;
+                        var known = r.IsKnown;
+                        var office = r.OfficeName;
+                        var purpose = r.Purpose;
+                        var source = r.Source;
 
                         <tr>
                             <td>@ts.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>

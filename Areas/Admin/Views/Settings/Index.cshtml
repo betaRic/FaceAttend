@@ -4,11 +4,6 @@
     ViewBag.Title = "Settings";
 }
 
-@if (!string.IsNullOrWhiteSpace(Model.SavedMessage))
-{
-    <div class="alert alert-success admin-card p-3 mb-3">@Model.SavedMessage</div>
-}
-
 @if (!string.IsNullOrWhiteSpace(Model.WarningMessage))
 {
     <div class="alert alert-warning admin-card p-3 mb-3">@Model.WarningMessage</div>
@@ -317,7 +312,7 @@
                             @Html.TextBoxFor(m => m.VisitorMaxRecords, new { @class = "form-control", type = "number", min = "100", max = "500000", step = "1" })
                             @Html.ValidationMessageFor(m => m.VisitorMaxRecords, "", new { @class = "text-danger small" })
                             <div class="text-muted small">
-                                Soft cap — informational only. Run retention cleanup from the
+                                Soft cap - informational only. Run retention cleanup from the
                                 <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })">Visitors page</a>
                                 to enforce it. Default: 10,000.
                             </div>

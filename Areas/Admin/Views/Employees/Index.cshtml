@@ -10,16 +10,19 @@
     int total = ViewBag.Total == null ? Model.Count : System.Convert.ToInt32(ViewBag.Total);
 
     int totalPages = (int)System.Math.Ceiling(total / (double)pageSize);
-    if (totalPages < 1) totalPages = 1;
-    if (page < 1) page = 1;
-    if (page > totalPages) page = totalPages;
+    if (totalPages < 1) { totalPages = 1; }
+    if (page < 1) { page = 1; }
+    if (page > totalPages) { page = totalPages; }
 
     int start = total == 0 ? 0 : ((page - 1) * pageSize) + 1;
     int end = System.Math.Min(page * pageSize, total);
 
     int startPage = System.Math.Max(1, page - 3);
     int endPage = System.Math.Min(totalPages, startPage + 6);
-    if (endPage - startPage < 6) startPage = System.Math.Max(1, endPage - 6);
+    if (endPage - startPage < 6)
+    {
+        startPage = System.Math.Max(1, endPage - 6);
+    }
 }
 
 <div class="d-flex align-items-center justify-content-between mb-2">

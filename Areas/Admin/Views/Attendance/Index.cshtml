@@ -29,21 +29,15 @@
 
     var summaryUrl = Url.Action("SummaryReport", new
     {
-        from       = Model.From,
-        to         = Model.To,
-        officeId   = Model.OfficeId,
-        department = Model.Employee
+        from     = Model.From,
+        to       = Model.To,
+        officeId = Model.OfficeId
     });
 }
 
-@if (TempData["msg"] != null)
-{
-    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
-}
-
-@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* ======================================================================= *@
 @* HEADER + FILTER CARD                                                        *@
-@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* ======================================================================= *@
 <div class="admin-card mb-3">
     <div class="card-body">
 
@@ -53,8 +47,8 @@
                 <h4 class="mb-1">Attendance</h4>
                 <div class="text-muted small">
                     @Model.ActiveRangeLabel
-                    &nbsp;&middot;&nbsp;Total: <strong>@Model.Total</strong>
-                    &nbsp;&middot;&nbsp;Needs review:
+                     | Total: <strong>@Model.Total</strong>
+                     | Needs review:
                     @if (Model.TotalNeedsReview > 0)
                     {
                         <strong class="text-warning">@Model.TotalNeedsReview</strong>
@@ -161,14 +155,14 @@
     </div>
 </div>
 
-@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* ======================================================================= *@
 @* SUMMARY CARDS  (rendered only when the query returned data)                 *@
-@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* ======================================================================= *@
 @if (Model.ShowSummary)
 {
     <div class="row g-3 mb-3">
 
-        @* Card 1 — Today's Attendance Rate *@
+        @* Card 1 - Today's Attendance Rate *@
         <div class="col-12 col-xl-4">
             <div class="admin-card h-100">
                 <div class="card-body">
@@ -204,7 +198,7 @@
             </div>
         </div>
 
-        @* Card 2 — Office Breakdown *@
+        @* Card 2 - Office Breakdown *@
         <div class="col-12 col-xl-4">
             <div class="admin-card h-100">
                 <div class="card-body">
@@ -255,7 +249,7 @@
             </div>
         </div>
 
-        @* Card 3 — Daily IN Trend (pure CSS bars, zero JS) *@
+        @* Card 3 - Daily IN Trend (pure CSS bars, zero JS) *@
         <div class="col-12 col-xl-4">
             <div class="admin-card h-100">
                 <div class="card-body">
@@ -269,22 +263,27 @@
                     }
                     else
                     {
-                        @{
-                            var chartDays = Model.DailyBreakdown.Count > 14
-                                ? Model.DailyBreakdown.Skip(Model.DailyBreakdown.Count - 14).ToList()
-                                : Model.DailyBreakdown;
-                            int maxIn = chartDays.Max(d => d.InCount);
-                            if (maxIn < 1) maxIn = 1;
+                        var chartDays = Model.DailyBreakdown.Count > 14
+                            ? Model.DailyBreakdown.Skip(Model.DailyBreakdown.Count - 14).ToList()
+                            : Model.DailyBreakdown;
+
+                        int maxIn = chartDays.Max(d => d.InCount);
+                        if (maxIn < 1)
+                        {
+                            maxIn = 1;
                         }
 
                         <div class="d-flex align-items-end gap-1" style="height:80px; overflow:hidden;">
                             @foreach (var d in chartDays)
                             {
                                 int hPct = (int)Math.Round(100.0 * d.InCount / maxIn);
-                                if (hPct < 2) hPct = 2;
+                                if (hPct < 2)
+                                {
+                                    hPct = 2;
+                                }
 
                                 <div class="flex-fill d-flex flex-column align-items-center justify-content-end"
-                                     title="@d.DateLabel — @d.InCount IN, @d.OutCount OUT"
+                                     title="@d.DateLabel - @d.InCount IN, @d.OutCount OUT"
                                      data-bs-toggle="tooltip" data-bs-placement="top">
                                     <div class="w-100 rounded-top bg-primary"
                                          style="height:@(hPct)%; min-height:2px; opacity:0.78;"></div>
@@ -297,7 +296,7 @@
                         </div>
 
                         <div class="text-muted small mt-2">
-                            @Model.DailyBreakdown.Sum(d => d.InCount) total IN · @Model.DailyBreakdown.Sum(d => d.OutCount) total OUT
+                            @Model.DailyBreakdown.Sum(d => d.InCount) total IN | @Model.DailyBreakdown.Sum(d => d.OutCount) total OUT
                         </div>
                     }
                 </div>
@@ -307,9 +306,9 @@
     </div>
 }
 
-@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* ======================================================================= *@
 @* MAIN RECORDS TABLE                                                           *@
-@* ═══════════════════════════════════════════════════════════════════════════ *@
+@* ======================================================================= *@
 <div class="admin-card">
     <div class="card-body">
         <div class="table-responsive">
@@ -349,7 +348,7 @@
                                 <div class="text-muted small">
                                     @r.EmployeeId
                                     @if (!string.IsNullOrWhiteSpace(r.Department))
-                                    {<span>&middot; @r.Department</span>}
+                                    {<span>| @r.Department</span>}
                                 </div>
                             </td>
                             <td>
@@ -367,10 +366,10 @@
                                 </span>
                             </td>
                             <td class="text-muted small">
-                                @(r.LivenessScore.HasValue ? r.LivenessScore.Value.ToString("0.000") : "—")
+                                @(r.LivenessScore.HasValue ? r.LivenessScore.Value.ToString("0.000") : "-")
                             </td>
                             <td class="text-muted small">
-                                @(r.FaceDistance.HasValue ? r.FaceDistance.Value.ToString("0.000") : "—")
+                                @(r.FaceDistance.HasValue ? r.FaceDistance.Value.ToString("0.000") : "-")
                             </td>
                             <td>
                                 <span class="badge @(r.LocationVerified ? "bg-primary" : "bg-light text-dark")">
@@ -385,7 +384,7 @@
                                 }
                                 else
                                 {
-                                    <span class="text-muted">—</span>
+                                    <span class="text-muted">-</span>
                                 }
                             </td>
                         </tr>
@@ -399,7 +398,7 @@
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
             <div class="text-muted small">
                 Page @Model.Page of @Model.TotalPages
-                &nbsp;&middot;&nbsp;
+                 | 
                 @Model.Total record@(Model.Total == 1 ? "" : "s")
             </div>
 

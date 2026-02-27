@@ -64,23 +64,23 @@ namespace FaceAttend.Areas.Admin.Models
 
         public string FirstInDisplay => FirstInUtc.HasValue
             ? FirstInUtc.Value.ToLocalTime().ToString("HH:mm")
-            : "—";
+            : "-";
 
         public string LastOutDisplay => LastOutUtc.HasValue
             ? LastOutUtc.Value.ToLocalTime().ToString("HH:mm")
-            : "—";
+            : "-";
 
         public string HoursDisplay
         {
             get
             {
                 var h = HoursNet ?? HoursRaw;
-                return h.HasValue ? h.Value.ToString("0.0") + "h" : "—";
+                return h.HasValue ? h.Value.ToString("0.0") + "h" : "-";
             }
         }
 
-        public string LateDisplay => LateMinutes.HasValue ? (LateMinutes.Value + "m") : "—";
-        public string UndertimeDisplay => UndertimeMinutes.HasValue ? (UndertimeMinutes.Value + "m") : "—";
+        public string LateDisplay => LateMinutes.HasValue ? (LateMinutes.Value + "m") : "-";
+        public string UndertimeDisplay => UndertimeMinutes.HasValue ? (UndertimeMinutes.Value + "m") : "-";
     }
 
     // ── Row in the main attendance table ─────────────────────────────────────────

@@ -8,6 +8,7 @@ using System.Web;
 using System.Web.Mvc;
 using FaceAttend.Filters;
 using FaceAttend.Areas.Admin.Helpers;
+using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Security;
@@ -69,6 +70,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             if (string.IsNullOrWhiteSpace(name))
             {
                 TempData["msg"] = "Name is required.";
+                TempData["msgKind"] = "warning";
                 return RedirectToAction("Create");
             }
 
@@ -90,6 +92,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
 
             TempData["msg"] = "Visitor created.";
+            TempData["msgKind"] = "success";
             return RedirectToAction("Index");
         }
 
@@ -123,6 +126,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (string.IsNullOrWhiteSpace(name))
                 {
                     TempData["msg"] = "Name is required.";
+                    TempData["msgKind"] = "warning";
                     return RedirectToAction("Edit", new { id });
                 }
 
@@ -134,6 +138,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
 
             TempData["msg"] = "Visitor updated.";
+            TempData["msgKind"] = "success";
             return RedirectToAction("Index");
         }
 
@@ -153,6 +158,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
 
             TempData["msg"] = "Visitor deactivated.";
+            TempData["msgKind"] = "success";
             return RedirectToAction("Index");
         }
 
@@ -455,13 +461,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var rows = logs
                     .OrderByDescending(x => x.Timestamp)
                     .Take(5000)
-                    .Select(x => new
+                    .Select(x => new VisitorLogRowVm
                     {
-                        x.Timestamp,
-                        x.VisitorId,
-                        x.VisitorName,
-                        x.Purpose,
-                        x.Source,
+                        TimestampUtc = x.Timestamp,
+                        VisitorId = x.VisitorId,
+                        VisitorName = x.VisitorName,
+                        Purpose = x.Purpose,
+                        Source = x.Source,
                         OfficeName = x.Office.Name
                     })
                     .ToList();
@@ -545,6 +551,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 var res = VisitorService.PurgeOldLogs(db, years);
                 TempData["msg"] = "Purged " + res.Deleted + " visitor logs older than " + years + " year(s).";
+                TempData["msgKind"] = "success";
             }
 
             return RedirectToAction("Logs");

@@ -126,7 +126,9 @@
 
     @if (TempData["msg"] != null)
     {
+        var kind = (TempData["msgKind"] ?? "success").ToString();
         <script>
+            window.__toastType = "@System.Web.HttpUtility.JavaScriptStringEncode(kind)";
             window.__toastMsg = "@System.Web.HttpUtility.JavaScriptStringEncode(TempData["msg"].ToString())";
         </script>
     }

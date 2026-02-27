@@ -20,11 +20,6 @@
     });
 }
 
-@if (TempData["msg"] != null)
-{
-    <div class="alert alert-success admin-card p-3 mb-3">@TempData["msg"]</div>
-}
-
 <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
     <div>
         <h4 class="mb-1">Attendance Summary</h4>
@@ -93,7 +88,7 @@ else
                                 .Sum(d => (d.HoursNet ?? d.HoursRaw).Value);
                             if (totalH > 0)
                             {
-                                <span>&nbsp;&middot;&nbsp;@totalH.ToString("0.1") h net</span>
+                                <span><span class="mx-1">|</span>@totalH.ToString("0.1") h net</span>
                             }
                         }
                     </div>
@@ -124,19 +119,19 @@ else
                                         @if (hasIn)
                                         { <span class="badge bg-success">@day.FirstInDisplay</span> }
                                         else
-                                        { <span class="text-muted">—</span> }
+                                        { <span class="text-muted">-</span> }
                                     </td>
                                     <td class="small">
                                         @if (hasOut)
                                         { <span class="badge bg-secondary">@day.LastOutDisplay</span> }
                                         else
-                                        { <span class="text-muted">—</span> }
+                                        { <span class="text-muted">-</span> }
                                     </td>
                                     <td class="small @(((day.HoursNet ?? day.HoursRaw).HasValue) ? "fw-semibold" : "text-muted")">@day.HoursDisplay</td>
                                     <td class="small">@day.LateDisplay</td>
                                     <td class="small">@day.UndertimeDisplay</td>
                                     <td class="small">
-                                        <span class="badge @(day.StatusBadgeClass ?? "bg-light text-dark border")">@(day.StatusLabel ?? "—")</span>
+                                        <span class="badge @(day.StatusBadgeClass ?? "bg-light text-dark border")">@(day.StatusLabel ?? "-")</span>
                                     </td>
                                 </tr>
                             }
@@ -150,9 +145,9 @@ else
 
     <div class="text-muted small mt-1 mb-4">
         Showing @Model.EmployeeSummary.Count employee@(Model.EmployeeSummary.Count == 1 ? "" : "s")
-        &nbsp;&middot;&nbsp;
+        <span class="mx-1">|</span>
         Report limited to 31 days per query
-        &nbsp;&middot;&nbsp;
+        <span class="mx-1">|</span>
         <a href="@exportSummaryUrl" target="_blank">Export as CSV</a>
     </div>
 }

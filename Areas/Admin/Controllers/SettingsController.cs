@@ -19,7 +19,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             using (var db = new FaceAttendDBEntities())
             {
                 var vm = BuildVm(db);
-                if (TempData["msg"] != null) vm.SavedMessage = TempData["msg"].ToString();
                 return View(vm);
             }
         }
@@ -220,6 +219,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     "Delete visitor logs older than this many years when cleanup is run.", by);
 
                 TempData["msg"] = "Settings saved.";
+                TempData["msgKind"] = "success";
                 return RedirectToAction("Index");
             }
         }

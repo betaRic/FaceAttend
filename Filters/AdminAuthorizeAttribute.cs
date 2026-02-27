@@ -68,8 +68,18 @@ namespace FaceAttend.Filters
             // to an external site after "authenticating".
             var rawUrl = filterContext.HttpContext.Request.RawUrl ?? "/Admin";
             var safeUrl = SanitizeReturnUrl(rawUrl);
-            filterContext.Result = new RedirectResult(
-                "/Kiosk?unlock=1&returnUrl=" + HttpUtility.UrlEncode(safeUrl));
+
+            // Do not hardcode "/Kiosk".
+            // Under an IIS virtual directory, "/Kiosk" points to the domain root and
+            // breaks admin navigation.
+            var url = new UrlHelper(filterContext.RequestContext);
+            var kioskUrl = url.Action(
+                "Index",
+                "Kiosk",
+                new { area = "", unlock = 1, returnUrl = safeUrl }
+            );
+
+            filterContext.Result = new RedirectResult(kioskUrl);
         }
 
         // -------------------------------------------------------------------

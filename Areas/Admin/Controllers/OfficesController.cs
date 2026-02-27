@@ -75,6 +75,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 db.SaveChanges();
 
                 TempData["msg"] = "Office created.";
+                TempData["msgKind"] = "success";
                 return RedirectToAction("Index");
             }
         }
@@ -143,6 +144,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 db.SaveChanges();
 
                 TempData["msg"] = "Office updated.";
+                TempData["msgKind"] = "success";
                 return RedirectToAction("Index");
             }
         }

@@ -243,6 +243,7 @@
     <Compile Include="Areas\Admin\Models\EmployeeEditVm.cs" />
     <Compile Include="Areas\Admin\Models\OfficeEditVm.cs" />
     <Compile Include="Areas\Admin\Models\SettingsVm.cs" />
+    <Compile Include="Areas\Admin\Models\VisitorLogRowVm.cs" />
     <Compile Include="AttendanceLog.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
@@ -284,14 +285,15 @@
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
     <Compile Include="Services\Biometrics\FaceMatchTuner.cs" />
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
-    <Compile Include="Services\Biometrics\ScanFramePipeline.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
+    <Compile Include="Services\Biometrics\ScanFramePipeline.cs" />
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
     <Compile Include="Services\GeoUtil.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
     <Compile Include="Services\Security\RateLimit.cs" />
     <Compile Include="Services\Security\SecureFileUpload.cs" />
     <Compile Include="Services\SystemConfigService.cs" />
+    <Compile Include="Services\TimeZoneHelper.cs" />
     <Compile Include="Services\VisitorService.cs" />
     <Compile Include="SystemConfiguration.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
@@ -305,17 +307,27 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include=".tools\nuget.exe" />
+    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
     <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Create.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Edit.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="Areas\Admin\Views\Settings\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminLayout.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminNav.cshtml" />
     <Content Include="Areas\Admin\Views\Unlock\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Edit.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Visitors\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Logs.cshtml" />
     <Content Include="Areas\Admin\Views\web.config" />
     <Content Include="Areas\Admin\Views\_ViewStart.cshtml" />
     <Content Include="Content\admin.css" />
@@ -357,6 +369,32 @@
     <Content Include="Content\toastr.less" />
     <Content Include="Content\toastr.min.css" />
     <Content Include="Content\toastr.scss" />
+    <Content Include="Content\vendor\fontawesome\css\all.css" />
+    <Content Include="Content\vendor\fontawesome\css\all.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\brands.css" />
+    <Content Include="Content\vendor\fontawesome\css\brands.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\fontawesome.css" />
+    <Content Include="Content\vendor\fontawesome\css\fontawesome.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\regular.css" />
+    <Content Include="Content\vendor\fontawesome\css\regular.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\solid.css" />
+    <Content Include="Content\vendor\fontawesome\css\solid.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\svg-with-js.css" />
+    <Content Include="Content\vendor\fontawesome\css\svg-with-js.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\svg.css" />
+    <Content Include="Content\vendor\fontawesome\css\svg.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\v4-font-face.css" />
+    <Content Include="Content\vendor\fontawesome\css\v4-font-face.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\v4-shims.css" />
+    <Content Include="Content\vendor\fontawesome\css\v4-shims.min.css" />
+    <Content Include="Content\vendor\fontawesome\css\v5-font-face.css" />
+    <Content Include="Content\vendor\fontawesome\css\v5-font-face.min.css" />
+    <Content Include="Content\vendor\leaflet\images\layers-2x.png" />
+    <Content Include="Content\vendor\leaflet\images\layers.png" />
+    <Content Include="Content\vendor\leaflet\images\marker-icon-2x.png" />
+    <Content Include="Content\vendor\leaflet\images\marker-icon.png" />
+    <Content Include="Content\vendor\leaflet\images\marker-shadow.png" />
+    <Content Include="Content\vendor\leaflet\leaflet.css" />
     <Content Include="FaceAttendDBEntities.Context.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
@@ -381,6 +419,7 @@
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
     </Content>
     <Content Include="Scripts\admin-enroll.js" />
+    <Content Include="Scripts\admin-office-map.js" />
     <Content Include="Scripts\admin.js" />
     <Content Include="Scripts\bootstrap.bundle.js" />
     <Content Include="Scripts\bootstrap.bundle.js.map" />
@@ -418,12 +457,21 @@
     <Content Include="Scripts\vendor\datatables\js\dataTables.buttons.min.js" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.js" />
+    <Content Include="Scripts\vendor\datatables\responsive.dataTables.min.css" />
+    <Content Include="Scripts\vendor\datatables\responsive.dataTables.min.js" />
+    <Content Include="Scripts\vendor\leaflet\leaflet.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\models\blaze_face_short_range.tflite" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs.map" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_loader.mjs" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.all.min.js" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.min.css" />
+    <Content Include="Scripts\vendor\toastify\toastify.min.css" />
+    <Content Include="Scripts\vendor\toastify\toastify.min.js" />
     <Content Include="Views\Kiosk\Index.cshtml" />
     <Content Include="Views\Shared\Error.cshtml" />
     <Content Include="Views\Web.config" />
@@ -443,24 +491,15 @@
     <Folder Include="Views\Error\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="libman.json" />
-    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
-    <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Edit.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Enroll.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Logs.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-brands-400.woff2" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-regular-400.woff2" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-solid-900.woff2" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-v4compatibility.woff2" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\models\blaze_face_short_range.tflite" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs.map" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{4A0DDDB5-7A95-4FBF-97CC-616D07737A77}" />

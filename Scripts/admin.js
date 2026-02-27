@@ -242,8 +242,11 @@
         configureToastr();
 
         if (window.__toastMsg) {
-            toast("success", window.__toastMsg);
+            var t = (window.__toastType || "success").toString().toLowerCase();
+            if (t !== "success" && t !== "info" && t !== "warning" && t !== "error") t = "success";
+            toast(t, window.__toastMsg);
             window.__toastMsg = null;
+            window.__toastType = null;
         }
 
         wireConfirmLinks();

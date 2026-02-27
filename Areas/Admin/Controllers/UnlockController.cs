@@ -10,7 +10,8 @@ namespace FaceAttend.Areas.Admin.Controllers
         {
             // FIX (Open Redirect): sanitize returnUrl before embedding in redirect.
             var safe = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
-            return Redirect("/Kiosk?unlock=1&returnUrl=" + System.Web.HttpUtility.UrlEncode(safe));
+            var kioskUrl = Url.Action("Index", "Kiosk", new { area = "", unlock = 1, returnUrl = safe });
+            return Redirect(kioskUrl);
         }
 
         [HttpPost]
@@ -19,7 +20,8 @@ namespace FaceAttend.Areas.Admin.Controllers
         {
             // FIX (Open Redirect): sanitize returnUrl before embedding in redirect.
             var safe = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
-            return Redirect("/Kiosk?unlock=1&returnUrl=" + System.Web.HttpUtility.UrlEncode(safe));
+            var kioskUrl = Url.Action("Index", "Kiosk", new { area = "", unlock = 1, returnUrl = safe });
+            return Redirect(kioskUrl);
         }
     }
 }
