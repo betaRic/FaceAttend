@@ -641,7 +641,9 @@ namespace FaceAttend.Controllers
                             scanId,
                             isKnown = isKnownVisitor,
                             visitorName = isKnownVisitor ? bestVisitorName : null,
-                            distance = bestVisitorDist,
+                            distance = (double.IsInfinity(bestVisitorDist) || double.IsNaN(bestVisitorDist))
+                            ? (double?)null
+                            : bestVisitorDist,
                             threshold = vTol,
                             liveness = p,
                             timings = includePerfTimings ? timings : null

@@ -31,7 +31,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 RadiusMeters = 100,
                 IsActive = true,
-                Latitude = 6.116386,   // Philippines center-ish fallback
+                Latitude = 6.116386,
                 Longitude = 125.171617
             };
             return View(vm);

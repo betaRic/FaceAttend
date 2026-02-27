@@ -81,23 +81,48 @@
     lonEl.addEventListener("change", syncMap);
     radiusEl.addEventListener("change", syncRadius);
 
-    if (btnMyLoc && navigator.geolocation) {
-      btnMyLoc.addEventListener("click", function () {
-        btnMyLoc.disabled = true;
+      if (btnMyLoc && navigator.geolocation) {
+          btnMyLoc.addEventListener("click", function () {
+              btnMyLoc.disabled = true;
+              btnMyLoc.textContent = "Locating...";
 
-        navigator.geolocation.getCurrentPosition(
-          function (p) {
-            btnMyLoc.disabled = false;
-            syncInputs(p.coords.latitude, p.coords.longitude);
-            syncMap();
-          },
-          function () {
-            btnMyLoc.disabled = false;
-          },
-          { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-        );
-      });
-    }
+              navigator.geolocation.getCurrentPosition(
+                  function (p) {
+                      btnMyLoc.disabled = false;
+                      btnMyLoc.textContent = "Use my location";
+
+                      var acc = p.coords.accuracy;
+
+                      // If accuracy is worse than 500m, warn the user — IP-based
+                      // geolocation on Philippine networks is often off by 50-200km.
+                      if (acc > 500) {
+                          var proceed = confirm(
+                              "GPS accuracy is low (" + Math.round(acc) + " m).\n\n" +
+                              "Your network may be geolocating to the wrong city (e.g. Cotabato instead of General Santos).\n\n" +
+                              "Do you still want to use this location? " +
+                              "If not, click Cancel and drag the pin manually on the map."
+                          );
+                          if (!proceed) return;
+                      }
+
+                      syncInputs(p.coords.latitude, p.coords.longitude);
+                      syncMap();
+                  },
+                  function (err) {
+                      btnMyLoc.disabled = false;
+                      btnMyLoc.textContent = "Use my location";
+
+                      var msg = "Location error.";
+                      if (err && err.code === 1) msg = "Location access denied. Enable it in browser settings.";
+                      else if (err && err.code === 2) msg = "Location unavailable. Drag the pin manually.";
+                      else if (err && err.code === 3) msg = "Location timed out. Drag the pin manually.";
+
+                      alert(msg);
+                  },
+                  { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
+              );
+          });
+      }
   }
 
   if (document.readyState === "loading") {
