@@ -363,6 +363,8 @@
     <Content Include="Content\bootstrap.rtl.css.map" />
     <Content Include="Content\bootstrap.rtl.min.css" />
     <Content Include="Content\bootstrap.rtl.min.css.map" />
+    <Content Include="Content\images\dilg-logo.svg" />
+    <Content Include="Content\favicon.ico" />
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\site.css" />
     <Content Include="Content\toastr.css" />
@@ -452,6 +454,7 @@
     <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.js" />
     <Content Include="Scripts\vendor\datatables\dataTables.min.js" />
+    <Content Include="Scripts\vendor\datatables\dataTables.responsive.min.js" />
     <Content Include="Scripts\vendor\datatables\js\buttons.html5.min.js" />
     <Content Include="Scripts\vendor\datatables\js\buttons.print.min.js" />
     <Content Include="Scripts\vendor\datatables\js\dataTables.buttons.min.js" />

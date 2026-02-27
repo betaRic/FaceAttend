@@ -1,7 +1,8 @@
-using System;
-using System.Web;
 using FaceAttend.Services;
 using FaceAttend.Services.Security;
+using System;
+using System.Linq;
+using System.Web;
 
 namespace FaceAttend.Services.Biometrics
 {
@@ -30,9 +31,36 @@ namespace FaceAttend.Services.Biometrics
                 bool isProcessed;
                 processedPath = ImagePreprocessor.PreprocessForDetection(path, prefix, out isProcessed);
 
+                // Read image dimensions so the client can scale the box correctly.
+                int imgW = 0, imgH = 0;
+                try
+                {
+                    using (var bmp = new System.Drawing.Bitmap(processedPath))
+                    { imgW = bmp.Width; imgH = bmp.Height; }
+                }
+                catch { }
+
                 var dlib = new DlibBiometrics();
                 var faces = dlib.DetectFacesFromFile(processedPath);
                 var count = faces == null ? 0 : faces.Length;
+
+                // Build faceBox from the largest detected face (if any).
+                object faceBox = null;
+                if (faces != null && faces.Length > 0)
+                {
+                    var best = faces
+                        .OrderByDescending(f => (long)f.Width * f.Height)
+                        .First();
+                    faceBox = new
+                    {
+                        x = best.Left,
+                        y = best.Top,
+                        w = best.Width,
+                        h = best.Height,
+                        imgW,
+                        imgH
+                    };
+                }
 
                 if (count != 1)
                 {
@@ -40,6 +68,7 @@ namespace FaceAttend.Services.Biometrics
                     {
                         ok = true,
                         count,
+                        faceBox,
                         liveness = (float?)null,
                         livenessOk = false
                     };
@@ -48,9 +77,8 @@ namespace FaceAttend.Services.Biometrics
                 var live = new OnnxLiveness();
                 var scored = live.ScoreFromFile(processedPath, faces[0]);
                 if (!scored.Ok)
-                    return new { ok = false, error = scored.Error, count = 1 };
+                    return new { ok = false, error = scored.Error, count = 1, faceBox };
 
-                // Use DB-configured threshold when available.
                 var th = (float)SystemConfigService.GetDoubleCached(
                     "Biometrics:LivenessThreshold",
                     AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
@@ -61,6 +89,7 @@ namespace FaceAttend.Services.Biometrics
                 {
                     ok = true,
                     count = 1,
+                    faceBox,
                     liveness = p,
                     livenessOk = p >= th
                 };

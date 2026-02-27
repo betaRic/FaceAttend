@@ -26,7 +26,7 @@
       ]
     },
     {
-      "library": "datatables.net-buttons@2.3.4",
+      "library": "datatables.net-buttons@3.2.5",
       "destination": "Scripts/vendor/datatables",
       "files": [
         "js/dataTables.buttons.min.js",
@@ -40,6 +40,13 @@
       "files": [
         "buttons.bootstrap5.min.js",
         "buttons.bootstrap5.min.css"
+      ]
+    },
+    {
+      "library": "datatables.net-responsive@3.0.5",
+      "destination": "Scripts/vendor/datatables",
+      "files": [
+        "dataTables.responsive.min.js"
       ]
     },
     {

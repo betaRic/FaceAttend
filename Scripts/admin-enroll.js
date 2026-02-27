@@ -14,6 +14,7 @@
 
   var scanUrl = root.getAttribute("data-scan-url") || "/Biometrics/ScanFrame";
   var enrollUrl = root.getAttribute("data-enroll-url") || "/Biometrics/Enroll";
+  var redirectUrl = root.getAttribute("data-redirect-url") || "";
 
   // ------------------------
   // dom
@@ -30,6 +31,11 @@
   var upStatus = el("upStatus");
 
   var file = el("file");
+
+  var overlay = el("enrollOverlay");  // bounding box canvas
+  var overlayBox = null;              // { x, y, w, h, imgW, imgH }
+  var overlayColor = "#adb5bd";       // current box color
+  var overlayDrawing = false;
 
   // ------------------------
   // state
@@ -100,25 +106,25 @@
   // ------------------------
   // camera
   // ------------------------
-  async function startCam() {
-    clearStatus(camStatus);
+    async function startCam() {
+        clearStatus(camStatus);
 
-    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error("camera api not available");
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            throw new Error("camera api not available");
+        }
+
+        stream = await navigator.mediaDevices.getUserMedia({
+            video: { facingMode: "user" },
+            audio: false
+        });
+
+        cam.srcObject = stream;
+        try { await cam.play(); } catch { }
+
+        startOverlayDraw();  // ← ADD THIS LINE
+
+        setStatus(camStatus, "camera ready, auto enroll running, hold still.", "info");
     }
-
-    stream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: "user" },
-      audio: false
-    });
-
-    cam.srcObject = stream;
-
-    // in some browsers need play() for video to start
-    try { await cam.play(); } catch { }
-
-    setStatus(camStatus, "camera ready, auto enroll running, hold still.", "info");
-  }
 
   function stopCam() {
     stopAuto();
@@ -201,6 +207,53 @@
     return frames.map(function (x) { return x.blob; });
   }
 
+    // -------------------------
+    // bounding box overlay draw
+    // -------------------------
+    function startOverlayDraw() {
+        if (overlayDrawing) return;
+        overlayDrawing = true;
+
+        function drawFrame() {
+            if (!overlay) return;
+            var ctx = overlay.getContext("2d");
+
+            // keep canvas pixel size in sync with displayed size
+            var rect = overlay.getBoundingClientRect();
+            if (overlay.width !== rect.width) overlay.width = rect.width;
+            if (overlay.height !== rect.height) overlay.height = rect.height;
+
+            ctx.clearRect(0, 0, overlay.width, overlay.height);
+
+            var b = overlayBox;
+            if (b && b.imgW && b.imgH) {
+                // scale from image-space to canvas-space
+                // note: video is mirrored (scaleX(-1)), so mirror the x coord too
+                var scaleX = overlay.width / b.imgW;
+                var scaleY = overlay.height / b.imgH;
+                var bx = overlay.width - (b.x + b.w) * scaleX;  // mirrored
+                var by = b.y * scaleY;
+                var bw = b.w * scaleX;
+                var bh = b.h * scaleY;
+
+                var pad = 8;
+                bx -= pad; by -= pad; bw += pad * 2; bh += pad * 2;
+
+                ctx.save();
+                ctx.strokeStyle = overlayColor;
+                ctx.lineWidth = 3;
+                ctx.shadowColor = overlayColor;
+                ctx.shadowBlur = 8;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.restore();
+            }
+
+            requestAnimationFrame(drawFrame);
+        }
+
+        requestAnimationFrame(drawFrame);
+    }
+
   // ------------------------
   // auto enroll logic (live)
   // ------------------------
@@ -216,80 +269,102 @@
     autoTimer = null;
   }
 
-  async function autoTick() {
-    if (enrolled) return;
-    if (!stream) return;
-    if (busy) return;
+    async function autoTick() {
+        if (enrolled) return;
+        if (!stream) return;
+        if (busy) return;
 
-    busy = true;
-    try {
-      var blob = await captureJpegBlob(0.75);
-      var r = await postScanFrame(blob);
+        busy = true;
+        try {
+            var blob = await captureJpegBlob(0.75);
+            var r = await postScanFrame(blob);
 
-      if (!r || r.ok !== true) {
-        setStatus(camStatus, (r && r.error) ? r.error : "scan error", "danger");
-        passHist = [];
-        return;
-      }
+            // update bounding box for every response
+            overlayBox = (r && r.faceBox) ? r.faceBox : null;
 
-      if (r.count === 0) {
-        setStatus(camStatus, "no face detected.", "warning");
-        passHist = [];
-        return;
-      }
+            if (!r || r.ok !== true) {
+                overlayColor = "#dc3545";  // red — error
+                setStatus(camStatus, (r && r.error) ? r.error : "scan error", "danger");
+                passHist = [];
+                return;
+            }
 
-      if (r.count > 1) {
-        setStatus(camStatus, "one person only.", "warning");
-        passHist = [];
-        return;
-      }
+            if (r.count === 0) {
+                overlayBox = null;
+                overlayColor = "#adb5bd";  // gray — no face
+                setStatus(camStatus, "no face detected.", "warning");
+                passHist = [];
+                return;
+            }
 
-      var p = (typeof r.liveness === "number") ? r.liveness : 0;
-      var pass = (r.livenessOk === true) && (p >= perFrame);
+            if (r.count > 1) {
+                overlayColor = "#fd7e14";  // orange — multiple faces
+                setStatus(camStatus, "one person only.", "warning");
+                passHist = [];
+                return;
+            }
 
-      passHist.push(pass ? 1 : 0);
-      if (passHist.length > PASS_WINDOW) passHist.shift();
+            var p = (typeof r.liveness === "number") ? r.liveness : 0;
+            var pass = (r.livenessOk === true) && (p >= perFrame);
 
-      var sum = 0;
-      for (var i = 0; i < passHist.length; i++) sum += passHist[i];
+            // box color based on liveness
+            overlayColor = pass ? "#20c997" : "#ffc107";  // green pass, yellow pending
 
-      var need = Math.max(0, PASS_REQUIRED - sum);
+            passHist.push(pass ? 1 : 0);
+            if (passHist.length > PASS_WINDOW) passHist.shift();
 
-      if (pass) {
-        setStatusHtml(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, ready in " + need + " good frame(s).", "success");
-      } else {
-        setStatusHtml(camStatus, "face ok, liveness: <b>" + p.toFixed(2) + "</b>, improve lighting.", "warning");
-      }
+            var sum = 0;
+            for (var i = 0; i < passHist.length; i++) sum += passHist[i];
+            var need = Math.max(0, PASS_REQUIRED - sum);
 
-      if (sum < PASS_REQUIRED) return;
+            if (pass) {
+                setStatusHtml(camStatus,
+                    "face ok \u2014 liveness: <b>" + p.toFixed(2) + "</b>" +
+                    (need > 0 ? ", hold still (" + need + " more)." : ", collecting..."), "success");
+            } else {
+                setStatusHtml(camStatus,
+                    "face ok \u2014 liveness: <b>" + p.toFixed(2) + "</b>, improve lighting.", "warning");
+            }
 
-      setStatus(camStatus, "collecting frames...", "info");
-      var frames = await collectGoodEnrollFrames();
-      if (!frames || !frames.length) {
-        setStatus(camStatus, "could not collect enough good frames, try again.", "danger");
-        passHist = [];
-        return;
-      }
+            if (sum < PASS_REQUIRED) return;
 
-      setStatus(camStatus, "saving enrollment (" + frames.length + " frame(s))...", "info");
-      var saved = await postEnrollMany(frames);
+            setStatus(camStatus, "collecting frames...", "info");
+            var frames = await collectGoodEnrollFrames();
+            if (!frames || !frames.length) {
+                overlayColor = "#dc3545";
+                setStatus(camStatus, "could not collect enough good frames, try again.", "danger");
+                passHist = [];
+                return;
+            }
 
-      if (saved && saved.ok === true) {
-        enrolled = true;
-        setStatus(camStatus, "enrollment saved.", "success");
-        stopAuto();
-        return;
-      }
+            setStatus(camStatus, "saving enrollment (" + frames.length + " frame(s))...", "info");
+            var saved = await postEnrollMany(frames);
 
-      setStatus(camStatus, (saved && saved.error) ? saved.error : "enroll failed", "danger");
-      passHist = [];
-    } catch (e) {
-      setStatus(camStatus, "auto enroll failed: " + (e && e.message ? e.message : e), "danger");
-      passHist = [];
-    } finally {
-      busy = false;
+            if (saved && saved.ok === true) {
+                enrolled = true;
+                overlayColor = "#0d6efd";  // blue — saved!
+                setStatus(camStatus, "enrollment saved. redirecting...", "success");
+                stopAuto();
+
+                // auto-redirect after 2 seconds
+                if (redirectUrl) {
+                    setTimeout(function () { window.location.href = redirectUrl; }, 2000);
+                }
+                return;
+            }
+
+            overlayColor = "#dc3545";
+            setStatus(camStatus, (saved && saved.error) ? saved.error : "enroll failed", "danger");
+            passHist = [];
+
+        } catch (e) {
+            overlayColor = "#dc3545";
+            setStatus(camStatus, "auto enroll failed: " + (e && e.message ? e.message : e), "danger");
+            passHist = [];
+        } finally {
+            busy = false;
+        }
     }
-  }
 
   // ------------------------
   // upload enroll (auto)

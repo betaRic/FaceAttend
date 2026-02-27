@@ -53,7 +53,7 @@ namespace FaceAttend
             }
 
             // DataTables Responsive extension (core + Bootstrap 5 integration)
-            var respCore = "~/Scripts/vendor/datatables/responsive.dataTables.min.js";
+            var respCore = "~/Scripts/vendor/datatables/js/dataTables.responsive.min.js";
             var respBs5  = "~/Scripts/vendor/datatables/responsive.bootstrap5.min.js";
             if (FileExists(respCore)) vendor.Include(respCore);
             if (FileExists(respCore) && FileExists(respBs5)) vendor.Include(respBs5);

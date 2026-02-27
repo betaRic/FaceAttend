@@ -12,7 +12,7 @@
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kiosk - FaceAttend</title>
-
+    <link rel="icon" type="image/x-icon" href="@Url.Content("~/Content/favicon.ico")" />
     <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
 
     <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
@@ -24,13 +24,20 @@
         <video id="kioskVideo" playsinline autoplay muted></video>
         <canvas id="overlayCanvas"></canvas>
 
-        <!-- Idle overlay (no server calls until a face/motion is detected locally) -->
+        <!-- Idle overlay -->
         <div id="idleOverlay" class="idleOverlay hidden" aria-hidden="true">
             <div class="idleCard">
+                <img class="idleLogo"
+                     src="@Url.Content("~/Content/images/dilg-logo.svg")"
+                     alt="DILG Seal" />
+                <div class="idleOrg">Department of the Interior and Local Government</div>
+                <div class="idleRegion">Region XII &mdash; General Santos City</div>
+                <div class="idleDivider"></div>
                 <div class="idleBrand">FaceAttend</div>
                 <div class="idleDot" aria-hidden="true"></div>
-                <div class="idleTitle">Idle</div>
-                <div class="idleSub">Look at the camera to start.</div>
+                <div class="idleTitle">Face Attendance System</div>
+                <div class="idleSub">Look at the camera to record your attendance.</div>
+                <div class="idleHint">Time-In &bull; Time-Out &bull; Automatic</div>
             </div>
         </div>
 

@@ -2,96 +2,55 @@
 @{
     ViewBag.Title = "Enroll Face";
 }
+@using System.Configuration
+
 @{
     // Client-side scan tuning (server still enforces liveness in Enroll)
-    var perFrame = (ViewBag.PerFrame ?? "0.75").ToString();
+    var perFrame = ConfigurationManager.AppSettings["Biometrics:LivenessThreshold"] ?? "0.75";
+    var fullName = Model.LastName + ", " + Model.FirstName + (string.IsNullOrWhiteSpace(Model.MiddleName) ? "" : " " + Model.MiddleName);
 }
 
-<div class="admin-card">
-    <div class="card-body">
+<div class="admin-card enroll-card">
+    <div class="card-body enroll-body">
 
-        <div class="d-flex align-items-start justify-content-between">
-            <div>
-                <h4 class="mb-1">Enroll Face</h4>
-                <div class="text-muted">
-                    @Model.EmployeeId - @(Model.LastName + ", " + Model.FirstName + (string.IsNullOrWhiteSpace(Model.MiddleName) ? "" : " " + Model.MiddleName))
-                </div>
-                <div class="text-muted">Office: @(ViewBag.OfficeName ?? "-")</div>
+        <div class="enroll-head">
+            <h4 class="mb-1">Enroll Face</h4>
+            <div class="text-muted small">
+                @Model.EmployeeId - @fullName
             </div>
-            <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Back</a>
+            <div class="text-muted small">Office: @(ViewBag.OfficeName ?? "-")</div>
         </div>
 
-        <hr />
-
         <div id="enrollRoot"
+             class="enroll-root"
              data-employee-id="@Model.EmployeeId"
              data-per-frame="@perFrame"
              data-scan-url="@Url.Content("~/Biometrics/ScanFrame")"
              data-enroll-url="@Url.Content("~/Biometrics/Enroll")">
 
-            <!-- wizard step: choose method -->
-            <div id="enrollWizard" class="mb-3">
-                <div class="row g-3">
-                    <div class="col-md-6">
-                        <div class="card h-100 enroll-choice"
-                             role="button"
-                             tabindex="0"
-                             data-enroll-mode="live">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center gap-2">
-                                    <i class="fa-solid fa-camera" aria-hidden="true"></i>
-                                    <div class="fw-semibold">Live scan</div>
-                                </div>
-                                <div class="text-muted mt-2">
-                                    camera-based, auto enroll, one face only
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-6">
-                        <div class="card h-100 enroll-choice"
-                             role="button"
-                             tabindex="0"
-                             data-enroll-mode="upload">
-                            <div class="card-body">
-                                <div class="d-flex align-items-center gap-2">
-                                    <i class="fa-solid fa-upload" aria-hidden="true"></i>
-                                    <div class="fw-semibold">Upload photo</div>
-                                </div>
-                                <div class="text-muted mt-2">
-                                    choose 1-5 images, auto verify + enroll
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+            <div id="enrollWizard" class="enroll-toolbar">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Enroll method">
+                    <button type="button" class="btn btn-outline-primary enroll-choice" data-enroll-mode="live">
+                        <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>Camera
+                    </button>
+                    <button type="button" class="btn btn-outline-primary enroll-choice" data-enroll-mode="upload">
+                        <i class="fa-solid fa-upload me-1" aria-hidden="true"></i>Upload
+                    </button>
                 </div>
+                <div class="text-muted small">click a method to start</div>
+            </div>
 
-                <div class="small text-muted mt-2">
-                    note: clicking a method helps with browser permissions (camera / files)
+            <div class="d-none enroll-pane" id="livePane">
+                <div class="enroll-video-wrap" aria-label="Camera preview">
+                    <video id="cam" autoplay playsinline muted class="enroll-video"></video>
+                    <canvas id="enrollOverlay" class="enroll-overlay"></canvas>
+                    <div id="camStatus" class="enroll-status"></div>
                 </div>
             </div>
 
-            <div class="row g-3">
-                <!-- live pane -->
-                <div class="col-lg-7 d-none" id="livePane">
-                    <div class="mb-2 fw-semibold">Camera</div>
-                    <div class="ratio ratio-16x9 bg-dark rounded overflow-hidden">
-                        <video id="cam" autoplay playsinline muted
-                               style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
-                    </div>
-
-                    <div class="mt-2">
-                        <div class="small text-muted">
-                            auto enroll runs after camera starts, liveness required
-                        </div>
-                        <div class="mt-2" id="camStatus"></div>
-                    </div>
-                </div>
-
-                <!-- upload pane -->
-                <div class="col-lg-5 d-none" id="uploadPane">
-                    <div class="mb-2 fw-semibold">Upload Photo</div>
+            <div class="d-none enroll-pane" id="uploadPane">
+                <div class="enroll-upload">
+                    <div class="fw-semibold mb-2">Upload photo</div>
 
                     @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
                     {
@@ -106,6 +65,7 @@
                         <div class="fw-semibold">
                             @(string.IsNullOrEmpty(Model.FaceEncodingBase64) ? "Not enrolled" : "Enrolled")
                         </div>
+                        <div class="small text-muted">Tip: upload 1-5 clear photos.</div>
                     </div>
                 </div>
             </div>
@@ -116,12 +76,5 @@
 </div>
 
 @section scripts{
-    <style>
-        /* small: make the wizard cards feel clickable */
-        .enroll-choice { cursor: pointer; }
-        .enroll-choice:hover { border-color: rgba(13,110,253,.5); }
-        .enroll-choice:focus { outline: 2px solid rgba(13,110,253,.4); outline-offset: 2px; }
-    </style>
-
     <script src="~/Scripts/admin-enroll.js"></script>
 }
