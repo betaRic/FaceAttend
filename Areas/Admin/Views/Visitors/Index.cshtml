@@ -158,7 +158,7 @@
                                     </a>
                                     @if (v.IsActive)
                                     {
-                                        @using (Html.BeginForm("Deactivate", "Visitors",
+                                        using (Html.BeginForm("Deactivate", "Visitors",
                                             new { area = "Admin" }, FormMethod.Post,
                                             new { @class = "d-inline" }))
                                         {
