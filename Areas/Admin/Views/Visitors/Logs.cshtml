@@ -3,66 +3,106 @@
     ViewBag.Title = "Visitor Logs";
 
     var officeOptions = ViewBag.OfficeOptions as System.Collections.Generic.List<System.Web.Mvc.SelectListItem>;
-    var from = (ViewBag.From as string) ?? "";
-    var to = (ViewBag.To as string) ?? "";
-    var q = (ViewBag.Query as string) ?? "";
-    var officeId = ViewBag.OfficeId;
-    var knownOnly = (bool)(ViewBag.KnownOnly ?? false);
+    var from          = (ViewBag.From      as string) ?? "";
+    var to            = (ViewBag.To        as string) ?? "";
+    var q             = (ViewBag.Query     as string) ?? "";
+    var officeId      = ViewBag.OfficeId;
+    var knownOnly     = (bool)(ViewBag.KnownOnly ?? false);
 
-    var exportUrl = Url.Action("ExportLogsCsv", new { from, to, officeId, q, knownOnly });
+    var exportUrl   = Url.Action("ExportLogsCsv", new { from, to, officeId, q, knownOnly });
+    var profilesUrl = Url.Action("Index", "Visitors", new { area = "Admin" });
+
+    bool hasRows = Model != null && Model.Any();
 }
 
-
-
-<div class="d-flex align-items-center justify-content-between mb-3">
-    <h3 class="mb-0">
-        <i class="fa-solid fa-clipboard-list me-2" aria-hidden="true"></i>
-        Visitor Logs
-    </h3>
-    <div class="d-flex gap-2">
-        <a class="btn btn-outline-primary" href="@exportUrl" target="_blank">Export CSV</a>
-        @using (Html.BeginForm("Purge", "Visitors", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
-        {
-            @Html.AntiForgeryToken()
-            <button class="btn btn-outline-danger" type="submit"
-                    data-confirm="Purge old visitor logs?"
-                    data-confirm-text="This will delete visitor log rows older than the retention setting."
-                    data-confirm-icon="warning">
-                Purge old logs
-            </button>
-        }
-    </div>
+@* ======================================================================
+   SHARED TAB CHROME  (Logs tab active)
+   ====================================================================== *@
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <h4 class="mb-0">
+        <i class="fa-solid fa-user-check me-2" aria-hidden="true"></i>Visitors
+    </h4>
+    <a class="btn btn-primary btn-sm" href="@profilesUrl">
+        <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add visitor
+    </a>
 </div>
 
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+        <a class="nav-link" href="@profilesUrl">
+            <i class="fa-solid fa-users me-1" aria-hidden="true"></i>Visitor Profiles
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link active" href="@Url.Action("Logs")" aria-current="page">
+            <i class="fa-solid fa-clipboard-list me-1" aria-hidden="true"></i>
+            Visit Logs
+            @if (hasRows)
+            {
+                <span class="badge bg-secondary ms-1">@Model.Count</span>
+            }
+        </a>
+    </li>
+</ul>
+
+@if (TempData["msg"] != null)
+{
+    string kind = (TempData["msgKind"] as string) ?? "success";
+    <div class="alert alert-@kind admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+@* Filter + actions card *@
 <div class="admin-card mb-3">
     <div class="card-body">
-        <form method="get" class="row g-2 align-items-end">
-            <div class="col-md-3">
-                <label class="form-label">From</label>
-                <input class="form-control" name="from" value="@from" placeholder="yyyy-mm-dd" />
+        <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+            <a class="btn btn-outline-primary btn-sm" href="@exportUrl" target="_blank">
+                <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export CSV
+            </a>
+            @using (Html.BeginForm("Purge", "Visitors",
+                new { area = "Admin" }, FormMethod.Post,
+                new { @class = "d-inline" }))
+            {
+                @Html.AntiForgeryToken()
+                <button class="btn btn-outline-danger btn-sm" type="submit"
+                        data-confirm="Purge old visitor logs?"
+                        data-confirm-text="This permanently deletes log entries older than the retention setting. Visitor profiles are not deleted."
+                        data-confirm-icon="warning">
+                    <i class="fa-solid fa-trash-can me-1" aria-hidden="true"></i>Purge old logs
+                </button>
+            }
+        </div>
+
+        <form method="get" action="@Url.Action("Logs")" class="row g-2 align-items-end">
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">From</label>
+                <input class="form-control form-control-sm" name="from" type="date" value="@from" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">To</label>
-                <input class="form-control" name="to" value="@to" placeholder="yyyy-mm-dd" />
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">To</label>
+                <input class="form-control form-control-sm" name="to" type="date" value="@to" />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Office</label>
-                @Html.DropDownList("officeId", officeOptions, new { @class = "form-select" })
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">Office</label>
+                @Html.DropDownList("officeId", officeOptions, new { @class = "form-select form-select-sm" })
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Search</label>
-                <input class="form-control" name="q" value="@q" placeholder="Name or purpose..." />
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-1">Search</label>
+                <input class="form-control form-control-sm" name="q" value="@q" placeholder="Name or purpose..." />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Known</label>
-                <select class="form-select" name="knownOnly">
-                    <option value="false" @(knownOnly ? "" : "selected")>All</option>
-                    <option value="true" @(knownOnly ? "selected" : "")>Known only</option>
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">Visitor type</label>
+                <select class="form-select form-select-sm" name="knownOnly">
+                    <option value="false" @(knownOnly ? ""         : "selected")>All visitors</option>
+                    <option value="true"  @(knownOnly ? "selected" : "")>Enrolled only</option>
                 </select>
             </div>
-            <div class="col-md-3 d-flex gap-2">
-                <button class="btn btn-outline-primary w-100" type="submit">Apply</button>
-                <a class="btn btn-outline-secondary w-100" href="@Url.Action("Index")">Visitors</a>
+            <div class="col-12 col-md-1 d-flex gap-1">
+                <button class="btn btn-primary btn-sm flex-fill" type="submit" title="Apply filters">
+                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
+                </button>
+                <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Logs")" title="Reset filters">
+                    <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                </a>
             </div>
         </form>
     </div>
@@ -70,39 +110,64 @@
 
 <div class="admin-card">
     <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 js-datatable" data-dt-page-length="25">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Visitor</th>
-                        <th>Known</th>
-                        <th>Office</th>
-                        <th>Purpose</th>
-                        <th>Source</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var r in Model)
-                    {
-                        var ts = r.TimestampUtc;
-                        var name = r.VisitorName;
-                        var known = r.IsKnown;
-                        var office = r.OfficeName;
-                        var purpose = r.Purpose;
-                        var source = r.Source;
-
+        @if (!hasRows)
+        {
+            <div class="py-4 text-center text-muted">
+                <i class="fa-solid fa-clipboard fa-2x mb-2 d-block" aria-hidden="true"></i>
+                No visit logs found for this filter.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0 js-datatable"
+                       data-dt-page-length="25">
+                    <thead>
                         <tr>
-                            <td>@ts.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td>
-                            <td class="fw-semibold">@name</td>
-                            <td>@(known ? "YES" : "NO")</td>
-                            <td>@office</td>
-                            <td>@purpose</td>
-                            <td>@source</td>
+                            <th style="width:155px;">Time</th>
+                            <th>Visitor</th>
+                            <th style="width:90px;">Enrolled</th>
+                            <th style="width:140px;">Office</th>
+                            <th>Purpose</th>
+                            <th style="width:100px;">Source</th>
                         </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model)
+                        {
+                            <tr>
+                                <td class="small text-nowrap text-muted">
+                                    @r.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                </td>
+                                <td class="fw-semibold small">@r.VisitorName</td>
+                                <td>
+                                    @if (r.IsKnown)
+                                    {
+                                        <span class="badge bg-primary">
+                                            <i class="fa-solid fa-face-smile me-1" aria-hidden="true"></i>Yes
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-dark border">
+                                            <i class="fa-solid fa-user me-1" aria-hidden="true"></i>No
+                                        </span>
+                                    }
+                                </td>
+                                <td class="small text-muted">@r.OfficeName</td>
+                                <td class="small">@(string.IsNullOrWhiteSpace(r.Purpose) ? "-" : r.Purpose)</td>
+                                <td class="small text-muted">@r.Source</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+
+            <div class="text-muted small mt-2 pt-2 border-top">
+                @Model.Count log@(Model.Count == 1 ? "" : "s")
+                <span class="mx-1" aria-hidden="true">&middot;</span>
+                Capped at 10,000 rows. Use date filters or export for larger ranges.
+            </div>
+        }
     </div>
 </div>

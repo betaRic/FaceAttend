@@ -1,67 +1,57 @@
 @{
-    var controller = (ViewContext.RouteData.Values["controller"]?.ToString() ?? "").ToLowerInvariant();
-    var action = (ViewContext.RouteData.Values["action"]?.ToString() ?? "").ToLowerInvariant();
+    // Using route values avoids false "active" matches.
+    // Example: Url.Action for Dashboard often returns /Admin, which is a prefix of every Admin route.
 
-    Func<string, string, bool> isRoute = (c, a) =>
-        controller == (c ?? "").ToLowerInvariant() && action == (a ?? "").ToLowerInvariant();
+    string curCtrl = (ViewContext.RouteData.Values["controller"] as string ?? "").Trim().ToLowerInvariant();
+    string curAct  = (ViewContext.RouteData.Values["action"] as string ?? "").Trim().ToLowerInvariant();
 
-    var isDashboard = isRoute("Dashboard", "Index");
-    var isEmployees = controller == "employees";
-    var isOffices = controller == "offices";
-
-    var isAttendanceSummary = isRoute("Attendance", "SummaryReport");
-    var isAttendance = controller == "attendance" && !isAttendanceSummary;
-
-    var isVisitorLogs = isRoute("Visitors", "Logs");
-    var isVisitors = controller == "visitors" && !isVisitorLogs;
-
-    var isSettings = controller == "settings";
+    bool onDash     = (curCtrl == "dashboard");
+    bool onEmp      = (curCtrl == "employees");
+    bool onOff      = (curCtrl == "offices");
+    bool onAtt      = (curCtrl == "attendance" && curAct == "index");
+    bool onSummary  = (curCtrl == "attendance" && curAct == "summaryreport");
+    bool onVisitors = (curCtrl == "visitors");
+    bool onSet      = (curCtrl == "settings");
 }
 
-<nav class="admin-nav">
+<nav class="admin-nav" aria-label="Admin navigation">
     <div class="admin-nav-section">
         <div class="admin-nav-title">Menu</div>
 
-        <a class="admin-nav-link @(isDashboard ? "active" : "")"
-           href="@Url.Action("Index","Dashboard", new { area = "Admin" })">
-            <i class="fa-solid fa-gauge-high me-2"></i>
+        <a class="admin-nav-link @(onDash ? "active" : "")"
+           href="@Url.Action("Index", "Dashboard", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-gauge-high" aria-hidden="true"></i></span>
             Dashboard
         </a>
 
-        <a class="admin-nav-link @(isEmployees ? "active" : "")"
-           href="@Url.Action("Index","Employees", new { area = "Admin" })">
-            <i class="fa-solid fa-users me-2"></i>
+        <a class="admin-nav-link @(onEmp ? "active" : "")"
+           href="@Url.Action("Index", "Employees", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></span>
             Employees
         </a>
 
-        <a class="admin-nav-link @(isOffices ? "active" : "")"
-           href="@Url.Action("Index","Offices", new { area = "Admin" })">
-            <i class="fa-solid fa-building me-2"></i>
+        <a class="admin-nav-link @(onOff ? "active" : "")"
+           href="@Url.Action("Index", "Offices", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-building" aria-hidden="true"></i></span>
             Offices
         </a>
 
-        <a class="admin-nav-link @(isAttendance ? "active" : "")"
-           href="@Url.Action("Index","Attendance", new { area = "Admin" })">
-            <i class="fa-solid fa-clock me-2"></i>
+        <a class="admin-nav-link @(onAtt ? "active" : "")"
+           href="@Url.Action("Index", "Attendance", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-clock" aria-hidden="true"></i></span>
             Attendance
         </a>
 
-        <a class="admin-nav-link @(isAttendanceSummary ? "active" : "")"
-           href="@Url.Action("SummaryReport","Attendance", new { area = "Admin" })">
-            <i class="fa-solid fa-chart-column me-2"></i>
-            Attendance Summary
+        <a class="admin-nav-link @(onSummary ? "active" : "")"
+           href="@Url.Action("SummaryReport", "Attendance", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-chart-column" aria-hidden="true"></i></span>
+            Summary Report
         </a>
 
-        <a class="admin-nav-link @(isVisitors ? "active" : "")"
-           href="@Url.Action("Index","Visitors", new { area = "Admin" })">
-            <i class="fa-solid fa-user-check me-2"></i>
+        <a class="admin-nav-link @(onVisitors ? "active" : "")"
+           href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span>
             Visitors
-        </a>
-
-        <a class="admin-nav-link @(isVisitorLogs ? "active" : "")"
-           href="@Url.Action("Logs","Visitors", new { area = "Admin" })">
-            <i class="fa-solid fa-clipboard-list me-2"></i>
-            Visitor Logs
         </a>
     </div>
 
@@ -70,9 +60,9 @@
     <div class="admin-nav-section">
         <div class="admin-nav-title">Admin</div>
 
-        <a class="admin-nav-link @(isSettings ? "active" : "")"
-           href="@Url.Action("Index","Settings", new { area = "Admin" })">
-            <i class="fa-solid fa-gear me-2"></i>
+        <a class="admin-nav-link @(onSet ? "active" : "")"
+           href="@Url.Action("Index", "Settings", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-gear" aria-hidden="true"></i></span>
             Settings
         </a>
     </div>

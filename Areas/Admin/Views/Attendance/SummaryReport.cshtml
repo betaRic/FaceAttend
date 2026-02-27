@@ -2,7 +2,7 @@
 @using System.Linq
 
 @{
-    ViewBag.Title = "Attendance Summary";
+    ViewBag.Title = "Summary Report";
 
     var exportSummaryUrl = Url.Action("ExportSummaryCsv", new
     {
@@ -18,136 +18,607 @@
         to       = Model.To,
         officeId = Model.OfficeId
     });
+
+    bool hasData = Model.EmployeeSummary != null && Model.EmployeeSummary.Any();
+
+    @* Pre-compute per-employee aggregates in C# so Razor template stays clean.
+       Never compute inside a loop that is itself inside an HTML block. *@
+    var aggList = hasData
+        ? Model.EmployeeSummary.Select((emp, i) => new
+        {
+            Emp       = emp,
+            Idx       = i,
+            Present   = emp.Days.Count(d => d.FirstInUtc.HasValue),
+            Total     = emp.Days.Count,
+            Absent    = emp.Days.Count(d => !d.FirstInUtc.HasValue),
+            LateDays  = emp.Days.Count(d => d.LateMinutes.GetValueOrDefault() > 0),
+            UtDays    = emp.Days.Count(d => d.UndertimeMinutes.GetValueOrDefault() > 0),
+            NetH      = emp.Days
+                          .Where(d => (d.HoursNet ?? d.HoursRaw).HasValue)
+                          .Sum(d => (d.HoursNet ?? d.HoursRaw).Value),
+            Statuses  = emp.Days
+                          .Where(d => !string.IsNullOrWhiteSpace(d.StatusCode))
+                          .Select(d => new { d.StatusCode, d.StatusLabel, d.StatusBadgeClass })
+                          .GroupBy(d => d.StatusCode)
+                          .Select(g => g.First())
+                          .Take(3)
+                          .ToList()
+        }).ToList()
+        : null;
 }
 
+@* ======================================================================
+   HEADER
+   ====================================================================== *@
 <div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
     <div>
-        <h4 class="mb-1">Attendance Summary</h4>
+        <h4 class="mb-1">Summary Report</h4>
         <div class="text-muted small">
             @if (!string.IsNullOrWhiteSpace(Model.ActiveRangeLabel))
-            { @Model.ActiveRangeLabel }
+            {
+                @Model.ActiveRangeLabel
+            }
             @if (Model.OfficeId.HasValue && Model.OfficeId.Value > 0)
-            { <span class="ms-2"><i class="fa-solid fa-circle fa-2xs me-1" aria-hidden="true"></i>Office filter active</span> }
+            {
+                <span class="ms-2 badge bg-light text-dark border">
+                    <i class="fa-solid fa-building me-1" aria-hidden="true"></i>Office filter
+                </span>
+            }
             @if (!string.IsNullOrWhiteSpace(Model.DepartmentFilter))
-            { <span class="ms-2"><i class="fa-solid fa-circle fa-2xs me-1" aria-hidden="true"></i>Dept: @Model.DepartmentFilter</span> }
+            {
+                <span class="ms-2 badge bg-light text-dark border">
+                    <i class="fa-solid fa-sitemap me-1" aria-hidden="true"></i>@Model.DepartmentFilter
+                </span>
+            }
         </div>
     </div>
 
     <div class="d-flex flex-wrap gap-2">
         <a class="btn btn-outline-secondary btn-sm" href="@backUrl">
-            <i class="fa-solid fa-arrow-left me-1"></i>Back
+            <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
         </a>
-        <a class="btn btn-outline-primary btn-sm" href="@exportSummaryUrl" target="_blank">
-            <i class="fa-solid fa-file-export me-1"></i>Export Summary CSV
-        </a>
+        @if (hasData)
+        {
+            <a class="btn btn-outline-primary btn-sm" href="@exportSummaryUrl" target="_blank">
+                <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export CSV
+            </a>
+        }
     </div>
 </div>
 
-<div class="alert alert-info d-flex align-items-start gap-2 mb-3 p-3">
-    <i class="fa-solid fa-circle-info mt-1 flex-shrink-0"></i>
+@* ======================================================================
+   FILTER FORM
+   ====================================================================== *@
+<div class="admin-card mb-3">
+    <div class="card-body">
+        <form method="get" action="@Url.Action("SummaryReport")" class="row g-2 align-items-end">
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">From</label>
+                <input class="form-control form-control-sm" type="date" name="from" value="@Model.From" />
+            </div>
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">To</label>
+                <input class="form-control form-control-sm" type="date" name="to" value="@Model.To" />
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-1">Office</label>
+                @Html.DropDownList("officeId", Model.OfficeOptions, new { @class = "form-select form-select-sm" })
+            </div>
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-1">Department</label>
+                <input class="form-control form-control-sm" name="department"
+                       value="@Model.DepartmentFilter" placeholder="Filter by department..." />
+            </div>
+            <div class="col-12 col-md-2 d-flex gap-2">
+                <button class="btn btn-primary btn-sm flex-fill" type="submit">
+                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
+                </button>
+                <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("SummaryReport")" title="Reset">
+                    <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                </a>
+            </div>
+        </form>
+    </div>
+</div>
+
+@* Info banner *@
+<div class="alert alert-info d-flex align-items-start gap-2 mb-3 py-2 px-3">
+    <i class="fa-solid fa-circle-info mt-1 flex-shrink-0" aria-hidden="true"></i>
     <div class="small">
-        <strong>How this report works:</strong>
-        Each row is a local calendar day.
-        Hours are computed from first IN to last OUT.
-        Net hours may deduct lunch after the threshold.
-        If an employee scanned IN but did not scan OUT, the status shows <strong>Open shift</strong>.
-        This report is limited to <strong>31 days</strong> per query.
+        Hours = first IN to last OUT per day. Net hours may deduct lunch.
+        <strong>Open shift</strong> = scanned IN but no OUT recorded.
+        Limit: <strong>31 days</strong> per query.
+        <span class="ms-2 text-muted">
+            <i class="fa-solid fa-hand-pointer me-1" aria-hidden="true"></i>Click any row to see the daily breakdown.
+        </span>
     </div>
 </div>
 
-@if (Model.EmployeeSummary == null || !Model.EmployeeSummary.Any())
+@* ======================================================================
+   NO DATA
+   ====================================================================== *@
+@if (!hasData)
 {
     <div class="admin-card">
-        <div class="card-body text-muted py-4">
-            No attendance records for the selected range and filters.
-            Try broadening the date range or removing office/department filters.
+        <div class="card-body text-center py-5 text-muted">
+            <i class="fa-solid fa-magnifying-glass fa-2x mb-2 d-block" aria-hidden="true"></i>
+            No attendance records for this range and filters.
+            Try broadening the date range or removing filters.
         </div>
     </div>
 }
-else
+
+@* ======================================================================
+   SUMMARY TABLE  (plain <table>, NO DataTables)
+   -----------------------------------------------------------------------
+   WHY NOT DataTables:
+   DataTables iterates every <tr> in <tbody> and expects uniform column
+   counts. Our expand/collapse detail rows have colspan="9" (one <td>),
+   which DataTables misreads as a single-column row and throws:
+     "Requested unknown parameter '1' for row N, column 1"
+   Fix: use a plain <table> and implement search + pagination with a
+   small self-contained vanilla JS block (summaryTableScript below).
+   ====================================================================== *@
+@if (hasData)
 {
-    foreach (var emp in Model.EmployeeSummary)
-    {
-        <div class="admin-card mb-3">
-            <div class="card-body">
+    <div class="admin-card">
+        <div class="card-body p-0">
 
-                <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                    <div class="d-flex align-items-center flex-wrap gap-2">
-                        <span class="fw-semibold">@emp.EmployeeFullName</span>
-                        <span class="text-muted small">@emp.EmployeeId</span>
-                        @if (!string.IsNullOrWhiteSpace(emp.Department))
+            @* ---- Controls bar ---- *@
+            <div class="d-flex flex-wrap align-items-center gap-3 p-3 border-bottom">
+
+                @* Live search (runs in JS, no server round-trip) *@
+                <div class="flex-fill" style="min-width:200px; max-width:340px;">
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text">
+                            <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+                        </span>
+                        <input type="text" id="summarySearch"
+                               class="form-control"
+                               placeholder="Search employee, dept..."
+                               autocomplete="off" />
+                    </div>
+                </div>
+
+                @* Page size *@
+                <div class="d-flex align-items-center gap-2 text-muted small">
+                    Show
+                    <select id="summaryPageSize" class="form-select form-select-sm" style="width:70px;">
+                        <option value="25" selected>25</option>
+                        <option value="50">50</option>
+                        <option value="100">100</option>
+                        <option value="0">All</option>
+                    </select>
+                    per page
+                </div>
+
+                @* Legend *@
+                <div class="d-flex flex-wrap gap-1 align-items-center ms-auto" style="font-size:0.75rem;">
+                    <span class="text-muted me-1">Legend:</span>
+                    <span class="badge bg-success">Present</span>
+                    <span class="badge bg-warning text-dark">Late</span>
+                    <span class="badge bg-info text-dark">Half day</span>
+                    <span class="badge bg-secondary">Undertime</span>
+                    <span class="badge bg-danger">Absent</span>
+                    <span class="badge bg-light text-dark border">Open shift</span>
+                </div>
+            </div>
+
+            @* ---- Table ---- *@
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="summaryTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th style="width:28px;"></th>
+                            <th data-sort="name" style="cursor:pointer; user-select:none;">
+                                Employee <i class="fa-solid fa-sort text-muted ms-1" style="font-size:0.7rem;" aria-hidden="true"></i>
+                            </th>
+                            <th data-sort="dept" style="width:110px; cursor:pointer; user-select:none;">
+                                Dept <i class="fa-solid fa-sort text-muted ms-1" style="font-size:0.7rem;" aria-hidden="true"></i>
+                            </th>
+                            <th class="text-center" style="width:90px;" data-sort="present" style="cursor:pointer; user-select:none;">Present</th>
+                            <th class="text-center" style="width:80px;" data-sort="absent"  style="cursor:pointer; user-select:none;">Absent</th>
+                            <th class="text-center" style="width:75px;" data-sort="late"    style="cursor:pointer; user-select:none;">Late</th>
+                            <th class="text-center" style="width:90px;" data-sort="ut"      style="cursor:pointer; user-select:none;">Undertime</th>
+                            <th class="text-center" style="width:90px;" data-sort="hours"   style="cursor:pointer; user-select:none;">Net Hours</th>
+                            <th class="text-end"    style="width:150px;">Status summary</th>
+                        </tr>
+                    </thead>
+                    <tbody id="summaryTbody">
+
+                        @foreach (var agg in aggList)
                         {
-                            <span class="badge bg-light text-dark border">@emp.Department</span>
-                        }
-                    </div>
-                    <div class="text-muted small">
-                        @emp.Days.Count day@(emp.Days.Count == 1 ? "" : "s") in range
-                        @{
-                            double totalH = emp.Days
-                                .Where(d => (d.HoursNet ?? d.HoursRaw).HasValue)
-                                .Sum(d => (d.HoursNet ?? d.HoursRaw).Value);
-                            if (totalH > 0)
-                            {
-                                <span><span class="mx-1">|</span>@totalH.ToString("0.1") h net</span>
-                            }
-                        }
-                    </div>
-                </div>
+                            string colId = "detail-" + agg.Idx;
 
-                <div class="table-responsive">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light">
-                            <tr>
-                                <th style="width:120px;">Date</th>
-                                <th style="width:110px;">First IN</th>
-                                <th style="width:110px;">Last OUT</th>
-                                <th style="width:90px;">Hours</th>
-                                <th style="width:90px;">Late</th>
-                                <th style="width:110px;">Undertime</th>
-                                <th>Status</th>
+                            @* data-* attributes drive the JS search and sort.
+                               No column-count mismatch because DataTables never
+                               touches this table. *@
+                            <tr class="summary-row"
+                                data-name="@agg.Emp.EmployeeFullName.ToLowerInvariant()"
+                                data-empid="@agg.Emp.EmployeeId.ToLowerInvariant()"
+                                data-dept="@((agg.Emp.Department ?? "").ToLowerInvariant())"
+                                data-present="@agg.Present"
+                                data-absent="@agg.Absent"
+                                data-late="@agg.LateDays"
+                                data-ut="@agg.UtDays"
+                                data-hours="@agg.NetH.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
+                                style="cursor:pointer;"
+                                onclick="toggleDetail('@colId', this)">
+                                <td class="text-center text-muted">
+                                    <i class="fa-solid fa-chevron-right expand-icon"
+                                       id="icon-@colId"
+                                       style="font-size:0.7rem; transition:transform 0.2s;"
+                                       aria-hidden="true"></i>
+                                </td>
+                                <td>
+                                    <div class="fw-semibold small">@agg.Emp.EmployeeFullName</div>
+                                    <div class="text-muted" style="font-size:0.74rem;">@agg.Emp.EmployeeId</div>
+                                </td>
+                                <td class="small text-muted">
+                                    @(string.IsNullOrWhiteSpace(agg.Emp.Department) ? "-" : agg.Emp.Department)
+                                </td>
+                                <td class="text-center">
+                                    <span class="fw-semibold @(agg.Present > 0 ? "text-success" : "text-muted")">@agg.Present</span>
+                                    <span class="text-muted small">/@agg.Total</span>
+                                </td>
+                                <td class="text-center">
+                                    @if (agg.Absent > 0)
+                                    {
+                                        <span class="badge bg-danger">@agg.Absent</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">0</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (agg.LateDays > 0)
+                                    {
+                                        <span class="badge bg-warning text-dark">@agg.LateDays</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">0</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (agg.UtDays > 0)
+                                    {
+                                        <span class="badge bg-secondary">@agg.UtDays</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">0</span>
+                                    }
+                                </td>
+                                <td class="text-center fw-semibold small">
+                                    @(agg.NetH > 0 ? agg.NetH.ToString("0.1") + "h" : "-")
+                                </td>
+                                <td class="text-end">
+                                    @foreach (var sc in agg.Statuses)
+                                    {
+                                        <span class="badge @(sc.StatusBadgeClass ?? "bg-light text-dark border") me-1" style="font-size:0.64rem;">
+                                            @sc.StatusLabel
+                                        </span>
+                                    }
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var day in emp.Days)
-                            {
-                                bool hasIn = day.FirstInUtc.HasValue;
-                                bool hasOut = day.LastOutUtc.HasValue;
 
-                                <tr>
-                                    <td class="small fw-semibold text-nowrap">@day.DateLabel</td>
-                                    <td class="small">
-                                        @if (hasIn)
-                                        { <span class="badge bg-success">@day.FirstInDisplay</span> }
-                                        else
-                                        { <span class="text-muted">-</span> }
-                                    </td>
-                                    <td class="small">
-                                        @if (hasOut)
-                                        { <span class="badge bg-secondary">@day.LastOutDisplay</span> }
-                                        else
-                                        { <span class="text-muted">-</span> }
-                                    </td>
-                                    <td class="small @(((day.HoursNet ?? day.HoursRaw).HasValue) ? "fw-semibold" : "text-muted")">@day.HoursDisplay</td>
-                                    <td class="small">@day.LateDisplay</td>
-                                    <td class="small">@day.UndertimeDisplay</td>
-                                    <td class="small">
-                                        <span class="badge @(day.StatusBadgeClass ?? "bg-light text-dark border")">@(day.StatusLabel ?? "-")</span>
-                                    </td>
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                            @* Detail row — hidden by default.
+                               This is NOT a DataTables row, so the colspan causes no conflict. *@
+                            <tr class="detail-row" id="@colId" style="display:none;">
+                                <td colspan="9" class="p-0">
+                                    <div class="p-3 bg-light border-top border-bottom">
+                                        <div class="fw-semibold small mb-2 text-muted">
+                                            <i class="fa-solid fa-calendar-days me-1" aria-hidden="true"></i>
+                                            Daily breakdown &mdash; @agg.Emp.EmployeeFullName
+                                        </div>
+                                        <div class="table-responsive">
+                                            <table class="table table-sm align-middle mb-0 bg-white rounded-2" style="font-size:0.82rem;">
+                                                <thead class="table-secondary">
+                                                    <tr>
+                                                        <th style="width:110px;">Date</th>
+                                                        <th style="width:95px;">First IN</th>
+                                                        <th style="width:95px;">Last OUT</th>
+                                                        <th style="width:80px;">Hours</th>
+                                                        <th style="width:80px;">Late</th>
+                                                        <th style="width:90px;">Undertime</th>
+                                                        <th>Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    @foreach (var day in agg.Emp.Days)
+                                                    {
+                                                        bool hasIn  = day.FirstInUtc.HasValue;
+                                                        bool hasOut = day.LastOutUtc.HasValue;
+                                                        <tr>
+                                                            <td class="fw-semibold text-nowrap">@day.DateLabel</td>
+                                                            <td>
+                                                                @if (hasIn)
+                                                                {
+                                                                    <span class="badge bg-success">@day.FirstInDisplay</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="text-muted">-</span>
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                @if (hasOut)
+                                                                {
+                                                                    <span class="badge bg-secondary">@day.LastOutDisplay</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="text-muted">-</span>
+                                                                }
+                                                            </td>
+                                                            <td class="@((day.HoursNet ?? day.HoursRaw).HasValue ? "fw-semibold" : "text-muted")">
+                                                                @day.HoursDisplay
+                                                            </td>
+                                                            <td class="@(day.LateMinutes.GetValueOrDefault() > 0 ? "text-warning fw-semibold" : "text-muted")">
+                                                                @day.LateDisplay
+                                                            </td>
+                                                            <td class="text-muted">@day.UndertimeDisplay</td>
+                                                            <td>
+                                                                <span class="badge @(day.StatusBadgeClass ?? "bg-light text-dark border")">
+                                                                    @(day.StatusLabel ?? "-")
+                                                                </span>
+                                                            </td>
+                                                        </tr>
+                                                    }
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+
+                    </tbody>
+                </table>
+            </div>
+
+            @* ---- Pagination bar ---- *@
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 border-top">
+                <div class="text-muted small" id="summaryInfo"></div>
+                <nav aria-label="Summary pages">
+                    <ul class="pagination pagination-sm mb-0" id="summaryPager"></ul>
+                </nav>
+                <div class="text-muted small">
+                    <a href="@exportSummaryUrl" target="_blank">
+                        <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export as CSV
+                    </a>
                 </div>
-
             </div>
         </div>
+    </div>
+}
+
+@section scripts {
+<script>
+(function () {
+    // -----------------------------------------------------------------------
+    // Summary table: vanilla JS search + sort + pagination.
+    // DataTables is intentionally NOT used here because each employee
+    // has a hidden detail <tr> below it. DataTables would try to read that
+    // row as a data row with mismatched column count and throw:
+    //   "Requested unknown parameter '1' for row N, column 1"
+    //
+    // This script treats summary rows (.summary-row) and detail rows
+    // (.detail-row) as paired units. Only summary rows participate in
+    // filtering, sorting, and pagination; detail rows always follow their
+    // paired summary row and inherit its visibility state.
+    // -----------------------------------------------------------------------
+
+    var tbody       = document.getElementById('summaryTbody');
+    var searchInput = document.getElementById('summarySearch');
+    var pageSizeSel = document.getElementById('summaryPageSize');
+    var infoEl      = document.getElementById('summaryInfo');
+    var pagerEl     = document.getElementById('summaryPager');
+
+    if (!tbody) return;
+
+    // Collect summary rows. Each item = { summary: <tr>, detail: <tr> }
+    var pairs = [];
+    var rows  = tbody.querySelectorAll('tr');
+    for (var i = 0; i < rows.length; i++) {
+        if (rows[i].classList.contains('summary-row')) {
+            pairs.push({ summary: rows[i], detail: rows[i + 1] || null });
+        }
     }
 
-    <div class="text-muted small mt-1 mb-4">
-        Showing @Model.EmployeeSummary.Count employee@(Model.EmployeeSummary.Count == 1 ? "" : "s")
-        <span class="mx-1">|</span>
-        Report limited to 31 days per query
-        <span class="mx-1">|</span>
-        <a href="@exportSummaryUrl" target="_blank">Export as CSV</a>
-    </div>
+    var filtered  = pairs.slice();   // pairs currently matching the search
+    var pageSize  = 25;
+    var curPage   = 1;
+    var sortCol   = 'name';
+    var sortDir   = 1;               // 1 = asc, -1 = desc
+
+    // ---- Expand / collapse (also exposed globally for onclick= in HTML) ----
+    window.toggleDetail = function (id, summaryRow) {
+        var detail = document.getElementById(id);
+        var icon   = document.getElementById('icon-' + id);
+        if (!detail) return;
+        var open = detail.style.display !== 'none';
+        detail.style.display = open ? 'none' : 'table-row';
+        if (icon) icon.style.transform = open ? 'rotate(0deg)' : 'rotate(90deg)';
+    };
+
+    // ---- Sort comparator ----
+    function getValue(pair, col) {
+        var el = pair.summary;
+        switch (col) {
+            case 'name':    return el.dataset.name    || '';
+            case 'dept':    return el.dataset.dept    || '';
+            case 'present': return parseFloat(el.dataset.present) || 0;
+            case 'absent':  return parseFloat(el.dataset.absent)  || 0;
+            case 'late':    return parseFloat(el.dataset.late)    || 0;
+            case 'ut':      return parseFloat(el.dataset.ut)      || 0;
+            case 'hours':   return parseFloat(el.dataset.hours)   || 0;
+            default:        return '';
+        }
+    }
+
+    function sortPairs(list, col, dir) {
+        return list.slice().sort(function (a, b) {
+            var va = getValue(a, col);
+            var vb = getValue(b, col);
+            if (typeof va === 'string') va = va.toLowerCase();
+            if (typeof vb === 'string') vb = vb.toLowerCase();
+            return va < vb ? -dir : va > vb ? dir : 0;
+        });
+    }
+
+    // ---- Filter ----
+    function applyFilter(term) {
+        term = (term || '').toLowerCase().trim();
+        filtered = term
+            ? pairs.filter(function (p) {
+                return (p.summary.dataset.name  || '').includes(term) ||
+                       (p.summary.dataset.empid || '').includes(term) ||
+                       (p.summary.dataset.dept  || '').includes(term);
+              })
+            : pairs.slice();
+
+        filtered = sortPairs(filtered, sortCol, sortDir);
+        curPage  = 1;
+        render();
+    }
+
+    // ---- Render ----
+    function render() {
+        var ps      = pageSize > 0 ? pageSize : filtered.length;
+        var total   = filtered.length;
+        var pages   = ps > 0 ? Math.max(1, Math.ceil(total / ps)) : 1;
+        if (curPage > pages) curPage = pages;
+
+        var start = (curPage - 1) * ps;
+        var end   = ps > 0 ? Math.min(start + ps, total) : total;
+
+        // Hide all pairs first
+        pairs.forEach(function (p) {
+            p.summary.style.display = 'none';
+            if (p.detail) p.detail.style.display = 'none';
+        });
+
+        // Show pairs for current page
+        for (var i = start; i < end; i++) {
+            var p = filtered[i];
+            p.summary.style.display = 'table-row';
+            // Keep detail visible only if it was already expanded
+            // (detail row has display set by toggleDetail, not by us)
+            if (p.detail && p.detail.style.display === 'table-row') {
+                p.detail.style.display = 'table-row';
+            }
+        }
+
+        // Info text
+        if (total === 0) {
+            infoEl.textContent = 'No employees match the search.';
+        } else if (ps <= 0) {
+            infoEl.textContent = 'Showing all ' + total + ' employee' + (total === 1 ? '' : 's');
+        } else {
+            infoEl.textContent = 'Showing ' + (start + 1) + '\u2013' + end +
+                                 ' of ' + total + ' employee' + (total === 1 ? '' : 's');
+        }
+
+        // Pagination
+        pagerEl.innerHTML = '';
+
+        if (pages <= 1) return;
+
+        function makeBtn(label, page, disabled, active) {
+            var li  = document.createElement('li');
+            li.className = 'page-item' + (disabled ? ' disabled' : '') + (active ? ' active' : '');
+            var a   = document.createElement('a');
+            a.className  = 'page-link';
+            a.href       = '#';
+            a.innerHTML  = label;
+            if (!disabled && !active) {
+                a.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    curPage = page;
+                    render();
+                    // Scroll table into view
+                    tbody.parentElement.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                });
+            }
+            li.appendChild(a);
+            return li;
+        }
+
+        pagerEl.appendChild(makeBtn('&laquo;', curPage - 1, curPage <= 1, false));
+
+        var lo = Math.max(1, curPage - 2);
+        var hi = Math.min(pages, curPage + 2);
+
+        if (lo > 1) {
+            pagerEl.appendChild(makeBtn('1', 1, false, false));
+            if (lo > 2) {
+                var gap = document.createElement('li');
+                gap.className = 'page-item disabled';
+                gap.innerHTML = '<span class="page-link">&hellip;</span>';
+                pagerEl.appendChild(gap);
+            }
+        }
+
+        for (var p = lo; p <= hi; p++) {
+            pagerEl.appendChild(makeBtn(p, p, false, p === curPage));
+        }
+
+        if (hi < pages) {
+            if (hi < pages - 1) {
+                var gap2 = document.createElement('li');
+                gap2.className = 'page-item disabled';
+                gap2.innerHTML = '<span class="page-link">&hellip;</span>';
+                pagerEl.appendChild(gap2);
+            }
+            pagerEl.appendChild(makeBtn(pages, pages, false, false));
+        }
+
+        pagerEl.appendChild(makeBtn('&raquo;', curPage + 1, curPage >= pages, false));
+    }
+
+    // ---- Column sort on header click ----
+    document.querySelectorAll('#summaryTable thead th[data-sort]').forEach(function (th) {
+        th.addEventListener('click', function () {
+            var col = th.dataset.sort;
+            if (sortCol === col) {
+                sortDir = -sortDir;
+            } else {
+                sortCol = col;
+                sortDir = 1;
+            }
+            // Update sort icons
+            document.querySelectorAll('#summaryTable thead th[data-sort] i').forEach(function (ic) {
+                ic.className = 'fa-solid fa-sort text-muted ms-1';
+                ic.style.fontSize = '0.7rem';
+            });
+            var ic = th.querySelector('i');
+            if (ic) ic.className = 'fa-solid ' + (sortDir === 1 ? 'fa-sort-up' : 'fa-sort-down') + ' text-primary ms-1';
+
+            filtered = sortPairs(filtered, sortCol, sortDir);
+            curPage  = 1;
+            render();
+        });
+    });
+
+    // ---- Wire controls ----
+    var searchTimer;
+    searchInput.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () { applyFilter(searchInput.value); }, 200);
+    });
+
+    pageSizeSel.addEventListener('change', function () {
+        pageSize = parseInt(this.value, 10);
+        curPage  = 1;
+        render();
+    });
+
+    // ---- Initial render ----
+    filtered = sortPairs(pairs, sortCol, sortDir);
+    render();
+})();
+</script>
 }

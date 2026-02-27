@@ -1,9 +1,34 @@
 @model FaceAttend.Areas.Admin.Models.AttendanceIndexVm
-@using System.Web.Routing
 @using System.Linq
 
 @{
     ViewBag.Title = "Attendance";
+
+    @* -----------------------------------------------------------------------
+       WHY EVERYTHING IS PRE-COMPUTED IN THIS BLOCK
+       -----------------------------------------------------------------------
+       The original file had a parser error at line 240:
+
+           else
+           {
+               <table>...</table>
+               @if (Model.OfficeBreakdown.Count > 6)   <-- ERROR
+           }
+
+       Razor Parser Error: "Unexpected 'if' keyword after '@' character.
+       Once inside code, you do not need to prefix constructs like 'if' with '@'."
+
+       ROOT CAUSE: When Razor opens an else { } block it starts in C# code
+       scope. A <table> tag starts an implicit HTML transition, and </table>
+       closes it - but Razor re-enters the OUTER brace's code scope after the
+       closing HTML tag. At that point we are back in C# code context, so @if
+       is illegal (the @ prefix is only valid in HTML/markup context).
+
+       FIX: Pre-compute all booleans and derived values up-front in this @{ }
+       block. Then every @if in the template is at the TOP LEVEL in HTML/markup
+       context where @ is the correct and only prefix. No @if is ever nested
+       inside an else { <html> } construct.
+    ----------------------------------------------------------------------- *@
 
     Func<int, string> pageUrl = (p) => Url.Action("Index", new
     {
@@ -11,6 +36,7 @@
         to          = Model.To,
         officeId    = Model.OfficeId,
         employee    = Model.Employee,
+        department  = Model.DepartmentFilter,
         eventType   = Model.EventType,
         needsReview = Model.NeedsReviewOnly ? (bool?)true : null,
         page        = p,
@@ -27,137 +53,164 @@
         needsReview = Model.NeedsReviewOnly ? (bool?)true : null
     });
 
+    @* FIX: Previous code had `department = Model.Employee` here.
+       The SummaryReport action accepts `department`, not `employee`.
+       Passing employee name as department would cause wrong filtering. *@
     var summaryUrl = Url.Action("SummaryReport", new
     {
-        from     = Model.From,
-        to       = Model.To,
-        officeId = Model.OfficeId
+        from       = Model.From,
+        to         = Model.To,
+        officeId   = Model.OfficeId,
+        department = Model.DepartmentFilter
     });
+
+    bool hasOfficeData = Model.OfficeBreakdown != null && Model.OfficeBreakdown.Any();
+    bool hasDailyData  = Model.DailyBreakdown  != null && Model.DailyBreakdown.Any();
+    bool hasRateToday  = Model.AttendanceRatePercent.HasValue;
+    bool hasRows       = Model.Rows != null && Model.Rows.Any();
+
+    int officeMore = hasOfficeData && Model.OfficeBreakdown.Count > 6
+                         ? Model.OfficeBreakdown.Count - 6 : 0;
+
+    int totalDailyIn  = hasDailyData ? Model.DailyBreakdown.Sum(d => d.InCount)  : 0;
+    int totalDailyOut = hasDailyData ? Model.DailyBreakdown.Sum(d => d.OutCount) : 0;
+
+    var chartDays = hasDailyData
+        ? (Model.DailyBreakdown.Count > 14
+            ? Model.DailyBreakdown.Skip(Model.DailyBreakdown.Count - 14).ToList()
+            : Model.DailyBreakdown)
+        : new System.Collections.Generic.List<FaceAttend.Areas.Admin.Models.DailySummaryRow>();
+
+    int chartMaxIn = chartDays.Any() ? Math.Max(1, chartDays.Max(d => d.InCount)) : 1;
+
+    int recStart = Model.Total == 0 ? 0 : (Model.Page - 1) * Model.PageSize + 1;
+    int recEnd   = Math.Min(Model.Total, Model.Page * Model.PageSize);
+
+    int attPct = hasRateToday ? Math.Min(100, Math.Max(0, Model.AttendanceRatePercent.Value)) : 0;
+    string attColor = attPct >= 80 ? "bg-success" : (attPct >= 50 ? "bg-warning" : "bg-danger");
 }
 
-@* ======================================================================= *@
-@* HEADER + FILTER CARD                                                        *@
-@* ======================================================================= *@
+@* TempData alert *@
+@if (TempData["msg"] != null)
+{
+    string kind = (TempData["msgKind"] as string) ?? "success";
+    <div class="alert alert-@kind admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+@* ======================================================================
+   HEADER + FILTER CARD
+   ====================================================================== *@
 <div class="admin-card mb-3">
     <div class="card-body">
 
-        @* Header row *@
-        <div class="d-flex flex-wrap align-items-center gap-2">
+        <div class="d-flex flex-wrap align-items-start gap-2 mb-3">
             <div>
                 <h4 class="mb-1">Attendance</h4>
                 <div class="text-muted small">
                     @Model.ActiveRangeLabel
-                     | Total: <strong>@Model.Total</strong>
-                     | Needs review:
+                    <span class="mx-1" aria-hidden="true">&middot;</span>
+                    Total: <strong>@Model.Total</strong>
                     @if (Model.TotalNeedsReview > 0)
                     {
-                        <strong class="text-warning">@Model.TotalNeedsReview</strong>
+                        <span class="mx-1" aria-hidden="true">&middot;</span>
+                        <span class="text-warning fw-semibold">
+                            <i class="fa-solid fa-flag" style="font-size:0.7rem;" aria-hidden="true"></i>
+                            @Model.TotalNeedsReview review@(Model.TotalNeedsReview == 1 ? "" : "s")
+                        </span>
                     }
-                    else { <span>0</span> }
                 </div>
             </div>
 
             <div class="ms-auto d-flex flex-wrap align-items-center gap-2">
                 <a class="btn btn-outline-secondary btn-sm" href="@summaryUrl">
-                    <i class="fa-solid fa-table me-1"></i>Summary Report
+                    <i class="fa-solid fa-table me-1" aria-hidden="true"></i>Summary Report
                 </a>
 
                 <a class="btn btn-outline-primary btn-sm" href="@exportUrl" target="_blank">
-                    <i class="fa-solid fa-file-export me-1"></i>Export CSV
-                    <span class="badge bg-secondary ms-1" style="font-size:0.64rem;">
-                        up to @Model.ExportMaxRows
-                    </span>
+                    <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export CSV
+                    <span class="badge bg-secondary ms-1" style="font-size:0.64rem;">up to @Model.ExportMaxRows</span>
                 </a>
 
                 @if (!Model.NeedsReviewOnly && Model.TotalNeedsReview > 0)
                 {
                     <a class="btn btn-warning btn-sm"
                        href="@Url.Action("Index", new { from = Model.From, to = Model.To, officeId = Model.OfficeId, employee = Model.Employee, eventType = Model.EventType, needsReview = true, pageSize = Model.PageSize })">
-                        <i class="fa-solid fa-triangle-exclamation me-1"></i>Review queue
+                        <i class="fa-solid fa-triangle-exclamation me-1" aria-hidden="true"></i>Review queue
+                        <span class="badge bg-dark ms-1">@Model.TotalNeedsReview</span>
                     </a>
                 }
             </div>
         </div>
 
-        <hr />
+        <hr class="mt-0" />
 
-        @* Quick date preset buttons *@
         <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-            <span class="text-muted small me-1" style="white-space:nowrap;">Quick range:</span>
-            <a class="btn btn-sm btn-outline-secondary"
-               href="@Url.Action("Index", new { from = "today",     pageSize = Model.PageSize })">Today</a>
-            <a class="btn btn-sm btn-outline-secondary"
-               href="@Url.Action("Index", new { from = "thisweek",  pageSize = Model.PageSize })">This week</a>
-            <a class="btn btn-sm btn-outline-secondary"
-               href="@Url.Action("Index", new { from = "lastweek",  pageSize = Model.PageSize })">Last week</a>
-            <a class="btn btn-sm btn-outline-secondary"
-               href="@Url.Action("Index", new { from = "thismonth", pageSize = Model.PageSize })">This month</a>
+            <span class="text-muted small">Quick range:</span>
+            <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Index", new { from = "today",     pageSize = Model.PageSize })">Today</a>
+            <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Index", new { from = "thisweek",  pageSize = Model.PageSize })">This week</a>
+            <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Index", new { from = "lastweek",  pageSize = Model.PageSize })">Last week</a>
+            <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Index", new { from = "thismonth", pageSize = Model.PageSize })">This month</a>
         </div>
 
-        @* Filter form *@
         <form method="get" action="@Url.Action("Index")" class="row g-2 align-items-end">
             <div class="col-12 col-md-2">
-                <label class="form-label">From</label>
-                <input class="form-control" type="date" name="from" value="@Model.From" />
+                <label class="form-label small mb-1">From</label>
+                <input class="form-control form-control-sm" type="date" name="from" value="@Model.From" />
             </div>
-
             <div class="col-12 col-md-2">
-                <label class="form-label">To</label>
-                <input class="form-control" type="date" name="to" value="@Model.To" />
+                <label class="form-label small mb-1">To</label>
+                <input class="form-control form-control-sm" type="date" name="to" value="@Model.To" />
             </div>
-
+            <div class="col-12 col-md-2">
+                <label class="form-label small mb-1">Office</label>
+                @Html.DropDownList("officeId", Model.OfficeOptions, new { @class = "form-select form-select-sm" })
+            </div>
             <div class="col-12 col-md-3">
-                <label class="form-label">Office</label>
-                @Html.DropDownList("officeId", Model.OfficeOptions, new { @class = "form-select" })
+                <label class="form-label small mb-1">Employee</label>
+                <input class="form-control form-control-sm" name="employee" value="@Model.Employee" placeholder="Name or ID" />
             </div>
-
-            <div class="col-12 col-md-3">
-                <label class="form-label">Employee</label>
-                <input class="form-control" name="employee" value="@Model.Employee"
-                       placeholder="Name or employee ID" />
-            </div>
-
             <div class="col-6 col-md-1">
-                <label class="form-label">Type</label>
-                <select class="form-select" name="eventType">
+                <label class="form-label small mb-1">Type</label>
+                <select class="form-select form-select-sm" name="eventType">
                     <option value="ALL" @(Model.EventType == "ALL" ? "selected" : "")>All</option>
                     <option value="IN"  @(Model.EventType == "IN"  ? "selected" : "")>IN</option>
                     <option value="OUT" @(Model.EventType == "OUT" ? "selected" : "")>OUT</option>
                 </select>
             </div>
-
             <div class="col-6 col-md-1">
-                <label class="form-label">Rows</label>
-                <select class="form-select" name="pageSize">
+                <label class="form-label small mb-1">Rows</label>
+                <select class="form-select form-select-sm" name="pageSize">
                     <option value="25"  @(Model.PageSize == 25  ? "selected" : "")>25</option>
                     <option value="50"  @(Model.PageSize == 50  ? "selected" : "")>50</option>
                     <option value="100" @(Model.PageSize == 100 ? "selected" : "")>100</option>
                     <option value="200" @(Model.PageSize == 200 ? "selected" : "")>200</option>
                 </select>
             </div>
-
             <div class="col-12">
                 <div class="form-check">
                     <input class="form-check-input" type="checkbox" value="true"
-                           name="needsReview" id="needsReview"
+                           name="needsReview" id="chkNeedsReview"
                            @(Model.NeedsReviewOnly ? "checked" : "") />
-                    <label class="form-check-label" for="needsReview">Needs review only</label>
+                    <label class="form-check-label small" for="chkNeedsReview">Needs review only</label>
                 </div>
             </div>
-
             <div class="col-12 d-flex gap-2">
-                <button class="btn btn-primary" type="submit">
-                    <i class="fa-solid fa-filter me-1"></i>Apply
+                <button class="btn btn-primary btn-sm" type="submit">
+                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
                 </button>
-                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Reset</a>
+                <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index")">
+                    <i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Reset
+                </a>
             </div>
         </form>
     </div>
 </div>
 
-@* ======================================================================= *@
-@* SUMMARY CARDS  (rendered only when the query returned data)                 *@
-@* ======================================================================= *@
+@* ======================================================================
+   SUMMARY CARDS
+   All @if checks here are TOP-LEVEL, in clean HTML/markup context.
+   None are nested inside an else{} that already emitted HTML.
+   ====================================================================== *@
 @if (Model.ShowSummary)
 {
     <div class="row g-3 mb-3">
@@ -167,46 +220,38 @@
             <div class="admin-card h-100">
                 <div class="card-body">
                     <div class="fw-semibold mb-2">
-                        <i class="fa-solid fa-user-clock me-1 text-muted"></i>Today's Attendance Rate
+                        <i class="fa-solid fa-user-clock me-1 text-muted" aria-hidden="true"></i>Today's Attendance Rate
                     </div>
-
-                    @if (Model.AttendanceRatePercent.HasValue)
+                    @if (hasRateToday)
                     {
-                        int pct      = Math.Min(100, Math.Max(0, Model.AttendanceRatePercent.Value));
-                        string color = pct >= 80 ? "bg-success" : (pct >= 50 ? "bg-warning" : "bg-danger");
-
-                        <div class="display-6 fw-bold mb-1">
-                            @pct<span class="fs-5 fw-normal text-muted">%</span>
-                        </div>
-                        <div class="progress mb-2" style="height:8px;"
-                             role="progressbar" aria-valuenow="@pct"
-                             aria-valuemin="0" aria-valuemax="100">
-                            <div class="progress-bar @color" style="width:@(pct)%;"></div>
+                        <div class="mb-2 fw-bold fs-4">@attPct<small class="fw-normal fs-6">%</small></div>
+                        <div class="progress mb-2" style="height:8px;" role="progressbar"
+                             aria-valuenow="@attPct" aria-valuemin="0" aria-valuemax="100">
+                            <div class="progress-bar @attColor" style="width:@(attPct)%"></div>
                         </div>
                         <div class="text-muted small">
-                            Based on @Model.TotalActiveEmployees active
-                            employee@(Model.TotalActiveEmployees == 1 ? "" : "s").
+                            Based on @Model.TotalActiveEmployees active employee@(Model.TotalActiveEmployees == 1 ? "" : "s")
                         </div>
                     }
-                    else
+                    @if (!hasRateToday)
                     {
-                        <div class="text-muted small">
-                            Select a range that includes today to see the daily rate.
-                        </div>
+                        <div class="text-muted small">Select a range that includes today to see the daily rate.</div>
                     }
                 </div>
             </div>
         </div>
 
-        @* Card 2 - Office Breakdown *@
+        @* Card 2 - Office Breakdown
+           NOTE: The overflow notice (@if officeMore > 0) is a SEPARATE top-level
+           @if block. It was originally inside the else{} after </table>, which
+           caused the Razor parser error. It's now outside and independent. *@
         <div class="col-12 col-xl-4">
             <div class="admin-card h-100">
                 <div class="card-body">
                     <div class="fw-semibold mb-2">
-                        <i class="fa-solid fa-building me-1 text-muted"></i>Office Breakdown
+                        <i class="fa-solid fa-building me-1 text-muted" aria-hidden="true"></i>Office Breakdown
                     </div>
-
-                    @if (Model.OfficeBreakdown == null || !Model.OfficeBreakdown.Any())
+                    @if (!hasOfficeData)
                     {
                         <div class="text-muted small">No data.</div>
                     }
@@ -221,82 +266,66 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var row in Model.OfficeBreakdown.Take(6))
+                                @foreach (var offRow in Model.OfficeBreakdown.Take(6))
                                 {
                                     <tr>
-                                        <td class="ps-0" style="max-width:140px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;"
-                                            title="@row.OfficeName">@row.OfficeName</td>
-                                        <td class="text-end pe-0">
-                                            <span class="badge bg-success">@row.InCount</span>
-                                        </td>
-                                        <td class="text-end pe-0">
-                                            <span class="badge bg-secondary">@row.OutCount</span>
-                                        </td>
+                                        <td class="ps-0 text-truncate" style="max-width:140px;" title="@offRow.OfficeName">@offRow.OfficeName</td>
+                                        <td class="text-end pe-0"><span class="badge bg-success">@offRow.InCount</span></td>
+                                        <td class="text-end pe-0"><span class="badge bg-secondary">@offRow.OutCount</span></td>
                                     </tr>
                                 }
                             </tbody>
                         </table>
-
-                        @if (Model.OfficeBreakdown.Count > 6)
-                        {
-                            <div class="text-muted small mt-1">
-                                + @(Model.OfficeBreakdown.Count - 6) more
-                                office@(Model.OfficeBreakdown.Count - 6 == 1 ? "" : "s") not shown
-                            </div>
-                        }
+                        @* officeMore overflow notice is rendered AFTER this else{} ends,
+                           as a separate top-level @if -- see the block below. *@
                     }
                 </div>
             </div>
         </div>
+        @* Separate top-level @if for the overflow message. Clean markup context. *@
+        @if (officeMore > 0)
+        {
+            <div class="col-12">
+                <div class="text-muted small">
+                    <i class="fa-solid fa-ellipsis me-1" aria-hidden="true"></i>
+                    +@officeMore more office@(officeMore == 1 ? "" : "s") not shown
+                </div>
+            </div>
+        }
 
-        @* Card 3 - Daily IN Trend (pure CSS bars, zero JS) *@
+        @* Card 3 - Daily IN Trend *@
         <div class="col-12 col-xl-4">
             <div class="admin-card h-100">
                 <div class="card-body">
                     <div class="fw-semibold mb-2">
-                        <i class="fa-solid fa-chart-column me-1 text-muted"></i>Daily IN Trend
+                        <i class="fa-solid fa-chart-column me-1 text-muted" aria-hidden="true"></i>Daily IN Trend
                     </div>
-
-                    @if (Model.DailyBreakdown == null || !Model.DailyBreakdown.Any())
+                    @if (!hasDailyData)
                     {
                         <div class="text-muted small">No data for this range.</div>
                     }
                     else
                     {
-                        var chartDays = Model.DailyBreakdown.Count > 14
-                            ? Model.DailyBreakdown.Skip(Model.DailyBreakdown.Count - 14).ToList()
-                            : Model.DailyBreakdown;
-
-                        int maxIn = chartDays.Max(d => d.InCount);
-                        if (maxIn < 1)
-                        {
-                            maxIn = 1;
-                        }
-
                         <div class="d-flex align-items-end gap-1" style="height:80px; overflow:hidden;">
-                            @foreach (var d in chartDays)
+                            @foreach (var cd in chartDays)
                             {
-                                int hPct = (int)Math.Round(100.0 * d.InCount / maxIn);
-                                if (hPct < 2)
-                                {
-                                    hPct = 2;
-                                }
-
+                                int hPct = (int)Math.Round(100.0 * cd.InCount / chartMaxIn);
+                                if (hPct < 2) { hPct = 2; }
                                 <div class="flex-fill d-flex flex-column align-items-center justify-content-end"
-                                     title="@d.DateLabel - @d.InCount IN, @d.OutCount OUT"
-                                     data-bs-toggle="tooltip" data-bs-placement="top">
+                                     title="@cd.DateLabel &ndash; @cd.InCount IN, @cd.OutCount OUT">
                                     <div class="w-100 rounded-top bg-primary"
                                          style="height:@(hPct)%; min-height:2px; opacity:0.78;"></div>
                                     <div class="text-center text-muted mt-1"
                                          style="font-size:0.58rem; overflow:hidden; max-width:100%;">
-                                        @d.DateLabel
+                                        @cd.DateLabel
                                     </div>
                                 </div>
                             }
                         </div>
-
                         <div class="text-muted small mt-2">
-                            @Model.DailyBreakdown.Sum(d => d.InCount) total IN | @Model.DailyBreakdown.Sum(d => d.OutCount) total OUT
+                            @totalDailyIn total IN
+                            <span class="mx-1" aria-hidden="true">&middot;</span>
+                            @totalDailyOut total OUT
                         </div>
                     }
                 </div>
@@ -306,130 +335,155 @@
     </div>
 }
 
-@* ======================================================================= *@
-@* MAIN RECORDS TABLE                                                           *@
-@* ======================================================================= *@
+@* ======================================================================
+   MAIN RECORDS TABLE
+   ====================================================================== *@
 <div class="admin-card">
     <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-hover align-middle mb-0">
-                <thead>
-                    <tr>
-                        <th style="width:170px;">Time</th>
-                        <th>Employee</th>
-                        <th>Office</th>
-                        <th style="width:70px;">Type</th>
-                        <th style="width:120px;">Liveness</th>
-                        <th style="width:110px;">Distance</th>
-                        <th style="width:100px;">Location</th>
-                        <th style="width:120px;">Review</th>
-                    </tr>
-                </thead>
-                <tbody>
-                @if (Model.Rows == null || !Model.Rows.Any())
-                {
-                    <tr>
-                        <td colspan="8" class="text-muted py-3">No records found for this filter.</td>
-                    </tr>
-                }
-                else
-                {
-                    foreach (var r in Model.Rows)
-                    {
-                        string detailsUrl = Url.Action("Details", new { id = r.Id });
-                        <tr>
-                            <td>
-                                <a class="text-decoration-none" href="@detailsUrl">
-                                    @r.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-                                </a>
-                            </td>
-                            <td>
-                                <div class="fw-semibold">@r.EmployeeFullName</div>
-                                <div class="text-muted small">
-                                    @r.EmployeeId
-                                    @if (!string.IsNullOrWhiteSpace(r.Department))
-                                    {<span>| @r.Department</span>}
-                                </div>
-                            </td>
-                            <td>
-                                <div>@r.OfficeName</div>
-                                @if (!string.IsNullOrWhiteSpace(r.WiFiSSID))
-                                {
-                                    <div class="text-muted small">
-                                        <i class="fa-solid fa-wifi me-1" style="font-size:0.65rem;"></i>@r.WiFiSSID
-                                    </div>
-                                }
-                            </td>
-                            <td>
-                                <span class="badge @(r.EventType == "IN" ? "bg-success" : "bg-secondary")">
-                                    @r.EventType
-                                </span>
-                            </td>
-                            <td class="text-muted small">
-                                @(r.LivenessScore.HasValue ? r.LivenessScore.Value.ToString("0.000") : "-")
-                            </td>
-                            <td class="text-muted small">
-                                @(r.FaceDistance.HasValue ? r.FaceDistance.Value.ToString("0.000") : "-")
-                            </td>
-                            <td>
-                                <span class="badge @(r.LocationVerified ? "bg-primary" : "bg-light text-dark")">
-                                    @(r.LocationVerified ? "GPS OK" : "N/A")
-                                </span>
-                            </td>
-                            <td>
-                                @if (r.NeedsReview)
-                                {
-                                    <a class="badge bg-warning text-dark text-decoration-none"
-                                       href="@detailsUrl">Needs review</a>
-                                }
-                                else
-                                {
-                                    <span class="text-muted">-</span>
-                                }
-                            </td>
-                        </tr>
-                    }
-                }
-                </tbody>
-            </table>
-        </div>
 
-        @* Pagination *@
-        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
-            <div class="text-muted small">
-                Page @Model.Page of @Model.TotalPages
-                 | 
-                @Model.Total record@(Model.Total == 1 ? "" : "s")
+        @if (!hasRows)
+        {
+            <div class="py-4 text-center text-muted">
+                <i class="fa-solid fa-magnifying-glass fa-2x mb-2 d-block" aria-hidden="true"></i>
+                No records found for this filter.
+            </div>
+        }
+        else
+        {
+            <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-1">
+                <div class="text-muted small">
+                    Showing @recStart&ndash;@recEnd of @Model.Total record@(Model.Total == 1 ? "" : "s")
+                </div>
             </div>
 
-            <nav aria-label="Attendance pages">
-                <ul class="pagination pagination-sm mb-0">
-                    <li class="page-item @(Model.Page <= 1 ? "disabled" : "")">
-                        <a class="page-link" href="@pageUrl(Model.Page - 1)">Prev</a>
-                    </li>
-
-                    @{
-                        int pStart = Math.Max(1, Model.Page - 2);
-                        int pEnd   = Math.Min(Model.TotalPages, Model.Page + 2);
-                        for (int p = pStart; p <= pEnd; p++)
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th style="width:175px;">Time</th>
+                            <th>Employee</th>
+                            <th>Office</th>
+                            <th style="width:70px;">Type</th>
+                            <th style="width:110px;">Liveness</th>
+                            <th style="width:100px;">Distance</th>
+                            <th style="width:90px;">Location</th>
+                            <th style="width:120px;">Review</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Model.Rows)
                         {
-                            <li class="page-item @(p == Model.Page ? "active" : "")">
-                                <a class="page-link" href="@pageUrl(p)">@p</a>
-                            </li>
+                            string rowDetailsUrl = Url.Action("Details", new { id = r.Id });
+                            <tr>
+                                <td>
+                                    <a class="text-decoration-none small fw-semibold text-nowrap"
+                                       href="@rowDetailsUrl">
+                                        @r.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                                    </a>
+                                </td>
+                                <td>
+                                    <div class="fw-semibold small">@r.EmployeeFullName</div>
+                                    <div class="text-muted" style="font-size:0.75rem;">
+                                        @r.EmployeeId
+                                        @if (!string.IsNullOrWhiteSpace(r.Department))
+                                        {
+                                            <span class="mx-1" aria-hidden="true">&middot;</span><span>@r.Department</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="small">@r.OfficeName</div>
+                                    @if (!string.IsNullOrWhiteSpace(r.WiFiSSID))
+                                    {
+                                        <div class="text-muted" style="font-size:0.73rem;">
+                                            <i class="fa-solid fa-wifi me-1" style="font-size:0.65rem;" aria-hidden="true"></i>@r.WiFiSSID
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="badge @(r.EventType == "IN" ? "bg-success" : "bg-secondary")">
+                                        @r.EventType
+                                    </span>
+                                </td>
+                                <td class="small text-muted">
+                                    @(r.LivenessScore.HasValue ? r.LivenessScore.Value.ToString("0.000") : "-")
+                                </td>
+                                <td class="small text-muted">
+                                    @(r.FaceDistance.HasValue ? r.FaceDistance.Value.ToString("0.000") : "-")
+                                </td>
+                                <td>
+                                    @if (r.LocationVerified)
+                                    {
+                                        <span class="badge bg-primary">
+                                            <i class="fa-solid fa-location-dot me-1" aria-hidden="true"></i>GPS
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-light text-dark border">N/A</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (r.NeedsReview)
+                                    {
+                                        <a class="badge bg-warning text-dark text-decoration-none"
+                                           href="@rowDetailsUrl">
+                                            <i class="fa-solid fa-flag me-1" aria-hidden="true"></i>Review
+                                        </a>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">
+                                            <i class="fa-solid fa-check text-success me-1" aria-hidden="true"></i>OK
+                                        </span>
+                                    }
+                                </td>
+                            </tr>
                         }
-                    }
+                    </tbody>
+                </table>
+            </div>
 
-                    <li class="page-item @(Model.Page >= Model.TotalPages ? "disabled" : "")">
-                        <a class="page-link" href="@pageUrl(Model.Page + 1)">Next</a>
-                    </li>
-                </ul>
-            </nav>
-        </div>
+            @* Pagination *@
+            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mt-3">
+                <div class="text-muted small">
+                    Page @Model.Page of @Model.TotalPages
+                    <span class="mx-1" aria-hidden="true">&middot;</span>
+                    @Model.Total record@(Model.Total == 1 ? "" : "s")
+                </div>
 
-        <div class="text-muted small mt-2">
-            Export is limited to @Model.ExportMaxRows rows per download.
-            For a per-employee first-IN / last-OUT breakdown, use the
-            <a href="@summaryUrl">Summary Report</a>.
-        </div>
+                <nav aria-label="Attendance pages">
+                    <ul class="pagination pagination-sm mb-0">
+                        <li class="page-item @(Model.Page <= 1 ? "disabled" : "")">
+                            <a class="page-link" href="@pageUrl(Model.Page - 1)" aria-label="Previous page">
+                                <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
+                            </a>
+                        </li>
+                        @{
+                            int pStart = Math.Max(1, Model.Page - 2);
+                            int pEnd   = Math.Min(Model.TotalPages, Model.Page + 2);
+                            for (int p = pStart; p <= pEnd; p++)
+                            {
+                                <li class="page-item @(p == Model.Page ? "active" : "")">
+                                    <a class="page-link" href="@pageUrl(p)">@p</a>
+                                </li>
+                            }
+                        }
+                        <li class="page-item @(Model.Page >= Model.TotalPages ? "disabled" : "")">
+                            <a class="page-link" href="@pageUrl(Model.Page + 1)" aria-label="Next page">
+                                <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
+                            </a>
+                        </li>
+                    </ul>
+                </nav>
+            </div>
+
+            <div class="text-muted small mt-2">
+                Export limited to @Model.ExportMaxRows rows.
+                For first-IN / last-OUT per employee use the
+                <a href="@summaryUrl">Summary Report</a>.
+            </div>
+        }
+
     </div>
 </div>

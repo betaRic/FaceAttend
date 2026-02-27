@@ -1,40 +1,81 @@
 @model System.Collections.Generic.List<Visitor>
 @{
     ViewBag.Title = "Visitors";
-    var q = (ViewBag.Query as string) ?? "";
+    var q            = (ViewBag.Query      as string) ?? "";
     var showInactive = (bool)(ViewBag.ShowInactive ?? false);
-    var truncated = (bool)(ViewBag.Truncated ?? false);
-    var cap = (int)(ViewBag.Cap ?? 0);
+    var truncated    = (bool)(ViewBag.Truncated    ?? false);
+    var cap          = (int)(ViewBag.Cap           ?? 0);
+
+    @* Tab URLs: the Logs tab links to the Logs action.
+       The controller still renders two separate server-side actions -- this
+       view just provides tab chrome so they look like a single unified page. *@
+    var logsUrl = Url.Action("Logs", "Visitors", new { area = "Admin" });
 }
 
-<div class="d-flex align-items-center justify-content-between mb-3">
-    <h3 class="mb-0">
-        <i class="fa-solid fa-user-check me-2" aria-hidden="true"></i>
-        Visitors
-    </h3>
-    <a class="btn btn-primary" href="@Url.Action("Create")">
-        <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>
-        Add visitor
+@* ======================================================================
+   SHARED TAB CHROME
+   Both Visitors/Index and Visitors/Logs use identical tab chrome.
+   Visitors tab is active here; Logs tab links to the Logs action.
+   ====================================================================== *@
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <h4 class="mb-0">
+        <i class="fa-solid fa-user-check me-2" aria-hidden="true"></i>Visitors
+    </h4>
+    <a class="btn btn-primary btn-sm" href="@Url.Action("Create")">
+        <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add visitor
     </a>
 </div>
 
+<ul class="nav nav-tabs mb-3" role="tablist">
+    <li class="nav-item" role="presentation">
+        <a class="nav-link active" href="@Url.Action("Index")" aria-current="page">
+            <i class="fa-solid fa-users me-1" aria-hidden="true"></i>
+            Visitor Profiles
+            @if (Model != null && Model.Any())
+            {
+                <span class="badge bg-secondary ms-1">@Model.Count</span>
+            }
+        </a>
+    </li>
+    <li class="nav-item" role="presentation">
+        <a class="nav-link" href="@logsUrl">
+            <i class="fa-solid fa-clipboard-list me-1" aria-hidden="true"></i>
+            Visit Logs
+        </a>
+    </li>
+</ul>
+
+@* ======================================================================
+   TAB CONTENT: VISITOR PROFILES
+   ====================================================================== *@
+@if (TempData["msg"] != null)
+{
+    string kind = (TempData["msgKind"] as string) ?? "success";
+    <div class="alert alert-@kind admin-card p-3 mb-3">@TempData["msg"]</div>
+}
+
+@* Filter card *@
 <div class="admin-card mb-3">
     <div class="card-body">
         <form method="get" class="row g-2 align-items-end">
-            <div class="col-md-6">
-                <label class="form-label">Search</label>
-                <input class="form-control" name="q" value="@q" placeholder="Name contains..." />
+            <div class="col-12 col-md-5">
+                <label class="form-label small mb-1">Search</label>
+                <input class="form-control form-control-sm" name="q" value="@q" placeholder="Name contains..." />
             </div>
-            <div class="col-md-3">
-                <label class="form-label">Show</label>
-                <select class="form-select" name="showInactive">
+            <div class="col-12 col-md-3">
+                <label class="form-label small mb-1">Show</label>
+                <select class="form-select form-select-sm" name="showInactive">
                     <option value="false" @(showInactive ? "" : "selected")>Active only</option>
-                    <option value="true" @(showInactive ? "selected" : "")>Active + inactive</option>
+                    <option value="true"  @(showInactive ? "selected" : "")>Active + inactive</option>
                 </select>
             </div>
-            <div class="col-md-3 d-flex gap-2">
-                <button class="btn btn-outline-primary w-100" type="submit">Apply</button>
-                <a class="btn btn-outline-secondary w-100" href="@Url.Action("Logs")">Logs</a>
+            <div class="col-12 col-md-4 d-flex gap-2">
+                <button class="btn btn-primary btn-sm w-100" type="submit">
+                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
+                </button>
+                <a class="btn btn-outline-secondary btn-sm w-100" href="@Url.Action("Index")">
+                    <i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Reset
+                </a>
             </div>
         </form>
     </div>
@@ -42,68 +83,101 @@
 
 @if (truncated && cap > 0)
 {
-    <div class="alert alert-info admin-card p-3 mb-3" role="alert">
-        Showing first @cap visitor record(s). Use search to narrow the list.
+    <div class="alert alert-info admin-card p-3 mb-3">
+        <i class="fa-solid fa-circle-info me-1" aria-hidden="true"></i>
+        Showing first @cap visitor records. Use search to narrow the list.
     </div>
 }
 
 <div class="admin-card">
     <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-sm align-middle mb-0 js-datatable" data-dt-page-length="25" data-dt-no-sort-last="1">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Status</th>
-                        <th>Face</th>
-                        <th>Visits</th>
-                        <th>Last visit</th>
-                        <th style="width:320px;"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var v in Model)
-                    {
+        @if (Model == null || !Model.Any())
+        {
+            <div class="py-4 text-center text-muted">
+                <i class="fa-solid fa-user-slash fa-2x mb-2 d-block" aria-hidden="true"></i>
+                No visitors found. Try adjusting the filters or add a new visitor.
+            </div>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle mb-0 js-datatable"
+                       data-dt-page-length="25"
+                       data-dt-no-sort-last="1">
+                    <thead>
                         <tr>
-                            <td class="fw-semibold">@v.Name</td>
-                            <td>
-                                @if (v.IsActive) { <span class="badge bg-success">Active</span> }
-                                else { <span class="badge bg-secondary">Inactive</span> }
-                            </td>
-                            <td>
-                                @if (string.IsNullOrEmpty(v.FaceEncodingBase64))
-                                { <span class="badge bg-warning text-dark">Not enrolled</span> }
-                                else
-                                { <span class="badge bg-primary">Enrolled</span> }
-                            </td>
-                            <td>@v.VisitCount</td>
-                            <td>@v.LastVisitDate.ToLocalTime().ToString("yyyy-MM-dd")</td>
-                            <td class="text-end">
-                                <a class="btn btn-sm btn-outline-primary" href="@Url.Action("Enroll", new { id = v.Id })">
-                                    <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>
-                                    Enroll face
-                                </a>
-                                <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Edit", new { id = v.Id })">
-                                    <i class="fa-solid fa-pen me-1" aria-hidden="true"></i>
-                                    Edit
-                                </a>
-                                @using (Html.BeginForm("Deactivate", "Visitors", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
-                                {
-                                    @Html.AntiForgeryToken()
-                                    <input type="hidden" name="id" value="@v.Id" />
-                                    <button class="btn btn-sm btn-outline-danger" type="submit"
-                                            data-confirm="Deactivate this visitor?"
-                                            data-confirm-text="This will prevent matching this visitor at the kiosk."
-                                            data-confirm-icon="warning">
-                                        <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>
-                                        Deactivate
-                                    </button>
-                                }
-                            </td>
+                            <th>Name</th>
+                            <th style="width:90px;">Status</th>
+                            <th style="width:110px;">Face</th>
+                            <th style="width:70px;">Visits</th>
+                            <th style="width:120px;">Last visit</th>
+                            <th style="width:280px;"></th>
                         </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+                    </thead>
+                    <tbody>
+                        @foreach (var v in Model)
+                        {
+                            bool hasFace  = !string.IsNullOrEmpty(v.FaceEncodingBase64);
+                            string lastVs = v.LastVisitDate == default(DateTime)
+                                ? "-"
+                                : v.LastVisitDate.ToLocalTime().ToString("yyyy-MM-dd");
+                            <tr>
+                                <td class="fw-semibold">@v.Name</td>
+                                <td>
+                                    @if (v.IsActive)
+                                    {
+                                        <span class="badge bg-success">Active</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-secondary">Inactive</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (hasFace)
+                                    {
+                                        <span class="badge bg-primary">
+                                            <i class="fa-solid fa-face-smile me-1" aria-hidden="true"></i>Enrolled
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="badge bg-warning text-dark">
+                                            <i class="fa-solid fa-circle-exclamation me-1" aria-hidden="true"></i>Not enrolled
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-muted small">@v.VisitCount</td>
+                                <td class="small text-muted text-nowrap">@lastVs</td>
+                                <td class="text-end">
+                                    <a class="btn btn-sm btn-outline-primary" href="@Url.Action("Enroll", new { id = v.Id })">
+                                        <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>Enroll face
+                                    </a>
+                                    <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Edit", new { id = v.Id })">
+                                        <i class="fa-solid fa-pen me-1" aria-hidden="true"></i>Edit
+                                    </a>
+                                    @if (v.IsActive)
+                                    {
+                                        @using (Html.BeginForm("Deactivate", "Visitors",
+                                            new { area = "Admin" }, FormMethod.Post,
+                                            new { @class = "d-inline" }))
+                                        {
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@v.Id" />
+                                            <button class="btn btn-sm btn-outline-danger" type="submit"
+                                                    data-confirm="Deactivate this visitor?"
+                                                    data-confirm-text="This will prevent matching this visitor at the kiosk."
+                                                    data-confirm-icon="warning">
+                                                <i class="fa-solid fa-user-slash me-1" aria-hidden="true"></i>Deactivate
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
     </div>
 </div>
