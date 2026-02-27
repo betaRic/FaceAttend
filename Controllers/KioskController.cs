@@ -930,6 +930,11 @@ namespace FaceAttend.Controllers
 
         private bool IsGpsRequired()
         {
+            // If the global "require GPS on all devices" flag is on, always require GPS.
+            if (AppSettings.GetBool("Kiosk:RequireGpsAllDevices", false))
+                return true;
+
+            // Otherwise only require GPS on mobile devices (original behaviour).
             if (Request?.Browser != null && Request.Browser.IsMobileDevice)
                 return true;
 

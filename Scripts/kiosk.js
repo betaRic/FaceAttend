@@ -54,8 +54,8 @@
         loopMs: 120,
 
         mp: {
-            detectMinConf: 0.30,
-            acceptMinScore: 0.60,
+            detectMinConf: 0.75,   
+            acceptMinScore: 0.80,  
             stableFramesMin: 2,
             stableNeededMs: 250,
             multiMinAreaRatio: 0.015,
@@ -74,8 +74,7 @@
         },
 
         postScan: {
-            holdMs: 5000,
-            requireFaceGoneMs: 1200,
+            holdMs: 2000,
             toastMs: 6500,
         },
 
@@ -133,11 +132,11 @@
         pendingVisitor: null,
 
         scanBlockUntil: 0,
-        requireFaceGone: false,
-        faceGoneSince: 0,
+
         // gps/office
         gps: { lat: null, lon: null, accuracy: null },
-        allowedArea: !isMobile,
+        gpsBlocked: false,
+        allowedArea: false,
         currentOffice: { id: null, name: null },
         lastResolveAt: 0,
 
@@ -237,10 +236,8 @@
     function armPostScanHold(ms) {
         const now = Date.now();
         const hold = (typeof ms === 'number' && isFinite(ms) && ms > 0) ? ms : CFG.postScan.holdMs;
-
         state.scanBlockUntil = Math.max(state.scanBlockUntil || 0, now + hold);
-        state.requireFaceGone = true;
-        state.faceGoneSince = 0;
+        // No face-gone requirement. The server enforces MinGapSeconds for duplicates.
     }
 
     function openVisitorModal(payload) {
@@ -285,7 +282,7 @@
             ui.visitorBackdrop.setAttribute('aria-hidden', 'true');
         }
 
-        armPostScanHold(1500);
+        armPostScanHold(2000);
         setPrompt('Ready.', 'Stand still. One face only.');
     }
 
@@ -960,22 +957,27 @@
     function startGpsIfAvailable() {
         if (!('geolocation' in navigator)) {
             state.allowedArea = false;
-            if (ui.officeLine) ui.officeLine.textContent = 'GPS not available';
-            if (!isMobile) resolveOfficeDesktopOnce();
+            state.gpsBlocked = true;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS not supported';
             return;
         }
 
-        // Geolocation only works on HTTPS (or localhost).
-        const isSecure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
+        const isSecure = (
+            location.protocol === 'https:' ||
+            location.hostname === 'localhost' ||
+            location.hostname === '127.0.0.1'
+        );
+
         if (!isSecure) {
             state.allowedArea = false;
+            state.gpsBlocked = true;
             if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS';
-            if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
 
         navigator.geolocation.watchPosition(
             (pos) => {
+                state.gpsBlocked = false;
                 state.gps.lat = pos.coords.latitude;
                 state.gps.lon = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
@@ -984,17 +986,17 @@
                 state.gps.lat = null;
                 state.gps.lon = null;
                 state.gps.accuracy = null;
+                state.gpsBlocked = true;
+                state.allowedArea = false;
 
                 let msg = 'GPS error';
-                if (err && err.code === 1) msg = 'GPS denied';
+                if (err && err.code === 1) msg = 'GPS access denied';
                 else if (err && err.code === 2) msg = 'GPS unavailable';
-                else if (err && err.code === 3) msg = 'GPS timeout';
+                else if (err && err.code === 3) msg = 'GPS timed out';
 
-                state.allowedArea = false;
                 if (ui.officeLine) ui.officeLine.textContent = msg;
-                if (!isMobile) resolveOfficeDesktopOnce();
             },
-            { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
+            { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
         );
     }
 
@@ -1005,16 +1007,14 @@
         if (t - state.lastResolveAt < CFG.server.resolveMs) return;
         state.lastResolveAt = t;
 
+        // GPS not yet acquired — stay blocked regardless of mobile/desktop
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
-            // Desktop kiosks: GPS may be unavailable. Fall back to server default office.
-            if (!isMobile) {
-                await resolveOfficeDesktopOnce();
-                if (state.allowedArea !== false) state.allowedArea = true;
-                return;
-            }
-
             state.allowedArea = false;
-            if (ui.officeLine) ui.officeLine.textContent = 'Locating.';
+            if (ui.officeLine) {
+                ui.officeLine.textContent = state.gpsBlocked
+                    ? (ui.officeLine.textContent || 'GPS required')
+                    : 'Acquiring GPS...';
+            }
             return;
         }
 
@@ -1024,27 +1024,38 @@
         fd.append('lon', state.gps.lon);
         fd.append('accuracy', state.gps.accuracy);
 
-        const r = await fetch(EP.resolveOffice, { method: 'POST', body: fd });
-        const j = await r.json();
+        try {
+            const r = await fetch(EP.resolveOffice, { method: 'POST', body: fd });
+            const j = await r.json();
 
-        if (!j || j.ok !== true) {
-            resetScanState();
-            setPrompt('Scan error.', (j && j.error) ? String(j.error) : 'Try again.');
-            return;
-        }
+            if (!j || j.ok !== true) {
+                resetScanState();
+                setPrompt('Location error.', (j && j.error) ? String(j.error) : 'Try again.');
+                return;
+            }
 
-        if (j.allowed === false) {
-            state.allowedArea = false;
-            if (ui.officeLine) ui.officeLine.textContent = 'Not in allowed area';
-            setPrompt('Not in allowed area.', 'Move closer to a designated office.');
-            return;
-        }
+            if (j.allowed === false) {
+                state.allowedArea = false;
+                const reason = j.reason || '';
+                if (reason === 'GPS_ACCURACY') {
+                    if (ui.officeLine) ui.officeLine.textContent = 'GPS signal too weak';
+                    setPrompt('GPS accuracy too low.', 'Move to an open area and wait for a stronger signal.');
+                } else if (reason === 'NO_OFFICE_NEARBY') {
+                    if (ui.officeLine) ui.officeLine.textContent = 'Not near any office';
+                    setPrompt('Not in an allowed area.', 'You must be at a registered office location.');
+                } else {
+                    if (ui.officeLine) ui.officeLine.textContent = 'Location not allowed';
+                    setPrompt('Not in allowed area.', 'Move closer to a designated office.');
+                }
+                return;
+            }
 
-        state.allowedArea = !!j.allowed;
-        if (state.allowedArea) {
+            state.allowedArea = true;
             state.currentOffice.id = j.officeId;
             state.currentOffice.name = j.officeName;
             if (ui.officeLine) ui.officeLine.textContent = state.currentOffice.name || 'Office OK';
+        } catch {
+            setPrompt('Location check failed.', 'Check network connection.');
         }
     }
 
@@ -1276,7 +1287,17 @@
             setIdleUi(false);
 
             await resolveOfficeIfNeeded();
-            if (!state.allowedArea) { updateEta(true, useNextGen); return; }
+            if (!state.allowedArea) {
+                if (state.gpsBlocked) {
+                    setPrompt('GPS Required.', 'Enable location access to use this kiosk.');
+                } else if (state.gps.lat == null) {
+                    setPrompt('Acquiring GPS.', 'Please wait...');
+                } else {
+                    setPrompt('Not in allowed area.', 'You must be at a registered office.');
+                }
+                updateEta(true, useNextGen);
+                return;
+            }
 
             if (now < state.backoffUntil) {
                 setPrompt('System busy.', 'Please wait.');
@@ -1294,19 +1315,6 @@
                 safeSetPrompt('Please wait.', 'Next scan will be ready soon.');
                 updateEta(true, useNextGen);
                 return;
-            }
-
-            if (state.requireFaceGone) {
-                const goneForMs = state.faceGoneSince ? (now - state.faceGoneSince) : 0;
-                if (goneForMs >= CFG.postScan.requireFaceGoneMs) {
-                    state.requireFaceGone = false;
-                    state.faceGoneSince = 0;
-                    setPrompt('Ready.', 'Stand still. One face only.');
-                } else {
-                    safeSetPrompt('Step away.', 'Move away from the camera.');
-                    updateEta(true, useNextGen);
-                    return;
-                }
             }
 
             if (useNextGen) {
@@ -1344,7 +1352,6 @@
     (async function init() {
         startClock();
         startGpsIfAvailable();
-        resolveOfficeDesktopOnce();
         wireUnlockUi();
 
         wireVisitorUi();
