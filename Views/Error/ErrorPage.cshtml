@@ -1,10 +1,15 @@
 @{
     Layout = null;
 
-    // Fallback view used by HandleErrorAttribute.
     var code = 500;
-    var title = "Something went wrong";
-    var msg = "We couldn't process your request.";
+    if (ViewBag.StatusCode != null)
+    {
+        try { code = (int)ViewBag.StatusCode; } catch { }
+    }
+
+    var title = (ViewBag.TitleText as string) ?? "Error";
+    var msg = (ViewBag.MessageText as string) ?? "An unexpected error occurred.";
+    var reqId = (ViewBag.RequestId as string) ?? "";
 
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
@@ -25,6 +30,7 @@
 
     <main class="fa-error-shell">
         <div class="fa-error-card">
+
             <div class="fa-error-brand">
                 <img class="fa-error-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG" />
                 <div class="fa-error-brandtext">
@@ -44,7 +50,19 @@
                 <a class="btn btn-outline-secondary" href="@Url.Action("Index", "Dashboard", new { area = "Admin" })">
                     <i class="fa-solid fa-gauge-high me-2" aria-hidden="true"></i>Admin
                 </a>
+                <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+                    <i class="fa-solid fa-arrow-left me-2" aria-hidden="true"></i>Back
+                </button>
             </div>
+
+            @if (!string.IsNullOrWhiteSpace(reqId))
+            {
+                <div class="fa-error-meta">
+                    <span class="text-muted">Request ID:</span>
+                    <span class="fa-error-mono">@reqId</span>
+                </div>
+            }
+
         </div>
     </main>
 

@@ -1,0 +1,72 @@
+@{
+    var code = 500;
+    if (ViewBag.StatusCode != null)
+    {
+        try { code = (int)ViewBag.StatusCode; } catch { }
+    }
+
+    var title = (ViewBag.TitleText as string) ?? "Error";
+    var msg = (ViewBag.MessageText as string) ?? "An unexpected error occurred.";
+    var reqId = (ViewBag.RequestId as string) ?? "";
+
+    ViewBag.Title = $"{code} - {title}";
+}
+
+<div class="ea-page">
+
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                @title
+            </h1>
+            <div class="ea-page-subtitle">Error @code</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-secondary" href="@Url.Action("Index", "Dashboard", new { area = "Admin" })">
+                <i class="fa-solid fa-house me-1" aria-hidden="true"></i>Dashboard
+            </a>
+        </div>
+    </div>
+
+    <div class="ea-table-card">
+        <div class="ea-table-header">
+            <div class="ea-table-title">
+                <i class="fa-solid fa-circle-info text-primary" aria-hidden="true"></i>
+                What you can do
+            </div>
+        </div>
+
+        <div class="p-3 p-md-4">
+            <div class="d-flex flex-column gap-2" style="max-width: 720px;">
+                <div class="fw-semibold" style="font-size:1rem;">@msg</div>
+                <div class="text-muted" style="font-size:.9rem;">
+                    If this keeps happening, share the request ID with the system admin.
+                </div>
+
+                <div class="d-flex flex-wrap gap-2 pt-2">
+                    <button type="button" class="btn btn-primary" onclick="location.reload()">
+                        <i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Reload
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="history.back()">
+                        <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
+                    </button>
+                    <a class="btn btn-outline-secondary" href="@Url.Action("Index", "Kiosk", new { area = "" })">
+                        <i class="fa-solid fa-desktop me-1" aria-hidden="true"></i>Kiosk
+                    </a>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(reqId))
+                {
+                    <div class="mt-3">
+                        <span class="badge bg-secondary" style="font-size:.75rem;">Request ID</span>
+                        <div class="mt-1" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;">
+                            @reqId
+                        </div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+
+</div>

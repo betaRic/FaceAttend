@@ -1,0 +1,9 @@
+@{
+    // Fallback view for HandleErrorAttribute within the Admin area.
+    ViewBag.StatusCode = 500;
+    ViewBag.TitleText = "Something went wrong";
+    ViewBag.MessageText = "We couldn't process your request.";
+    ViewBag.RequestId = "";
+}
+
+@Html.Partial("~/Areas/Admin/Views/Error/ErrorPage.cshtml")

@@ -3,56 +3,137 @@
     ViewBag.Title = "Offices";
 }
 
-<div class="d-flex align-items-center justify-content-between mb-3">
-    <h3 class="mb-0">
-        <i class="fa-solid fa-building me-2" aria-hidden="true"></i>
-        Offices
-    </h3>
-    <a class="btn btn-primary" href="@Url.Action("Create")">
-        <i class="fa-solid fa-plus me-1" aria-hidden="true"></i>
-        Create office
-    </a>
-</div>
+<div class="ea-page">
 
-<div class="admin-card">
-    <div class="card-body">
-        <div class="table-responsive">
-            <table class="table table-sm align-middle js-datatable" data-dt-page-length="25" data-dt-no-sort-last="1">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Code</th>
-                        <th>Type</th>
-                        <th>Radius (m)</th>
-                        <th>Latitude</th>
-                        <th>Longitude</th>
-                        <th>Status</th>
-                        <th style="width: 110px;"></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var o in Model)
-                    {
-                        <tr>
-                            <td class="fw-semibold">@o.Name</td>
-                            <td>@(o.Code ?? "-")</td>
-                            <td>@(o.Type ?? "-")</td>
-                            <td>@o.RadiusMeters</td>
-                            <td>@o.Latitude.ToString("F4")</td>
-                            <td>@o.Longitude.ToString("F4")</td>
-                            <td>
-                                @if (o.IsActive)
-                                {<span class="badge bg-success">Active</span> }
-                                else
-                                { <span class="badge bg-secondary">Inactive</span>}
-                            </td>
-                            <td class="text-end">
-                                <a class="btn btn-sm btn-outline-primary" href="@Url.Action("Edit", new { id = o.Id })">Edit</a>
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-building" aria-hidden="true"></i>
+                Offices
+            </h1>
+            <div class="ea-page-subtitle">DILG Region XII office structure</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-primary" href="@Url.Action("Create")">
+                <i class="fa-solid fa-plus me-1" aria-hidden="true"></i>Add Office
+            </a>
         </div>
     </div>
+
+    <div class="ea-table-card">
+        <div class="ea-table-header">
+            <div class="ea-table-title">
+                <i class="fa-solid fa-list-ul text-primary" aria-hidden="true"></i>
+                Office List
+            </div>
+            <span class="badge bg-secondary" style="font-size:.75rem;">@(Model != null ? Model.Count : 0) offices</span>
+        </div>
+
+        <div class="table-responsive">
+            @if (Model == null || Model.Count == 0)
+            {
+                <div class="ea-empty">
+                    <i class="fa-solid fa-building-circle-xmark" aria-hidden="true"></i>
+                    <div class="ea-empty-title">No offices found</div>
+                    <div class="ea-empty-desc"><a href="@Url.Action("Create")">Add the first office</a></div>
+                </div>
+            }
+            else
+            {
+                <table class="ea-table table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Code</th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Province / City</th>
+                            <th>Wi-Fi SSID</th>
+                            <th>Status</th>
+                            <th style="width:130px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var o in Model)
+                        {
+                            var typeIcon = o.Type == "REGION" ? "fa-map" :
+                                           o.Type == "PROVINCE" ? "fa-location-dot" : "fa-city";
+                            var typeColor = o.Type == "REGION" ? "text-primary" :
+                                            o.Type == "PROVINCE" ? "text-success" : "text-info";
+                            var hasCoords = (o.Latitude != 0 || o.Longitude != 0);
+
+                            <tr>
+                                <td>
+                                    <code style="font-size:.8rem;">@(o.Code ?? "-")</code>
+                                </td>
+                                <td>
+                                    <div class="fw-semibold" style="font-size:.875rem;">@o.Name</div>
+                                    @if (hasCoords)
+                                    {
+                                        <div class="ea-cell-muted">
+                                            <i class="fa-solid fa-location-crosshairs fa-xs me-1" aria-hidden="true"></i>
+                                            @o.Latitude.ToString("0.0000"), @o.Longitude.ToString("0.0000")
+                                        </div>
+                                    }
+                                </td>
+                                <td>
+                                    <span class="ea-badge @(o.Type == "REGION" ? "enrolled" : o.Type == "PROVINCE" ? "active" : "flexi")">
+                                        <i class="fa-solid @typeIcon fa-xs" aria-hidden="true"></i>
+                                        @(o.Type ?? "-")
+                                    </span>
+                                </td>
+                                <td class="ea-cell-muted" style="font-size:.82rem;">
+                                    @if (!string.IsNullOrWhiteSpace(o.ProvinceName))
+                                    {
+                                        <span>@o.ProvinceName</span>
+                                    }
+                                    else if (!string.IsNullOrWhiteSpace(o.HUCCity))
+                                    {
+                                        <span>@o.HUCCity</span>
+                                    }
+                                    else
+                                    {
+                                        <span>-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrWhiteSpace(o.WiFiSSID))
+                                    {
+                                        <span class="d-flex align-items-center gap-1" style="font-size:.82rem;">
+                                            <i class="fa-solid fa-wifi text-success fa-xs" aria-hidden="true"></i>
+                                            @o.WiFiSSID
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">-</span>
+                                    }
+                                </td>
+                                <td>
+                                    @if (o.IsActive)
+                                    {
+                                        <span class="ea-badge active">
+                                            <i class="fa-solid fa-circle-check fa-xs"></i>Active
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="ea-badge inactive">
+                                            <i class="fa-solid fa-circle-xmark fa-xs"></i>Inactive
+                                        </span>
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <a class="btn btn-sm btn-outline-secondary"
+                                       href="@Url.Action("Edit", new { id = o.Id })">
+                                        <i class="fa-solid fa-pen me-1" aria-hidden="true"></i>Edit
+                                    </a>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
 </div>

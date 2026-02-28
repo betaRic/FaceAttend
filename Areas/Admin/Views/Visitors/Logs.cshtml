@@ -15,52 +15,56 @@
     bool hasRows = Model != null && Model.Any();
 }
 
-@* ======================================================================
-   SHARED TAB CHROME  (Logs tab active)
-   ====================================================================== *@
-<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
-    <h4 class="mb-0">
-        <i class="fa-solid fa-user-check me-2" aria-hidden="true"></i>Visitors
-    </h4>
-    <a class="btn btn-primary btn-sm" href="@profilesUrl">
-        <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add visitor
-    </a>
-</div>
+<div class="ea-page">
 
-<ul class="nav nav-tabs mb-3" role="tablist">
-    <li class="nav-item" role="presentation">
-        <a class="nav-link" href="@profilesUrl">
-            <i class="fa-solid fa-users me-1" aria-hidden="true"></i>Visitor Profiles
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+                Visitors
+            </h1>
+            <div class="ea-page-subtitle">Walk-in visitor face enrollment and log management</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-primary btn-sm" href="@profilesUrl">
+                <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add Visitor
+            </a>
+        </div>
+    </div>
+
+    @* -- Tabs -- *@
+    <div class="ea-tabs">
+        <a class="ea-tab" href="@profilesUrl">
+            <i class="fa-solid fa-users" aria-hidden="true"></i>
+            Visitor Profiles
         </a>
-    </li>
-    <li class="nav-item" role="presentation">
-        <a class="nav-link active" href="@Url.Action("Logs")" aria-current="page">
-            <i class="fa-solid fa-clipboard-list me-1" aria-hidden="true"></i>
+        <a class="ea-tab active" href="@Url.Action("Logs")" aria-current="page">
+            <i class="fa-solid fa-clipboard-list" aria-hidden="true"></i>
             Visit Logs
             @if (hasRows)
             {
-                <span class="badge bg-secondary ms-1">@Model.Count</span>
+                <span class="badge bg-primary ms-1" style="font-size:.68rem;">@Model.Count</span>
             }
         </a>
-    </li>
-</ul>
+    </div>
 
-@if (TempData["msg"] != null)
-{
-    string kind = (TempData["msgKind"] as string) ?? "success";
-    <div class="alert alert-@kind admin-card p-3 mb-3">@TempData["msg"]</div>
-}
+    @* -- Flash message -- *@
+    @if (TempData["msg"] != null)
+    {
+        string msgKind = (TempData["msgKind"] as string) ?? "success";
+        <div class="ea-alert @msgKind mb-3">
+            <i class="fa-solid @(msgKind == "success" ? "fa-circle-check" : "fa-triangle-exclamation") fa-sm" aria-hidden="true"></i>
+            @TempData["msg"]
+        </div>
+    }
 
-@* Filter + actions card *@
-<div class="admin-card mb-3">
-    <div class="card-body">
+    @* -- Filter card -- *@
+    <div class="ea-filter-card">
         <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
             <a class="btn btn-outline-primary btn-sm" href="@exportUrl" target="_blank">
                 <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export CSV
             </a>
-            @using (Html.BeginForm("Purge", "Visitors",
-                new { area = "Admin" }, FormMethod.Post,
-                new { @class = "d-inline" }))
+            @using (Html.BeginForm("Purge", "Visitors", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
             {
                 @Html.AntiForgeryToken()
                 <button class="btn btn-outline-danger btn-sm" type="submit"
@@ -73,101 +77,137 @@
         </div>
 
         <form method="get" action="@Url.Action("Logs")" class="row g-2 align-items-end">
-            <div class="col-12 col-md-2">
-                <label class="form-label small mb-1">From</label>
+            <div class="col-12 col-sm-6 col-md-2">
+                <label class="ea-filter-label">From</label>
                 <input class="form-control form-control-sm" name="from" type="date" value="@from" />
             </div>
-            <div class="col-12 col-md-2">
-                <label class="form-label small mb-1">To</label>
+            <div class="col-12 col-sm-6 col-md-2">
+                <label class="ea-filter-label">To</label>
                 <input class="form-control form-control-sm" name="to" type="date" value="@to" />
             </div>
-            <div class="col-12 col-md-2">
-                <label class="form-label small mb-1">Office</label>
+            <div class="col-12 col-sm-6 col-md-2">
+                <label class="ea-filter-label">Office</label>
                 @Html.DropDownList("officeId", officeOptions, new { @class = "form-select form-select-sm" })
             </div>
-            <div class="col-12 col-md-3">
-                <label class="form-label small mb-1">Search</label>
-                <input class="form-control form-control-sm" name="q" value="@q" placeholder="Name or purpose..." />
+            <div class="col-12 col-sm-6 col-md-3">
+                <label class="ea-filter-label">Search</label>
+                <div class="input-group input-group-sm">
+                    <span class="input-group-text bg-white border-end-0">
+                        <i class="fa-solid fa-magnifying-glass text-muted" aria-hidden="true"></i>
+                    </span>
+                    <input class="form-control border-start-0 ps-0" name="q" value="@q" placeholder="Name or purpose..." />
+                </div>
             </div>
-            <div class="col-12 col-md-2">
-                <label class="form-label small mb-1">Visitor type</label>
+            <div class="col-12 col-sm-6 col-md-2">
+                <label class="ea-filter-label">Visitor type</label>
                 <select class="form-select form-select-sm" name="knownOnly">
-                    <option value="false" @(knownOnly ? ""         : "selected")>All visitors</option>
-                    <option value="true"  @(knownOnly ? "selected" : "")>Enrolled only</option>
+                    <option value="false" @(!knownOnly ? "selected" : "")>All visitors</option>
+                    <option value="true"  @(knownOnly  ? "selected" : "")>Enrolled only</option>
                 </select>
             </div>
-            <div class="col-12 col-md-1 d-flex gap-1">
-                <button class="btn btn-primary btn-sm flex-fill" type="submit" title="Apply filters">
-                    <i class="fa-solid fa-filter" aria-hidden="true"></i>
-                </button>
-                <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Logs")" title="Reset filters">
-                    <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-                </a>
+            <div class="col-12 col-sm-auto ms-sm-auto">
+                <div class="d-flex gap-2">
+                    <button class="btn btn-primary btn-sm px-3" type="submit">
+                        <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
+                    </button>
+                    <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Logs")">
+                        <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+                    </a>
+                </div>
             </div>
         </form>
     </div>
-</div>
 
-<div class="admin-card">
-    <div class="card-body">
-        @if (!hasRows)
-        {
-            <div class="py-4 text-center text-muted">
-                <i class="fa-solid fa-clipboard fa-2x mb-2 d-block" aria-hidden="true"></i>
-                No visit logs found for this filter.
+    @* -- Table card -- *@
+    <div class="ea-table-card">
+        <div class="ea-table-header">
+            <div class="ea-table-title">
+                <i class="fa-solid fa-clipboard-list text-primary" aria-hidden="true"></i>
+                Visit Logs
             </div>
-        }
-        else
-        {
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle mb-0 js-datatable"
+            @if (hasRows)
+            {
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:.75rem;">
+                    @Model.Count log@(Model.Count == 1 ? "" : "s")
+                </span>
+            }
+        </div>
+
+        <div class="table-responsive">
+            @if (!hasRows)
+            {
+                <div class="ea-empty">
+                    <i class="fa-solid fa-clipboard" aria-hidden="true"></i>
+                    <div class="ea-empty-title">No visit logs found</div>
+                    <div class="ea-empty-desc">Try adjusting the date range or filters.</div>
+                </div>
+            }
+            else
+            {
+                <table class="ea-table table table-hover align-middle mb-0 js-datatable"
                        data-dt-page-length="25">
                     <thead>
                         <tr>
-                            <th style="width:155px;">Time</th>
+                            <th>Time</th>
                             <th>Visitor</th>
-                            <th style="width:90px;">Enrolled</th>
-                            <th style="width:140px;">Office</th>
+                            <th>Enrolled</th>
+                            <th>Office</th>
                             <th>Purpose</th>
-                            <th style="width:100px;">Source</th>
+                            <th>Source</th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var r in Model)
                         {
+                            var localTs = r.TimestampUtc.ToLocalTime();
                             <tr>
-                                <td class="small text-nowrap text-muted">
-                                    @r.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                                <td style="white-space:nowrap;">
+                                    <div class="fw-semibold" style="font-size:.85rem;">@localTs.ToString("HH:mm")</div>
+                                    <div class="ea-cell-muted">@localTs.ToString("MMM d, yyyy")</div>
                                 </td>
-                                <td class="fw-semibold small">@r.VisitorName</td>
+                                <td>
+                                    <div class="fw-semibold" style="font-size:.875rem;">@r.VisitorName</div>
+                                </td>
                                 <td>
                                     @if (r.IsKnown)
                                     {
-                                        <span class="badge bg-primary">
-                                            <i class="fa-solid fa-face-smile me-1" aria-hidden="true"></i>Yes
+                                        <span class="ea-badge enrolled">
+                                            <i class="fa-solid fa-face-smile fa-xs"></i>Yes
                                         </span>
                                     }
                                     else
                                     {
-                                        <span class="badge bg-light text-dark border">
-                                            <i class="fa-solid fa-user me-1" aria-hidden="true"></i>No
+                                        <span class="ea-badge secondary">
+                                            <i class="fa-solid fa-user fa-xs"></i>Walk-in
                                         </span>
                                     }
                                 </td>
-                                <td class="small text-muted">@r.OfficeName</td>
-                                <td class="small">@(string.IsNullOrWhiteSpace(r.Purpose) ? "-" : r.Purpose)</td>
-                                <td class="small text-muted">@r.Source</td>
+                                <td class="ea-cell-muted" style="font-size:.82rem;">@r.OfficeName</td>
+                                <td style="font-size:.82rem; max-width:220px;">
+                                    @(string.IsNullOrWhiteSpace(r.Purpose) ? "-" : r.Purpose)
+                                </td>
+                                <td class="ea-cell-muted" style="font-size:.78rem;">
+                                    <code>@r.Source</code>
+                                </td>
                             </tr>
                         }
                     </tbody>
                 </table>
-            </div>
+            }
+        </div>
 
-            <div class="text-muted small mt-2 pt-2 border-top">
-                @Model.Count log@(Model.Count == 1 ? "" : "s")
-                <span class="mx-1" aria-hidden="true">&middot;</span>
-                Capped at 10,000 rows. Use date filters or export for larger ranges.
+        @if (hasRows)
+        {
+            <div class="ea-table-footer">
+                <div class="ea-table-info">
+                    @Model.Count log@(Model.Count == 1 ? "" : "s") shown.
+                    Capped at 5,000 rows &mdash; use date filters or export for larger ranges.
+                </div>
+                <a class="ea-table-info text-decoration-none" href="@exportUrl" target="_blank">
+                    <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export CSV
+                </a>
             </div>
         }
     </div>
+
 </div>

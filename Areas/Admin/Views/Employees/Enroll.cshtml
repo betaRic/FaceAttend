@@ -5,76 +5,1473 @@
 @using System.Configuration
 
 @{
-    // Client-side scan tuning (server still enforces liveness in Enroll)
     var perFrame = ConfigurationManager.AppSettings["Biometrics:LivenessThreshold"] ?? "0.75";
-    var fullName = Model.LastName + ", " + Model.FirstName + (string.IsNullOrWhiteSpace(Model.MiddleName) ? "" : " " + Model.MiddleName);
+    var fullName  = Model.LastName + ", " + Model.FirstName
+                    + (string.IsNullOrWhiteSpace(Model.MiddleName) ? "" : " " + Model.MiddleName);
+    var isEnrolled = !string.IsNullOrEmpty(Model.FaceEncodingBase64);
+
+    // Initials avatar
+    var initials = "";
+    if (!string.IsNullOrWhiteSpace(Model.FirstName)) { initials += Model.FirstName[0]; }
+    if (!string.IsNullOrWhiteSpace(Model.LastName))  { initials += Model.LastName[0]; }
+    initials = initials.ToUpperInvariant();
 }
 
-<div class="admin-card enroll-card">
-    <div class="card-body enroll-body">
+@section styles {
+<style>
+/* ==================================================================
+   FaceAttend - Enroll Page  -  Modern Redesign
+   Stack: Bootstrap 5, Font Awesome 6, custom CSS + JS
+   ================================================================== */
 
-        <div class="enroll-head">
-            <h4 class="mb-1">Enroll Face</h4>
-            <div class="text-muted small">
-                @Model.EmployeeId - @fullName
+/* -- Root tokens ------------------------------------------------ */
+:root {
+    --ea-primary:      #0d6efd;
+    --ea-primary-rgb:  13, 110, 253;
+    --ea-success:      #198754;
+    --ea-danger:       #dc3545;
+    --ea-warning:      #fd7e14;
+    --ea-surface:      #fff;
+    --ea-surface-2:    #f8f9fa;
+    --ea-border:       #dee2e6;
+    --ea-text:         #212529;
+    --ea-muted:        #6c757d;
+    --ea-radius-lg:    1rem;
+    --ea-radius-xl:    1.25rem;
+    --ea-shadow-sm:    0 2px 8px rgba(0,0,0,.06);
+    --ea-shadow-md:    0 4px 20px rgba(0,0,0,.10);
+    --ea-shadow-lg:    0 8px 40px rgba(0,0,0,.14);
+    --ea-glow-primary: 0 0 0 4px rgba(13,110,253,.18);
+    --ea-glow-success: 0 0 0 4px rgba(25,135,84,.18);
+    --ea-glow-danger:  0 0 0 4px rgba(220,53,69,.18);
+    --ea-transition:   .22s cubic-bezier(.4,0,.2,1);
+}
+
+/* -- Page scaffold --------------------------------------------- */
+.fa-enroll-page {
+    padding: 1.5rem 0 3rem;
+    min-height: calc(100vh - 56px);
+    background: var(--ea-surface-2);
+}
+
+/* -- Employee hero card ---------------------------------------- */
+.fa-hero {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-md);
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    animation: slideDown .35s ease both;
+}
+
+.fa-avatar {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--ea-primary) 0%, #0043a8 100%);
+    color: #fff;
+    font-size: 1.25rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    letter-spacing: .02em;
+    box-shadow: 0 4px 12px rgba(var(--ea-primary-rgb),.35);
+}
+
+.fa-hero-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.fa-hero-name {
+    font-size: 1.2rem;
+    font-weight: 700;
+    color: var(--ea-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.3;
+}
+
+.fa-hero-meta {
+    font-size: .82rem;
+    color: var(--ea-muted);
+    margin-top: .2rem;
+    display: flex;
+    flex-wrap: wrap;
+    gap: .5rem .9rem;
+    align-items: center;
+}
+
+.fa-hero-meta i { opacity: .7; }
+
+.fa-hero-actions {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    flex-shrink: 0;
+}
+
+/* -- Enrollment status badge ----------------------------------- */
+.fa-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .4rem;
+    padding: .28rem .75rem;
+    border-radius: 100px;
+    font-size: .78rem;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.fa-status-badge.enrolled {
+    background: rgba(25,135,84,.12);
+    color: var(--ea-success);
+    border: 1px solid rgba(25,135,84,.25);
+}
+
+.fa-status-badge.not-enrolled {
+    background: rgba(253,126,20,.12);
+    color: var(--ea-warning);
+    border: 1px solid rgba(253,126,20,.30);
+}
+
+/* -- Step breadcrumb ------------------------------------------- */
+.fa-steps {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 1.5rem;
+    animation: slideDown .38s .05s ease both;
+}
+
+.fa-step {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    padding: .55rem 1rem;
+    border-radius: var(--ea-radius-lg);
+    font-size: .82rem;
+    font-weight: 600;
+    color: var(--ea-muted);
+    background: transparent;
+    transition: all var(--ea-transition);
+    white-space: nowrap;
+    user-select: none;
+}
+
+.fa-step-num {
+    width: 1.6rem;
+    height: 1.6rem;
+    border-radius: 50%;
+    background: var(--ea-border);
+    color: var(--ea-muted);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: .72rem;
+    font-weight: 700;
+    transition: all var(--ea-transition);
+    flex-shrink: 0;
+}
+
+.fa-step.active .fa-step-num {
+    background: var(--ea-primary);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(var(--ea-primary-rgb),.4);
+}
+
+.fa-step.active {
+    color: var(--ea-primary);
+}
+
+.fa-step.done .fa-step-num {
+    background: var(--ea-success);
+    color: #fff;
+}
+
+.fa-step.done {
+    color: var(--ea-success);
+}
+
+.fa-step-divider {
+    flex: 1;
+    height: 2px;
+    background: var(--ea-border);
+    margin: 0 .25rem;
+    border-radius: 2px;
+    transition: background var(--ea-transition);
+}
+
+.fa-step-divider.done {
+    background: var(--ea-success);
+}
+
+/* -- Main content card ----------------------------------------- */
+.fa-card {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-md);
+    padding: 2rem;
+    animation: slideUp .38s .08s ease both;
+}
+
+/* -- Method chooser -------------------------------------------- */
+.fa-method-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+@@media (max-width: 500px) {
+    .fa-method-grid { grid-template-columns: 1fr; }
+}
+
+.fa-method-card {
+    position: relative;
+    border: 2px solid var(--ea-border);
+    border-radius: var(--ea-radius-lg);
+    padding: 1.75rem 1.5rem;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    background: var(--ea-surface);
+    text-align: center;
+    overflow: hidden;
+    outline: none;
+}
+
+.fa-method-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(135deg, rgba(var(--ea-primary-rgb),.04), transparent);
+    opacity: 0;
+    transition: opacity var(--ea-transition);
+}
+
+.fa-method-card:hover,
+.fa-method-card:focus-visible {
+    border-color: var(--ea-primary);
+    box-shadow: var(--ea-glow-primary);
+    transform: translateY(-2px);
+}
+
+.fa-method-card:hover::before,
+.fa-method-card:focus-visible::before {
+    opacity: 1;
+}
+
+.fa-method-card:active {
+    transform: translateY(0);
+}
+
+.fa-method-icon {
+    width: 3.5rem;
+    height: 3.5rem;
+    border-radius: 1rem;
+    background: rgba(var(--ea-primary-rgb),.1);
+    color: var(--ea-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.4rem;
+    margin: 0 auto .9rem;
+    transition: all var(--ea-transition);
+}
+
+.fa-method-card:hover .fa-method-icon,
+.fa-method-card:focus-visible .fa-method-icon {
+    background: var(--ea-primary);
+    color: #fff;
+    box-shadow: 0 4px 14px rgba(var(--ea-primary-rgb),.4);
+}
+
+.fa-method-title {
+    font-weight: 700;
+    font-size: .98rem;
+    margin-bottom: .35rem;
+    color: var(--ea-text);
+}
+
+.fa-method-desc {
+    font-size: .8rem;
+    color: var(--ea-muted);
+    line-height: 1.45;
+}
+
+.fa-method-rec {
+    display: inline-block;
+    margin-top: .6rem;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .15rem .5rem;
+    border-radius: 100px;
+    background: rgba(var(--ea-primary-rgb),.1);
+    color: var(--ea-primary);
+    letter-spacing: .03em;
+}
+
+/* -- Camera pane ----------------------------------------------- */
+.fa-cam-layout {
+    display: grid;
+    grid-template-columns: 1fr 280px;
+    gap: 1.25rem;
+    align-items: start;
+}
+
+@@media (max-width: 900px) {
+    .fa-cam-layout { grid-template-columns: 1fr; }
+}
+
+.fa-video-wrap {
+    position: relative;
+    border-radius: var(--ea-radius-xl);
+    overflow: hidden;
+    background: #0a0f1a;
+    aspect-ratio: 4/3;
+    box-shadow: var(--ea-shadow-lg);
+}
+
+.fa-video-wrap.pulse-border {
+    box-shadow: 0 0 0 3px rgba(var(--ea-primary-rgb),.4),
+                var(--ea-shadow-lg);
+}
+
+.fa-video-wrap.border-success-glow {
+    box-shadow: 0 0 0 3px rgba(25,135,84,.5),
+                var(--ea-shadow-lg);
+    animation: glowPulse 1.2s ease infinite;
+}
+
+.fa-video-wrap.border-danger-glow {
+    box-shadow: 0 0 0 3px rgba(220,53,69,.5),
+                var(--ea-shadow-lg);
+}
+
+@@keyframes glowPulse {
+    0%,100% { box-shadow: 0 0 0 3px rgba(25,135,84,.5), var(--ea-shadow-lg); }
+    50%      { box-shadow: 0 0 0 6px rgba(25,135,84,.25), var(--ea-shadow-lg); }
+}
+
+#cam {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    display: block;
+}
+
+#enrollOverlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+/* corner brackets on the video */
+.fa-cam-corner {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-color: rgba(var(--ea-primary-rgb),.8);
+    border-style: solid;
+    opacity: .8;
+}
+.fa-cam-corner.tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; border-radius: 3px 0 0 0; }
+.fa-cam-corner.tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; border-radius: 0 3px 0 0; }
+.fa-cam-corner.bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; border-radius: 0 0 0 3px; }
+.fa-cam-corner.br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; border-radius: 0 0 3px 0; }
+
+/* -- Liveness bar at top of video ------------------------------ */
+.fa-live-bar-wrap {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    padding: .6rem .8rem .4rem;
+    background: linear-gradient(to bottom, rgba(0,0,0,.55) 0%, transparent 100%);
+}
+
+.fa-live-bar-label {
+    font-size: .7rem;
+    font-weight: 600;
+    color: rgba(255,255,255,.75);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    margin-bottom: .25rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.fa-live-bar-track {
+    height: 4px;
+    background: rgba(255,255,255,.2);
+    border-radius: 100px;
+    overflow: hidden;
+}
+
+.fa-live-bar-fill {
+    height: 100%;
+    border-radius: 100px;
+    background: var(--ea-primary);
+    width: 0%;
+    transition: width .3s ease, background .3s ease;
+}
+
+.fa-live-bar-fill.live-pass { background: var(--ea-success); }
+.fa-live-bar-fill.live-warn { background: var(--ea-warning); }
+.fa-live-bar-fill.live-fail { background: var(--ea-danger); }
+
+/* -- Status overlay at bottom of video ------------------------ */
+#camStatus {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10;
+    padding: .8rem;
+}
+
+#camStatus .fa-status-msg {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    background: rgba(10,15,26,.82);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: .75rem;
+    padding: .65rem .9rem;
+    color: #fff;
+    font-size: .85rem;
+    font-weight: 500;
+    border: 1px solid rgba(255,255,255,.08);
+    transition: all var(--ea-transition);
+}
+
+#camStatus .fa-status-msg.is-success {
+    background: rgba(25,135,84,.88);
+    border-color: rgba(25,135,84,.5);
+}
+
+#camStatus .fa-status-msg.is-danger {
+    background: rgba(220,53,69,.88);
+    border-color: rgba(220,53,69,.4);
+}
+
+#camStatus .fa-status-msg.is-warning {
+    background: rgba(253,126,20,.88);
+    border-color: rgba(253,126,20,.4);
+}
+
+.fa-status-spinner {
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    flex-shrink: 0;
+    animation: spin .7s linear infinite;
+}
+
+@@keyframes spin { to { transform: rotate(360deg); } }
+
+/* -- Capture progress dots ------------------------------------- */
+.fa-progress-dots {
+    display: flex;
+    gap: .4rem;
+    justify-content: center;
+    padding: .7rem;
+    position: absolute;
+    right: .8rem;
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: column;
+}
+
+.fa-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255,255,255,.25);
+    transition: all .25s ease;
+    border: 1.5px solid rgba(255,255,255,.35);
+}
+
+.fa-dot.filled {
+    background: var(--ea-success);
+    border-color: var(--ea-success);
+    box-shadow: 0 0 6px rgba(25,135,84,.7);
+}
+
+.fa-dot.active {
+    background: var(--ea-primary);
+    border-color: var(--ea-primary);
+    box-shadow: 0 0 6px rgba(var(--ea-primary-rgb),.7);
+    animation: dotPulse .8s ease infinite;
+}
+
+@@keyframes dotPulse {
+    0%,100% { transform: scale(1); }
+    50%      { transform: scale(1.3); }
+}
+
+/* -- Side panel ------------------------------------------------ */
+.fa-side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: .85rem;
+}
+
+.fa-side-card {
+    background: var(--ea-surface-2);
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-lg);
+    padding: 1rem 1.1rem;
+}
+
+.fa-side-card-title {
+    font-size: .72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .06em;
+    color: var(--ea-muted);
+    margin-bottom: .6rem;
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+}
+
+.fa-live-score-num {
+    font-size: 1.8rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--ea-text);
+    font-variant-numeric: tabular-nums;
+    transition: color .3s;
+}
+
+.fa-live-score-num.pass { color: var(--ea-success); }
+.fa-live-score-num.fail { color: var(--ea-danger); }
+
+.fa-live-score-label {
+    font-size: .78rem;
+    font-weight: 600;
+    color: var(--ea-muted);
+    margin-top: .15rem;
+}
+
+.fa-pass-indicator {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: .8rem;
+    font-weight: 500;
+    margin-top: .5rem;
+}
+
+.fa-pass-indicator .badge-pass {
+    background: rgba(25,135,84,.12);
+    color: var(--ea-success);
+    border: 1px solid rgba(25,135,84,.25);
+    border-radius: 100px;
+    padding: .15rem .6rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+}
+
+.fa-pass-indicator .badge-fail {
+    background: rgba(220,53,69,.1);
+    color: var(--ea-danger);
+    border: 1px solid rgba(220,53,69,.2);
+    border-radius: 100px;
+    padding: .15rem .6rem;
+    font-size: .72rem;
+    font-weight: 700;
+    letter-spacing: .04em;
+}
+
+/* -- Instructions list ----------------------------------------- */
+.fa-tips {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: .5rem;
+}
+
+.fa-tips li {
+    display: flex;
+    align-items: flex-start;
+    gap: .5rem;
+    font-size: .8rem;
+    color: var(--ea-muted);
+    line-height: 1.4;
+}
+
+.fa-tips li i {
+    margin-top: .1rem;
+    flex-shrink: 0;
+    color: var(--ea-primary);
+    opacity: .75;
+}
+
+/* -- Back link ------------------------------------------------- */
+.fa-back-btn {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--ea-muted);
+    font-size: .82rem;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: .35rem;
+    transition: color var(--ea-transition);
+    text-decoration: none;
+}
+
+.fa-back-btn:hover { color: var(--ea-primary); }
+
+/* -- Upload pane ----------------------------------------------- */
+.fa-dropzone {
+    border: 2px dashed var(--ea-border);
+    border-radius: var(--ea-radius-xl);
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all var(--ea-transition);
+    position: relative;
+    background: var(--ea-surface);
+    max-width: 520px;
+    margin: 0 auto;
+}
+
+.fa-dropzone:hover,
+.fa-dropzone.drag-over {
+    border-color: var(--ea-primary);
+    background: rgba(var(--ea-primary-rgb),.03);
+    box-shadow: var(--ea-glow-primary);
+}
+
+.fa-dropzone input[type=file] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+}
+
+.fa-dropzone-icon {
+    width: 4rem;
+    height: 4rem;
+    border-radius: 1.25rem;
+    background: rgba(var(--ea-primary-rgb),.1);
+    color: var(--ea-primary);
+    font-size: 1.6rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    transition: all var(--ea-transition);
+}
+
+.fa-dropzone:hover .fa-dropzone-icon,
+.fa-dropzone.drag-over .fa-dropzone-icon {
+    background: var(--ea-primary);
+    color: #fff;
+    box-shadow: 0 6px 20px rgba(var(--ea-primary-rgb),.35);
+    transform: scale(1.08);
+}
+
+.fa-dropzone-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--ea-text);
+    margin-bottom: .35rem;
+}
+
+.fa-dropzone-desc {
+    font-size: .82rem;
+    color: var(--ea-muted);
+}
+
+.fa-dropzone-rules {
+    display: flex;
+    gap: .5rem;
+    justify-content: center;
+    margin-top: .9rem;
+    flex-wrap: wrap;
+}
+
+.fa-dropzone-rules span {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    font-size: .72rem;
+    font-weight: 600;
+    padding: .2rem .6rem;
+    border-radius: 100px;
+    background: var(--ea-surface-2);
+    border: 1px solid var(--ea-border);
+    color: var(--ea-muted);
+}
+
+/* -- File preview strip ---------------------------------------- */
+.fa-file-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: .6rem;
+    margin-top: 1rem;
+    justify-content: center;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+}
+
+.fa-file-chip {
+    display: flex;
+    align-items: center;
+    gap: .4rem;
+    background: var(--ea-surface-2);
+    border: 1px solid var(--ea-border);
+    border-radius: .5rem;
+    padding: .3rem .65rem;
+    font-size: .78rem;
+    color: var(--ea-text);
+    font-weight: 500;
+    animation: fadeIn .2s ease both;
+}
+
+.fa-file-chip i { color: var(--ea-primary); }
+
+/* -- Upload status --------------------------------------------- */
+#upStatus .fa-upstatus-box {
+    display: flex;
+    align-items: center;
+    gap: .6rem;
+    border-radius: var(--ea-radius-lg);
+    padding: .8rem 1rem;
+    font-size: .88rem;
+    font-weight: 500;
+    margin-top: 1rem;
+    max-width: 520px;
+    margin-left: auto;
+    margin-right: auto;
+    animation: slideUp .25s ease both;
+}
+
+#upStatus .fa-upstatus-box.is-info    { background:rgba(13,110,253,.08); color:var(--ea-primary);   border:1px solid rgba(13,110,253,.2); }
+#upStatus .fa-upstatus-box.is-success { background:rgba(25,135,84,.08);  color:var(--ea-success);   border:1px solid rgba(25,135,84,.2); }
+#upStatus .fa-upstatus-box.is-danger  { background:rgba(220,53,69,.08);  color:var(--ea-danger);    border:1px solid rgba(220,53,69,.2); }
+#upStatus .fa-upstatus-box.is-warning { background:rgba(253,126,20,.08); color:var(--ea-warning);   border:1px solid rgba(253,126,20,.25); }
+
+/* -- Animations ------------------------------------------------ */
+@@keyframes slideDown {
+    from { opacity:0; transform:translateY(-14px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+@@keyframes slideUp {
+    from { opacity:0; transform:translateY(14px); }
+    to   { opacity:1; transform:translateY(0); }
+}
+@@keyframes fadeIn {
+    from { opacity:0; }
+    to   { opacity:1; }
+}
+
+/* -- Pane toggle ----------------------------------------------- */
+.fa-pane { display: none; }
+.fa-pane.active { display: block; animation: fadeIn .3s ease; }
+
+/* -- Responsive tweaks ----------------------------------------- */
+@@media (max-width: 575px) {
+    .fa-card { padding: 1.25rem 1rem; }
+    .fa-hero  { padding: 1rem; gap: .9rem; }
+    .fa-step  { padding: .45rem .55rem; font-size: .75rem; }
+}
+</style>
+}
+
+<div class="fa-enroll-page">
+<div class="container-xl" style="max-width:1100px;">
+
+    
+@* ------------------------- Hero Card -------------------------  *@
+
+    <div class="fa-hero">
+        <div class="fa-avatar" aria-hidden="true">@initials</div>
+
+        <div class="fa-hero-info">
+            <div class="fa-hero-name">@fullName</div>
+            <div class="fa-hero-meta">
+                <span><i class="fa-solid fa-id-badge fa-xs me-1"></i>@Model.EmployeeId</span>
+                <span><i class="fa-solid fa-building fa-xs me-1"></i>@(ViewBag.OfficeName ?? "-")</span>
+                @if (!string.IsNullOrWhiteSpace(Model.Department))
+                {
+                    <span><i class="fa-solid fa-sitemap fa-xs me-1"></i>@Model.Department</span>
+                }
+                @if (Model.IsFlexi)
+                {
+                    <span class="badge bg-info-subtle text-info border border-info-subtle" style="font-size:.7rem;">
+                        <i class="fa-solid fa-clock me-1"></i>Flexi
+                    </span>
+                }
             </div>
-            <div class="text-muted small">Office: @(ViewBag.OfficeName ?? "-")</div>
         </div>
 
+        <div class="fa-hero-actions">
+            <span class="fa-status-badge @(isEnrolled ? "enrolled" : "not-enrolled")">
+                <i class="fa-solid @(isEnrolled ? "fa-circle-check" : "fa-circle-exclamation") fa-xs"></i>
+                @(isEnrolled ? "Enrolled" : "Not Enrolled")
+            </span>
+            <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-sm btn-outline-secondary" title="Edit employee">
+                <i class="fa-solid fa-pen"></i>
+            </a>
+            <a href="@Url.Action("Index")" class="btn btn-sm btn-outline-secondary" title="Back to list">
+                <i class="fa-solid fa-arrow-left"></i>
+            </a>
+        </div>
+    </div>
+
+    
+@* ------------------------- Step Breadcrumb -------------------  *@
+
+    <div class="fa-steps" id="faSteps">
+        <div class="fa-step active" data-step="1">
+            <span class="fa-step-num">1</span>
+            <span>Choose Method</span>
+        </div>
+        <div class="fa-step-divider" id="divider1"></div>
+        <div class="fa-step" data-step="2">
+            <span class="fa-step-num">2</span>
+            <span>Capture</span>
+        </div>
+        <div class="fa-step-divider" id="divider2"></div>
+        <div class="fa-step" data-step="3">
+            <span class="fa-step-num">
+                <i class="fa-solid fa-check fa-xs"></i>
+            </span>
+            <span>Done</span>
+        </div>
+    </div>
+
+    
+@* ------------------------- Main Card -------------------------  *@
+
+    <div class="fa-card">
+
+        
+@* Hidden CSRF token for JS  *@
+
+        @using (Html.BeginForm("", "", FormMethod.Post, new { id = "hiddenForm", @class = "d-none" }))
+        { @Html.AntiForgeryToken() }
+
         <div id="enrollRoot"
-             class="enroll-root"
              data-employee-id="@Model.EmployeeId"
              data-per-frame="@perFrame"
              data-scan-url="@Url.Content("~/Biometrics/ScanFrame")"
-             data-enroll-url="@Url.Content("~/Biometrics/Enroll")">
+             data-enroll-url="@Url.Content("~/Biometrics/Enroll")"
+             data-redirect-url="@Url.Action("Index", "Employees", new { area = "Admin" })">
 
-            <div id="enrollWizard" class="enroll-toolbar">
-                <div class="btn-group btn-group-sm" role="group" aria-label="Enroll method">
-                    <button type="button" class="btn btn-outline-primary enroll-choice" data-enroll-mode="live">
-                        <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>Camera
-                    </button>
-                    <button type="button" class="btn btn-outline-primary enroll-choice" data-enroll-mode="upload">
-                        <i class="fa-solid fa-upload me-1" aria-hidden="true"></i>Upload
-                    </button>
+            
+@* ------- Wizard: choose method -------  *@
+
+            <div id="enrollWizard">
+                <div class="text-center mb-4">
+                    <div class="fw-bold fs-5 mb-1">Select Enrollment Method</div>
+                    <div class="text-muted" style="font-size:.86rem;">
+                        Choose how to capture the face biometric for this employee.
+                    </div>
                 </div>
-                <div class="text-muted small">click a method to start</div>
-            </div>
 
-            <div class="d-none enroll-pane" id="livePane">
-                <div class="enroll-video-wrap" aria-label="Camera preview">
-                    <video id="cam" autoplay playsinline muted class="enroll-video"></video>
-                    <canvas id="enrollOverlay" class="enroll-overlay"></canvas>
-                    <div id="camStatus" class="enroll-status"></div>
-                </div>
-            </div>
+                <div class="fa-method-grid">
+                    
+@* Camera card  *@
 
-            <div class="d-none enroll-pane" id="uploadPane">
-                <div class="enroll-upload">
-                    <div class="fw-semibold mb-2">Upload photo</div>
-
-                    @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
-                    {
-                        @Html.AntiForgeryToken()
-                        <input type="file" class="form-control" id="file" accept="image/*" multiple />
-                    }
-
-                    <div class="mt-2" id="upStatus"></div>
-
-                    <div class="mt-3">
-                        <div class="small text-muted">Current:</div>
-                        <div class="fw-semibold">
-                            @(string.IsNullOrEmpty(Model.FaceEncodingBase64) ? "Not enrolled" : "Enrolled")
+                    <div class="fa-method-card"
+                         role="button"
+                         tabindex="0"
+                         data-enroll-mode="live"
+                         aria-label="Live camera enrollment">
+                        <div class="fa-method-icon">
+                            <i class="fa-solid fa-camera" aria-hidden="true"></i>
                         </div>
-                        <div class="small text-muted">Tip: upload 1-5 clear photos.</div>
+                        <div class="fa-method-title">Live Camera</div>
+                        <div class="fa-method-desc">
+                            Real-time face capture with automatic liveness detection.
+                        </div>
+                        <span class="fa-method-rec">
+                            <i class="fa-solid fa-star fa-xs me-1"></i>Recommended
+                        </span>
+                    </div>
+
+                    
+@* Upload card  *@
+
+                    <div class="fa-method-card"
+                         role="button"
+                         tabindex="0"
+                         data-enroll-mode="upload"
+                         aria-label="Upload photo enrollment">
+                        <div class="fa-method-icon">
+                            <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i>
+                        </div>
+                        <div class="fa-method-title">Upload Photos</div>
+                        <div class="fa-method-desc">
+                            Choose 1-5 clear existing photos. Auto-verified and enrolled.
+                        </div>
                     </div>
                 </div>
             </div>
 
+            
+@* ------- Live camera pane -------  *@
+
+            <div id="livePane" class="fa-pane">
+
+                <button class="fa-back-btn mb-3" id="backFromLive" type="button">
+                    <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
+                </button>
+
+                <div class="fa-cam-layout">
+
+                    
+@* Video  *@
+
+                    <div class="fa-video-wrap" id="videoWrap" aria-label="Camera preview">
+                        
+@* Liveness bar  *@
+
+                        <div class="fa-live-bar-wrap">
+                            <div class="fa-live-bar-label">
+                                <span><i class="fa-solid fa-shield-halved fa-xs me-1"></i>Liveness</span>
+                                <span id="liveBarPct"><i class="fa-solid fa-minus fa-xs" aria-hidden="true"></i></span>
+                            </div>
+                            <div class="fa-live-bar-track">
+                                <div class="fa-live-bar-fill" id="liveBarFill"></div>
+                            </div>
+                        </div>
+
+                        
+@* Corner brackets  *@
+
+                        <div class="fa-cam-corner tl"></div>
+                        <div class="fa-cam-corner tr"></div>
+                        <div class="fa-cam-corner bl"></div>
+                        <div class="fa-cam-corner br"></div>
+
+                        
+@* Video feed  *@
+
+                        <video id="cam" autoplay playsinline muted></video>
+
+                        
+@* Face bounding box canvas  *@
+
+                        <canvas id="enrollOverlay" class="enroll-overlay"></canvas>
+
+                        
+@* Capture progress dots  *@
+
+                        <div class="fa-progress-dots" id="progressDots" aria-label="Capture progress">
+                            <div class="fa-dot" id="dot1"></div>
+                            <div class="fa-dot" id="dot2"></div>
+                            <div class="fa-dot" id="dot3"></div>
+                            <div class="fa-dot" id="dot4"></div>
+                            <div class="fa-dot" id="dot5"></div>
+                        </div>
+
+                        
+@* Status overlay  *@
+
+                        <div id="camStatus"></div>
+                    </div>
+
+                    
+@* Side panel  *@
+
+                    <div class="fa-side-panel">
+
+                        
+@* Liveness score card  *@
+
+                        <div class="fa-side-card">
+                            <div class="fa-side-card-title">
+                                <i class="fa-solid fa-waveform-lines fa-xs"></i>Liveness Score
+                            </div>
+                            <div class="fa-live-score-num" id="sideScore"><i class="fa-solid fa-minus fa-xs" aria-hidden="true"></i></div>
+                            <div class="fa-live-score-label" id="sideScoreLabel">Waiting for scan...</div>
+                            <div class="fa-pass-indicator mt-2" id="sidePassBadge" style="display:none;">
+                                <span>Result</span>
+                                <span class="badge-pass" id="sideBadgeText">PASS</span>
+                            </div>
+                        </div>
+
+                        
+@* Captures collected  *@
+
+                        <div class="fa-side-card">
+                            <div class="fa-side-card-title">
+                                <i class="fa-solid fa-images fa-xs"></i>Samples Collected
+                            </div>
+                            <div style="font-size:1.8rem;font-weight:800;line-height:1;" id="sideCaptures">0</div>
+                            <div style="font-size:.78rem;color:var(--ea-muted);margin-top:.15rem;">of 5 needed</div>
+                            <div class="progress mt-2" style="height:4px;border-radius:100px;">
+                                <div class="progress-bar bg-primary" id="capProgressBar" style="width:0%;transition:width .4s ease;"></div>
+                            </div>
+                        </div>
+
+                        
+@* Tips  *@
+
+                        <div class="fa-side-card">
+                            <div class="fa-side-card-title">
+                                <i class="fa-solid fa-circle-info fa-xs"></i>Tips
+                            </div>
+                            <ul class="fa-tips">
+                                <li><i class="fa-solid fa-sun fa-xs"></i>Good, even lighting</li>
+                                <li><i class="fa-solid fa-user fa-xs"></i>One face in frame only</li>
+                                <li><i class="fa-solid fa-glasses fa-xs"></i>Remove sunglasses</li>
+                                <li><i class="fa-solid fa-arrows-to-dot fa-xs"></i>Face centered, fill frame</li>
+                                <li><i class="fa-solid fa-person-half-dress fa-xs"></i>Look directly at camera</li>
+                            </ul>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            
+@* ------- Upload pane -------  *@
+
+            <div id="uploadPane" class="fa-pane">
+
+                <button class="fa-back-btn mb-3" id="backFromUpload" type="button">
+                    <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
+                </button>
+
+                
+@* Dropzone  *@
+
+                @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
+                {
+                    @Html.AntiForgeryToken()
+
+                    <div class="fa-dropzone" id="dropzone" role="button" aria-label="Upload photos">
+                        <input type="file" id="file" accept="image/*" multiple />
+
+                        <div class="fa-dropzone-icon" aria-hidden="true">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <div class="fa-dropzone-title">Drop photos here or click to browse</div>
+                        <div class="fa-dropzone-desc">
+                            Select 1 to 5 clear, well-lit face photos.
+                        </div>
+                        <div class="fa-dropzone-rules">
+                            <span><i class="fa-solid fa-user-check"></i>One face per photo</span>
+                            <span><i class="fa-solid fa-images"></i>Up to 5 files</span>
+                            <span><i class="fa-brands fa-jpg"></i>JPG / PNG</span>
+                        </div>
+                    </div>
+                }
+
+                
+@* File chips  *@
+
+                <div class="fa-file-strip" id="fileStrip"></div>
+
+                
+@* Upload status  *@
+
+                <div id="upStatus"></div>
+
+            </div>
+
+            
+@* Hidden canvas for capture  *@
+
             <canvas id="cap" style="display:none;"></canvas>
         </div>
     </div>
-</div>
+
+</div><!-- /.container-xl -->
+</div><!-- /.fa-enroll-page -->
 
 @section scripts{
-    <script src="~/Scripts/admin-enroll.js"></script>
+
+<script>
+/* ====================================================================
+   FaceAttend  -  Enroll UI Enhancer
+   Works alongside admin-enroll.js (no modifications needed to it).
+   Techniques used:
+     * innerHTML property monkey-patch -> intercepts admin-enroll status writes
+     * Text parsing of status messages  -> drives liveness bar & side panel
+     * MutationObserver on pane classes -> drives step breadcrumb
+     * Custom drag-and-drop zone
+     * Back button wiring (replicates admin-enroll showWizard/showPane)
+   ==================================================================== */
+(function () {
+    'use strict';
+
+    /* -- DOM helpers ----------------------------------------------- */
+    function el(id) { return document.getElementById(id); }
+
+    /* -- Cache DOM refs -------------------------------------------- */
+    var liveBarFill  = el('liveBarFill');
+    var liveBarPct   = el('liveBarPct');
+    var sideScore    = el('sideScore');
+    var sideLabel    = el('sideScoreLabel');
+    var sideBadge    = el('sidePassBadge');
+    var sideBadgeTx  = el('sideBadgeText');
+    var dots         = [el('dot1'),el('dot2'),el('dot3'),el('dot4'),el('dot5')];
+    var capBar       = el('capProgressBar');
+    var sideCapCount = el('sideCaptures');
+    var videoWrap    = el('videoWrap');
+    var camStatusEl  = el('camStatus');
+    var upStatusEl   = el('upStatus');
+    var dropzone     = el('dropzone');
+    var fileInput    = el('file');
+    var fileStrip    = el('fileStrip');
+    var divider1     = el('divider1');
+    var divider2     = el('divider2');
+    var stepEls      = document.querySelectorAll('.fa-step');
+
+    /* ===============================================================
+       STEP INDICATOR
+       =============================================================== */
+    function setStep(n) {
+        stepEls.forEach(function (s) {
+            var sn = parseInt(s.getAttribute('data-step'), 10);
+            s.classList.remove('active', 'done');
+            if (sn < n)  s.classList.add('done');
+            if (sn === n) s.classList.add('active');
+        });
+        if (divider1) divider1.classList.toggle('done', n > 1);
+        if (divider2) divider2.classList.toggle('done', n > 2);
+    }
+
+    /* ===============================================================
+       LIVENESS BAR + SIDE PANEL
+       =============================================================== */
+    function updateLiveness(pct, kind) {
+        // kind: 'pass' | 'warn' | 'fail' | null
+        if (liveBarFill) {
+            liveBarFill.style.width = pct + '%';
+            liveBarFill.className = 'fa-live-bar-fill' +
+                (kind === 'pass' ? ' live-pass' : kind === 'warn' ? ' live-warn' : kind === 'fail' ? ' live-fail' : '');
+        }
+        if (liveBarPct) liveBarPct.textContent = pct + '%';
+        if (sideScore) {
+            sideScore.textContent = pct + '%';
+            sideScore.className = 'fa-live-score-num' +
+                (kind === 'pass' ? ' pass' : kind === 'fail' ? ' fail' : '');
+        }
+        if (sideBadge && sideBadgeTx && kind) {
+            sideBadge.style.display = 'flex';
+            sideBadgeTx.className = kind === 'pass' ? 'badge-pass' : 'badge-fail';
+            sideBadgeTx.textContent = kind === 'pass' ? 'PASS' : kind === 'fail' ? 'FAIL' : 'LOW';
+        }
+    }
+
+    /* ===============================================================
+       CAPTURE PROGRESS DOTS
+       =============================================================== */
+    function setCaptures(n) {
+        n = Math.min(Math.max(0, n), 5);
+        dots.forEach(function (d, i) {
+            if (!d) return;
+            d.classList.remove('filled', 'active');
+            if (i < n) d.classList.add('filled');
+            else if (i === n) d.classList.add('active');
+        });
+        if (capBar) capBar.style.width = (n / 5 * 100) + '%';
+        if (sideCapCount) sideCapCount.textContent = n;
+    }
+
+    /* ===============================================================
+       VIDEO WRAP GLOW
+       =============================================================== */
+    function setVideoGlow(kind) {
+        if (!videoWrap) return;
+        videoWrap.classList.remove('border-success-glow', 'border-danger-glow', 'pulse-border');
+        if (kind === 'success') videoWrap.classList.add('border-success-glow');
+        else if (kind === 'danger') videoWrap.classList.add('border-danger-glow');
+        else if (kind === 'scan') videoWrap.classList.add('pulse-border');
+    }
+
+    /* ===============================================================
+       STATUS RENDERERS
+       =============================================================== */
+    function iconFor(k) {
+        if (k === 'success') return '<i class="fa-solid fa-circle-check" aria-hidden="true"></i>';
+        if (k === 'danger')  return '<i class="fa-solid fa-circle-xmark" aria-hidden="true"></i>';
+        if (k === 'warning') return '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>';
+        return '<span class="fa-status-spinner" aria-hidden="true"></span>';
+    }
+
+    /* Parse admin-enroll status messages to drive side panel and dots.
+       admin-enroll writes messages like:
+         "face ok - liveness: 0.87, hold still (1 more)."
+         "collecting frames..."
+         "saving enrollment (3 frame(s))..."
+         "enrollment saved. redirecting..."                           */
+    var _collectAnim = null;
+
+    function stopCollectAnim() {
+        if (_collectAnim) { clearInterval(_collectAnim); _collectAnim = null; }
+    }
+
+    function startCollectAnim() {
+        stopCollectAnim();
+        var n = 0;
+        setCaptures(0);
+        _collectAnim = setInterval(function () {
+            n = Math.min(n + 1, 4);   // ramp to 4; will snap to 5 on save
+            setCaptures(n);
+            if (n >= 4) stopCollectAnim();
+        }, 300);
+    }
+
+    function parseLivenessFromText(text, kind) {
+        // Extract liveness score from message
+        var m = text.match(/liveness[:\s]+([0-9]+\.?[0-9]*)/i);
+        if (m) {
+            var val = parseFloat(m[1]);
+            var pct = val <= 1 ? Math.round(val * 100) : Math.round(val);
+            var lvKind = kind === 'success' ? 'pass' : kind === 'warning' ? 'warn' : 'fail';
+            updateLiveness(Math.min(100, pct), lvKind);
+        }
+
+        // "collecting frames" -> animate dots so user sees progress
+        if (/collecting frames/i.test(text)) {
+            startCollectAnim();
+        }
+
+        // "saving enrollment (N frame(s))" -> snap to exact count
+        var coll = text.match(/saving enrollment\s*\((\d+)\s*frame/i);
+        if (coll) {
+            stopCollectAnim();
+            setCaptures(parseInt(coll[1], 10));
+        }
+
+        // "enrollment saved" -> complete UI + redirect
+        if (/enrollment saved/i.test(text)) {
+            stopCollectAnim();
+            setStep(3);
+            setCaptures(5);
+            setVideoGlow('success');
+            if (sideLabel) sideLabel.textContent = 'Enrollment complete!';
+            // Fallback redirect (handles case where admin-enroll redirectUrl is empty)
+            setTimeout(function () {
+                var root = document.getElementById('enrollRoot');
+                var url  = root ? (root.getAttribute('data-redirect-url') || '') : '';
+                if (url) { window.location.href = url; }
+            }, 2200);
+        }
+    }
+
+    function renderCamStatus(text, kind) {
+        var k = kind || 'info';
+        var extraCls = (k !== 'info') ? ' is-' + k : '';
+        // Safe-render (text only, strip any html tags from admin-enroll's setStatusHtml calls)
+        var safeText = text.replace(/<[^>]+>/g, '');
+        if (camStatusEl) {
+            // Use the real setter via the descriptor to avoid infinite recursion
+            _origSet.call(camStatusEl,
+                '<div class="fa-status-msg' + extraCls + '">' +
+                    iconFor(k) +
+                    '<span>' + safeText + '</span>' +
+                '</div>'
+            );
+        }
+        setVideoGlow(k === 'success' ? 'success' : k === 'danger' ? 'danger' : 'scan');
+        parseLivenessFromText(safeText, k);
+
+        // Update sideLabel for non-liveness messages
+        if (sideLabel && !/liveness/i.test(safeText)) {
+            sideLabel.textContent = safeText.substring(0, 60);
+        }
+    }
+
+    function renderUpStatus(text, kind) {
+        var k = kind || 'info';
+        var safeText = text.replace(/<[^>]+>/g, '');
+        if (upStatusEl) {
+            _origSet.call(upStatusEl,
+                '<div class="fa-upstatus-box is-' + k + '">' +
+                    iconFor(k) +
+                    '<span>' + safeText + '</span>' +
+                '</div>'
+            );
+        }
+    }
+
+    /* ===============================================================
+       MONKEY-PATCH innerHTML ON STATUS ELEMENTS
+       Intercepts admin-enroll.js writes (alert-* divs) and
+       re-routes them through our modern renderers.
+       =============================================================== */
+    var _proto = Element.prototype;
+    var _origDescriptor = Object.getOwnPropertyDescriptor(_proto, 'innerHTML');
+    var _origSet = _origDescriptor.set;
+
+    function patchStatusEl(target, renderFn) {
+        if (!target) return;
+        Object.defineProperty(target, 'innerHTML', {
+            get: function () { return _origDescriptor.get.call(this); },
+            set: function (html) {
+                // admin-enroll always writes: <div class="alert alert-{kind} ...">text</div>
+                var m = html ? html.match(/alert-(\w+)[^>]*>([\s\S]*?)(?:<\/div>|$)/) : null;
+                if (m) {
+                    var kind = m[1] === 'primary' ? 'info' : m[1];
+                    renderFn(m[2], kind);
+                } else {
+                    // Non-admin-enroll write  -  pass through
+                    _origSet.call(this, html || '');
+                }
+            },
+            configurable: true
+        });
+    }
+
+    patchStatusEl(camStatusEl, renderCamStatus);
+    patchStatusEl(upStatusEl,  renderUpStatus);
+
+    /* ===============================================================
+       PANE OBSERVER -> STEP TRACKER
+       admin-enroll toggles .d-none on livePane / uploadPane / wizard
+       =============================================================== */
+    var wizardEl = el('enrollWizard');
+    var livePane = el('livePane');
+    var upPane   = el('uploadPane');
+
+    function syncStepFromPanes() {
+        var wizHidden   = wizardEl && wizardEl.classList.contains('d-none');
+        var liveVisible = livePane && !livePane.classList.contains('d-none');
+        var upVisible   = upPane   && !upPane.classList.contains('d-none');
+        if (!wizHidden && !liveVisible && !upVisible) setStep(1);
+        else if (liveVisible || upVisible) setStep(2);
+    }
+
+    var paneObs = new MutationObserver(syncStepFromPanes);
+    [wizardEl, livePane, upPane].forEach(function (n) {
+        if (n) paneObs.observe(n, { attributes: true, attributeFilter: ['class', 'style'] });
+    });
+
+    /* -- Bridge d-none <-> fa-pane.active for CSS -------------------- */
+    function bridgeClass(pane) {
+        if (!pane) return;
+        new MutationObserver(function () {
+            pane.classList.toggle('active', !pane.classList.contains('d-none'));
+        }).observe(pane, { attributes: true, attributeFilter: ['class'] });
+    }
+    bridgeClass(livePane);
+    bridgeClass(upPane);
+
+    /* ===============================================================
+       BACK BUTTONS
+       Replicate admin-enroll's showWizard(true) / showPane(x, false)
+       =============================================================== */
+    function goBack() {
+        // Restore wizard
+        if (wizardEl) { wizardEl.classList.remove('d-none'); wizardEl.style.display = ''; }
+        if (livePane) { livePane.classList.add('d-none'); livePane.classList.remove('active'); }
+        if (upPane)   { upPane.classList.add('d-none'); upPane.classList.remove('active'); }
+
+        // Signal admin-enroll to stop camera (handled via custom event)
+        document.dispatchEvent(new CustomEvent('fa:stopCam'));
+
+        // Reset UI
+        setStep(1);
+        setCaptures(0);
+        setVideoGlow(null);
+        if (liveBarFill) { liveBarFill.style.width = '0'; liveBarFill.className = 'fa-live-bar-fill'; }
+        if (liveBarPct)  liveBarPct.innerHTML = '<i class="fa-solid fa-minus fa-xs" aria-hidden="true"></i>';
+        if (sideScore)   { sideScore.innerHTML = '<i class="fa-solid fa-minus fa-xs" aria-hidden="true"></i>'; sideScore.className = 'fa-live-score-num'; }
+        if (sideLabel)   sideLabel.textContent = 'Waiting for scan...';
+        if (sideBadge)   sideBadge.style.display = 'none';
+        if (camStatusEl) _origSet.call(camStatusEl, '');
+    }
+
+    var backL = el('backFromLive');
+    var backU = el('backFromUpload');
+    if (backL) backL.addEventListener('click', goBack);
+    if (backU) backU.addEventListener('click', goBack);
+
+    /* ===============================================================
+       METHOD CARD KEYBOARD SUPPORT
+       =============================================================== */
+    document.querySelectorAll('.fa-method-card').forEach(function (card) {
+        card.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click(); }
+        });
+    });
+
+    /* ===============================================================
+       DRAG-AND-DROP DROPZONE
+       =============================================================== */
+    if (dropzone && fileInput) {
+        dropzone.addEventListener('dragover', function (e) {
+            e.preventDefault();
+            dropzone.classList.add('drag-over');
+        });
+        ['dragleave', 'dragend'].forEach(function (ev) {
+            dropzone.addEventListener(ev, function () { dropzone.classList.remove('drag-over'); });
+        });
+        dropzone.addEventListener('drop', function (e) {
+            e.preventDefault();
+            dropzone.classList.remove('drag-over');
+            if (e.dataTransfer && e.dataTransfer.files.length) {
+                // DataTransfer is read-only in some browsers; clone via DataTransfer constructor
+                try {
+                    var dt = new DataTransfer();
+                    Array.prototype.forEach.call(e.dataTransfer.files, function (f) { dt.items.add(f); });
+                    fileInput.files = dt.files;
+                } catch (_) { /* older browsers  -  gracefully skip */ }
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+        });
+    }
+
+    /* -- File chip preview ----------------------------------------- */
+    if (fileInput && fileStrip) {
+        fileInput.addEventListener('change', function () {
+            _origSet.call(fileStrip, '');
+            Array.prototype.slice.call(fileInput.files || [], 0, 5).forEach(function (f) {
+                var ext = (f.name.split('.').pop() || '').toLowerCase();
+                var icon = (ext === 'png') ? 'fa-file-image' : 'fa-image';
+                var chip = document.createElement('div');
+                chip.className = 'fa-file-chip';
+                chip.innerHTML = '<i class="fa-solid ' + icon + '" aria-hidden="true"></i>' +
+                    '<span>' + f.name.replace(/(.{20})..+/, '$1...') + '</span>';
+                fileStrip.appendChild(chip);
+            });
+        });
+    }
+
+    /* ===============================================================
+       INITIAL STATE
+       =============================================================== */
+    setStep(1);
+    setCaptures(0);
+
+})();
+</script>
+
+<script src="~/Scripts/admin-enroll.js"></script>
 }

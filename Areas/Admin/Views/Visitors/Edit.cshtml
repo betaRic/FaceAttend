@@ -3,37 +3,104 @@
     ViewBag.Title = "Edit Visitor";
 }
 
-<div class="admin-card">
-    <div class="card-body">
-        <div class="d-flex align-items-start justify-content-between">
-            <div>
-                <h4 class="mb-1">Edit Visitor</h4>
-                <div class="text-muted">ID: @Model.Id</div>
-            </div>
-            <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Back</a>
+<div class="ea-page">
+
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-user-pen" aria-hidden="true"></i>
+                Edit Visitor
+            </h1>
+            <div class="ea-page-subtitle">@Model.Name</div>
         </div>
-
-        <hr />
-
-        @using (Html.BeginForm("Edit", "Visitors", new { area = "Admin" }, FormMethod.Post))
-        {
-            @Html.AntiForgeryToken()
-            <input type="hidden" name="id" value="@Model.Id" />
-
-            <div class="mb-3">
-                <label class="form-label">Name</label>
-                <input class="form-control" name="name" value="@Model.Name" />
-            </div>
-
-            <div class="form-check mb-3">
-                <input class="form-check-input" type="checkbox" name="isActive" value="true" id="isActive" @(Model.IsActive ? "checked" : "") />
-                <label class="form-check-label" for="isActive">Active</label>
-            </div>
-
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" type="submit">Save</button>
-                <a class="btn btn-outline-primary" href="@Url.Action("Enroll", new { id = Model.Id })">Enroll face</a>
-            </div>
-        }
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-secondary btn-sm"
+               href="@Url.Action("Enroll", new { id = Model.Id })">
+                <i class="fa-solid fa-camera me-1" aria-hidden="true"></i>Re-enroll Face
+            </a>
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index")">
+                <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
+            </a>
+        </div>
     </div>
+
+    @using (Html.BeginForm("Edit", "Visitors", new { area = "Admin", id = Model.Id }, FormMethod.Post))
+    {
+        @Html.AntiForgeryToken()
+
+        <div class="ea-form-card" style="max-width:560px;">
+            <div class="ea-form-header">
+                <div class="ea-form-title">
+                    <i class="fa-solid fa-id-card" aria-hidden="true"></i>
+                    Visitor Information
+                </div>
+            </div>
+            <div class="ea-form-body">
+                <div class="mb-3">
+                    <label class="form-label">Full Name <span class="text-danger">*</span></label>
+                    <input class="form-control" name="name" value="@Model.Name" required
+                           style="text-transform:uppercase;" />
+                </div>
+
+                <div class="row g-3 mb-1">
+                    <div class="col-sm-4">
+                        <div class="p-2 border rounded-3 text-center bg-light-subtle">
+                            <div class="fw-bold fs-4">@Model.VisitCount</div>
+                            <div class="text-muted small">Total Visits</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="p-2 border rounded-3 text-center bg-light-subtle">
+                            <div class="fw-bold" style="font-size:.9rem;">
+                                @(Model.FirstVisitDate == default(DateTime) ? "-" : Model.FirstVisitDate.ToLocalTime().ToString("MMM d, yy"))
+                            </div>
+                            <div class="text-muted small">First Visit</div>
+                        </div>
+                    </div>
+                    <div class="col-sm-4">
+                        <div class="p-2 border rounded-3 text-center bg-light-subtle">
+                            <div class="fw-bold" style="font-size:.9rem;">
+                                @(Model.LastVisitDate == default(DateTime) ? "-" : Model.LastVisitDate.ToLocalTime().ToString("MMM d, yy"))
+                            </div>
+                            <div class="text-muted small">Last Visit</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-3">
+                    <div class="p-3 border rounded-3 bg-light-subtle">
+                        <div class="d-flex align-items-center gap-2 mb-1">
+                            <input class="form-check-input mt-0" type="checkbox"
+                                   name="isActive" value="true" id="isActive"
+                                   @(Model.IsActive ? "checked" : "") />
+                            <label class="form-check-label fw-semibold" for="isActive">
+                                <i class="fa-solid fa-circle-check me-1 text-success" aria-hidden="true"></i>Active
+                            </label>
+                        </div>
+                        <div class="text-muted small">Inactive visitors cannot be recognized at the kiosk.</div>
+                    </div>
+                </div>
+            </div>
+            <div class="ea-form-footer">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-floppy-disk me-1" aria-hidden="true"></i>Save Changes
+                </button>
+                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Cancel</a>
+            </div>
+        </div>
+    }
+
 </div>
+
+@section scripts {
+<script>
+var nameInput = document.querySelector('input[name="name"]');
+if (nameInput) {
+    nameInput.addEventListener('input', function () {
+        var pos = nameInput.selectionStart;
+        nameInput.value = nameInput.value.toUpperCase();
+        nameInput.setSelectionRange(pos, pos);
+    });
+}
+</script>
+}

@@ -98,9 +98,11 @@ namespace FaceAttend
             bundles.Add(vendorCss);
 
             bundles.Add(new StyleBundle("~/Content/admin")
-                .Include("~/Content/admin.css"));
-
-            bundles.Add(new StyleBundle("~/Content/kiosk")
+                .Include(
+                    "~/Content/admin.css",
+                    "~/Content/admin-enhancements.css"
+                ));
+bundles.Add(new StyleBundle("~/Content/kiosk")
                 .Include("~/Content/kiosk.css"));
 
             // Leave disabled while debugging

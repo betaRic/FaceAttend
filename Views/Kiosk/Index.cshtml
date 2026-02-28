@@ -3,9 +3,8 @@
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
 }
-
 <!doctype html>
-<html>
+<html lang="en">
 <head>
     <meta charset="utf-8" />
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -14,17 +13,25 @@
     <title>Kiosk - FaceAttend</title>
     <link rel="icon" type="image/x-icon" href="@Url.Content("~/Content/favicon.ico")" />
     <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
-
     <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
 </head>
-<body data-app-base="@Url.Content("~/")" data-nextgen="@((System.Configuration.ConfigurationManager.AppSettings["Kiosk:UseNextGen"] ?? "false"))" data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
+<body
+    data-app-base="@Url.Content("~/")"
+    data-nextgen="@(System.Configuration.ConfigurationManager.AppSettings["Kiosk:UseNextGen"] ?? "false")"
+    data-return-url="@ViewBag.ReturnUrl"
+    data-unlock-hint="@ViewBag.UnlockHint">
+
     @Html.AntiForgeryToken()
 
     <div id="kioskRoot">
-        <video id="kioskVideo" playsinline autoplay muted></video>
-        <canvas id="overlayCanvas"></canvas>
 
-        <!-- Idle overlay -->
+        <!-- Camera feed + detection canvas -->
+        <video id="kioskVideo" playsinline autoplay muted aria-hidden="true"></video>
+        <canvas id="overlayCanvas" aria-hidden="true"></canvas>
+
+        <!-- =====================================================
+             IDLE OVERLAY  -  shown when no face detected
+             ===================================================== -->
         <div id="idleOverlay" class="idleOverlay hidden" aria-hidden="true">
             <div class="idleCard">
                 <img class="idleLogo"
@@ -41,77 +48,239 @@
             </div>
         </div>
 
+        <!-- =====================================================
+             HUD  -  four corners / bottom
+             ===================================================== -->
+
+        <!-- Top-left: brand + office name -->
         <div id="topLeft">
             <div class="brand">FaceAttend</div>
             <div class="sub" id="officeLine">Locating...</div>
         </div>
 
+        <!-- Top-center: clock -->
         <div id="topCenter">
             <div id="timeLine">--:--:--</div>
             <div id="dateLine">----</div>
         </div>
 
+        <!-- Top-right: liveness score + ETA -->
         <div id="topRight">
             <div id="livenessLine">Live: --</div>
             <div id="scanEtaLine">ETA: --</div>
         </div>
 
-        <div id="centerBlock" class="hidden">
+        <!-- Center: location block warning (GPS / not in area) -->
+        <div id="centerBlock" class="hidden" aria-live="assertive">
             <div class="blockTitle">Not in allowed area.</div>
             <div class="blockSub">Move closer to a designated office.</div>
         </div>
 
-        <div id="bottomCenter">
+        <!-- Bottom-center: main status prompt -->
+        <div id="bottomCenter" aria-live="polite">
             <div id="mainPrompt">Ready.</div>
             <div id="subPrompt">Stand still. One face only.</div>
         </div>
 
+        <!-- =====================================================
+             ADMIN UNLOCK MODAL  (Ctrl+Shift+A)
+             ===================================================== -->
         <div id="unlockBackdrop" class="hidden" aria-hidden="true">
-            <div id="unlockModal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+            <div id="unlockModal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="unlockTitle">
+
+                <!-- Header row: icon + title + close -->
                 <div class="unlockHeader">
-                    <div id="unlockTitle" class="unlockTitle">Admin unlock</div>
-                    <button id="unlockClose" type="button" class="unlockClose" aria-label="Close">X</button>
+                    <div class="unlockIconBadge" aria-hidden="true">&#128274;</div>
+                    <div id="unlockTitle" class="unlockTitle">Admin Unlock</div>
+                    <button id="unlockClose"
+                            type="button"
+                            class="unlockClose"
+                            aria-label="Close">&#10005;</button>
                 </div>
-                <div class="unlockHint">Enter PIN. Press Enter to unlock. Esc to cancel.</div>
 
-                <input id="unlockPin" class="unlockInput" type="password" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter PIN" />
-                <div id="unlockErr" class="unlockErr"></div>
+                <!-- Hint -->
+                <div class="unlockHint">
+                    Enter your PIN, then press <strong>Enter</strong> to unlock.
+                </div>
 
+                <!-- PIN input  -  large, centered, monospace -->
+                <input id="unlockPin"
+                       class="unlockInput"
+                       type="password"
+                       inputmode="numeric"
+                       autocomplete="one-time-code"
+                       placeholder="Enter PIN"
+                       maxlength="20" />
+
+                <!-- Inline error -->
+                <div id="unlockErr" class="unlockErr" role="alert" aria-live="assertive"></div>
+
+                <!-- Actions -->
                 <div class="unlockActions">
                     <button id="unlockCancel" type="button" class="btnGhost">Cancel</button>
-                    <button id="unlockSubmit" type="button" class="btnPrimary">Unlock</button>
+                    <button id="unlockSubmit" type="button" class="btnPrimary">&#128274; Unlock</button>
                 </div>
-            </div>
 
+            </div>
         </div>
 
+        <!-- =====================================================
+             VISITOR MODAL   -  walk-in visitor form
+             ===================================================== -->
         <div id="visitorBackdrop" class="hidden" aria-hidden="true">
-            <div id="visitorModal" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
-                <div class="unlockHeader">
-                    <div id="visitorTitle" class="unlockTitle">Visitor</div>
-                    <button id="visitorClose" type="button" class="unlockClose" aria-label="Close">X</button>
+            <div id="visitorModal"
+                 role="dialog"
+                 aria-modal="true"
+                 aria-labelledby="visitorTitle">
+
+                <!-- -- Banner / header -- -->
+                <div class="visitorBanner">
+                    <div class="visitorIconCircle" aria-hidden="true">&#128101;</div>
+                    <div class="visitorBannerText">
+                        <div id="visitorTitle" class="visitorBannerTitle">Visitor Sign-In</div>
+                        <div class="visitorBannerSub" id="visitorBannerSub">
+                            Please fill in your details below.
+                        </div>
+
+                        <!-- Known visitor welcome badge (CSS-shown when nameRow hidden) -->
+                        <div id="visitorKnownBadge" aria-live="polite">
+                            <span aria-hidden="true">&#10003;</span>
+                            <span id="visitorKnownName">Welcome back!</span>
+                        </div>
+                    </div>
+                    <button id="visitorClose"
+                            type="button"
+                            class="unlockClose"
+                            aria-label="Close">&#10005;</button>
                 </div>
-                <div class="unlockHint">Please fill this up. Press Enter to submit. Esc to cancel.</div>
 
-                <div id="visitorNameRow">
-                    <input id="visitorName" class="unlockInput" type="text" autocomplete="name" placeholder="Full name" />
+                <!-- -- Body fields -- -->
+                <div class="visitorBody">
+
+                    <!-- Name row (hidden by JS for known/enrolled visitors) -->
+                    <div id="visitorNameRow" class="visitorField">
+                        <label class="visitorLabel" for="visitorName">Full Name</label>
+                        <input id="visitorName"
+                               class="unlockInput"
+                               type="text"
+                               autocomplete="name"
+                               placeholder="e.g. Juan Dela Cruz"
+                               maxlength="200" />
+                    </div>
+
+                    <!-- Purpose (always shown) -->
+                    <div class="visitorField">
+                        <label class="visitorLabel" for="visitorPurpose">Reason for Visit</label>
+                        <div class="visitorPurposeWrap">
+                            <input id="visitorPurpose"
+                                   class="unlockInput"
+                                   type="text"
+                                   autocomplete="off"
+                                   placeholder="e.g. Meeting, Document pickup..."
+                                   maxlength="120" />
+                            <span id="visitorCharCount" aria-hidden="true">0/120</span>
+                        </div>
+                    </div>
+
+                    <!-- Error message -->
+                    <div id="visitorErr" class="unlockErr" role="alert" aria-live="assertive"></div>
+
                 </div>
 
-                <input id="visitorPurpose" class="unlockInput" type="text" autocomplete="off" placeholder="Reason for visit" />
-                <div id="visitorErr" class="unlockErr"></div>
-
-                <div class="unlockActions">
+                <!-- -- Action buttons -- -->
+                <div class="visitorActions">
                     <button id="visitorCancel" type="button" class="btnGhost">Cancel</button>
                     <button id="visitorSubmit" type="button" class="btnPrimary">Submit</button>
                 </div>
+
             </div>
         </div>
 
-    </div>
+    </div><!-- #kioskRoot -->
 
     <script src="~/Scripts/jquery-3.7.1.min.js"></script>
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
+    <script src="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")"></script>
     <script src="@Url.Content("~/Scripts/vendor/toastify/toastify.min.js")"></script>
+
+    <!-- Inline micro-script: enhance visitor modal UX without touching kiosk.js -->
+    <script>
+    (function () {
+        'use strict';
+
+        var purposeEl   = document.getElementById('visitorPurpose');
+        var counterEl   = document.getElementById('visitorCharCount');
+        var nameEl      = document.getElementById('visitorName');
+        var knownBadge  = document.getElementById('visitorKnownBadge');
+        var knownName   = document.getElementById('visitorKnownName');
+        var backdrop    = document.getElementById('visitorBackdrop');
+        var modal       = document.getElementById('visitorModal');
+        var bannerSub   = document.getElementById('visitorBannerSub');
+        var visitorTitle = document.getElementById('visitorTitle');
+
+        /* Character counter for purpose field */
+        if (purposeEl && counterEl) {
+            var maxLen = parseInt(purposeEl.getAttribute('maxlength') || '120', 10);
+            purposeEl.addEventListener('input', function () {
+                var len = purposeEl.value.length;
+                counterEl.textContent = len + '/' + maxLen;
+                counterEl.style.opacity = len > maxLen * 0.8 ? '0.75' : '0.38';
+            });
+        }
+
+        /* Visitor modal open hook: update greeting & known-visitor state.
+           We observe the backdrop losing the 'hidden' class. */
+        if (backdrop) {
+            var observer = new MutationObserver(function () {
+                var isOpen = !backdrop.classList.contains('hidden');
+                if (!isOpen) return;
+
+                /* Reset counter */
+                if (counterEl) counterEl.textContent = '0/' + (purposeEl ? purposeEl.getAttribute('maxlength') || '120' : '120');
+
+                /* Determine known vs unknown by checking nameRow visibility */
+                var nameRow = document.getElementById('visitorNameRow');
+                var isKnown = nameRow && nameRow.classList.contains('hidden');
+
+                if (modal) modal.classList.toggle('visitor-known', isKnown);
+
+                if (isKnown) {
+                    /* Pull name from the disabled input that kiosk.js populates */
+                    var name = nameEl ? (nameEl.value || '').trim() : '';
+                    if (knownName) knownName.textContent = name ? 'Welcome back, ' + name + '!' : 'Welcome back!';
+                    if (visitorTitle) visitorTitle.textContent = 'Visitor Check-In';
+                    if (bannerSub) bannerSub.textContent = 'Please enter your reason for visiting.';
+                } else {
+                    if (knownName) knownName.textContent = 'Welcome!';
+                    if (visitorTitle) visitorTitle.textContent = 'Visitor Sign-In';
+                    if (bannerSub) bannerSub.textContent = 'Please fill in your details below.';
+                }
+            });
+
+            observer.observe(backdrop, { attributes: true, attributeFilter: ['class', 'aria-hidden'] });
+        }
+
+        /* Admin modal shake on error:
+           Observe unlockErr  -  if it gets text, shake the modal. */
+        var unlockErr   = document.getElementById('unlockErr');
+        var unlockModal = document.getElementById('unlockModal');
+        if (unlockErr && unlockModal) {
+            var errObserver = new MutationObserver(function () {
+                if (unlockErr.textContent.trim()) {
+                    unlockModal.classList.remove('shake');
+                    void unlockModal.offsetWidth; /* reflow to restart */
+                    unlockModal.classList.add('shake');
+                }
+            });
+            errObserver.observe(unlockErr, { childList: true, characterData: true, subtree: true });
+        }
+
+    })();
+    </script>
+
     <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
 </body>
 </html>

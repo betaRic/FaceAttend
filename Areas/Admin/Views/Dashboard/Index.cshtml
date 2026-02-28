@@ -3,214 +3,297 @@
     ViewBag.Title = "Dashboard";
 }
 
-<div class="d-flex align-items-start align-items-md-center justify-content-between gap-3 flex-wrap mb-3">
-    <div>
-        <h1 class="h3 mb-1">Dashboard</h1>
-        <div class="text-muted small">@Model.TodayDateDisplay</div>
-    </div>
-</div>
+@section styles {
+<style>
+/* -- System health dots ------------------------- */
+.ea-health-dot {
+    width: .65rem;
+    height: .65rem;
+    border-radius: 50%;
+    flex-shrink: 0;
+    display: inline-block;
+}
+.ea-health-dot.ok   { background: #198754; }
+.ea-health-dot.warn { background: #fd7e14; }
+.ea-health-dot.fail { background: #dc3545; }
 
-<div class="row g-3">
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="admin-card admin-kpi h-100">
-            <div class="card-body">
-                <div class="text-muted small">Employees</div>
-                <div class="text-muted mt-2">
-                    <i class="fa-solid fa-users" aria-hidden="true"></i>
-                </div>
-                <div class="fs-3 fw-semibold">@Model.TotalEmployees</div>
-                <div class="text-muted small mt-2">Active employees</div>
-            </div>
+/* -- Mini bar chart ----------------------------- */
+.ea-mini-bar-track {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 56px;
+}
+.ea-mini-bar {
+    flex: 1;
+    border-radius: 4px 4px 0 0;
+    min-width: 6px;
+    min-height: 3px;
+    transition: opacity .15s;
+}
+.ea-mini-bar:hover { opacity: .75; }
+.ea-mini-bar-label {
+    font-size: .58rem;
+    text-align: center;
+    color: #6c757d;
+    margin-top: 2px;
+    overflow: hidden;
+    white-space: nowrap;
+}
+</style>
+}
+
+<div class="ea-page">
+
+    @* -- Page header -- *@
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
+                Dashboard
+            </h1>
+            <div class="ea-page-subtitle">@Model.TodayDateDisplay</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-secondary btn-sm"
+               href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today" })">
+                <i class="fa-solid fa-clock-rotate-left me-1" aria-hidden="true"></i>Today's Logs
+            </a>
         </div>
     </div>
 
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="admin-card admin-kpi h-100">
-            <div class="card-body">
-                <div class="text-muted small">Today Time-ins</div>
-                <div class="text-muted mt-2">
-                    <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
-                </div>
-                <div class="fs-3 fw-semibold">@Model.TodayTimeIns</div>
-                <div class="text-muted small mt-2">Recorded today</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="admin-card admin-kpi h-100">
-            <div class="card-body">
-                <div class="text-muted small">Today Time-outs</div>
-                <div class="text-muted mt-2">
-                    <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
-                </div>
-                <div class="fs-3 fw-semibold">@Model.TodayTimeOuts</div>
-                <div class="text-muted small mt-2">Recorded today</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="col-12 col-md-6 col-xl-3">
-        <div class="admin-card admin-kpi h-100">
-            <div class="card-body">
-                <div class="text-muted small">Visitors</div>
-                <div class="text-muted mt-2">
-                    <i class="fa-solid fa-user-check" aria-hidden="true"></i>
-                </div>
-                <div class="fs-3 fw-semibold">@Model.TotalVisitors</div>
-                <div class="text-muted small mt-2">Known visitors</div>
-            </div>
-        </div>
-    </div>
-
+    @* -- Review alert -- *@
     @if (Model.PendingReviews > 0)
     {
-        <div class="col-12">
-            <div class="alert alert-warning d-flex align-items-center gap-2 mb-0" role="alert">
-                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
-                <div>
-                    <strong>@Model.PendingReviews attendance @(Model.PendingReviews == 1 ? "record" : "records")</strong>
-                    flagged for review.
-                    <a href="@Url.Action("Index", "Attendance", new { area = "Admin", needsReview = true })"
-                       class="alert-link ms-1">Review now <i class="fa-solid fa-arrow-right ms-1" aria-hidden="true"></i></a>
-                </div>
+        <div class="ea-alert warning mb-3">
+            <i class="fa-solid fa-triangle-exclamation fa-sm flex-shrink-0" aria-hidden="true"></i>
+            <div>
+                <strong>@Model.PendingReviews attendance @(Model.PendingReviews == 1 ? "record" : "records")</strong>
+                flagged for review.
+                <a href="@Url.Action("Index", "Attendance", new { area = "Admin", needsReview = true })"
+                   class="fw-semibold ms-1">
+                    Review now <i class="fa-solid fa-arrow-right ms-1 fa-xs" aria-hidden="true"></i>
+                </a>
             </div>
         </div>
     }
 
-    <div class="col-12 col-xl-8">
-        <div class="admin-card h-100">
-            <div class="card-body">
-                <div class="d-flex align-items-center justify-content-between">
-                    <div>
-                        <div class="fw-semibold">Recent Attendance</div>
-                        <div class="text-muted small">Latest @(Model.RecentLogs.Count > 0 ? Model.RecentLogs.Count.ToString() : "0") logs</div>
+    @* -- KPI cards -- *@
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-xl-3">
+            <a class="ea-kpi" href="@Url.Action("Index", "Employees", new { area = "Admin" })">
+                <div class="ea-kpi-icon primary">
+                    <i class="fa-solid fa-users" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@Model.TotalEmployees</div>
+                    <div class="ea-kpi-label">Active Employees</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-xl-3">
+            <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "IN" })">
+                <div class="ea-kpi-icon success">
+                    <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@Model.TodayTimeIns</div>
+                    <div class="ea-kpi-label">Time-Ins Today</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-xl-3">
+            <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "OUT" })">
+                <div class="ea-kpi-icon warning">
+                    <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@Model.TodayTimeOuts</div>
+                    <div class="ea-kpi-label">Time-Outs Today</div>
+                </div>
+            </a>
+        </div>
+        <div class="col-6 col-xl-3">
+            <a class="ea-kpi" href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
+                <div class="ea-kpi-icon" style="background:rgba(111,66,193,.1);color:#6f42c1;">
+                    <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@Model.TotalVisitors</div>
+                    <div class="ea-kpi-label">Known Visitors</div>
+                </div>
+            </a>
+        </div>
+    </div>
+
+    <div class="row g-3">
+
+        @* -- Recent attendance -- *@
+        <div class="col-12 col-xl-8">
+            <div class="ea-table-card h-100">
+                <div class="ea-table-header">
+                    <div class="ea-table-title">
+                        <i class="fa-solid fa-clock-rotate-left text-primary" aria-hidden="true"></i>
+                        Recent Attendance
                     </div>
                     <a class="btn btn-outline-secondary btn-sm"
                        href="@Url.Action("Index", "Attendance", new { area = "Admin" })">
-                        View all
+                        View all <i class="fa-solid fa-arrow-right fa-xs ms-1" aria-hidden="true"></i>
                     </a>
                 </div>
 
-                <div class="table-responsive mt-3">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead>
-                            <tr>
-                                <th>Time</th>
-                                <th>Employee</th>
-                                <th>Event</th>
-                                <th>Office</th>
-                                <th class="text-end">Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @if (Model.RecentLogs.Count == 0)
-                            {
+                <div class="table-responsive">
+                    @if (!Model.RecentLogs.Any())
+                    {
+                        <div class="ea-empty" style="padding:3rem 2rem;">
+                            <i class="fa-solid fa-clock" aria-hidden="true"></i>
+                            <div class="ea-empty-title">No records yet</div>
+                            <div class="ea-empty-desc">Attendance logs will appear here after first kiosk scan.</div>
+                        </div>
+                    }
+                    else
+                    {
+                        <table class="ea-table table table-hover align-middle mb-0">
+                            <thead>
                                 <tr>
-                                    <td colspan="5" class="text-muted">No records yet.</td>
+                                    <th>Time</th>
+                                    <th>Employee</th>
+                                    <th>Event</th>
+                                    <th>Office</th>
+                                    <th class="text-end">Flag</th>
                                 </tr>
-                            }
-                            else
-                            {
-                                foreach (var row in Model.RecentLogs)
+                            </thead>
+                            <tbody>
+                                @foreach (var row in Model.RecentLogs)
                                 {
-                                    <tr>
-                                        <td class="text-nowrap">@row.TimestampLocalDisplay</td>
+                                    var isIn = string.Equals(row.EventType, "IN", StringComparison.OrdinalIgnoreCase);
+                                    <tr class="@(row.NeedsReview ? "table-warning" : "")">
+                                        <td class="text-nowrap">
+                                            <span class="fw-semibold" style="font-size:.85rem;">@row.TimestampLocalDisplay</span>
+                                        </td>
                                         <td>
-                                            <div class="fw-semibold small">@row.EmployeeFullName</div>
+                                            <div class="fw-semibold" style="font-size:.875rem;">@row.EmployeeFullName</div>
                                             @if (!string.IsNullOrWhiteSpace(row.EmployeeId))
                                             {
-                                                <div class="text-muted small">@row.EmployeeId</div>
+                                                <div class="ea-cell-muted">@row.EmployeeId</div>
                                             }
                                         </td>
                                         <td>
-                                            <span class="badge @row.EventTypeBadgeClass">@row.EventType</span>
-                                        </td>
-                                        <td class="small text-muted">@row.OfficeName</td>
-                                        <td class="text-end">
-                                            @if (row.NeedsReview)
+                                            @if (isIn)
                                             {
-                                                <span class="badge bg-warning text-dark" title="Flagged for review">
-                                                    Review
+                                                <span class="ea-badge time-in">
+                                                    <i class="fa-solid fa-arrow-right-to-bracket fa-xs"></i>IN
                                                 </span>
                                             }
                                             else
                                             {
-                                                <span class="badge bg-success">OK</span>
+                                                <span class="ea-badge time-out">
+                                                    <i class="fa-solid fa-arrow-right-from-bracket fa-xs"></i>OUT
+                                                </span>
+                                            }
+                                        </td>
+                                        <td class="ea-cell-muted" style="font-size:.82rem;">
+                                            @(string.IsNullOrWhiteSpace(row.OfficeName) ? "-" : row.OfficeName)
+                                        </td>
+                                        <td class="text-end">
+                                            @if (row.NeedsReview)
+                                            {
+                                                <span class="ea-badge review">
+                                                    <i class="fa-solid fa-flag fa-xs"></i>Review
+                                                </span>
                                             }
                                         </td>
                                     </tr>
                                 }
-                            }
-                        </tbody>
-                    </table>
+                            </tbody>
+                        </table>
+                    }
                 </div>
             </div>
         </div>
-    </div>
 
-    <div class="col-12 col-xl-4">
-        <div class="admin-card h-100">
-            <div class="card-body">
-                <div class="fw-semibold">System Status</div>
-                <div class="text-muted small mb-3">Quick health checks</div>
+        @* -- Right column: system health + quick links -- *@
+        <div class="col-12 col-xl-4">
 
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Database</div>
-                    @if (Model.DatabaseHealthy)
-                    {
-                        <span class="badge bg-success">OK</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-danger">Error</span>
-                    }
-                </div>
-
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Liveness Model</div>
-                    @if (Model.LivenessModelLoaded)
-                    {
-                        <span class="badge bg-success">OK</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-danger" title="minifasnet.onnx not found">Missing</span>
-                    }
-                </div>
-
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Dlib Models</div>
-                    @if (Model.DlibModelsLoaded)
-                    {
-                        <span class="badge bg-success">OK</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-danger" title="No .dat files in Biometrics:DlibModelsDir">Missing</span>
-                    }
-                </div>
-
-                <div class="d-flex align-items-center justify-content-between py-2 border-top">
-                    <div>Offline Assets</div>
-                    @if (Model.OfflineAssetsOk)
-                    {
-                        <span class="badge bg-success">OK</span>
-                    }
-                    else
-                    {
-                        <span class="badge bg-warning text-dark">Check</span>
-                    }
-                </div>
-
-                @if (Model.TotalTodayScans > 0)
-                {
-                    <div class="text-muted small mt-3 border-top pt-3">
-                        @Model.TotalTodayScans total scan@(Model.TotalTodayScans == 1 ? "" : "s") today
-                        (@Model.TodayTimeIns in / @Model.TodayTimeOuts out)
+            @* System health *@
+            <div class="ea-card mb-3">
+                <div class="ea-card-body">
+                    <div class="fw-semibold mb-3 d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-heart-pulse text-primary" aria-hidden="true"></i>
+                        System Health
                     </div>
-                }
+                    @{
+                        var healthItems = new[]
+                        {
+                            new { Label = "Database",       Ok = Model.DatabaseHealthy,      Icon = "fa-database" },
+                            new { Label = "Liveness model", Ok = Model.LivenessModelLoaded,  Icon = "fa-eye" },
+                            new { Label = "Dlib models",    Ok = Model.DlibModelsLoaded,     Icon = "fa-face-smile" },
+                            new { Label = "Offline assets", Ok = Model.OfflineAssetsOk,      Icon = "fa-wifi" },
+                        };
+                    }
+                    <div class="d-flex flex-column gap-2">
+                        @foreach (var item in healthItems)
+                        {
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="d-flex align-items-center gap-2 text-muted" style="font-size:.85rem;">
+                                    <i class="fa-solid @item.Icon fa-fw fa-sm" aria-hidden="true"></i>
+                                    @item.Label
+                                </span>
+                                <span class="d-flex align-items-center gap-1" style="font-size:.78rem;font-weight:600;">
+                                    <span class="ea-health-dot @(item.Ok ? "ok" : "fail")"></span>
+                                    <span class="@(item.Ok ? "text-success" : "text-danger")">
+                                        @(item.Ok ? "OK" : "Error")
+                                    </span>
+                                </span>
+                            </div>
+                        }
+                    </div>
+                </div>
             </div>
+
+            @* Quick links *@
+            <div class="ea-card">
+                <div class="ea-card-body">
+                    <div class="fw-semibold mb-3 d-flex align-items-center gap-2">
+                        <i class="fa-solid fa-bolt text-primary" aria-hidden="true"></i>
+                        Quick Actions
+                    </div>
+                    <div class="d-flex flex-column gap-2">
+                        <a class="btn btn-outline-primary btn-sm text-start"
+                           href="@Url.Action("Index", "Employees", new { area = "Admin" })">
+                            <i class="fa-solid fa-users me-2 fa-fw" aria-hidden="true"></i>Manage Employees
+                        </a>
+                        <a class="btn btn-outline-secondary btn-sm text-start"
+                           href="@Url.Action("SummaryReport", "Attendance", new { area = "Admin", from = "thismonth" })">
+                            <i class="fa-solid fa-chart-column me-2 fa-fw" aria-hidden="true"></i>Monthly Summary
+                        </a>
+                        <a class="btn btn-outline-secondary btn-sm text-start"
+                           href="@Url.Action("Index", "Offices", new { area = "Admin" })">
+                            <i class="fa-solid fa-building me-2 fa-fw" aria-hidden="true"></i>Office Setup
+                        </a>
+                        <a class="btn btn-outline-secondary btn-sm text-start"
+                           href="@Url.Action("Index", "Settings", new { area = "Admin" })">
+                            <i class="fa-solid fa-gear me-2 fa-fw" aria-hidden="true"></i>Settings
+                        </a>
+                    </div>
+                </div>
+            </div>
+
         </div>
+
     </div>
+
 </div>
+
+@section scripts {
+<script>
+/* Auto-refresh KPI numbers every 60s */
+(function () {
+    var btn = document.getElementById('btnRefresh');
+    if (btn) {
+        btn.addEventListener('click', function () { window.location.reload(); });
+    }
+    setTimeout(function () { window.location.reload(); }, 60000);
+})();
+</script>
+}

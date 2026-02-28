@@ -2,23 +2,63 @@
     ViewBag.Title = "Add Visitor";
 }
 
-<div class="admin-card">
-    <div class="card-body">
-        <h4 class="mb-3">Add Visitor</h4>
+<div class="ea-page">
 
-        @using (Html.BeginForm("Create", "Visitors", new { area = "Admin" }, FormMethod.Post))
-        {
-            @Html.AntiForgeryToken()
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-user-plus" aria-hidden="true"></i>
+                Add Visitor
+            </h1>
+            <div class="ea-page-subtitle">Register a walk-in visitor. Face enrollment happens next.</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index")">
+                <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
+            </a>
+        </div>
+    </div>
 
-            <div class="mb-3">
-                <label class="form-label">Name</label>
-                <input class="form-control" name="name" placeholder="Visitor name" />
+    @using (Html.BeginForm("Create", "Visitors", new { area = "Admin" }, FormMethod.Post))
+    {
+        @Html.AntiForgeryToken()
+
+        <div class="ea-form-card" style="max-width:560px;">
+            <div class="ea-form-header">
+                <div class="ea-form-title">
+                    <i class="fa-solid fa-id-card" aria-hidden="true"></i>
+                    Visitor Information
+                </div>
             </div>
-
-            <div class="d-flex gap-2">
-                <button class="btn btn-primary" type="submit">Save</button>
+            <div class="ea-form-body">
+                <div class="mb-3">
+                    <label class="form-label">Full Name <span class="text-danger">*</span></label>
+                    <input class="form-control" name="name" required placeholder="e.g. JUAN DELA CRUZ"
+                           style="text-transform:uppercase;" />
+                    <div class="form-text">Name will be used for the visit log and face matching.</div>
+                </div>
+            </div>
+            <div class="ea-form-footer">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fa-solid fa-arrow-right me-1" aria-hidden="true"></i>
+                    Save &amp; Enroll Face
+                </button>
                 <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Cancel</a>
             </div>
-        }
-    </div>
+        </div>
+    }
+
 </div>
+
+@section scripts {
+<script>
+var nameInput = document.querySelector('input[name="name"]');
+if (nameInput) {
+    nameInput.addEventListener('input', function () {
+        var pos = nameInput.selectionStart;
+        nameInput.value = nameInput.value.toUpperCase();
+        nameInput.setSelectionRange(pos, pos);
+    });
+}
+</script>
+}

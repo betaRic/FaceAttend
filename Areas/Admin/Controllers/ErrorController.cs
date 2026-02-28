@@ -1,11 +1,11 @@
 using System;
 using System.Web.Mvc;
 
-namespace FaceAttend.Controllers
+namespace FaceAttend.Areas.Admin.Controllers
 {
     /// <summary>
-    /// Public (non-admin) error pages.
-    /// These pages are used by Global.asax.cs via Server.TransferRequest.
+    /// Admin error pages.
+    /// Intentionally does NOT use AdminAuthorize so error pages remain accessible.
     /// </summary>
     public class ErrorController : Controller
     {

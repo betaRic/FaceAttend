@@ -1,350 +1,266 @@
 @model FaceAttend.Areas.Admin.Models.SettingsVm
-
 @{
     ViewBag.Title = "Settings";
 }
 
-@if (!string.IsNullOrWhiteSpace(Model.WarningMessage))
-{
-    <div class="alert alert-warning admin-card p-3 mb-3">@Model.WarningMessage</div>
-}
+<div class="ea-page">
 
-<div class="admin-card">
-    <div class="card-body">
-        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
-            <div>
-                <h4 class="mb-1">Settings</h4>
-                <div class="text-muted small">These values override web.config and apply immediately across kiosk and admin.</div>
-            </div>
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-gear" aria-hidden="true"></i>
+                Settings
+            </h1>
+            <div class="ea-page-subtitle">Override web.config values. Changes apply immediately across kiosk and admin.</div>
+        </div>
+        <div class="ea-page-actions">
             <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index", "Dashboard", new { area = "Admin" })">
-                <i class="fa-solid fa-gauge-high me-1"></i>Dashboard
+                <i class="fa-solid fa-gauge-high me-1" aria-hidden="true"></i>Dashboard
             </a>
         </div>
+    </div>
 
-        <hr />
+    @if (!string.IsNullOrWhiteSpace(Model.WarningMessage))
+    {
+        <div class="ea-alert warning mb-3">
+            <i class="fa-solid fa-triangle-exclamation fa-sm" aria-hidden="true"></i>
+            @Model.WarningMessage
+        </div>
+    }
 
-        @using (Html.BeginForm("Save", "Settings", new { area = "Admin" }, FormMethod.Post))
-        {
-            @Html.AntiForgeryToken()
+    @if (!string.IsNullOrWhiteSpace(Model.SavedMessage))
+    {
+        <div class="ea-alert success mb-3">
+            <i class="fa-solid fa-circle-check fa-sm" aria-hidden="true"></i>
+            @Model.SavedMessage
+        </div>
+    }
 
-            <div class="row g-4">
+    @using (Html.BeginForm("Save", "Settings", new { area = "Admin" }, FormMethod.Post))
+    {
+        @Html.AntiForgeryToken()
 
-                @* ------------------------------------------------------------ *@
-                @* LEFT COLUMN: Biometrics *@
-                @* ------------------------------------------------------------ *@
-                <div class="col-12 col-lg-6">
-                    <h5 class="mb-3">Biometrics</h5>
+        <div class="ea-form-card">
+            <div class="ea-form-header">
+                <div class="ea-form-title">
+                    <i class="fa-solid fa-sliders" aria-hidden="true"></i>
+                    System Configuration
+                </div>
+            </div>
+            <div class="ea-form-body">
 
-                    <div class="mb-3">
-                        @Html.LabelFor(m => m.DlibTolerance, new { @class = "form-label" })
-                        @Html.TextBoxFor(m => m.DlibTolerance, new { @class = "form-control", type = "number", step = "0.01", min = "0.20", max = "1.00" })
-                        @Html.ValidationMessageFor(m => m.DlibTolerance, "", new { @class = "text-danger small" })
-                        <div class="text-muted small">Lower = stricter match. Typical: 0.55 to 0.65.</div>
-                    </div>
+                <div class="row g-4">
 
-                    <div class="mb-3">
-                        @Html.LabelFor(m => m.LivenessThreshold, new { @class = "form-label" })
-                        @Html.TextBoxFor(m => m.LivenessThreshold, new { @class = "form-control", type = "number", step = "0.01", min = "0", max = "1" })
-                        @Html.ValidationMessageFor(m => m.LivenessThreshold, "", new { @class = "text-danger small" })
-                        <div class="text-muted small">Higher = stricter liveness check. Typical: 0.70 to 0.85.</div>
-                    </div>
+                    @* -- Column 1: Biometrics + Attendance -- *@
+                    <div class="col-12 col-lg-6">
 
-                    @* Advanced liveness (collapsible) *@
-                    <div class="border rounded-3 p-3">
-                        <div class="d-flex align-items-center justify-content-between">
-                            <div class="fw-semibold">Advanced liveness</div>
-                            <button class="btn btn-sm btn-outline-secondary" type="button"
-                                    data-bs-toggle="collapse" data-bs-target="#advLive">Toggle</button>
-                        </div>
-
-                        <div class="collapse mt-3" id="advLive">
-                            <div class="row g-2">
-                                <div class="col-12 col-md-6">
-                                    @Html.LabelFor(m => m.LivenessDecision, new { @class = "form-label" })
-                                    <select class="form-select" name="LivenessDecision">
-                                        <option value="max" @(Model.LivenessDecision != null && Model.LivenessDecision.Trim().ToLowerInvariant() == "max" ? "selected" : "")>max</option>
-                                        <option value="avg" @(Model.LivenessDecision != null && Model.LivenessDecision.Trim().ToLowerInvariant() == "avg" ? "selected" : "")>avg</option>
-                                    </select>
-                                    @Html.ValidationMessageFor(m => m.LivenessDecision, "", new { @class = "text-danger small" })
-                                    <div class="text-muted small">max is stricter. avg is smoother.</div>
-                                </div>
-
-                                <div class="col-12 col-md-6">
-                                    @Html.LabelFor(m => m.LivenessMultiCropScales, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessMultiCropScales, new { @class = "form-control", placeholder = "Example: 2.3,2.7,3.1" })
-                                    <div class="text-muted small">Leave blank to use defaults in code.</div>
-                                </div>
+                        <div class="ea-settings-section">
+                            <div class="ea-settings-section-head">
+                                <i class="fa-solid fa-face-smile" aria-hidden="true"></i>
+                                Biometrics
                             </div>
-
-                            <div class="text-muted small mt-3">
-                                Only change the fields below if you know the expected input for your ONNX model.
-                            </div>
-
-                            <div class="row g-2 mt-2">
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessInputSize, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessInputSize, new { @class = "form-control", type = "number", min = "64", max = "512" })
-                                    @Html.ValidationMessageFor(m => m.LivenessInputSize, "", new { @class = "text-danger small" })
-                                </div>
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessCropScale, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessCropScale, new { @class = "form-control", type = "number", step = "0.1", min = "1.0", max = "5.0" })
-                                    @Html.ValidationMessageFor(m => m.LivenessCropScale, "", new { @class = "text-danger small" })
-                                </div>
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessRealIndex, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessRealIndex, new { @class = "form-control", type = "number", min = "0", max = "10" })
-                                    @Html.ValidationMessageFor(m => m.LivenessRealIndex, "", new { @class = "text-danger small" })
-                                </div>
-
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessOutputType, new { @class = "form-label" })
-                                    <select class="form-select" name="LivenessOutputType">
-                                        <option value="logits" @(Model.LivenessOutputType != null && Model.LivenessOutputType.Trim().ToLowerInvariant() == "logits" ? "selected" : "")>logits</option>
-                                        <option value="probs"  @(Model.LivenessOutputType != null && Model.LivenessOutputType.Trim().ToLowerInvariant() == "probs"  ? "selected" : "")>probs</option>
-                                    </select>
-                                    @Html.ValidationMessageFor(m => m.LivenessOutputType, "", new { @class = "text-danger small" })
-                                </div>
-
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessNormalize, new { @class = "form-label" })
-                                    <select class="form-select" name="LivenessNormalize">
-                                        <option value="0_1"      @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "0_1"      ? "selected" : "")>0_1</option>
-                                        <option value="minus1_1" @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "minus1_1" ? "selected" : "")>minus1_1</option>
-                                        <option value="imagenet" @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "imagenet" ? "selected" : "")>imagenet</option>
-                                        <option value="none"     @(Model.LivenessNormalize != null && Model.LivenessNormalize.Trim().ToLowerInvariant() == "none"     ? "selected" : "")>none</option>
-                                    </select>
-                                    @Html.ValidationMessageFor(m => m.LivenessNormalize, "", new { @class = "text-danger small" })
-                                </div>
-
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessChannelOrder, new { @class = "form-label" })
-                                    <select class="form-select" name="LivenessChannelOrder">
-                                        <option value="RGB" @(Model.LivenessChannelOrder != null && Model.LivenessChannelOrder.Trim().ToUpperInvariant() == "RGB" ? "selected" : "")>RGB</option>
-                                        <option value="BGR" @(Model.LivenessChannelOrder != null && Model.LivenessChannelOrder.Trim().ToUpperInvariant() == "BGR" ? "selected" : "")>BGR</option>
-                                    </select>
-                                    @Html.ValidationMessageFor(m => m.LivenessChannelOrder, "", new { @class = "text-danger small" })
-                                </div>
-                            </div>
-
-                            <div class="row g-2 mt-2">
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessRunTimeoutMs, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessRunTimeoutMs, new { @class = "form-control", type = "number", min = "200", max = "10000" })
-                                    @Html.ValidationMessageFor(m => m.LivenessRunTimeoutMs, "", new { @class = "text-danger small" })
-                                </div>
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessGateWaitMs, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessGateWaitMs, new { @class = "form-control", type = "number", min = "0", max = "5000" })
-                                    @Html.ValidationMessageFor(m => m.LivenessGateWaitMs, "", new { @class = "text-danger small" })
-                                </div>
-                                <div class="col-12 col-md-4">
-                                    @Html.LabelFor(m => m.LivenessSlowMs, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessSlowMs, new { @class = "form-control", type = "number", min = "100", max = "10000" })
-                                    @Html.ValidationMessageFor(m => m.LivenessSlowMs, "", new { @class = "text-danger small" })
-                                </div>
-                            </div>
-
-                            <div class="row g-2 mt-2">
-                                <div class="col-12 col-md-6">
-                                    @Html.LabelFor(m => m.LivenessCircuitFailStreak, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessCircuitFailStreak, new { @class = "form-control", type = "number", min = "1", max = "10" })
-                                    @Html.ValidationMessageFor(m => m.LivenessCircuitFailStreak, "", new { @class = "text-danger small" })
-                                </div>
-                                <div class="col-12 col-md-6">
-                                    @Html.LabelFor(m => m.LivenessCircuitDisableSeconds, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.LivenessCircuitDisableSeconds, new { @class = "form-control", type = "number", min = "0", max = "300" })
-                                    @Html.ValidationMessageFor(m => m.LivenessCircuitDisableSeconds, "", new { @class = "text-danger small" })
+                            <div class="ea-settings-section-body">
+                                <div class="row g-3">
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.DlibTolerance, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.DlibTolerance, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", step = "0.01", min = "0.20", max = "1.00"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.DlibTolerance, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Lower = stricter. Typical: 0.55-0.65.</div>
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.LivenessThreshold, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.LivenessThreshold, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", step = "0.01", min = "0", max = "1"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.LivenessThreshold, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Higher = stricter anti-spoof.</div>
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.MinGapSeconds, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.MinGapSeconds, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", min = "1", max = "600"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.MinGapSeconds, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Minimum seconds between scans.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
+                        <div class="ea-settings-section">
+                            <div class="ea-settings-section-head">
+                                <i class="fa-solid fa-clock" aria-hidden="true"></i>
+                                Attendance Policy
+                            </div>
+                            <div class="ea-settings-section-body">
+                                <div class="row g-3">
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.WorkStart, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.WorkStart, new { @class = "form-control form-control-sm", type = "time" })
+                                        @Html.ValidationMessageFor(m => m.WorkStart, "", new { @class = "text-danger small" })
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.WorkEnd, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.WorkEnd, new { @class = "form-control form-control-sm", type = "time" })
+                                        @Html.ValidationMessageFor(m => m.WorkEnd, "", new { @class = "text-danger small" })
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.LunchStart, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.LunchStart, new { @class = "form-control form-control-sm", type = "time" })
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.LunchEnd, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.LunchEnd, new { @class = "form-control form-control-sm", type = "time" })
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.FlexiRequiredHours, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.FlexiRequiredHours, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", step = "0.5", min = "1", max = "12"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.FlexiRequiredHours, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Required hours for flexi employees.</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check">
+                                            @Html.CheckBoxFor(m => m.NoGracePeriod, new { @class = "form-check-input", id = "NoGracePeriod" })
+                                            <label class="form-check-label small" for="NoGracePeriod">
+                                                No grace period (any time after work start is late)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
                     </div>
+
+                    @* -- Column 2: Location + Review + Visitors -- *@
+                    <div class="col-12 col-lg-6">
+
+                        <div class="ea-settings-section">
+                            <div class="ea-settings-section-head">
+                                <i class="fa-solid fa-location-dot" aria-hidden="true"></i>
+                                Location &amp; Wi-Fi
+                            </div>
+                            <div class="ea-settings-section-body">
+                                <div class="row g-3">
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.GPSRadiusDefault, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.GPSRadiusDefault, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", min = "10", max = "10000"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.GPSRadiusDefault, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Default radius in meters per office.</div>
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.FallbackOfficeId, new { @class = "form-label" })
+                                        @Html.DropDownListFor(m => m.FallbackOfficeId,
+                                            Model.OfficeOptions,
+                                            "-- None --",
+                                            new { @class = "form-select form-select-sm" })
+                                        <div class="form-text">Used when GPS does not match any office.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ea-settings-section">
+                            <div class="ea-settings-section-head">
+                                <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                                Review Queue Thresholds
+                            </div>
+                            <div class="ea-settings-section-body">
+                                <div class="row g-3">
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.NeedsReviewNearMatchRatio, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.NeedsReviewNearMatchRatio, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", step = "0.01", min = "0.50", max = "0.99"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.NeedsReviewNearMatchRatio, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Flag low-confidence face matches.</div>
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.NeedsReviewLivenessMargin, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", step = "0.01", min = "0", max = "0.20"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.NeedsReviewLivenessMargin, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Flag near-threshold liveness scores.</div>
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.NeedsReviewGpsMargin, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.NeedsReviewGpsMargin, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", min = "0", max = "200"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.NeedsReviewGpsMargin, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Flag records near the GPS radius boundary.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ea-settings-section">
+                            <div class="ea-settings-section-head">
+                                <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+                                Visitor Retention
+                            </div>
+                            <div class="ea-settings-section-body">
+                                <div class="row g-3">
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.VisitorMaxRecords, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.VisitorMaxRecords, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", min = "100", max = "500000"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.VisitorMaxRecords, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Max visitor log records. Default: 10,000.</div>
+                                    </div>
+                                    <div class="col-12 col-sm-6">
+                                        @Html.LabelFor(m => m.VisitorRetentionYears, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.VisitorRetentionYears, new {
+                                            @class = "form-control form-control-sm",
+                                            type = "number", min = "1", max = "20", step = "1"
+                                        })
+                                        @Html.ValidationMessageFor(m => m.VisitorRetentionYears, "", new { @class = "text-danger small" })
+                                        <div class="form-text">
+                                            Logs older than this are deleted on cleanup.
+                                            Run from the <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })">Visitors page</a>.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                    </div>
+
                 </div>
 
-                @* ------------------------------------------------------------ *@
-                @* RIGHT COLUMN: Location - Attendance - Review Queue *@
-                @* ------------------------------------------------------------ *@
-                <div class="col-12 col-lg-6">
-                    <h5 class="mb-3">Location</h5>
+            </div>
 
-                    <div class="mb-3">
-                        @Html.LabelFor(m => m.GPSAccuracyRequired, new { @class = "form-label" })
-                        @Html.TextBoxFor(m => m.GPSAccuracyRequired, new { @class = "form-control", type = "number", min = "5", max = "5000" })
-                        @Html.ValidationMessageFor(m => m.GPSAccuracyRequired, "", new { @class = "text-danger small" })
-                        <div class="text-muted small">Lower = stricter. Example: 30 to 60.</div>
-                    </div>
-
-                    <div class="mb-3">
-                        @Html.LabelFor(m => m.GPSRadiusDefault, new { @class = "form-label" })
-                        @Html.TextBoxFor(m => m.GPSRadiusDefault, new { @class = "form-control", type = "number", min = "10", max = "10000" })
-                        @Html.ValidationMessageFor(m => m.GPSRadiusDefault, "", new { @class = "text-danger small" })
-                        <div class="text-muted small">Used only when an office has radius 0.</div>
-                    </div>
-
-                    <div class="mb-4">
-                        @Html.LabelFor(m => m.FallbackOfficeId, new { @class = "form-label" })
-                        @Html.DropDownListFor(m => m.FallbackOfficeId, Model.OfficeOptions, new { @class = "form-select" })
-                        @Html.ValidationMessageFor(m => m.FallbackOfficeId, "", new { @class = "text-danger small" })
-                        <div class="text-muted small">Desktop kiosks skip GPS. This office will be used for logs.</div>
-                    </div>
-
-                    <h5 class="mb-3">Attendance</h5>
-
-                    <div class="mb-4">
-                        @Html.LabelFor(m => m.MinGapSeconds, new { @class = "form-label" })
-                        @Html.TextBoxFor(m => m.MinGapSeconds, new { @class = "form-control", type = "number", min = "1", max = "600" })
-                        @Html.ValidationMessageFor(m => m.MinGapSeconds, "", new { @class = "text-danger small" })
-                        <div class="text-muted small">Prevents double taps and duplicate scans.</div>
-                    </div>
-
-                    <h5 class="mb-3">Review queue</h5>
-
-                    <div class="row g-2">
-                        <div class="col-12 col-md-6">
-                            @Html.LabelFor(m => m.NeedsReviewNearMatchRatio, new { @class = "form-label" })
-                            @Html.TextBoxFor(m => m.NeedsReviewNearMatchRatio, new { @class = "form-control", type = "number", step = "0.01", min = "0.50", max = "0.99" })
-                            @Html.ValidationMessageFor(m => m.NeedsReviewNearMatchRatio, "", new { @class = "text-danger small" })
-                        </div>
-                        <div class="col-12 col-md-6">
-                            @Html.LabelFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-label" })
-                            @Html.TextBoxFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-control", type = "number", step = "0.01", min = "0.00", max = "0.20" })
-                            @Html.ValidationMessageFor(m => m.NeedsReviewLivenessMargin, "", new { @class = "text-danger small" })
-                        </div>
-                        <div class="col-12">
-                            @Html.LabelFor(m => m.NeedsReviewGpsMargin, new { @class = "form-label" })
-                            @Html.TextBoxFor(m => m.NeedsReviewGpsMargin, new { @class = "form-control", type = "number", min = "0", max = "200" })
-                            @Html.ValidationMessageFor(m => m.NeedsReviewGpsMargin, "", new { @class = "text-danger small" })
-                        </div>
-                    </div>
-                    <div class="text-muted small mt-2">
-                        Records marked as NeedsReview show up in Attendance &gt; Review queue.
-                    </div>
-                </div>
-
-                @* ------------------------------------------------------------ *@
-                @* FULL-WIDTH ROW: Performance (Phase 3 keys) *@
-                @* ------------------------------------------------------------ *@
-                <div class="col-12">
-                    <hr class="mt-0" />
-                    <h5 class="mb-3">Performance</h5>
-
-                    <div class="row g-4">
-
-                        @* BallTree sub-panel *@
-                        <div class="col-12 col-md-4">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="fw-semibold mb-2">
-                                    <i class="fa-solid fa-diagram-project me-1 text-muted"></i>BallTree Index
-                                </div>
-
-                                <div class="mb-3">
-                                    @Html.LabelFor(m => m.BallTreeThreshold, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.BallTreeThreshold, new { @class = "form-control", type = "number", min = "10", max = "5000", step = "1" })
-                                    @Html.ValidationMessageFor(m => m.BallTreeThreshold, "", new { @class = "text-danger small" })
-                                    <div class="text-muted small">Build the O(log n) BallTree index when enrolled active employees reach this count. Below threshold, linear O(n) scan is used. Default: 50.</div>
-                                </div>
-
-                                <div class="mb-0">
-                                    @Html.LabelFor(m => m.BallTreeLeafSize, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.BallTreeLeafSize, new { @class = "form-control", type = "number", min = "4", max = "64", step = "1" })
-                                    @Html.ValidationMessageFor(m => m.BallTreeLeafSize, "", new { @class = "text-danger small" })
-                                    <div class="text-muted small">Smaller = faster queries, larger = faster builds. Range 4–64. Default: 16.</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        @* Image preprocessing sub-panel *@
-                        <div class="col-12 col-md-4">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="fw-semibold mb-2">
-                                    <i class="fa-solid fa-image me-1 text-muted"></i>Image Preprocessing
-                                </div>
-
-                                <div class="mb-3">
-                                    @Html.LabelFor(m => m.MaxImageDimension, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.MaxImageDimension, new { @class = "form-control", type = "number", min = "320", max = "4096", step = "1" })
-                                    @Html.ValidationMessageFor(m => m.MaxImageDimension, "", new { @class = "text-danger small" })
-                                    <div class="text-muted small">Images taller or wider than this are downscaled before detection. Lower = faster. Default: 1280.</div>
-                                </div>
-
-                                <div class="mb-0">
-                                    @Html.LabelFor(m => m.PreprocessJpegQuality, new { @class = "form-label" })
-                                    @Html.TextBoxFor(m => m.PreprocessJpegQuality, new { @class = "form-control", type = "number", min = "40", max = "95", step = "1" })
-                                    @Html.ValidationMessageFor(m => m.PreprocessJpegQuality, "", new { @class = "text-danger small" })
-                                    <div class="text-muted small">Quality of the resized temp JPEG. Lower = smaller file, faster upload. Default: 85.</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        @* Adaptive tolerance sub-panel *@
-                        <div class="col-12 col-md-4">
-                            <div class="border rounded-3 p-3 h-100">
-                                <div class="fw-semibold mb-2">
-                                    <i class="fa-solid fa-sliders me-1 text-muted"></i>Adaptive Tolerance
-                                </div>
-
-                                <div class="form-check mb-3">
-                                    @Html.CheckBoxFor(m => m.FaceMatchTunerEnabled, new { @class = "form-check-input" })
-                                    @Html.LabelFor(m => m.FaceMatchTunerEnabled, new { @class = "form-check-label fw-semibold" })
-                                </div>
-
-                                <div class="alert alert-warning p-2 mb-0 small">
-                                    <i class="fa-solid fa-triangle-exclamation me-1"></i>
-                                    Enable only after validating adaptive threshold behaviour on your hardware
-                                    and lighting conditions. When enabled, the match threshold tightens
-                                    automatically in poor image quality. <strong>Off by default.</strong>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                @* ------------------------------------------------------------ *@
-                @* FULL-WIDTH ROW: Visitors *@
-                @* ------------------------------------------------------------ *@
-                <div class="col-12">
-                    <hr class="mt-0" />
-                    <h5 class="mb-3">Visitors</h5>
-
-                    <div class="row g-3">
-                        <div class="col-12 col-md-4">
-                            @Html.LabelFor(m => m.VisitorMaxRecords, new { @class = "form-label" })
-                            @Html.TextBoxFor(m => m.VisitorMaxRecords, new { @class = "form-control", type = "number", min = "100", max = "500000", step = "1" })
-                            @Html.ValidationMessageFor(m => m.VisitorMaxRecords, "", new { @class = "text-danger small" })
-                            <div class="text-muted small">
-                                Soft cap - informational only. Run retention cleanup from the
-                                <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })">Visitors page</a>
-                                to enforce it. Default: 10,000.
-                            </div>
-                        </div>
-                        <div class="col-12 col-md-4">
-                            @Html.LabelFor(m => m.VisitorRetentionYears, new { @class = "form-label" })
-                            @Html.TextBoxFor(m => m.VisitorRetentionYears, new { @class = "form-control", type = "number", min = "1", max = "20", step = "1" })
-                            @Html.ValidationMessageFor(m => m.VisitorRetentionYears, "", new { @class = "text-danger small" })
-                            <div class="text-muted small">
-                                Visitor logs older than this many years are permanently deleted when
-                                you click <strong>Run retention cleanup</strong> on the Visitors page.
-                                Visitor profiles are not deleted. Default: 2.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-            </div>@* /row g-4 *@
-
-            <hr class="my-4" />
-
-            <div class="d-flex flex-wrap gap-2">
+            <div class="ea-form-footer">
                 <button type="submit" class="btn btn-primary">
-                    <i class="fa-solid fa-floppy-disk me-1"></i>Save settings
+                    <i class="fa-solid fa-floppy-disk me-1" aria-hidden="true"></i>Save Settings
                 </button>
-                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">Reload</a>
+                <a class="btn btn-outline-secondary" href="@Url.Action("Index")">
+                    <i class="fa-solid fa-rotate me-1" aria-hidden="true"></i>Reload
+                </a>
                 <a class="btn btn-outline-primary" href="@Url.Action("Index", "Attendance", new { area = "Admin" })">
-                    <i class="fa-solid fa-clock me-1"></i>Go to Attendance
+                    <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>Attendance
                 </a>
             </div>
-        }
-    </div>
+        </div>
+    }
+
 </div>
 
 @section scripts {
