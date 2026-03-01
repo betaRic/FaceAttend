@@ -37,23 +37,9 @@
         kioskRoot: el('kioskRoot'),
         idleOverlay: el('idleOverlay'),
 
-        // permission panel (inside idle overlay)
-        permPanel: el('permPanel'),
-        permHint: el('permHint'),
-        permCamBadge: el('permCamBadge'),
-        permCamStatus: el('permCamStatus'),
-        permGeoBadge: el('permGeoBadge'),
-        permGeoStatus: el('permGeoStatus'),
-        permGrant: el('permGrant'),
-        permDismiss: el('permDismiss'),
-        permReload: el('permReload'),
-        permHelp: el('permHelp'),
-
         mainPrompt: el('mainPrompt'),
         subPrompt: el('subPrompt'),
     };
-
-    const idleCard = document.querySelector('#idleOverlay .idleCard');
 
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
     const appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
@@ -142,10 +128,6 @@
         unlockOpen: false,
         wasIdle: true,
 
-        // boot gating
-        bootStarted: false,
-        bootStarting: false,
-
 
         visitorOpen: false,
         pendingVisitor: null,
@@ -155,7 +137,6 @@
         faceGoneSince: 0,
         // gps/office
         gps: { lat: null, lon: null, accuracy: null },
-        gpsFallback: false,
         allowedArea: !isMobile,
         currentOffice: { id: null, name: null },
         lastResolveAt: 0,
@@ -392,286 +373,6 @@
             ui.idleOverlay.setAttribute('aria-hidden', idle ? 'false' : 'true');
         }
     }
-
-    // =========
-    // permissions (inside idle overlay; no popup/modal)
-    // =========
-    const perm = {
-        cam: 'unknown',
-        geo: 'unknown',
-        camStatus: null,
-        geoStatus: null,
-
-        async query(name) {
-            if (!navigator.permissions || !navigator.permissions.query) return { state: 'unknown', status: null };
-            try {
-                const st = await navigator.permissions.query({ name });
-                return { state: (st && st.state) ? st.state : 'unknown', status: st };
-            } catch {
-                return { state: 'unknown', status: null };
-            }
-        },
-
-        isSecure() {
-            return (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-        },
-
-        setBadge(node, kind, ch) {
-            if (!node) return;
-            node.classList.remove('permBadge-ok', 'permBadge-warn', 'permBadge-bad', 'permBadge-unk');
-            node.classList.add('permBadge-' + (kind || 'unk'));
-            node.textContent = ch || '!';
-        },
-
-        showPanel(show) {
-            if (!ui.permPanel) return;
-            ui.permPanel.classList.toggle('hidden', !show);
-        },
-
-        async refresh() {
-            const secure = this.isSecure();
-
-            // camera
-            if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-                this.cam = 'unavailable';
-                this.camStatus = null;
-            } else if (!secure) {
-                this.cam = 'insecure';
-                this.camStatus = null;
-            } else {
-                const q = await this.query('camera');
-                // some browsers don't support Permissions API for camera
-                this.cam = (q.state === 'unknown') ? 'prompt' : q.state;
-                this.camStatus = q.status;
-            }
-
-            // geolocation
-            if (!('geolocation' in navigator)) {
-                this.geo = 'unavailable';
-                this.geoStatus = null;
-            } else if (!secure) {
-                this.geo = 'insecure';
-                this.geoStatus = null;
-            } else {
-                const q = await this.query('geolocation');
-                this.geo = (q.state === 'unknown') ? 'prompt' : q.state;
-                this.geoStatus = q.status;
-            }
-
-            this.updateUi();
-        },
-
-        updateUi() {
-            const cam = this.cam;
-            const geo = this.geo;
-
-            // camera row
-            if (ui.permCamStatus) {
-                if (cam === 'granted') ui.permCamStatus.textContent = 'Allowed.';
-                else if (cam === 'denied') ui.permCamStatus.textContent = 'Blocked. Enable in browser settings.';
-                else if (cam === 'insecure') ui.permCamStatus.textContent = 'Needs HTTPS.';
-                else if (cam === 'unavailable') ui.permCamStatus.textContent = 'No camera API available.';
-                else ui.permCamStatus.textContent = 'Not yet allowed. Tap Grant access.';
-            }
-
-            if (cam === 'granted') this.setBadge(ui.permCamBadge, 'ok', '✓');
-            else if (cam === 'denied' || cam === 'unavailable') this.setBadge(ui.permCamBadge, 'bad', '✕');
-            else this.setBadge(ui.permCamBadge, 'warn', '!');
-
-            // location row
-            if (ui.permGeoStatus) {
-                if (geo === 'granted') ui.permGeoStatus.textContent = 'Allowed.';
-                else if (geo === 'denied') ui.permGeoStatus.textContent = 'Blocked. Using default office.';
-                else if (geo === 'insecure') ui.permGeoStatus.textContent = 'Needs HTTPS. Using default office.';
-                else if (geo === 'unavailable') ui.permGeoStatus.textContent = 'Not available. Using default office.';
-                else ui.permGeoStatus.textContent = 'Not yet allowed. Tap Grant access.';
-            }
-
-            if (geo === 'granted') this.setBadge(ui.permGeoBadge, 'ok', '✓');
-            else if (geo === 'denied' || geo === 'unavailable') this.setBadge(ui.permGeoBadge, 'bad', '✕');
-            else this.setBadge(ui.permGeoBadge, 'warn', '!');
-
-            const camOk = (cam === 'granted');
-            const geoOk = (geo === 'granted' || geo === 'unavailable' || geo === 'insecure');
-            const geoNeeds = !geoOk;
-
-            // show/hide card + panel
-            if (idleCard) idleCard.classList.toggle('hidden', !camOk);
-
-            // show panel when camera needs permission, or when location isn't granted (non-blocking)
-            const show = !camOk || geoNeeds;
-            this.showPanel(show);
-
-            // actions
-            const showDismiss = camOk && geoNeeds;
-            if (ui.permDismiss) ui.permDismiss.classList.toggle('hidden', !showDismiss);
-
-            // reload button is only needed for denied (can't re-prompt)
-            const needReload = (cam === 'denied') || (cam === 'unavailable') || (geo === 'denied');
-            if (ui.permReload) ui.permReload.classList.toggle('hidden', !needReload);
-
-            // grant button is hidden when re-prompt won't work for camera denied
-            let showGrant = true;
-            if (!camOk && (cam === 'denied' || cam === 'unavailable')) showGrant = false;
-            if (camOk && geoNeeds && geo === 'denied') showGrant = false;
-            if (ui.permGrant) ui.permGrant.classList.toggle('hidden', !showGrant);
-
-            if (ui.permGrant) {
-                ui.permGrant.textContent = (!camOk) ? 'Grant access' : (geoNeeds ? 'Enable location' : 'Grant access');
-            }
-
-            // help text
-            if (ui.permHelp) {
-                let help = '';
-                if (!camOk) {
-                    if (cam === 'denied') {
-                        help = 'Camera access was blocked. Enable Camera in your browser settings for this site, then tap Reload.';
-                    } else if (cam === 'insecure') {
-                        help = 'Camera needs HTTPS. Open the HTTPS site URL.';
-                    } else if (cam === 'unavailable') {
-                        help = 'No camera was detected. Check your device camera and try again.';
-                    } else {
-                        help = 'Tap Grant access to allow Camera.';
-                    }
-                } else if (geoNeeds) {
-                    if (geo === 'denied') {
-                        help = 'Location was blocked. You can still scan using the default office. To enable Location, allow it in browser settings, then tap Reload.';
-                    } else {
-                        help = 'Location helps choose the correct office. You can tap Enable location now, or tap Not now.';
-                    }
-                }
-                ui.permHelp.textContent = help;
-            }
-
-            if (ui.permHint) {
-                ui.permHint.textContent = (!camOk)
-                    ? 'Camera is required to start.'
-                    : (geoNeeds ? 'Location is optional.' : 'All set.');
-            }
-        },
-
-        async ensureBoot() {
-            if (state.bootStarted || state.bootStarting) return;
-            state.bootStarting = true;
-            try {
-                await startCamera();
-                await mp.init();
-
-                // start loops once
-                setIdleUi(true);
-                setPrompt('Idle.', 'Look at the camera.');
-                setEta('ETA: idle');
-                setLiveness(null, null, 'live-unk');
-
-                drawLoop();
-                localSenseLoop();
-                loop();
-
-                state.bootStarted = true;
-            } catch (e) {
-                // If camera start fails, keep kiosk unstarted and show permission guidance.
-                const n = (e && e.name) ? String(e.name) : '';
-                if (n === 'NotAllowedError' || n === 'PermissionDeniedError' || n === 'SecurityError') {
-                    // Some browsers require a user gesture even when already granted.
-                    this.cam = (this.cam === 'granted') ? 'prompt' : 'denied';
-                }
-                else if (n === 'NotFoundError' || n === 'OverconstrainedError') this.cam = 'unavailable';
-                else this.cam = this.cam || 'prompt';
-
-                state.bootStarted = false;
-            } finally {
-                state.bootStarting = false;
-                this.updateUi();
-            }
-        },
-
-        requestGeoOnce() {
-            return new Promise((resolve, reject) => {
-                try {
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => resolve(pos),
-                        (err) => reject(err),
-                        { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 }
-                    );
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        },
-
-        async onGrantClick() {
-            if (ui.permGrant) ui.permGrant.disabled = true;
-            try {
-                // Camera first (required)
-                if (this.cam !== 'granted') {
-                    await this.ensureBoot();
-                }
-
-                // Location (optional)
-                if (this.isSecure() && ('geolocation' in navigator) && this.geo !== 'granted') {
-                    try {
-                        await this.requestGeoOnce();
-                    } catch { }
-                    startGpsIfAvailable();
-                }
-
-                // If location isn't granted, fall back to default office so kiosk can still run.
-                if (this.geo !== 'granted') {
-                    state.gpsFallback = true;
-                    state.allowedArea = true;
-                    resolveOfficeDesktopOnce(true);
-                }
-            } finally {
-                if (ui.permGrant) ui.permGrant.disabled = false;
-                await this.refresh();
-            }
-        },
-
-        async init() {
-            // wiring
-            ui.permGrant?.addEventListener('click', () => this.onGrantClick());
-            ui.permReload?.addEventListener('click', () => location.reload());
-            ui.permDismiss?.addEventListener('click', () => {
-                this.showPanel(false);
-            });
-
-            // react to permission changes when supported
-            const hook = (st) => {
-                if (!st) return;
-                try {
-                    st.addEventListener('change', () => this.refresh());
-                } catch {
-                    try { st.onchange = () => this.refresh(); } catch { }
-                }
-            };
-
-            await this.refresh();
-            hook(this.camStatus);
-            hook(this.geoStatus);
-
-            // Start GPS watcher only when already granted.
-            if (this.geo === 'granted') startGpsIfAvailable();
-            else {
-                // allow kiosk to function even without GPS
-                state.gpsFallback = true;
-                state.allowedArea = true;
-                resolveOfficeDesktopOnce(true);
-            }
-
-            // Boot kiosk only when camera already granted.
-            if (this.cam === 'granted') {
-                await this.ensureBoot();
-            } else {
-                // keep idle overlay visible and show guidance
-                setIdleUi(true);
-                setPrompt('Idle.', 'Allow camera to start.');
-                setEta('ETA: --');
-                setLiveness(null, null, 'live-unk');
-            }
-
-            this.updateUi();
-        },
-    };
 
     function setKioskMode(mode) {
         try { ui.kioskRoot?.setAttribute('data-mode', mode || 'legacy'); } catch { }
@@ -1258,25 +959,18 @@
     // =========
     function startGpsIfAvailable() {
         if (!('geolocation' in navigator)) {
-            state.gpsFallback = true;
-            state.gps.lat = null;
-            state.gps.lon = null;
-            state.gps.accuracy = null;
-
-            // GPS is optional. Fall back to the server default office.
-            state.allowedArea = true;
-            if (ui.officeLine) ui.officeLine.textContent = isMobile ? 'GPS not available (default office)' : 'GPS not available';
-            resolveOfficeDesktopOnce(true);
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS not available';
+            if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
 
         // Geolocation only works on HTTPS (or localhost).
         const isSecure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
         if (!isSecure) {
-            state.gpsFallback = true;
-            state.allowedArea = true;
-            if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS (default office)';
-            resolveOfficeDesktopOnce(true);
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS';
+            if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
 
@@ -1285,8 +979,6 @@
                 state.gps.lat = pos.coords.latitude;
                 state.gps.lon = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
-
-                state.gpsFallback = false;
             },
             (err) => {
                 state.gps.lat = null;
@@ -1298,11 +990,9 @@
                 else if (err && err.code === 2) msg = 'GPS unavailable';
                 else if (err && err.code === 3) msg = 'GPS timeout';
 
-                // GPS denied/unavailable should not block the kiosk.
-                state.gpsFallback = true;
-                state.allowedArea = true;
-                if (ui.officeLine) ui.officeLine.textContent = isMobile ? (msg + ' (default office)') : msg;
-                resolveOfficeDesktopOnce(true);
+                state.allowedArea = false;
+                if (ui.officeLine) ui.officeLine.textContent = msg;
+                if (!isMobile) resolveOfficeDesktopOnce();
             },
             { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
         );
@@ -1316,9 +1006,15 @@
         state.lastResolveAt = t;
 
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
-            // GPS is optional. If we don't have a fix, use the server default office.
-            await resolveOfficeDesktopOnce(true);
-            if (state.allowedArea !== false) state.allowedArea = true;
+            // Desktop kiosks: GPS may be unavailable. Fall back to server default office.
+            if (!isMobile) {
+                await resolveOfficeDesktopOnce();
+                if (state.allowedArea !== false) state.allowedArea = true;
+                return;
+            }
+
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'Locating.';
             return;
         }
 
@@ -1352,8 +1048,8 @@
         }
     }
 
-    async function resolveOfficeDesktopOnce(allowMobile) {
-        if (isMobile && !allowMobile) return;
+    async function resolveOfficeDesktopOnce() {
+        if (isMobile) return;
         if (state.currentOffice && state.currentOffice.name) return;
 
         try {
@@ -1647,16 +1343,38 @@
     // =========
     (async function init() {
         startClock();
+        resolveOfficeDesktopOnce();
         wireUnlockUi();
+
         wireVisitorUi();
 
-        // show idle overlay immediately; permission panel lives inside it
-        setIdleUi(true);
-        setPrompt('Idle.', 'Checking permissions.');
-        setEta('ETA: --');
-        setLiveness(null, null, 'live-unk');
+        // Wait for the permission bootstrap to complete
+        // (camera + location already granted, fullscreen entered)
+        try {
+            if (window.kioskPermissionsReady) {
+                await window.kioskPermissionsReady;
+            }
+        } catch (_) { }
 
-        await perm.init();
+        // Now start GPS watcher (permission already granted, no second prompt)
+        startGpsIfAvailable();
+        try {
+            await startCamera();
+            await mp.init();
+
+            setIdleUi(true);
+            setPrompt('Idle.', 'Look at the camera.');
+            setEta('ETA: idle');
+            setLiveness(null, null, 'live-unk');
+
+            drawLoop();
+            localSenseLoop();
+            loop();
+        } catch {
+            setIdleUi(false);
+            setPrompt('Camera blocked.', 'Allow camera permission.');
+            setEta('ETA: --');
+        }
     })();
 
 })();

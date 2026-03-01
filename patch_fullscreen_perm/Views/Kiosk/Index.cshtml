@@ -13,7 +13,20 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Kiosk - FaceAttend</title>
 
+    <!-- PWA manifest (fullscreen when installed) -->
+    <link rel="manifest" href="@Url.Content("~/manifest.json")" />
+    <meta name="theme-color" content="#0a1810" />
+
+    <!-- iOS PWA hints -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="FaceAttend" />
+    <link rel="apple-touch-icon" href="@Url.Content("~/Content/images/dilg-logo-192.png")" />
+
     <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
+
+    <!-- Permission modal styles -->
+    <link rel="stylesheet" href="@Url.Content("~/Content/kiosk-perm.css")" />
 
     <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
 </head>
@@ -31,40 +44,6 @@
                 <div class="idleDot" aria-hidden="true"></div>
                 <div class="idleTitle">Idle</div>
                 <div class="idleSub">Look at the camera to start.</div>
-            </div>
-
-            <!-- Permission status panel (shown inside the idle overlay; no popup/modal) -->
-            <div id="permPanel" class="permPanel hidden" aria-live="polite">
-                <div class="permHeader">
-                    <div class="permTitle">Permissions</div>
-                    <div id="permHint" class="permHint">Allow access to use camera and location.</div>
-                </div>
-
-                <div class="permRows" role="list">
-                    <div class="permRow" role="listitem">
-                        <div id="permCamBadge" class="permBadge permBadge-unk" aria-hidden="true">!</div>
-                        <div class="permBody">
-                            <div class="permLabel">Camera</div>
-                            <div id="permCamStatus" class="permStatus">Checking…</div>
-                        </div>
-                    </div>
-
-                    <div class="permRow" role="listitem">
-                        <div id="permGeoBadge" class="permBadge permBadge-unk" aria-hidden="true">!</div>
-                        <div class="permBody">
-                            <div class="permLabel">Location</div>
-                            <div id="permGeoStatus" class="permStatus">Checking…</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="permActions">
-                    <button id="permGrant" type="button" class="btnPrimary">Grant access</button>
-                    <button id="permDismiss" type="button" class="btnGhost hidden">Not now</button>
-                    <button id="permReload" type="button" class="btnGhost hidden">Reload</button>
-                </div>
-
-                <div id="permHelp" class="permHelp"></div>
             </div>
         </div>
 
@@ -139,6 +118,9 @@
     <script src="~/Scripts/jquery-3.7.1.min.js"></script>
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
     <script src="@Url.Content("~/Scripts/vendor/toastify/toastify.min.js")"></script>
+
+    <!-- Fullscreen & Permission bootstrap — must load BEFORE kiosk.js -->
+    <script src="@Url.Content("~/Scripts/kiosk-fullscreen-permission.js")"></script>
     <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
 </body>
 </html>

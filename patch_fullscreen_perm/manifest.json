@@ -1,0 +1,29 @@
+{
+    "name": "FaceAttend – DILG Region XII",
+    "short_name": "FaceAttend",
+    "description": "Face Attendance Kiosk – Department of the Interior and Local Government, Region XII",
+    "start_url": "/Kiosk",
+    "scope": "/",
+    "display": "fullscreen",
+    "orientation": "portrait-primary",
+    "theme_color": "#0a1810",
+    "background_color": "#000000",
+    "lang": "en-PH",
+    "categories": ["productivity", "business"],
+    "icons": [
+        {
+            "src": "/Content/images/dilg-logo-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "/Content/images/dilg-logo-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "any maskable"
+        }
+    ],
+    "screenshots": [],
+    "prefer_related_applications": false
+}
