@@ -60,14 +60,16 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         private string GetRequestId()
         {
-            try
-            {
-                var id = HttpContext?.TraceIdentifier;
-                if (!string.IsNullOrWhiteSpace(id)) return id;
-            }
-            catch { }
+            var existing = HttpContext?.Items["RequestId"] as string;
+            if (!string.IsNullOrWhiteSpace(existing))
+                return existing;
 
-            return Guid.NewGuid().ToString("N");
+            var id = Guid.NewGuid().ToString("N");
+
+            if (HttpContext != null)
+                HttpContext.Items["RequestId"] = id;
+
+            return id;
         }
     }
 }
