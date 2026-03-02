@@ -15,7 +15,10 @@
 
     <div class="col-md-2">
         <label class="form-label">Type</label>
-        @Html.TextBoxFor(m => m.Type, new { @class = "form-control", autocomplete = "off" })
+        @Html.DropDownListFor(m => m.Type,
+            new SelectList(new[] { "REGION", "PROVINCE", "HUC" }, Model.Type),
+            "-- Select --",
+            new { @class = "form-control" })
         @Html.ValidationMessageFor(m => m.Type, "", new { @class = "text-danger small" })
     </div>
 
@@ -72,7 +75,4 @@
     </button>
 </div>
 
-<div id="map"
-     data-fallback-lat="6.1163860"
-     data-fallback-lon="125.1716170"
-     style="height: 360px; border-radius: 12px; overflow: hidden; border: 1px solid #e6e6e6;"></div>
+<div id="map" style="height: 360px; border-radius: 12px; overflow: hidden; border: 1px solid #e6e6e6;"></div>

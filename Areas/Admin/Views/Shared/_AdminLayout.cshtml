@@ -4,10 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>@ViewBag.Title - FaceAttend Admin</title>
-    <link rel="icon" type="image/x-icon" href="@Url.Content("~/Content/favicon.ico")" />
+
     @Styles.Render("~/Content/css")
     @Styles.Render("~/Content/vendor")
     @Styles.Render("~/Content/admin")
+    @RenderSection("head", required: false)
     @RenderSection("styles", required: false)
 </head>
 <body class="admin-body">
@@ -46,7 +47,7 @@
                             type="button"
                             data-bs-toggle="dropdown"
                             aria-expanded="false">
-                        <i class="fa-solid fa-user-gear me-1" aria-hidden="true"></i>Admin
+                        Admin
                     </button>
 
                     <ul class="dropdown-menu dropdown-menu-end shadow-sm">
@@ -126,9 +127,7 @@
 
     @if (TempData["msg"] != null)
     {
-        var kind = (TempData["msgKind"] ?? "success").ToString();
         <script>
-            window.__toastType = "@System.Web.HttpUtility.JavaScriptStringEncode(kind)";
             window.__toastMsg = "@System.Web.HttpUtility.JavaScriptStringEncode(TempData["msg"].ToString())";
         </script>
     }

@@ -37,23 +37,9 @@
         kioskRoot: el('kioskRoot'),
         idleOverlay: el('idleOverlay'),
 
-        // permission panel (inside idle overlay)
-        permPanel: el('permPanel'),
-        permHint: el('permHint'),
-        permCamBadge: el('permCamBadge'),
-        permCamStatus: el('permCamStatus'),
-        permGeoBadge: el('permGeoBadge'),
-        permGeoStatus: el('permGeoStatus'),
-        permGrant: el('permGrant'),
-        permDismiss: el('permDismiss'),
-        permReload: el('permReload'),
-        permHelp: el('permHelp'),
-
         mainPrompt: el('mainPrompt'),
         subPrompt: el('subPrompt'),
     };
-
-    const idleCard = document.querySelector('#idleOverlay .idleCard');
 
     const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
     const appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
@@ -82,7 +68,6 @@
         },
 
         server: {
-            detectMs: 450,
             resolveMs: 1200,
             captureCooldownMs: 3000,
         },
@@ -121,11 +106,9 @@
     // endpoints (only used ones)
     // =========
     const EP = {
-        unlockPin: appBase + 'Kiosk/UnlockPin',
+        unlockPin:     appBase + 'Kiosk/UnlockPin',
         resolveOffice: appBase + 'Kiosk/ResolveOffice',
-        detectFace: appBase + 'Kiosk/DetectFace',
-        scanAttendance: appBase + 'Kiosk/ScanAttendance',
-        attend: appBase + 'Kiosk/Attend',
+        attend:        appBase + 'Kiosk/Attend',
         submitVisitor: appBase + 'Kiosk/SubmitVisitor',
     };
 
@@ -134,18 +117,10 @@
     // =========
     const ua = navigator.userAgent || '';
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
-
-    let nextGenActive = nextGenEnabled;
-
     const state = {
         // ui flow
         unlockOpen: false,
         wasIdle: true,
-
-        // boot gating
-        bootStarted: false,
-        bootStarting: false,
-
 
         visitorOpen: false,
         pendingVisitor: null,
@@ -153,9 +128,9 @@
         scanBlockUntil: 0,
         requireFaceGone: false,
         faceGoneSince: 0,
+
         // gps/office
         gps: { lat: null, lon: null, accuracy: null },
-        gpsFallback: false,
         allowedArea: !isMobile,
         currentOffice: { id: null, name: null },
         lastResolveAt: 0,
@@ -163,13 +138,6 @@
         // timing
         backoffUntil: 0,
         lastCaptureAt: 0,
-        lastDetectAt: 0,
-
-        // box + stability
-        boxRaw: null,
-        boxSmooth: null,
-        lastCenters: [],
-        stableFrames: 0,
 
         // mp status
         mpMode: 'none',         // 'tasks' | 'none'
@@ -179,10 +147,8 @@
         faceStatus: 'none',     // 'none' | 'low' | 'good' | 'multi'
         mpRawCount: 0,
         mpAcceptedCount: 0,
-
-        // legacy/server status
-        serverFaceSeenAt: 0,
-        faceCount: 0,
+        mpBoxCanvas: null,
+        mpPrevCenter: null,
 
         // liveness display (ui)
         latestLiveness: null,
@@ -193,12 +159,12 @@
         frameDiffs: [],
 
         // in-flight
-        detectInFlight: false,
         liveInFlight: false,
 
         // local sensing
         localSeenAt: 0,
         localPresent: false,
+    
     };
 
     // =========
@@ -393,286 +359,6 @@
         }
     }
 
-    // =========
-    // permissions (inside idle overlay; no popup/modal)
-    // =========
-    const perm = {
-        cam: 'unknown',
-        geo: 'unknown',
-        camStatus: null,
-        geoStatus: null,
-
-        async query(name) {
-            if (!navigator.permissions || !navigator.permissions.query) return { state: 'unknown', status: null };
-            try {
-                const st = await navigator.permissions.query({ name });
-                return { state: (st && st.state) ? st.state : 'unknown', status: st };
-            } catch {
-                return { state: 'unknown', status: null };
-            }
-        },
-
-        isSecure() {
-            return (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
-        },
-
-        setBadge(node, kind, ch) {
-            if (!node) return;
-            node.classList.remove('permBadge-ok', 'permBadge-warn', 'permBadge-bad', 'permBadge-unk');
-            node.classList.add('permBadge-' + (kind || 'unk'));
-            node.textContent = ch || '!';
-        },
-
-        showPanel(show) {
-            if (!ui.permPanel) return;
-            ui.permPanel.classList.toggle('hidden', !show);
-        },
-
-        async refresh() {
-            const secure = this.isSecure();
-
-            // camera
-            if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) {
-                this.cam = 'unavailable';
-                this.camStatus = null;
-            } else if (!secure) {
-                this.cam = 'insecure';
-                this.camStatus = null;
-            } else {
-                const q = await this.query('camera');
-                // some browsers don't support Permissions API for camera
-                this.cam = (q.state === 'unknown') ? 'prompt' : q.state;
-                this.camStatus = q.status;
-            }
-
-            // geolocation
-            if (!('geolocation' in navigator)) {
-                this.geo = 'unavailable';
-                this.geoStatus = null;
-            } else if (!secure) {
-                this.geo = 'insecure';
-                this.geoStatus = null;
-            } else {
-                const q = await this.query('geolocation');
-                this.geo = (q.state === 'unknown') ? 'prompt' : q.state;
-                this.geoStatus = q.status;
-            }
-
-            this.updateUi();
-        },
-
-        updateUi() {
-            const cam = this.cam;
-            const geo = this.geo;
-
-            // camera row
-            if (ui.permCamStatus) {
-                if (cam === 'granted') ui.permCamStatus.textContent = 'Allowed.';
-                else if (cam === 'denied') ui.permCamStatus.textContent = 'Blocked. Enable in browser settings.';
-                else if (cam === 'insecure') ui.permCamStatus.textContent = 'Needs HTTPS.';
-                else if (cam === 'unavailable') ui.permCamStatus.textContent = 'No camera API available.';
-                else ui.permCamStatus.textContent = 'Not yet allowed. Tap Grant access.';
-            }
-
-            if (cam === 'granted') this.setBadge(ui.permCamBadge, 'ok', '✓');
-            else if (cam === 'denied' || cam === 'unavailable') this.setBadge(ui.permCamBadge, 'bad', '✕');
-            else this.setBadge(ui.permCamBadge, 'warn', '!');
-
-            // location row
-            if (ui.permGeoStatus) {
-                if (geo === 'granted') ui.permGeoStatus.textContent = 'Allowed.';
-                else if (geo === 'denied') ui.permGeoStatus.textContent = 'Blocked. Using default office.';
-                else if (geo === 'insecure') ui.permGeoStatus.textContent = 'Needs HTTPS. Using default office.';
-                else if (geo === 'unavailable') ui.permGeoStatus.textContent = 'Not available. Using default office.';
-                else ui.permGeoStatus.textContent = 'Not yet allowed. Tap Grant access.';
-            }
-
-            if (geo === 'granted') this.setBadge(ui.permGeoBadge, 'ok', '✓');
-            else if (geo === 'denied' || geo === 'unavailable') this.setBadge(ui.permGeoBadge, 'bad', '✕');
-            else this.setBadge(ui.permGeoBadge, 'warn', '!');
-
-            const camOk = (cam === 'granted');
-            const geoOk = (geo === 'granted' || geo === 'unavailable' || geo === 'insecure');
-            const geoNeeds = !geoOk;
-
-            // show/hide card + panel
-            if (idleCard) idleCard.classList.toggle('hidden', !camOk);
-
-            // show panel when camera needs permission, or when location isn't granted (non-blocking)
-            const show = !camOk || geoNeeds;
-            this.showPanel(show);
-
-            // actions
-            const showDismiss = camOk && geoNeeds;
-            if (ui.permDismiss) ui.permDismiss.classList.toggle('hidden', !showDismiss);
-
-            // reload button is only needed for denied (can't re-prompt)
-            const needReload = (cam === 'denied') || (cam === 'unavailable') || (geo === 'denied');
-            if (ui.permReload) ui.permReload.classList.toggle('hidden', !needReload);
-
-            // grant button is hidden when re-prompt won't work for camera denied
-            let showGrant = true;
-            if (!camOk && (cam === 'denied' || cam === 'unavailable')) showGrant = false;
-            if (camOk && geoNeeds && geo === 'denied') showGrant = false;
-            if (ui.permGrant) ui.permGrant.classList.toggle('hidden', !showGrant);
-
-            if (ui.permGrant) {
-                ui.permGrant.textContent = (!camOk) ? 'Grant access' : (geoNeeds ? 'Enable location' : 'Grant access');
-            }
-
-            // help text
-            if (ui.permHelp) {
-                let help = '';
-                if (!camOk) {
-                    if (cam === 'denied') {
-                        help = 'Camera access was blocked. Enable Camera in your browser settings for this site, then tap Reload.';
-                    } else if (cam === 'insecure') {
-                        help = 'Camera needs HTTPS. Open the HTTPS site URL.';
-                    } else if (cam === 'unavailable') {
-                        help = 'No camera was detected. Check your device camera and try again.';
-                    } else {
-                        help = 'Tap Grant access to allow Camera.';
-                    }
-                } else if (geoNeeds) {
-                    if (geo === 'denied') {
-                        help = 'Location was blocked. You can still scan using the default office. To enable Location, allow it in browser settings, then tap Reload.';
-                    } else {
-                        help = 'Location helps choose the correct office. You can tap Enable location now, or tap Not now.';
-                    }
-                }
-                ui.permHelp.textContent = help;
-            }
-
-            if (ui.permHint) {
-                ui.permHint.textContent = (!camOk)
-                    ? 'Camera is required to start.'
-                    : (geoNeeds ? 'Location is optional.' : 'All set.');
-            }
-        },
-
-        async ensureBoot() {
-            if (state.bootStarted || state.bootStarting) return;
-            state.bootStarting = true;
-            try {
-                await startCamera();
-                await mp.init();
-
-                // start loops once
-                setIdleUi(true);
-                setPrompt('Idle.', 'Look at the camera.');
-                setEta('ETA: idle');
-                setLiveness(null, null, 'live-unk');
-
-                drawLoop();
-                localSenseLoop();
-                loop();
-
-                state.bootStarted = true;
-            } catch (e) {
-                // If camera start fails, keep kiosk unstarted and show permission guidance.
-                const n = (e && e.name) ? String(e.name) : '';
-                if (n === 'NotAllowedError' || n === 'PermissionDeniedError' || n === 'SecurityError') {
-                    // Some browsers require a user gesture even when already granted.
-                    this.cam = (this.cam === 'granted') ? 'prompt' : 'denied';
-                }
-                else if (n === 'NotFoundError' || n === 'OverconstrainedError') this.cam = 'unavailable';
-                else this.cam = this.cam || 'prompt';
-
-                state.bootStarted = false;
-            } finally {
-                state.bootStarting = false;
-                this.updateUi();
-            }
-        },
-
-        requestGeoOnce() {
-            return new Promise((resolve, reject) => {
-                try {
-                    navigator.geolocation.getCurrentPosition(
-                        (pos) => resolve(pos),
-                        (err) => reject(err),
-                        { enableHighAccuracy: true, maximumAge: 0, timeout: 6000 }
-                    );
-                } catch (e) {
-                    reject(e);
-                }
-            });
-        },
-
-        async onGrantClick() {
-            if (ui.permGrant) ui.permGrant.disabled = true;
-            try {
-                // Camera first (required)
-                if (this.cam !== 'granted') {
-                    await this.ensureBoot();
-                }
-
-                // Location (optional)
-                if (this.isSecure() && ('geolocation' in navigator) && this.geo !== 'granted') {
-                    try {
-                        await this.requestGeoOnce();
-                    } catch { }
-                    startGpsIfAvailable();
-                }
-
-                // If location isn't granted, fall back to default office so kiosk can still run.
-                if (this.geo !== 'granted') {
-                    state.gpsFallback = true;
-                    state.allowedArea = true;
-                    resolveOfficeDesktopOnce(true);
-                }
-            } finally {
-                if (ui.permGrant) ui.permGrant.disabled = false;
-                await this.refresh();
-            }
-        },
-
-        async init() {
-            // wiring
-            ui.permGrant?.addEventListener('click', () => this.onGrantClick());
-            ui.permReload?.addEventListener('click', () => location.reload());
-            ui.permDismiss?.addEventListener('click', () => {
-                this.showPanel(false);
-            });
-
-            // react to permission changes when supported
-            const hook = (st) => {
-                if (!st) return;
-                try {
-                    st.addEventListener('change', () => this.refresh());
-                } catch {
-                    try { st.onchange = () => this.refresh(); } catch { }
-                }
-            };
-
-            await this.refresh();
-            hook(this.camStatus);
-            hook(this.geoStatus);
-
-            // Start GPS watcher only when already granted.
-            if (this.geo === 'granted') startGpsIfAvailable();
-            else {
-                // allow kiosk to function even without GPS
-                state.gpsFallback = true;
-                state.allowedArea = true;
-                resolveOfficeDesktopOnce(true);
-            }
-
-            // Boot kiosk only when camera already granted.
-            if (this.cam === 'granted') {
-                await this.ensureBoot();
-            } else {
-                // keep idle overlay visible and show guidance
-                setIdleUi(true);
-                setPrompt('Idle.', 'Allow camera to start.');
-                setEta('ETA: --');
-                setLiveness(null, null, 'live-unk');
-            }
-
-            this.updateUi();
-        },
-    };
-
     function setKioskMode(mode) {
         try { ui.kioskRoot?.setAttribute('data-mode', mode || 'legacy'); } catch { }
     }
@@ -703,7 +389,7 @@
     }
 
     // =========
-    // box math
+    // overlay helpers (mediapipe)
     // =========
     function resizeCanvas() {
         const w = canvas.clientWidth;
@@ -714,26 +400,15 @@
         }
     }
 
-    function lerp(a, b, t) { return a + (b - a) * t; }
-    function lerpBox(cur, tgt, t) {
-        if (!cur) return { ...tgt };
-        return {
-            x: lerp(cur.x, tgt.x, t),
-            y: lerp(cur.y, tgt.y, t),
-            w: lerp(cur.w, tgt.w, t),
-            h: lerp(cur.h, tgt.h, t),
-        };
-    }
-
-    function computeCanvasBox(raw) {
-        if (!raw || !raw.imgW || !raw.imgH) return null;
+    function mapVideoBoxToCanvas(vbox) {
+        if (!vbox || !video.videoWidth || !video.videoHeight) return null;
 
         const W = canvas.width;
         const H = canvas.height;
+        const imgW = video.videoWidth;
+        const imgH = video.videoHeight;
 
-        const imgW = raw.imgW;
-        const imgH = raw.imgH;
-
+        // video is rendered as cover, match the same math here
         const scale = Math.max(W / imgW, H / imgH);
         const renderW = imgW * scale;
         const renderH = imgH * scale;
@@ -741,74 +416,47 @@
         const offX = (W - renderW) / 2;
         const offY = (H - renderH) / 2;
 
-        let x = offX + (raw.x * scale);
-        const y = offY + (raw.y * scale);
-        const w = raw.w * scale;
-        const h = raw.h * scale;
+        let x = offX + (vbox.x * scale);
+        const y = offY + (vbox.y * scale);
+        const w = vbox.w * scale;
+        const h = vbox.h * scale;
 
-        // mirror (video is mirrored, canvas is not)
+        // mirror (video is mirrored in UI)
         x = W - (x + w);
 
         return { x, y, w, h };
     }
 
-    function isTooSmallFace(raw) {
-        if (!raw || !raw.imgW || !raw.imgH) return true;
-        const ratio = (raw.w * raw.h) / (raw.imgW * raw.imgH);
-        return ratio < CFG.gating.minFaceAreaRatio;
-    }
+    function boxFullyVisibleCanvas(box) {
+        if (!box) return false;
 
-    function faceFullyVisible() {
-        if (!state.boxSmooth) return false;
         const m = Math.min(canvas.width, canvas.height) * CFG.gating.safeEdgeMarginRatio;
-
-        const b = state.boxSmooth;
-        if (b.w <= 0 || b.h <= 0) return false;
-        if (b.x < m) return false;
-        if (b.y < m) return false;
-        if ((b.x + b.w) > (canvas.width - m)) return false;
-        if ((b.y + b.h) > (canvas.height - m)) return false;
+        if (box.w <= 0 || box.h <= 0) return false;
+        if (box.x < m) return false;
+        if (box.y < m) return false;
+        if ((box.x + box.w) > (canvas.width - m)) return false;
+        if ((box.y + box.h) > (canvas.height - m)) return false;
         return true;
     }
 
-    function updateStability() {
-        if (!state.boxSmooth) {
-            state.lastCenters = [];
-            state.stableFrames = 0;
-            return;
-        }
-
-        const b = state.boxSmooth;
-        const c = { x: b.x + b.w / 2, y: b.y + b.h / 2 };
-
-        state.lastCenters.push(c);
-        if (state.lastCenters.length > 6) state.lastCenters.shift();
-
-        if (state.lastCenters.length < 2) {
-            state.stableFrames = 0;
-            return;
-        }
-
-        const a = state.lastCenters[state.lastCenters.length - 2];
-        const move = Math.hypot(c.x - a.x, c.y - a.y);
-
-        state.stableFrames = (move <= CFG.gating.stableMaxMovePx)
-            ? Math.min(state.stableFrames + 1, CFG.gating.stableFramesRequired)
-            : 0;
+    function isTooSmallFaceNorm(bbox) {
+        if (!bbox || !isFinite(bbox.width) || !isFinite(bbox.height)) return true;
+        const ratio = bbox.width * bbox.height;
+        return ratio < CFG.gating.minFaceAreaRatio;
     }
 
     function drawLoop() {
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        if (state.boxSmooth) {
+        if (state.mpBoxCanvas) {
             const good = (state.faceStatus === 'good');
             const color = good ? '#00ff7a' : '#ffcc00';
 
             ctx.save();
             ctx.lineWidth = 4;
             ctx.strokeStyle = color;
-            ctx.strokeRect(state.boxSmooth.x, state.boxSmooth.y, state.boxSmooth.w, state.boxSmooth.h);
+            ctx.strokeRect(state.mpBoxCanvas.x, state.mpBoxCanvas.y, state.mpBoxCanvas.w, state.mpBoxCanvas.h);
             ctx.restore();
         }
 
@@ -816,18 +464,15 @@
     }
 
     function resetScanState() {
-        state.boxRaw = null;
-        state.boxSmooth = null;
-        state.lastCenters = [];
-        state.stableFrames = 0;
+        state.mpBoxCanvas = null;
+        state.mpPrevCenter = null;
 
         state.faceStatus = 'none';
         state.mpRawCount = 0;
         state.mpAcceptedCount = 0;
         state.mpReadyToFire = false;
         state.mpStableStart = 0;
-
-        state.faceCount = 0;
+        state.mpFaceSeenAt = 0;
 
         state.frameDiffs = [];
 
@@ -912,18 +557,13 @@
         failStreak: 0,
 
         async init() {
-            if (!nextGenActive) {
-                state.mpMode = 'none';
-                setKioskMode('legacy');
-                return;
+            if (!nextGenEnabled) {
+                throw new Error('NEXTGEN_DISABLED');
             }
 
             const hasTasks = (typeof window.MpFilesetResolver === 'function' && typeof window.MpFaceDetectorTask === 'function');
             if (!hasTasks) {
-                nextGenActive = false;
-                state.mpMode = 'none';
-                setKioskMode('legacy');
-                return;
+                throw new Error('MP_ASSETS_MISSING');
             }
 
             try {
@@ -947,12 +587,12 @@
                 setKioskMode('nextgen');
                 log('mp mode: tasks');
             } catch (e) {
-                console.warn('[FaceAttend] tasks init failed, using legacy', e);
+                console.warn('[FaceAttend] tasks init failed', e);
                 this.vision = null;
                 this.detector = null;
-                nextGenActive = false;
                 state.mpMode = 'none';
-                setKioskMode('legacy');
+                setKioskMode('nextgen');
+                throw e;
             }
         },
 
@@ -969,10 +609,10 @@
             } catch (e) {
                 this.failStreak++;
                 if (this.failStreak >= 5) {
-                    console.warn('[FaceAttend] tasks detect failed, switching off nextgen', e);
-                    nextGenActive = false;
+                    console.warn('[FaceAttend] tasks detect failed', e);
                     state.mpMode = 'none';
-                    setKioskMode('legacy');
+                    state.mpReadyToFire = false;
+                    safeSetPrompt('Face detection error.', 'Reload the page.');
                 }
             }
         },
@@ -1016,48 +656,37 @@
 
             state.mpRawCount = 0;
             state.mpAcceptedCount = 0;
-
             state.mpStableStart = 0;
             state.mpFaceSeenAt = 0;
 
-            state.boxRaw = null;
-            state.boxSmooth = null;
-            state.lastCenters = [];
-            state.stableFrames = 0;
+            state.mpBoxCanvas = null;
+            state.mpPrevCenter = null;
             return;
         }
 
-        const rawScored = normList
-            .filter(x => x.bbox)
+        const rawScored = (normList || [])
+            .filter(x => x && x.bbox)
             .sort((a, b) => b.score - a.score);
 
         state.mpRawCount = rawScored.length;
         state.mpFaceSeenAt = now;
-
-        // face present resets face-gone timer
         state.faceGoneSince = 0;
 
         const bestRaw = rawScored[0];
         const accepted = rawScored.filter(x => x.score >= CFG.mp.acceptMinScore);
         state.mpAcceptedCount = accepted.length;
 
-        // update box always (yellow guidance)
-        {
-            const b = bestRaw.bbox;
-            const imgW = video.videoWidth;
-            const imgH = video.videoHeight;
-
-            const w = b.width * imgW;
-            const h = b.height * imgH;
-            const x = (b.xCenter - b.width / 2) * imgW;
-            const y = (b.yCenter - b.height / 2) * imgH;
-
-            state.boxRaw = { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), imgW, imgH };
-            const tgt = computeCanvasBox(state.boxRaw);
-            if (tgt) state.boxSmooth = lerpBox(state.boxSmooth, tgt, 0.35);
-        }
-
-        updateStability();
+        // guidance box (always show best box)
+        const vw = video.videoWidth || 1;
+        const vh = video.videoHeight || 1;
+        const b0 = bestRaw.bbox;
+        const vbox = {
+            x: (b0.xCenter - b0.width / 2) * vw,
+            y: (b0.yCenter - b0.height / 2) * vh,
+            w: b0.width * vw,
+            h: b0.height * vh,
+        };
+        state.mpBoxCanvas = mapVideoBoxToCanvas(vbox);
 
         // multiple faces
         if (rawScored.length > 1) {
@@ -1066,6 +695,7 @@
             if (second.score >= CFG.mp.acceptMinScore && area2 >= CFG.mp.multiMinAreaRatio) {
                 state.faceStatus = 'multi';
                 state.mpStableStart = 0;
+                state.mpPrevCenter = null;
                 safeSetPrompt('Multiple faces detected.', 'One face only.');
                 return;
             }
@@ -1075,8 +705,9 @@
         if (accepted.length === 0) {
             state.faceStatus = 'low';
             state.mpStableStart = 0;
+            state.mpPrevCenter = null;
 
-            if (state.boxRaw && isTooSmallFace(state.boxRaw)) {
+            if (isTooSmallFaceNorm(b0)) {
                 safeSetPrompt('Move closer.', 'Face is too far.');
             } else {
                 safeSetPrompt('Look at the camera.', 'Improve lighting or move closer.');
@@ -1089,14 +720,16 @@
 
         const b = accepted[0].bbox;
 
-        if (isTooSmallFace(state.boxRaw)) {
+        if (isTooSmallFaceNorm(b)) {
             state.mpStableStart = 0;
+            state.mpPrevCenter = null;
             safeSetPrompt('Move closer.', 'Face is too far.');
             return;
         }
 
-        if (!faceFullyVisible()) {
+        if (!boxFullyVisibleCanvas(state.mpBoxCanvas)) {
             state.mpStableStart = 0;
+            state.mpPrevCenter = null;
             safeSetPrompt('Move into frame.', 'Keep your full face in view.');
             return;
         }
@@ -1104,6 +737,7 @@
         if (b.xCenter < CFG.gating.centerMin || b.xCenter > CFG.gating.centerMax ||
             b.yCenter < CFG.gating.centerMin || b.yCenter > CFG.gating.centerMax) {
             state.mpStableStart = 0;
+            state.mpPrevCenter = null;
             safeSetPrompt('Center your face.', '');
             return;
         }
@@ -1113,13 +747,36 @@
             const motionAvg = avg(state.frameDiffs);
             if (motionAvg != null && motionAvg < CFG.antiSpoof.motionDiffMin) {
                 state.mpStableStart = 0;
+                state.mpPrevCenter = null;
                 safeSetPrompt('Move slightly.', 'Breathe naturally.');
                 return;
             }
         }
 
-        // stability gate
-        if (state.stableFrames < CFG.mp.stableFramesMin) {
+        // stability gate (center movement)
+        if (!state.mpBoxCanvas) {
+            state.mpStableStart = 0;
+            state.mpPrevCenter = null;
+            safeSetPrompt('Hold still.', '');
+            return;
+        }
+
+        const c = {
+            x: state.mpBoxCanvas.x + state.mpBoxCanvas.w / 2,
+            y: state.mpBoxCanvas.y + state.mpBoxCanvas.h / 2,
+        };
+
+        if (!state.mpPrevCenter) {
+            state.mpPrevCenter = c;
+            state.mpStableStart = 0;
+            safeSetPrompt('Hold still.', '');
+            return;
+        }
+
+        const move = Math.hypot(c.x - state.mpPrevCenter.x, c.y - state.mpPrevCenter.y);
+        state.mpPrevCenter = c;
+
+        if (move > CFG.gating.stableMaxMovePx) {
             state.mpStableStart = 0;
             safeSetPrompt('Hold still.', '');
             return;
@@ -1137,26 +794,24 @@
     // =========
     // eta
     // =========
-    function updateEta(facePresent, useNextGen) {
+    function updateEta(facePresent) {
         if (!facePresent) { setEta('ETA: idle'); return; }
 
-        if (useNextGen) {
-            if (!state.boxRaw || state.faceStatus === 'none') { setEta('ETA: waiting'); return; }
-            if (state.faceStatus === 'low') { setEta('ETA: improve lighting'); return; }
-            if (state.faceStatus === 'multi') { setEta('ETA: one face only'); return; }
+        if (!state.allowedArea) { setEta('ETA: blocked'); return; }
 
-            const need = CFG.mp.stableFramesMin;
-            const st = Math.min(state.stableFrames, need);
-            const msLeft = (state.mpStableStart > 0)
-                ? Math.max(0, CFG.mp.stableNeededMs - (Date.now() - state.mpStableStart))
-                : CFG.mp.stableNeededMs;
+        if (!state.mpBoxCanvas || state.faceStatus === 'none') { setEta('ETA: waiting'); return; }
+        if (state.faceStatus === 'low') { setEta('ETA: improve lighting'); return; }
+        if (state.faceStatus === 'multi') { setEta('ETA: one face only'); return; }
 
-            setEta('ETA: hold still ' + st + '/' + need + ' (' + (msLeft / 1000).toFixed(1) + 's)');
-            return;
-        }
+        if (state.requireFaceGone) { setEta('ETA: step away'); return; }
 
-        if (!state.boxRaw || state.faceCount === 0) { setEta('ETA: waiting'); return; }
-        setEta('ETA: scanning');
+        if (state.mpReadyToFire) { setEta('ETA: scanning'); return; }
+
+        const msLeft = (state.mpStableStart > 0)
+            ? Math.max(0, CFG.mp.stableNeededMs - (Date.now() - state.mpStableStart))
+            : CFG.mp.stableNeededMs;
+
+        setEta('ETA: hold still (' + (msLeft / 1000).toFixed(1) + 's)');
     }
 
     // =========
@@ -1258,25 +913,18 @@
     // =========
     function startGpsIfAvailable() {
         if (!('geolocation' in navigator)) {
-            state.gpsFallback = true;
-            state.gps.lat = null;
-            state.gps.lon = null;
-            state.gps.accuracy = null;
-
-            // GPS is optional. Fall back to the server default office.
-            state.allowedArea = true;
-            if (ui.officeLine) ui.officeLine.textContent = isMobile ? 'GPS not available (default office)' : 'GPS not available';
-            resolveOfficeDesktopOnce(true);
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS not available';
+            if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
 
         // Geolocation only works on HTTPS (or localhost).
         const isSecure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
         if (!isSecure) {
-            state.gpsFallback = true;
-            state.allowedArea = true;
-            if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS (default office)';
-            resolveOfficeDesktopOnce(true);
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS';
+            if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
 
@@ -1285,8 +933,6 @@
                 state.gps.lat = pos.coords.latitude;
                 state.gps.lon = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
-
-                state.gpsFallback = false;
             },
             (err) => {
                 state.gps.lat = null;
@@ -1298,11 +944,9 @@
                 else if (err && err.code === 2) msg = 'GPS unavailable';
                 else if (err && err.code === 3) msg = 'GPS timeout';
 
-                // GPS denied/unavailable should not block the kiosk.
-                state.gpsFallback = true;
-                state.allowedArea = true;
-                if (ui.officeLine) ui.officeLine.textContent = isMobile ? (msg + ' (default office)') : msg;
-                resolveOfficeDesktopOnce(true);
+                state.allowedArea = false;
+                if (ui.officeLine) ui.officeLine.textContent = msg;
+                if (!isMobile) resolveOfficeDesktopOnce();
             },
             { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
         );
@@ -1316,9 +960,15 @@
         state.lastResolveAt = t;
 
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
-            // GPS is optional. If we don't have a fix, use the server default office.
-            await resolveOfficeDesktopOnce(true);
-            if (state.allowedArea !== false) state.allowedArea = true;
+            // Desktop kiosks: GPS may be unavailable. Fall back to server default office.
+            if (!isMobile) {
+                await resolveOfficeDesktopOnce();
+                if (state.allowedArea !== false) state.allowedArea = true;
+                return;
+            }
+
+            state.allowedArea = false;
+            if (ui.officeLine) ui.officeLine.textContent = 'Locating.';
             return;
         }
 
@@ -1352,8 +1002,8 @@
         }
     }
 
-    async function resolveOfficeDesktopOnce(allowMobile) {
-        if (isMobile && !allowMobile) return;
+    async function resolveOfficeDesktopOnce() {
+        if (isMobile) return;
         if (state.currentOffice && state.currentOffice.name) return;
 
         try {
@@ -1368,79 +1018,6 @@
                 if (ui.officeLine && state.currentOffice.name) ui.officeLine.textContent = state.currentOffice.name;
             }
         } catch { }
-    }
-
-    // =========
-    // legacy detect (kept)
-    // =========
-    async function postFrame(endpoint, blob) {
-        const fd = new FormData();
-        fd.append('__RequestVerificationToken', token);
-        fd.append('image', blob, 'frame.jpg');
-
-        if (state.gps.lat != null) fd.append('lat', state.gps.lat);
-        if (state.gps.lon != null) fd.append('lon', state.gps.lon);
-        if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
-
-        const r = await fetch(endpoint, { method: 'POST', body: fd });
-
-        if (r.status === 429) {
-            const ra = parseInt(r.headers.get('Retry-After') || '0', 10);
-            state.backoffUntil = Date.now() + ((isFinite(ra) && ra > 0) ? ra * 1000 : 2000);
-            return { ok: false, error: 'TOO_MANY_REQUESTS', retryAfter: ra || 2 };
-        }
-
-        const ct = (r.headers.get('content-type') || '').toLowerCase();
-        if (!ct.includes('application/json')) {
-            return { ok: false, error: 'BAD_RESPONSE', status: r.status };
-        }
-
-        return await r.json();
-    }
-
-    async function pollDetectFace() {
-        if (state.detectInFlight) return;
-
-        const t = Date.now();
-        if (t - state.lastDetectAt < CFG.server.detectMs) return;
-        state.lastDetectAt = t;
-
-        state.detectInFlight = true;
-        try {
-            const blob = await captureFrameBlob();
-            if (!blob) return;
-
-            const j = await postFrame(EP.detectFace, blob);
-            if (!j || j.ok !== true) return;
-
-            state.faceCount = (typeof j.faceCount === 'number') ? j.faceCount : (j.count || 0);
-            state.boxRaw = j.faceBox || null;
-
-            if (!state.boxRaw || state.faceCount === 0) {
-                state.boxSmooth = null;
-                state.stableFrames = 0;
-
-                if (state.requireFaceGone && !state.faceGoneSince) state.faceGoneSince = Date.now();
-
-                setPrompt('Ready.', 'Look at the camera.');
-                return;
-            }
-
-            state.serverFaceSeenAt = Date.now();
-
-            const tgt = computeCanvasBox(state.boxRaw);
-            if (tgt) state.boxSmooth = lerpBox(state.boxSmooth, tgt, 0.35);
-
-            updateStability();
-
-            if (state.faceCount > 1) { setPrompt('Multiple faces detected.', 'One face only.'); return; }
-            if (!faceFullyVisible()) { setPrompt('Move into frame.', 'Keep your full face in view.'); return; }
-            if (state.stableFrames < CFG.gating.stableFramesRequired) { setPrompt('Hold still.', 'Do not move.'); return; }
-
-            setPrompt('Checking...', 'Hold still.');
-        } finally {
-            state.detectInFlight = false;
-        }
     }
 
     // =========
@@ -1459,7 +1036,7 @@
         if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
 
         try {
-            const url = endpoint || EP.scanAttendance;
+            const url = endpoint || EP.attend;
             const r = await fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' });
             if (r.status === 429) {
                 setPrompt('System busy.', 'Please wait.');
@@ -1542,7 +1119,6 @@
         video.srcObject = stream;
         await video.play();
     }
-
     // =========
     // main loop
     // =========
@@ -1552,13 +1128,11 @@
             if (!video.videoWidth || !video.videoHeight) return;
 
             const now = Date.now();
-            const useNextGen = nextGenActive && (state.mpMode === 'tasks');
 
-            if (useNextGen) mp.tick();
+            mp.tick();
 
-            const facePresent = useNextGen
-                ? ((state.mpFaceSeenAt > 0 && (now - state.mpFaceSeenAt) < CFG.idle.faceLostMs) || state.localPresent)
-                : state.localPresent;
+            const facePresent =
+                ((state.mpFaceSeenAt > 0 && (now - state.mpFaceSeenAt) < CFG.idle.faceLostMs) || state.localPresent);
 
             if (!facePresent) {
                 if (!state.wasIdle) {
@@ -1580,23 +1154,22 @@
             setIdleUi(false);
 
             await resolveOfficeIfNeeded();
-            if (!state.allowedArea) { updateEta(true, useNextGen); return; }
+            if (!state.allowedArea) { updateEta(true); return; }
 
             if (now < state.backoffUntil) {
                 setPrompt('System busy.', 'Please wait.');
-                updateEta(true, useNextGen);
+                updateEta(true);
                 return;
             }
 
-
             if (state.visitorOpen) {
-                updateEta(true, useNextGen);
+                updateEta(true);
                 return;
             }
 
             if (now < (state.scanBlockUntil || 0)) {
                 safeSetPrompt('Please wait.', 'Next scan will be ready soon.');
-                updateEta(true, useNextGen);
+                updateEta(true);
                 return;
             }
 
@@ -1608,31 +1181,33 @@
                     setPrompt('Ready.', 'Stand still. One face only.');
                 } else {
                     safeSetPrompt('Step away.', 'Move away from the camera.');
-                    updateEta(true, useNextGen);
+                    updateEta(true);
                     return;
                 }
             }
 
-            if (useNextGen) {
-                if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
-                    const blob = await captureFrameBlob(0.85);
-                    if (blob) {
-                        state.mpReadyToFire = false;
-                        state.mpStableStart = 0;
-
-                        state.liveInFlight = true;
-                        try {
-                            await submitAttendance(blob, EP.attend);
-                        } finally {
-                            state.liveInFlight = false;
-                        }
-                    }
-                }
-            } else {
-                await pollDetectFace();
+            if (state.mpMode !== 'tasks') {
+                safeSetPrompt('System not ready.', 'Face detection is not available.');
+                updateEta(true);
+                return;
             }
 
-            updateEta(true, useNextGen);
+            if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
+                const blob = await captureFrameBlob(0.85);
+                if (blob) {
+                    state.mpReadyToFire = false;
+                    state.mpStableStart = 0;
+
+                    state.liveInFlight = true;
+                    try {
+                        await submitAttendance(blob);
+                    } finally {
+                        state.liveInFlight = false;
+                    }
+                }
+            }
+
+            updateEta(true);
         } catch (e) {
             if (CFG.debug) console.warn('[FaceAttend] loop error', e);
             setPrompt('System error.', 'Reload the page or check the server.');
@@ -1647,16 +1222,35 @@
     // =========
     (async function init() {
         startClock();
+        startGpsIfAvailable();
+        resolveOfficeDesktopOnce();
         wireUnlockUi();
+
         wireVisitorUi();
+        try {
+            await startCamera();
+            await mp.init();
 
-        // show idle overlay immediately; permission panel lives inside it
-        setIdleUi(true);
-        setPrompt('Idle.', 'Checking permissions.');
-        setEta('ETA: --');
-        setLiveness(null, null, 'live-unk');
+            setIdleUi(true);
+            setPrompt('Idle.', 'Look at the camera.');
+            setEta('ETA: idle');
+            setLiveness(null, null, 'live-unk');
 
-        await perm.init();
+            drawLoop();
+            localSenseLoop();
+            loop();
+        } catch (e) {
+            setIdleUi(false);
+
+            const msg = (e && e.message) ? String(e.message) : '';
+            if (msg === 'NEXTGEN_DISABLED' || msg === 'MP_ASSETS_MISSING') {
+                setPrompt('System not ready.', 'Face detection assets are missing.');
+            } else {
+                setPrompt('Camera blocked.', 'Allow camera permission.');
+            }
+
+            setEta('ETA: --');
+        }
     })();
 
 })();

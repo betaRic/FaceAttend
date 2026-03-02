@@ -9,7 +9,6 @@ namespace FaceAttend.Areas.Admin.Controllers
     [AdminAuthorize]
     public class OfficesController : Controller
     {
-        [HttpGet]
         public ActionResult Index()
         {
             using (var db = new FaceAttendDBEntities())
@@ -31,7 +30,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 RadiusMeters = 100,
                 IsActive = true,
-                Latitude = 6.116386,
+                Latitude = 6.116386,   // Philippines center-ish fallback
                 Longitude = 125.171617
             };
             return View(vm);
@@ -47,6 +46,14 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.ProvinceName = (vm.ProvinceName ?? "").Trim();
             vm.HUCCity = (vm.HUCCity ?? "").Trim();
             vm.WiFiSSID = (vm.WiFiSSID ?? "").Trim();
+
+            // server-side validation (do not rely on dropdown alone)
+            var validTypes = new[] { "REGION", "PROVINCE", "HUC" };
+            vm.Type = (vm.Type ?? "").Trim().ToUpperInvariant();
+            if (!validTypes.Contains(vm.Type))
+            {
+                ModelState.AddModelError("Type", "Type must be REGION, PROVINCE, or HUC.");
+            }
 
             if (!ModelState.IsValid)
             {
@@ -74,8 +81,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 db.Offices.Add(o);
                 db.SaveChanges();
 
-                TempData["msg"] = "Office created.";
-                TempData["msgKind"] = "success";
                 return RedirectToAction("Index");
             }
         }
@@ -119,6 +124,14 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.HUCCity = (vm.HUCCity ?? "").Trim();
             vm.WiFiSSID = (vm.WiFiSSID ?? "").Trim();
 
+            // server-side validation (do not rely on dropdown alone)
+            var validTypes = new[] { "REGION", "PROVINCE", "HUC" };
+            vm.Type = (vm.Type ?? "").Trim().ToUpperInvariant();
+            if (!validTypes.Contains(vm.Type))
+            {
+                ModelState.AddModelError("Type", "Type must be REGION, PROVINCE, or HUC.");
+            }
+
             if (!ModelState.IsValid)
             {
                 ViewBag.Title = "Edit Office";
@@ -143,8 +156,6 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 db.SaveChanges();
 
-                TempData["msg"] = "Office updated.";
-                TempData["msgKind"] = "success";
                 return RedirectToAction("Index");
             }
         }

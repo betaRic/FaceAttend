@@ -6,7 +6,6 @@ namespace FaceAttend
     {
         public static void RegisterGlobalFilters(GlobalFilterCollection filters)
         {
-            filters.Add(new HandleErrorAttribute());
 
             // Adds X-Content-Type-Options, X-Frame-Options, X-XSS-Protection,
             // Referrer-Policy and no-cache headers to every response.

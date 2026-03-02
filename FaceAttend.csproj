@@ -232,9 +232,9 @@
     <Compile Include="Areas\Admin\Controllers\AttendanceController.cs" />
     <Compile Include="Areas\Admin\Controllers\DashboardController.cs" />
     <Compile Include="Areas\Admin\Controllers\EmployeesController.cs" />
+    <Compile Include="Areas\Admin\Controllers\ErrorController.cs" />
     <Compile Include="Areas\Admin\Controllers\OfficesController.cs" />
     <Compile Include="Areas\Admin\Controllers\SettingsController.cs" />
-    <Compile Include="Areas\Admin\Controllers\UnlockController.cs" />
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
     <Compile Include="Areas\Admin\Helpers\AdminQueryHelper.cs" />
     <Compile Include="Areas\Admin\Models\AttendanceDetailsVm.cs" />
@@ -307,27 +307,16 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include=".tools\nuget.exe" />
-    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
     <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Create.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Edit.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="Areas\Admin\Views\Settings\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminLayout.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminNav.cshtml" />
-    <Content Include="Areas\Admin\Views\Unlock\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Edit.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Visitors\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Logs.cshtml" />
     <Content Include="Areas\Admin\Views\web.config" />
     <Content Include="Areas\Admin\Views\_ViewStart.cshtml" />
     <Content Include="Content\admin-enhancements.css" />
@@ -365,8 +354,8 @@
     <Content Include="Content\bootstrap.rtl.min.css" />
     <Content Include="Content\bootstrap.rtl.min.css.map" />
     <Content Include="Content\images\dilg-logo.svg" />
-    <Content Include="Content\favicon.ico" />
     <Content Include="Content\kiosk.css" />
+    <Content Include="Content\enroll.css" />
     <Content Include="Content\site.css" />
     <Content Include="Content\toastr.css" />
     <Content Include="Content\toastr.less" />
@@ -455,29 +444,18 @@
     <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.js" />
     <Content Include="Scripts\vendor\datatables\dataTables.min.js" />
-    <Content Include="Scripts\vendor\datatables\dataTables.responsive.min.js" />
     <Content Include="Scripts\vendor\datatables\js\buttons.html5.min.js" />
     <Content Include="Scripts\vendor\datatables\js\buttons.print.min.js" />
     <Content Include="Scripts\vendor\datatables\js\dataTables.buttons.min.js" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.js" />
-    <Content Include="Scripts\vendor\datatables\responsive.dataTables.min.css" />
-    <Content Include="Scripts\vendor\datatables\responsive.dataTables.min.js" />
-    <Content Include="Scripts\vendor\leaflet\leaflet.js" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\models\blaze_face_short_range.tflite" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs.map" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_loader.mjs" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.js" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.js" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.all.min.js" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.min.css" />
-    <Content Include="Scripts\vendor\toastify\toastify.min.css" />
-    <Content Include="Scripts\vendor\toastify\toastify.min.js" />
     <Content Include="Views\Kiosk\Index.cshtml" />
-    <Content Include="Views\Shared\Error.cshtml" />
     <Content Include="Views\Web.config" />
     <Content Include="Views\_ViewStart.cshtml" />
     <Content Include="Web.config" />
@@ -492,18 +470,32 @@
     <Folder Include="App_Data\_tmp\" />
     <Folder Include="Models\" />
     <Folder Include="Vendor\" />
+    <Folder Include="Views\Shared\" />
   </ItemGroup>
   <ItemGroup>
+    <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="libman.json" />
-    <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
+    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
+    <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Edit.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Enroll.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Logs.cshtml" />
+    <Content Include="Areas\Admin\Views\Error\ErrorPage.cshtml" />
     <Content Include="Content\vendor\fontawesome\webfonts\fa-brands-400.woff2" />
     <Content Include="Content\vendor\fontawesome\webfonts\fa-regular-400.woff2" />
     <Content Include="Content\vendor\fontawesome\webfonts\fa-solid-900.woff2" />
     <Content Include="Content\vendor\fontawesome\webfonts\fa-v4compatibility.woff2" />
-    <Content Include="Areas\Admin\Views\Error\ErrorPage.cshtml" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\models\blaze_face_short_range.tflite" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs.map" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
     <Content Include="Views\Error\ErrorPage.cshtml" />
   </ItemGroup>
   <ItemGroup>

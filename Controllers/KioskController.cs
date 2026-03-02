@@ -14,7 +14,7 @@ namespace FaceAttend.Controllers
 {
     public class KioskController : Controller
     {
-        
+        // --- Visitor scan cache ---
 
         private class VisitorScanCacheItem
         {
@@ -38,7 +38,7 @@ namespace FaceAttend.Controllers
             return Guid.NewGuid().ToString("N");
         }
 
-[HttpGet]
+        [HttpGet]
         public ActionResult Index(string returnUrl, int? unlock)
         {
             ViewBag.ReturnUrl = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
@@ -46,23 +46,7 @@ namespace FaceAttend.Controllers
             return View();
         }
 
-        [HttpGet]
-        [AdminAuthorize]
-        public ActionResult ActiveOffices()
-        {
-            using (var db = new FaceAttendDBEntities())
-            {
-                var list = db.Offices
-                    .Where(o => o.IsActive)
-                    .OrderBy(o => o.Name)
-                    .Select(o => new { id = o.Id, name = o.Name })
-                    .ToList();
-
-                return Json(new { ok = true, offices = list }, JsonRequestBehavior.AllowGet);
-            }
-        }
-
-                [HttpPost]
+        [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult ResolveOffice(double? lat, double? lon, double? accuracy)
         {
@@ -124,143 +108,6 @@ namespace FaceAttend.Controllers
                     officeId = pick.Office.Id,
                     officeName = pick.Office.Name
                 });
-            }
-        }
-
-
-        // ------------------------------------------------------------
-        // Cheap face detection endpoint (no liveness)
-        // ------------------------------------------------------------
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [RateLimit(Name = "KioskDetectFace", MaxRequests = 180, WindowSeconds = 60, Burst = 60)]
-        public ActionResult DetectFace(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
-        {
-            if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
-
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
-
-            string path = null;
-            string processedPath = null;
-
-            try
-            {
-                using (var db = new FaceAttendDBEntities())
-                {
-                    bool gpsRequired = IsGpsRequired();
-                    Office office = null;
-
-                    // Use GPS on any device if coords are provided.
-                    // Only require GPS when gpsRequired == true (mobile devices).
-                    if (lat.HasValue && lon.HasValue)
-                    {
-                        var pick = PickOffice(db, lat.Value, lon.Value, accuracy);
-                        if (!pick.Allowed)
-                        {
-                            return Json(new
-                            {
-                                ok = true,
-                                gpsRequired = gpsRequired,
-                                allowed = false,
-                                reason = pick.Reason,
-                                requiredAccuracy = pick.RequiredAccuracy,
-                                accuracy = accuracy,
-                                faceCount = 0,
-                                count = 0,
-                                livenessScore = (float?)null,
-                                liveness = (float?)null,
-                                livenessPass = false,
-                                livenessOk = false,
-                                faceBox = (object)null
-                            });
-                        }
-
-                        office = pick.Office;
-                    }
-                    else if (gpsRequired)
-                    {
-                        return Json(new
-                        {
-                            ok = true,
-                            gpsRequired = true,
-                            allowed = false,
-                            reason = "GPS_REQUIRED",
-                            requiredAccuracy = SystemConfigService.GetInt(
-                                db, "Location:GPSAccuracyRequired",
-                                AppSettings.GetInt("Location:GPSAccuracyRequired", 50)),
-                            accuracy = accuracy,
-                            faceCount = 0,
-                            count = 0,
-                            livenessScore = (float?)null,
-                            liveness = (float?)null,
-                            livenessPass = false,
-                            livenessOk = false,
-                            faceBox = (object)null
-                        });
-                    }
-                    path = SecureFileUpload.SaveTemp(image, "k_", max);
-
-                    bool isProcessed;
-                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "k_", out isProcessed);
-
-                    int imgW = 0, imgH = 0;
-                    try
-                    {
-                        using (var bmp = new System.Drawing.Bitmap(processedPath))
-                        {
-                            imgW = bmp.Width;
-                            imgH = bmp.Height;
-                        }
-                    }
-                    catch { }
-
-                    var dlib = new DlibBiometrics();
-                    var faces = dlib.DetectFacesFromFile(processedPath);
-                    var count = faces == null ? 0 : faces.Length;
-
-                    DlibBiometrics.FaceBox best = null;
-                    if (faces != null && faces.Length > 0)
-                        best = faces.OrderByDescending(f => (long)f.Width * f.Height).FirstOrDefault();
-
-                    object faceBox = null;
-                    if (best != null)
-                        faceBox = new { x = best.Left, y = best.Top, w = best.Width, h = best.Height, imgW, imgH };
-
-                    return Json(new
-                    {
-                        ok = true,
-                        gpsRequired,
-                        allowed = true,
-                        officeId = office == null ? (int?)null : office.Id,
-                        officeName = office == null ? null : office.Name,
-                        faceCount = count,
-                        count,
-                        livenessScore = (float?)null,
-                        liveness = (float?)null,
-                        livenessPass = false,
-                        livenessOk = false,
-                        faceBox
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                var baseEx = ex.GetBaseException();
-                return Json(new
-                {
-                    ok = false,
-                    error = "SCAN_ERROR",
-                    detail = ex.Message,
-                    inner = baseEx == null ? null : baseEx.Message
-                });
-            }
-            finally
-            {
-                ImagePreprocessor.Cleanup(processedPath, path);
-                SecureFileUpload.TryDelete(path);
             }
         }
 
@@ -433,7 +280,6 @@ namespace FaceAttend.Controllers
                 SecureFileUpload.TryDelete(path);
             }
         }
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "KioskAttend", MaxRequests = 20, WindowSeconds = 60, Burst = 10)]
@@ -446,15 +292,6 @@ namespace FaceAttend.Controllers
             return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
         }
 
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult ScanAttendance(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
-        {
-            return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
-
-        }
-
-        
         private ActionResult ScanAttendanceCore(double? lat, double? lon, double? accuracy, HttpPostedFileBase image, bool includePerfTimings)
         {
             var sw = Stopwatch.StartNew();
@@ -641,9 +478,7 @@ namespace FaceAttend.Controllers
                             scanId,
                             isKnown = isKnownVisitor,
                             visitorName = isKnownVisitor ? bestVisitorName : null,
-                            distance = (double.IsInfinity(bestVisitorDist) || double.IsNaN(bestVisitorDist))
-                            ? (double?)null
-                            : bestVisitorDist,
+                            distance = bestVisitorDist,
                             threshold = vTol,
                             liveness = p,
                             timings = includePerfTimings ? timings : null
@@ -789,8 +624,6 @@ namespace FaceAttend.Controllers
                 SecureFileUpload.TryDelete(path);
             }
         }
-
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "KioskSubmitVisitor", MaxRequests = 30, WindowSeconds = 60, Burst = 10)]
@@ -881,8 +714,7 @@ namespace FaceAttend.Controllers
                 }
             }
         }
-
-[HttpPost]
+        [HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "UnlockPin", MaxRequests = 5, WindowSeconds = 60)]
         public ActionResult UnlockPin(string pin, string returnUrl)
@@ -899,7 +731,6 @@ namespace FaceAttend.Controllers
 
             return Json(new { ok = true, returnUrl = safeReturn });
         }
-
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult Lock()
@@ -930,11 +761,6 @@ namespace FaceAttend.Controllers
 
         private bool IsGpsRequired()
         {
-            // If the global "require GPS on all devices" flag is on, always require GPS.
-            if (AppSettings.GetBool("Kiosk:RequireGpsAllDevices", false))
-                return true;
-
-            // Otherwise only require GPS on mobile devices (original behaviour).
             if (Request?.Browser != null && Request.Browser.IsMobileDevice)
                 return true;
 
