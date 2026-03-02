@@ -75,7 +75,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                          })
                         .Take(10)
                         .ToList();
-vm.DatabaseHealthy = true;
+                    vm.DatabaseHealthy = true;
                 }
             }
             catch

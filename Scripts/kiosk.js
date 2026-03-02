@@ -1023,7 +1023,7 @@
     // =========
     // attendance submit (updates liveness line)
     // =========
-    async function submitAttendance(blob, endpoint) {
+    async function submitAttendance(blob) {
         state.lastCaptureAt = Date.now();
         setPrompt('Processing...', 'Please wait.');
 
@@ -1036,8 +1036,7 @@
         if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
 
         try {
-            const url = endpoint || EP.attend;
-            const r = await fetch(url, { method: 'POST', body: fd, credentials: 'same-origin' });
+            const r = await fetch(EP.attend, { method: 'POST', body: fd, credentials: 'same-origin' });
             if (r.status === 429) {
                 setPrompt('System busy.', 'Please wait.');
                 return;
@@ -1087,9 +1086,6 @@
                     armPostScanHold(CFG.postScan.holdMs);
                 } else if (err === 'LIVENESS_FAIL') {
                     toastError('Liveness failed. Move naturally and try again.');
-                    armPostScanHold(1500);
-                } else if (err === 'NO_MATCH') {
-                    toastError('No match. Please fill the visitor form.');
                     armPostScanHold(1500);
                 } else {
                     toastError(j?.message || err);

@@ -7,10 +7,9 @@ namespace FaceAttend.Services
     /// <summary>
     /// Business logic for recording and maintaining visitor activity logs.
     ///
-    /// Three responsibilities:
-    ///   1. RecordVisit       — known enrolled visitor recognised by face.
-    ///   2. LogAnonymousVisit — walk-in visitor not in the system.
-    ///   3. PurgeOldLogs      — retention cleanup, deletes logs older than N years.
+    /// Two responsibilities:
+    ///   1. RecordVisit  — known enrolled visitor recognised by face.
+    ///   2. PurgeOldLogs — retention cleanup, deletes logs older than N years.
     ///
     /// Visitor *profiles* (the Visitor table) are never deleted by this service —
     /// only VisitorLog rows are removed during purge.
@@ -96,63 +95,6 @@ namespace FaceAttend.Services
                 VisitorName = visitor.Name,
                 IsKnown     = true,
                 Message     = "Visit recorded. Welcome, " + visitor.Name + "."
-            };
-        }
-
-        // ── LogAnonymousVisit ────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Records a visit for a walk-in visitor who is not enrolled in the system.
-        /// Inserts a VisitorLog row with VisitorId = null and Source = "KIOSK_ANON".
-        /// The Visitor profile table is not touched.
-        /// </summary>
-        /// <param name="db">Open EF context (caller manages lifetime).</param>
-        /// <param name="name">Visitor's self-reported name (required).</param>
-        /// <param name="officeId">Office the kiosk is located at.</param>
-        /// <param name="purpose">Optional visit purpose (max 500 chars).</param>
-        /// <param name="clientIp">Kiosk IP address for audit trail.</param>
-        /// <param name="userAgent">Browser user agent string for audit trail.</param>
-        public static RecordResult LogAnonymousVisit(
-            FaceAttendDBEntities db,
-            string name,
-            int    officeId,
-            string purpose,
-            string clientIp,
-            string userAgent)
-        {
-            if (db == null) throw new ArgumentNullException("db");
-
-            name = (name ?? "").Trim();
-            if (string.IsNullOrWhiteSpace(name))
-                return new RecordResult
-                {
-                    Ok      = false,
-                    Code    = "NAME_REQUIRED",
-                    Message = "Visitor name is required for anonymous visit logs."
-                };
-
-            var log = new VisitorLog
-            {
-                VisitorId   = null,          // no enrolled profile linked
-                OfficeId    = officeId,
-                Timestamp   = DateTime.UtcNow,
-                VisitorName = Trunc(SanitiseName(name), 400),
-                Purpose     = Trunc(SanitisePurpose(purpose), 500),
-                Source      = "KIOSK_ANON",
-                ClientIP    = Trunc(clientIp  ?? "", 100),
-                UserAgent   = Trunc(userAgent ?? "", 1000)
-            };
-
-            db.VisitorLogs.Add(log);
-            db.SaveChanges();
-
-            return new RecordResult
-            {
-                Ok          = true,
-                Code        = "RECORDED",
-                VisitorName = name,
-                IsKnown     = false,
-                Message     = "Visit logged."
             };
         }
 

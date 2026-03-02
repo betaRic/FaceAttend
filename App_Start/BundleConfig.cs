@@ -102,7 +102,7 @@ namespace FaceAttend
                     "~/Content/admin.css",
                     "~/Content/admin-enhancements.css"
                 ));
-bundles.Add(new StyleBundle("~/Content/kiosk")
+            bundles.Add(new StyleBundle("~/Content/kiosk")
                 .Include("~/Content/kiosk.css"));
 
             // Leave disabled while debugging

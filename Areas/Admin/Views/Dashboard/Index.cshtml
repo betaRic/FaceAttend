@@ -288,12 +288,6 @@
 @section scripts {
 <script>
 /* Auto-refresh KPI numbers every 60s */
-(function () {
-    var btn = document.getElementById('btnRefresh');
-    if (btn) {
-        btn.addEventListener('click', function () { window.location.reload(); });
-    }
-    setTimeout(function () { window.location.reload(); }, 60000);
-})();
+setTimeout(function () { window.location.reload(); }, 60000);
 </script>
 }
