@@ -113,7 +113,7 @@ namespace FaceAttend.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RateLimit(Name = "KioskAttend", MaxRequests = 20, WindowSeconds = 60, Burst = 10)]
+        [RateLimit(Name = "KioskAttend", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
         public ActionResult Attend(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
         {
             // Feature flag / rollback

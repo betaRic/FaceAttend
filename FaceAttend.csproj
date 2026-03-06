@@ -290,7 +290,6 @@
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
     <Compile Include="Services\GeoUtil.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
-    <Compile Include="Services\Security\RateLimit.cs" />
     <Compile Include="Services\Security\SecureFileUpload.cs" />
     <Compile Include="Services\SystemConfigService.cs" />
     <Compile Include="Services\TimeZoneHelper.cs" />
@@ -352,6 +351,8 @@
     <Content Include="Content\bootstrap.rtl.css.map" />
     <Content Include="Content\bootstrap.rtl.min.css" />
     <Content Include="Content\bootstrap.rtl.min.css.map" />
+    <Content Include="Content\error.css" />
+    <Content Include="Content\favicon.ico" />
     <Content Include="Content\images\dilg-logo.svg" />
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\enroll.css" />
@@ -448,12 +449,15 @@
     <Content Include="Scripts\vendor\datatables\js\dataTables.buttons.min.js" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.js" />
+    <Content Include="Scripts\vendor\leaflet\leaflet.js" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_loader.mjs" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.js" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.js" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.all.min.js" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.min.css" />
+    <Content Include="Scripts\vendor\toastify\toastify.min.css" />
+    <Content Include="Scripts\vendor\toastify\toastify.min.js" />
     <Content Include="Views\Kiosk\Index.cshtml" />
     <Content Include="Views\Web.config" />
     <Content Include="Views\_ViewStart.cshtml" />
@@ -489,6 +493,7 @@
     <Content Include="Content\vendor\fontawesome\webfonts\fa-solid-900.woff2" />
     <Content Include="Content\vendor\fontawesome\webfonts\fa-v4compatibility.woff2" />
     <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />

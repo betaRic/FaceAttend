@@ -74,7 +74,6 @@
 
         postScan: {
             holdMs: 5000,
-            requireFaceGoneMs: 1200,
             toastMs: 6500,
         },
 
@@ -126,8 +125,6 @@
         pendingVisitor: null,
 
         scanBlockUntil: 0,
-        requireFaceGone: false,
-        faceGoneSince: 0,
 
         // gps/office
         gps: { lat: null, lon: null, accuracy: null },
@@ -224,8 +221,6 @@
         const hold = (typeof ms === 'number' && isFinite(ms) && ms > 0) ? ms : CFG.postScan.holdMs;
 
         state.scanBlockUntil = Math.max(state.scanBlockUntil || 0, now + hold);
-        state.requireFaceGone = true;
-        state.faceGoneSince = 0;
     }
 
     function openVisitorModal(payload) {
@@ -648,12 +643,6 @@
         if (!normList || normList.length === 0) {
             state.faceStatus = 'none';
 
-            if (state.requireFaceGone) {
-                if (!state.faceGoneSince) state.faceGoneSince = now;
-            } else {
-                state.faceGoneSince = 0;
-            }
-
             state.mpRawCount = 0;
             state.mpAcceptedCount = 0;
             state.mpStableStart = 0;
@@ -670,7 +659,6 @@
 
         state.mpRawCount = rawScored.length;
         state.mpFaceSeenAt = now;
-        state.faceGoneSince = 0;
 
         const bestRaw = rawScored[0];
         const accepted = rawScored.filter(x => x.score >= CFG.mp.acceptMinScore);
@@ -802,8 +790,6 @@
         if (!state.mpBoxCanvas || state.faceStatus === 'none') { setEta('ETA: waiting'); return; }
         if (state.faceStatus === 'low') { setEta('ETA: improve lighting'); return; }
         if (state.faceStatus === 'multi') { setEta('ETA: one face only'); return; }
-
-        if (state.requireFaceGone) { setEta('ETA: step away'); return; }
 
         if (state.mpReadyToFire) { setEta('ETA: scanning'); return; }
 
@@ -1167,19 +1153,6 @@
                 safeSetPrompt('Please wait.', 'Next scan will be ready soon.');
                 updateEta(true);
                 return;
-            }
-
-            if (state.requireFaceGone) {
-                const goneForMs = state.faceGoneSince ? (now - state.faceGoneSince) : 0;
-                if (goneForMs >= CFG.postScan.requireFaceGoneMs) {
-                    state.requireFaceGone = false;
-                    state.faceGoneSince = 0;
-                    setPrompt('Ready.', 'Stand still. One face only.');
-                } else {
-                    safeSetPrompt('Step away.', 'Move away from the camera.');
-                    updateEta(true);
-                    return;
-                }
             }
 
             if (state.mpMode !== 'tasks') {

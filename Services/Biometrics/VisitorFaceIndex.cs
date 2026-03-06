@@ -58,21 +58,9 @@ namespace FaceAttend.Services.Biometrics
         /// </summary>
         public static IReadOnlyList<Entry> GetEntries(FaceAttendDBEntities db)
         {
-            // Fast path: already loaded — return without taking the lock.
-            if (_loaded)
-            {
-                lock (_lock) { return _entries.ToList(); }
-            }
-
-            // Slow path: rebuild inside the lock so only one thread does the work.
-            lock (_lock)
-            {
-                // Double-check: another thread may have rebuilt while we waited.
                 if (!_loaded)
                     RebuildCore(db);
-
-                return _entries.ToList();
-            }
+                return _entries.ToList(); 
         }
 
         /// <summary>
