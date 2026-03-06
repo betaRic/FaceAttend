@@ -788,7 +788,9 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             foreach (var r in rows)
             {
-                var local = r.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss");
+                // Gamitin ang TimeZoneHelper para laging Philippines time (Asia/Manila),
+                // hindi yung server timezone ng IIS.
+                var local = TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss");
                 sb.Append(JoinCsv(new[]
                 {
                     local,

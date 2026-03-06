@@ -193,9 +193,9 @@ namespace FaceAttend.Controllers
                             encJson,
                             employeeId);
                     }
-                    catch
+                    catch(Exception ex)
                     {
-                        // Column may not exist yet.
+                        System.Diagnostics.Debug.WriteLine("[BiometricsController] FaceEncodingsJson update skipped: " + ex.Message);
                     }
 
                     tx.Commit();
@@ -213,10 +213,5 @@ namespace FaceAttend.Controllers
             public float Liveness { get; set; }
             public int Area { get; set; }
         }
-
-
-        // All file handling goes through SecureFileUpload (P2-F2).
-        // ImagePreprocessor handles resize cleanup (P3-F2).
-        // No private SaveTemp() or TryDelete() — removed in P2-F2.
     }
 }

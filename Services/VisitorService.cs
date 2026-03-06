@@ -75,7 +75,7 @@ namespace FaceAttend.Services
                 OfficeId    = officeId,
                 Timestamp   = now,
                 VisitorName = Trunc(visitor.Name, 400),
-                Purpose     = Trunc(SanitisePurpose(purpose), 500),
+                Purpose = string.IsNullOrWhiteSpace(purpose) ? null : purpose.Trim().Substring(0, Math.Min(purpose.Trim().Length, 500)),
                 Source      = "KIOSK",
                 ClientIP    = Trunc(clientIp  ?? "", 100),
                 UserAgent   = Trunc(userAgent ?? "", 1000)

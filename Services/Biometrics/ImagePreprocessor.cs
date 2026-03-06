@@ -26,7 +26,9 @@ namespace FaceAttend.Services.Biometrics
             if (string.IsNullOrWhiteSpace(sourcePath) || !File.Exists(sourcePath))
                 return sourcePath;
 
-            var maxDim = AppSettings.GetInt("Biometrics:MaxImageDimension", 1280);
+            var maxDim = SystemConfigService.GetIntCached(
+                "Biometrics:MaxImageDimension",
+                AppSettings.GetInt("Biometrics:MaxImageDimension", 1280));
             if (maxDim < 320) maxDim = 320;
 
             int width, height;
@@ -46,7 +48,10 @@ namespace FaceAttend.Services.Biometrics
                 var dir = Path.GetDirectoryName(sourcePath) ?? Path.GetTempPath();
                 var tempPath = Path.Combine(dir, string.Format("{0}proc_{1}.jpg", prefix, Guid.NewGuid().ToString("N")));
 
-                SaveJpeg(resized, tempPath, AppSettings.GetInt("Biometrics:PreprocessJpegQuality", 85));
+                var jpegQ = SystemConfigService.GetIntCached(
+                    "Biometrics:PreprocessJpegQuality",
+                     AppSettings.GetInt("Biometrics:PreprocessJpegQuality", 85));
+                SaveJpeg(resized, tempPath, jpegQ);
 
                 isTemp = true;
                 return tempPath;

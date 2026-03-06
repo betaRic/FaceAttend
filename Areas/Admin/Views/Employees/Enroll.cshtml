@@ -99,10 +99,10 @@
              data-employee-id="@Model.EmployeeId"
              data-per-frame="@perFrame"
              data-scan-url="@Url.Content("~/Biometrics/ScanFrame")"
-             data-enroll-url="@Url.Content("~/Biometrics/Enroll")">
+             data-enroll-url="@Url.Content("~/Biometrics/Enroll")"
+             data-redirect-url="@Url.Action("Index", "Employees", new { area = "Admin" })">
 
-            
-@* ─────── Wizard: choose method ───────  *@
+            @* ─────── Wizard: choose method ───────  *@
 
             <div id="enrollWizard">
                 <div class="text-center mb-4">
@@ -113,8 +113,8 @@
                 </div>
 
                 <div class="fa-method-grid">
-                    
-@* Camera card  *@
+
+                    @* Camera card  *@
 
                     <div class="fa-method-card"
                          role="button"
@@ -133,8 +133,8 @@
                         </span>
                     </div>
 
-                    
-@* Upload card  *@
+
+                    @* Upload card  *@
 
                     <div class="fa-method-card"
                          role="button"
@@ -152,8 +152,8 @@
                 </div>
             </div>
 
-            
-@* ─────── Live camera pane ───────  *@
+
+            @* ─────── Live camera pane ───────  *@
 
             <div id="livePane" class="fa-pane">
 
@@ -163,12 +163,12 @@
 
                 <div class="fa-cam-layout">
 
-                    
-@* Video  *@
+
+                    @* Video  *@
 
                     <div class="fa-video-wrap" id="videoWrap" aria-label="Camera preview">
-                        
-@* Liveness bar  *@
+
+                        @* Liveness bar  *@
 
                         <div class="fa-live-bar-wrap">
                             <div class="fa-live-bar-label">
@@ -180,26 +180,26 @@
                             </div>
                         </div>
 
-                        
-@* Corner brackets  *@
+
+                        @* Corner brackets  *@
 
                         <div class="fa-cam-corner tl"></div>
                         <div class="fa-cam-corner tr"></div>
                         <div class="fa-cam-corner bl"></div>
                         <div class="fa-cam-corner br"></div>
 
-                        
-@* Video feed  *@
+
+                        @* Video feed  *@
 
                         <video id="cam" autoplay playsinline muted></video>
 
-                        
-@* Face bounding box canvas  *@
+
+                        @* Face bounding box canvas  *@
 
                         <canvas id="enrollOverlay" class="enroll-overlay"></canvas>
 
-                        
-@* Capture progress dots  *@
+
+                        @* Capture progress dots  *@
 
                         <div class="fa-progress-dots" id="progressDots" aria-label="Capture progress">
                             <div class="fa-dot" id="dot1"></div>
@@ -209,19 +209,19 @@
                             <div class="fa-dot" id="dot5"></div>
                         </div>
 
-                        
-@* Status overlay  *@
+
+                        @* Status overlay  *@
 
                         <div id="camStatus"></div>
                     </div>
 
-                    
-@* Side panel  *@
+
+                    @* Side panel  *@
 
                     <div class="fa-side-panel">
 
-                        
-@* Liveness score card  *@
+
+                        @* Liveness score card  *@
 
                         <div class="fa-side-card">
                             <div class="fa-side-card-title">
@@ -235,8 +235,8 @@
                             </div>
                         </div>
 
-                        
-@* Captures collected  *@
+
+                        @* Captures collected  *@
 
                         <div class="fa-side-card">
                             <div class="fa-side-card-title">
@@ -249,8 +249,8 @@
                             </div>
                         </div>
 
-                        
-@* Tips  *@
+
+                        @* Tips  *@
 
                         <div class="fa-side-card">
                             <div class="fa-side-card-title">
@@ -269,8 +269,8 @@
                 </div>
             </div>
 
-            
-@* ─────── Upload pane ───────  *@
+
+            @* ─────── Upload pane ───────  *@
 
             <div id="uploadPane" class="fa-pane">
 
@@ -278,8 +278,8 @@
                     <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
                 </button>
 
-                
-@* Dropzone  *@
+
+                @* Dropzone  *@
 
                 @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
                 {
@@ -303,20 +303,20 @@
                     </div>
                 }
 
-                
-@* File chips  *@
+
+                @* File chips  *@
 
                 <div class="fa-file-strip" id="fileStrip"></div>
 
-                
-@* Upload status  *@
+
+                @* Upload status  *@
 
                 <div id="upStatus"></div>
 
             </div>
 
-            
-@* Hidden canvas for capture  *@
+
+            @* Hidden canvas for capture  *@
 
             <canvas id="cap" style="display:none;"></canvas>
         </div>

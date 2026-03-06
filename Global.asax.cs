@@ -31,10 +31,14 @@ namespace FaceAttend
 
         protected void Application_Error()
         {
-            // During local debugging, keep the default error page.
-            // This prevents custom errors from hiding stack traces while you fix issues.
+            // Sa local debug mode: hayaan ang ASP.NET na mag-show ng YSOD.
+            // Gumagamit tayo ng Server.ClearError() dito para ma-suppress ang IIS 500 page,
+            // at ang ASP.NET mismo ang mag-re-render ng detailed error page.
             if (Context != null && Context.IsDebuggingEnabled && Request != null && Request.IsLocal)
-                return;
+            {
+                Response.TrySkipIisCustomErrors = true;
+                return; // ASP.NET ang bahala sa YSOD rendering
+            }
 
             var ex = Server.GetLastError();
             if (ex == null) return;

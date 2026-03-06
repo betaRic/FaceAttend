@@ -65,7 +65,7 @@ namespace FaceAttend.Areas.Admin.Models
         [Display(Name = "Circuit disable seconds")]
         public int LivenessCircuitDisableSeconds { get; set; }
 
-        // ─── Performance (Phase 3 keys) ────────────────────────────────────────────
+        // ─── Performance ───────────────────────────────────────────────────────────
 
         [Range(10, 5000)]
         [Display(Name = "BallTree threshold (employees)")]
@@ -105,6 +105,25 @@ namespace FaceAttend.Areas.Admin.Models
         [Display(Name = "Minimum gap between scans (seconds)")]
         public int MinGapSeconds { get; set; }
 
+        [Display(Name = "Work start")]
+        public string WorkStart { get; set; }
+
+        [Display(Name = "Work end")]
+        public string WorkEnd { get; set; }
+
+        [Display(Name = "Lunch start")]
+        public string LunchStart { get; set; }
+
+        [Display(Name = "Lunch end")]
+        public string LunchEnd { get; set; }
+
+        [Range(1.0, 12.0)]
+        [Display(Name = "Flexi required hours")]
+        public double FlexiRequiredHours { get; set; }
+
+        [Display(Name = "No grace period")]
+        public bool NoGracePeriod { get; set; }
+
         // ─── Review queue ──────────────────────────────────────────────────────────
 
         [Range(0.50, 0.99)]
@@ -133,7 +152,7 @@ namespace FaceAttend.Areas.Admin.Models
 
         public List<SelectListItem> OfficeOptions { get; set; } = new List<SelectListItem>();
 
-        public string SavedMessage   { get; set; }
+        public string SavedMessage { get; set; }
         public string WarningMessage { get; set; }
     }
 }
