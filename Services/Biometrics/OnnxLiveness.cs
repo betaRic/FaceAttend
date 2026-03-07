@@ -199,7 +199,7 @@ namespace FaceAttend.Services.Biometrics
 
                 return (true, finalP, null);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
                 // Security hardening:
                 // ibalik lang ang stable error code, huwag ang raw runtime message.

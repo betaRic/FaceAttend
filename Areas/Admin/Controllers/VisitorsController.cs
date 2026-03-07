@@ -226,10 +226,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                 string encErr;
                 var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
                 if (vec == null)
+                {
                     var debug = AppSettings.GetBool("Biometrics:Debug", false);
-                    return Json(debug
-                        ? new { ok = false, error = "ENCODING_FAIL", detail = encErr }
-                        : new { ok = false, error = "ENCODING_FAIL" });
+                    if (debug)
+                        return Json(new { ok = false, error = "ENCODING_FAIL", detail = encErr });
+
+                    return Json(new { ok = false, error = "ENCODING_FAIL" });
+                }
 
                 var tol = AppSettings.GetDouble("Visitors:DlibTolerance",
                     AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60));
@@ -269,9 +272,10 @@ namespace FaceAttend.Areas.Admin.Controllers
             catch (Exception ex)
             {
                 var debug = AppSettings.GetBool("Biometrics:Debug", false);
-                return Json(debug
-                    ? new { ok = false, error = "ENROLL_ERROR", detail = ex.Message }
-                    : new { ok = false, error = "ENROLL_ERROR" });
+                if (debug)
+                    return Json(new { ok = false, error = "ENROLL_ERROR", detail = ex.Message });
+
+                return Json(new { ok = false, error = "ENROLL_ERROR" });
             }
             finally
             {
@@ -279,7 +283,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 SecureFileUpload.TryDelete(path);
             }
         }
-
 
         private class EnrollCandidate
         {

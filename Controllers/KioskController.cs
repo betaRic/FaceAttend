@@ -213,9 +213,24 @@ namespace FaceAttend.Controllers
                     if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encErr) || vec == null)
                     {
                         var debug = AppSettings.GetBool("Biometrics:Debug", false);
-                        return Json(debug
-                            ? new { ok = false, error = "ENCODING_FAIL", detail = encErr, timings = includePerfTimings ? timings : null }
-                            : new { ok = false, error = "ENCODING_FAIL", timings = includePerfTimings ? timings : null });
+
+                        if (debug)
+                        {
+                            return Json(new
+                            {
+                                ok = false,
+                                error = "ENCODING_FAIL",
+                                detail = encErr,
+                                timings = includePerfTimings ? timings : null
+                            });
+                        }
+
+                        return Json(new
+                        {
+                            ok = false,
+                            error = "ENCODING_FAIL",
+                            timings = includePerfTimings ? timings : null
+                        });
                     }
 
                     mark("dlib_encode_ms");
