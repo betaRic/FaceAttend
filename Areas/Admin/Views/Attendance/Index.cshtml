@@ -1,3 +1,4 @@
+﻿@using FaceAttend.Services
 @model AttendanceIndexVm
 @{
     ViewBag.Title = "Attendance";
@@ -235,7 +236,7 @@
                     <tbody>
                         @foreach (var row in Model.Rows)
                         {
-                            var localTime = row.TimestampUtc.ToLocalTime();
+                            var localTime = TimeZoneHelper.UtcToLocal(row.TimestampUtc);
                             var isIn  = row.EventType == "IN"  || row.EventType == "TimeIn";
                             var isOut = row.EventType == "OUT" || row.EventType == "TimeOut";
 

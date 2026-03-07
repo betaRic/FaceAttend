@@ -1,3 +1,4 @@
+﻿@using FaceAttend.Services
 @model System.Collections.Generic.List<Visitor>
 @{
     ViewBag.Title = "Visitors";
@@ -144,7 +145,7 @@
                             var initials = v.Name.Length > 0 ? v.Name.Substring(0, 1).ToUpperInvariant() : "V";
                             var lastVis  = v.LastVisitDate == default(DateTime)
                                 ? "-"
-                                : v.LastVisitDate.ToLocalTime().ToString("MMM d, yyyy");
+                                : TimeZoneHelper.UtcToLocal(v.LastVisitDate).ToString("MMM d, yyyy");
 
                             <tr>
                                 <td>

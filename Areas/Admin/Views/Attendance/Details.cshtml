@@ -1,3 +1,4 @@
+﻿@using FaceAttend.Services
 @model FaceAttend.Areas.Admin.Models.AttendanceDetailsVm
 
 @{
@@ -29,7 +30,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
                         <div class="text-muted small">Time (local)</div>
-                        <div class="fw-semibold">@Model.TimestampUtc.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</div>
+                        <div class="fw-semibold">@TimeZoneHelper.UtcToLocal(Model.TimestampUtc).ToString("yyyy-MM-dd HH:mm:ss")</div>
                     </div>
 
                     <div class="col-12 col-md-6">

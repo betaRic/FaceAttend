@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Data;
 using System.Linq;
 
@@ -38,11 +38,12 @@ namespace FaceAttend.Services
 
             var nowUtc = DateTime.UtcNow;
 
-            // "Today" boundaries in server-local time, converted to UTC for DB queries.
-            var nowLocal    = DateTime.Now;
-            var startLocal  = nowLocal.Date;
-            var startUtc    = startLocal.ToUniversalTime();
-            var endUtc      = startLocal.AddDays(1).ToUniversalTime();
+            // Mahalagang aligned ang "attendance day" sa app timezone,
+            // hindi sa timezone ng IIS / server OS.
+            var todayLocal = TimeZoneHelper.TodayLocalDate();
+            var todayRange = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
+            var startUtc   = todayRange.fromUtc;
+            var endUtc     = todayRange.toUtcExclusive;
 
             int minGapSeconds = SystemConfigService.GetInt(
                 db, "Attendance:MinGapSeconds",

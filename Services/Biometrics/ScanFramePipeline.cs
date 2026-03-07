@@ -1,4 +1,4 @@
-using FaceAttend.Services;
+﻿using FaceAttend.Services;
 using FaceAttend.Services.Security;
 using System;
 using System.Linq;
@@ -96,7 +96,11 @@ namespace FaceAttend.Services.Biometrics
             }
             catch (Exception ex)
             {
-                return new { ok = false, error = "SCAN_ERROR", detail = ex.Message };
+                // Huwag mag-leak ng raw exception details sa client.
+                var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                return debug
+                    ? (object)new { ok = false, error = "SCAN_ERROR", detail = ex.Message }
+                    : new { ok = false, error = "SCAN_ERROR" };
             }
             finally
             {

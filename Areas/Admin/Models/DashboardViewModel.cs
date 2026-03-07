@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using FaceAttend.Services;
 
 namespace FaceAttend.Areas.Admin.Models
 {
@@ -22,7 +23,7 @@ namespace FaceAttend.Areas.Admin.Models
         public bool OfflineAssetsOk { get; set; } = true;
 
         // Display helpers
-        public string TodayDateDisplay => DateTime.Now.ToString("dddd, MMM dd, yyyy");
+        public string TodayDateDisplay => TimeZoneHelper.NowLocal().ToString("dddd, MMM dd, yyyy");
         public int TotalTodayScans => TodayTimeIns + TodayTimeOuts;
     }
 
@@ -30,7 +31,7 @@ namespace FaceAttend.Areas.Admin.Models
     {
         public long Id { get; set; }
         public DateTime TimestampUtc { get; set; }
-        public string TimestampLocalDisplay => TimestampUtc.ToLocalTime().ToString("HH:mm");
+        public string TimestampLocalDisplay => TimeZoneHelper.UtcToLocal(TimestampUtc).ToString("HH:mm");
 
         public string EmployeeId { get; set; }
         public string EmployeeFullName { get; set; }

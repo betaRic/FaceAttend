@@ -1,7 +1,8 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
+using FaceAttend.Services;
 
 namespace FaceAttend.Areas.Admin.Models
 {
@@ -15,7 +16,7 @@ namespace FaceAttend.Areas.Admin.Models
 
         // Helpers used by the view
         public int    Total     => InCount + OutCount;
-        public string DateLabel => Date.ToLocalTime().ToString("MMM d");
+        public string DateLabel => Date.ToString("MMM d");
     }
 
     public class OfficeSummaryRow
@@ -63,11 +64,11 @@ namespace FaceAttend.Areas.Admin.Models
         public string DateLabel => DateLocal.ToString("yyyy-MM-dd");
 
         public string FirstInDisplay => FirstInUtc.HasValue
-            ? FirstInUtc.Value.ToLocalTime().ToString("HH:mm")
+            ? TimeZoneHelper.UtcToLocal(FirstInUtc.Value).ToString("HH:mm")
             : "-";
 
         public string LastOutDisplay => LastOutUtc.HasValue
-            ? LastOutUtc.Value.ToLocalTime().ToString("HH:mm")
+            ? TimeZoneHelper.UtcToLocal(LastOutUtc.Value).ToString("HH:mm")
             : "-";
 
         public string HoursDisplay

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -58,9 +58,19 @@ namespace FaceAttend.Services.Biometrics
         /// </summary>
         public static IReadOnlyList<Entry> GetEntries(FaceAttendDBEntities db)
         {
+            // Fast path: kapag loaded na ang snapshot, iwas lock agad.
+            // Safe ito kasi _entries ay nire-replace lang, hindi mina-mutate in place.
+            if (_loaded)
+                return _entries.ToList();
+
+            lock (_lock)
+            {
+                // Double-check para isang thread lang ang mag-rebuild.
                 if (!_loaded)
                     RebuildCore(db);
-                return _entries.ToList(); 
+
+                return _entries.ToList();
+            }
         }
 
         /// <summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Linq;
@@ -121,29 +121,28 @@ namespace FaceAttend.Areas.Admin.Controllers
                 {
                     vm.ShowSummary = true;
 
-                    // Daily breakdown — group by UTC date, take up to 14 days,
-                    // ordered ascending so the view can render a left-to-right trend.
+                    // Importante:
+                    // huwag mag-group by raw UTC date para hindi mali ang PH day buckets.
                     var dailyRaw = baseQ
-                        .GroupBy(x => DbFunctions.TruncateTime(x.Timestamp))
+                        .Select(x => new { x.Timestamp, x.EventType })
+                        .ToList()
+                        .GroupBy(x => TimeZoneHelper.UtcToLocal(x.Timestamp).Date)
                         .Select(g => new
                         {
-                            Date   = g.Key,
-                            InCnt  = g.Count(x => x.EventType == "IN"),
+                            Date = g.Key,
+                            InCnt = g.Count(x => x.EventType == "IN"),
                             OutCnt = g.Count(x => x.EventType == "OUT")
                         })
                         .OrderByDescending(g => g.Date)
                         .Take(14)
-                        .ToList();
-
-                    dailyRaw = dailyRaw
                         .OrderBy(g => g.Date)
                         .ToList();
 
                     vm.DailyBreakdown = dailyRaw
                         .Select(g => new DailySummaryRow
                         {
-                            Date     = g.Date.HasValue ? g.Date.Value : DateTime.MinValue,
-                            InCount  = g.InCnt,
+                            Date = g.Date,
+                            InCount = g.InCnt,
                             OutCount = g.OutCnt
                         })
                         .ToList();
@@ -169,12 +168,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                         })
                         .ToList();
 
-                    // Attendance rate — only when today falls inside the filter window.
-                    var todayUtc    = DateTime.UtcNow.Date;
-
-                    bool todayInRange =
-                        (!range.FromUtc.HasValue       || todayUtc >= range.FromUtc.Value.Date) &&
-                        (!range.ToUtcExclusive.HasValue || todayUtc <  range.ToUtcExclusive.Value.Date.AddDays(1));
+                    var todayLocal = TimeZoneHelper.TodayLocalDate();
+                    bool todayInRange = todayLocal >= range.FromLocalDate && todayLocal <= range.ToLocalDate;
 
                     if (todayInRange)
                     {
@@ -182,10 +177,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                         if (vm.TotalActiveEmployees > 0)
                         {
-                            // Use dailyRaw (already computed) to avoid an extra COUNT query.
-                            var todayRow = dailyRaw
-                                .FirstOrDefault(x => x.Date.HasValue && x.Date.Value == todayUtc);
-
+                            var todayRow = dailyRaw.FirstOrDefault(x => x.Date == todayLocal);
                             int todayIns = todayRow == null ? 0 : todayRow.InCnt;
 
                             vm.AttendanceRatePercent =
@@ -366,7 +358,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     .Select(eg =>
                     {
                         var byDay = eg
-                            .GroupBy(x => x.Timestamp.ToLocalTime().Date)
+                            .GroupBy(x => TimeZoneHelper.UtcToLocal(x.Timestamp).Date)
                             .ToDictionary(g => g.Key, g => g.ToList());
 
                         var days = new List<DailyEmployeeRow>(dates.Count);
@@ -466,10 +458,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (truncated) rows = rows.Take(max).ToList();
 
                 var csv      = BuildCsv(rows);
-                var bytes    = Encoding.UTF8.GetBytes(csv);
+                var bytes    = new UTF8Encoding(true).GetBytes(csv);
+                var nowLocal = TimeZoneHelper.NowLocal();
                 var fileName = truncated
-                    ? ("attendance_truncated_" + max + "_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv")
-                    : ("attendance_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv");
+                    ? ("attendance_truncated_" + max + "_" + nowLocal.ToString("yyyyMMdd_HHmm") + ".csv")
+                    : ("attendance_" + nowLocal.ToString("yyyyMMdd_HHmm") + ".csv");
                 return File(bytes, "text/csv", fileName);
             }
         }
@@ -548,7 +541,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 foreach (var eg in grouped)
                 {
                     var byDay = eg
-                        .GroupBy(x => x.Timestamp.ToLocalTime().Date)
+                        .GroupBy(x => TimeZoneHelper.UtcToLocal(x.Timestamp).Date)
                         .ToDictionary(g => g.Key, g => g.ToList());
 
                     foreach (var dayLocal in dates)
@@ -562,8 +555,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                             SafeCell(eg.Key.FullName),
                             SafeCell(eg.Key.Dept),
                             row.DateLabel,
-                            row.FirstInUtc.HasValue ? row.FirstInUtc.Value.ToLocalTime().ToString("HH:mm") : "",
-                            row.LastOutUtc.HasValue ? row.LastOutUtc.Value.ToLocalTime().ToString("HH:mm") : "",
+                            row.FirstInUtc.HasValue ? TimeZoneHelper.UtcToLocal(row.FirstInUtc.Value).ToString("HH:mm") : "",
+                            row.LastOutUtc.HasValue ? TimeZoneHelper.UtcToLocal(row.LastOutUtc.Value).ToString("HH:mm") : "",
                             (row.HoursNet ?? row.HoursRaw).HasValue
                                 ? (row.HoursNet ?? row.HoursRaw).Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                                 : "",
@@ -575,8 +568,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                     }
                 }
 
-                var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-                var fileName = "attendance_summary_" + DateTime.Now.ToString("yyyyMMdd") + ".csv";
+                var bytes = new UTF8Encoding(true).GetBytes(sb.ToString());
+                var fileName = "attendance_summary_" + TimeZoneHelper.NowLocal().ToString("yyyyMMdd") + ".csv";
                 return File(bytes, "text/csv", fileName);
             }
         }
@@ -694,8 +687,8 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
 
             // Both in and out
-            var firstLocal = firstInUtc.Value.ToLocalTime();
-            var lastLocal = lastOutUtc.Value.ToLocalTime();
+            var firstLocal = TimeZoneHelper.UtcToLocal(firstInUtc.Value);
+            var lastLocal = TimeZoneHelper.UtcToLocal(lastOutUtc.Value);
 
             var rawHours = (lastLocal - firstLocal).TotalHours;
             if (rawHours < 0) rawHours = 0;

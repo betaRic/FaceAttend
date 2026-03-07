@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Diagnostics;
 using System.Runtime.Caching;
@@ -211,7 +211,12 @@ namespace FaceAttend.Controllers
                     double[] vec;
                     string encErr;
                     if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encErr) || vec == null)
-                        return Json(new { ok = false, error = "ENCODING_FAIL", detail = encErr, timings = includePerfTimings ? timings : null });
+                    {
+                        var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                        return Json(debug
+                            ? new { ok = false, error = "ENCODING_FAIL", detail = encErr, timings = includePerfTimings ? timings : null }
+                            : new { ok = false, error = "ENCODING_FAIL", timings = includePerfTimings ? timings : null });
+                    }
 
                     mark("dlib_encode_ms");
 
@@ -439,13 +444,27 @@ namespace FaceAttend.Controllers
             }
             catch (Exception ex)
             {
-                var baseEx = ex.GetBaseException();
+                // Security hardening:
+                // generic lang sa client by default. Raw detail ay debug-only.
+                var debug = AppSettings.GetBool("Biometrics:Debug", false);
+
+                if (debug)
+                {
+                    var baseEx = ex.GetBaseException();
+                    return Json(new
+                    {
+                        ok = false,
+                        error = "SCAN_ERROR",
+                        detail = ex.Message,
+                        inner = baseEx == null ? null : baseEx.Message,
+                        timings = includePerfTimings ? timings : null
+                    });
+                }
+
                 return Json(new
                 {
                     ok = false,
                     error = "SCAN_ERROR",
-                    detail = ex.Message,
-                    inner = baseEx == null ? null : baseEx.Message,
                     timings = includePerfTimings ? timings : null
                 });
             }
@@ -527,8 +546,6 @@ namespace FaceAttend.Controllers
                             ua);
                     }
 
-                    _visitorScanCache.Remove(key);
-
                     return Json(new
                     {
                         ok = res.Ok,
@@ -542,6 +559,13 @@ namespace FaceAttend.Controllers
                 catch
                 {
                     return Json(new { ok = false, error = "VISITOR_SAVE_ERROR", message = "Could not save visitor." });
+                }
+                finally
+                {
+                    // Important:
+                    // one-time lang ang scan cache item. Kahit validation fail o exception,
+                    // alisin para walang stale biometric payload na maiwan sa memory.
+                    _visitorScanCache.Remove(key);
                 }
             }
         }

@@ -673,10 +673,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 LivenessCircuitFailStreak = AppSettings.GetInt("Biometrics:Liveness:CircuitFailStreak", 3),
                 LivenessCircuitDisableSeconds = AppSettings.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30),
 
-                NeedsReviewNearMatchRatio = SystemConfigDefaults.GetDouble(0.90),
-                NeedsReviewLivenessMargin = SystemConfigDefaults.GetDouble(0.03),
-                NeedsReviewGpsMargin = SystemConfigDefaults.GetInt(10),
-
                 VisitorMaxRecords = AppSettings.GetInt("Visitors:MaxRecords", 10000),
                 VisitorRetentionYears = AppSettings.GetInt("Visitors:RetentionYears", 2),
 
@@ -794,19 +790,6 @@ namespace FaceAttend.Areas.Admin.Controllers
         private static string NormalizeOrDefault(string value, string fallback)
         {
             return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-        }
-
-        private static class SystemConfigDefaults
-        {
-            public static double GetDouble(double value)
-            {
-                return value;
-            }
-
-            public static int GetInt(int value)
-            {
-                return value;
-            }
         }
     }
 }

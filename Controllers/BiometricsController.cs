@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Web;
@@ -83,8 +83,14 @@ namespace FaceAttend.Controllers
                     return Json(new { ok = false, error = "TOO_LARGE" });
             }
 
-            var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
-            var tol = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
+            // Unahin ang SystemConfig para ang admin runtime settings ang masunod.
+            var th = (float)SystemConfigService.GetDoubleCached(
+                "Biometrics:LivenessThreshold",
+                AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
+
+            var tol = SystemConfigService.GetDoubleCached(
+                "Biometrics:DlibTolerance",
+                AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60));
 
             var dlib = new DlibBiometrics();
             var live = new OnnxLiveness();

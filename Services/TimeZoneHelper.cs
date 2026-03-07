@@ -3,36 +3,58 @@ using System.Collections.Generic;
 
 namespace FaceAttend.Services
 {
+    /// <summary>
+    /// Central timezone helper for the whole app.
+    ///
+    /// Lahat ng business date boundaries dapat dumaan dito para iisa lang ang
+    /// batayan ng "today", reports, exports, at attendance day cutoffs.
+    /// </summary>
     public static class TimeZoneHelper
     {
         private static readonly object _lock = new object();
-        private static TimeZoneInfo _tz;
-        private static string _loadedId;
+
+        // Volatile references para safe ang fast-path reads kahit may concurrent rebuild.
+        private static volatile TimeZoneInfo _tz;
+        private static volatile string _loadedId;
 
         public static TimeZoneInfo LocalTimeZone => Ensure();
 
         private static TimeZoneInfo Ensure()
         {
-            var id = AppSettings.GetString("App:TimeZoneId", "Asia/Manila");
+            var id = NormalizeId(AppSettings.GetString("App:TimeZoneId", "Asia/Manila"));
 
-            if (_tz != null && string.Equals(_loadedId, id, StringComparison.OrdinalIgnoreCase))
-                return _tz;
+            var tz = _tz;
+            var loadedId = _loadedId;
+
+            if (tz != null && string.Equals(loadedId, id, StringComparison.OrdinalIgnoreCase))
+                return tz;
 
             lock (_lock)
             {
-                if (_tz != null && string.Equals(_loadedId, id, StringComparison.OrdinalIgnoreCase))
-                    return _tz;
+                tz = _tz;
+                loadedId = _loadedId;
 
-                _tz = ResolveTimeZone(id);
+                if (tz != null && string.Equals(loadedId, id, StringComparison.OrdinalIgnoreCase))
+                    return tz;
+
+                tz = ResolveTimeZone(id);
+                _tz = tz;
                 _loadedId = id;
-                return _tz;
+                return tz;
             }
+        }
+
+        private static string NormalizeId(string id)
+        {
+            if (string.IsNullOrWhiteSpace(id))
+                return "Asia/Manila";
+
+            return id.Trim();
         }
 
         private static TimeZoneInfo ResolveTimeZone(string id)
         {
-            if (string.IsNullOrWhiteSpace(id)) id = "Asia/Manila";
-            id = id.Trim();
+            id = NormalizeId(id);
 
             try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
             catch { }
@@ -45,7 +67,8 @@ namespace FaceAttend.Services
                 { "UTC", "UTC" }
             };
 
-            if (map.TryGetValue(id, out var winId))
+            string winId;
+            if (map.TryGetValue(id, out winId))
             {
                 try { return TimeZoneInfo.FindSystemTimeZoneById(winId); }
                 catch { }
@@ -76,6 +99,9 @@ namespace FaceAttend.Services
 
         public static (DateTime fromUtc, DateTime toUtcExclusive) LocalDateToUtcRange(DateTime localDate)
         {
+            // Taglish note:
+            // localDate dito ay "calendar day" lang. Gawing Unspecified para
+            // ang ConvertTimeToUtc ay gumamit ng configured app timezone.
             var startLocal = DateTime.SpecifyKind(localDate.Date, DateTimeKind.Unspecified);
             var endLocal = DateTime.SpecifyKind(localDate.Date.AddDays(1), DateTimeKind.Unspecified);
 

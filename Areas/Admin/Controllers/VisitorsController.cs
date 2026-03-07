@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Data.Entity;
@@ -216,7 +216,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!scored.Ok)
                     return Json(new { ok = false, error = scored.Error });
 
-                var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                var th = (float)SystemConfigService.GetDoubleCached(
+                    "Biometrics:LivenessThreshold",
+                    AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
                 var p = scored.Probability ?? 0f;
                 if (p < th)
                     return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p });
@@ -224,7 +226,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                 string encErr;
                 var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
                 if (vec == null)
-                    return Json(new { ok = false, error = "ENCODING_FAIL", detail = encErr });
+                    var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                    return Json(debug
+                        ? new { ok = false, error = "ENCODING_FAIL", detail = encErr }
+                        : new { ok = false, error = "ENCODING_FAIL" });
 
                 var tol = AppSettings.GetDouble("Visitors:DlibTolerance",
                     AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60));
@@ -263,7 +268,10 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
             catch (Exception ex)
             {
-                return Json(new { ok = false, error = "ENROLL_ERROR", detail = ex.Message });
+                var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                return Json(debug
+                    ? new { ok = false, error = "ENROLL_ERROR", detail = ex.Message }
+                    : new { ok = false, error = "ENROLL_ERROR" });
             }
             finally
             {
@@ -526,7 +534,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 {
                     sb.AppendLine(string.Join(",", new[]
                     {
-                        EscapeCsv(r.Timestamp.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")),
+                        EscapeCsv(TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss")),
                         EscapeCsv(SafeCell(r.VisitorName ?? "")),
                         EscapeCsv(r.VisitorId.HasValue ? "YES" : "NO"),
                         EscapeCsv(SafeCell(r.OfficeName ?? "")),
@@ -535,8 +543,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                     }));
                 }
 
-                var bytes = Encoding.UTF8.GetBytes(sb.ToString());
-                var file = "visitor_logs_" + DateTime.Now.ToString("yyyyMMdd_HHmm") + ".csv";
+                var bytes = new UTF8Encoding(true).GetBytes(sb.ToString());
+                var file = "visitor_logs_" + TimeZoneHelper.NowLocal().ToString("yyyyMMdd_HHmm") + ".csv";
                 return File(bytes, "text/csv", file);
             }
         }

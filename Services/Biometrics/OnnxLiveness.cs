@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -201,7 +201,9 @@ namespace FaceAttend.Services.Biometrics
             }
             catch (Exception ex)
             {
-                return Fail("ONNX_ERROR: " + ex.Message, null);
+                // Security hardening:
+                // ibalik lang ang stable error code, huwag ang raw runtime message.
+                return Fail("ONNX_ERROR", null);
             }
             finally
             {
