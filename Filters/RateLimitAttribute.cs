@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.Caching;
 using System.Web.Mvc;
 
@@ -7,42 +7,39 @@ namespace FaceAttend.Filters
     /// <summary>
     /// Per-IP token-bucket rate limiter na may burst capacity.
     ///
-    /// Token-bucket behavior:
-    ///   - Nagre-refill ang tokens nang tuluy-tuloy sa rate na MaxRequests/WindowSeconds bawat segundo.
-    ///   - Ang Burst parameter ay nagdadagdag ng extra initial capacity para ma-absorb ang biglang spikes.
-    ///   - Bawat request ay kumokonsumo ng isang token; kapag wala nang token, nagbabalik ng HTTP 429.
-    ///   - Ang Retry-After header ay naglalaman ng mga segundo bago available ang susunod na token.
-    ///
-    /// PHASE 3 FIX (S-10): X-Forwarded-For extraction — naka-enable na.
+    /// AUDIT FIX (M-07): Hard cap para sa X-Forwarded-For spoofing.
     ///
     /// PROBLEMA DATI:
-    ///   Ang GetClientIp() ay gumagamit lang ng Request.UserHostAddress — na para sa
-    ///   lahat ng offices sa likod ng NAT/router ay iisa lang ang IP address.
-    ///   Ibig sabihin, lahat ng 30 empleyado sa Office A ay nagbabahagi ng isang
-    ///   rate-limit bucket — ang isang empleyado na nag-scan ng maraming beses ay
-    ///   maaaring mag-lock out sa lahat ng ibang empleyado sa parehong office.
+    ///   Kapag naka-loob ang request sa private network, tinatanggap natin ang
+    ///   X-Forwarded-For bilang tunay na client IP. Ang isang attacker sa
+    ///   parehong subnet (o nakapasok sa network) ay pwedeng mag-spoof ng XFF
+    ///   gamit ang iba-ibang IP para ma-bypass ang rate limiting.
     ///
     /// SOLUSYON:
-    ///   Basahin ang X-Forwarded-For header kung present — ito ang tunay na IP ng
-    ///   device na nag-scan (hindi ang IP ng router/NAT ng office).
+    ///   Dalawang-layer na rate limiting:
+    ///   1. Per-XFF IP: ginagamit ang XFF IP bilang pangunahing key (tulad ng dati).
+    ///   2. Per-directIp (UserHostAddress): palaging nag-a-apply ng minimum hard cap
+    ///      (XffHardCapPerMinute, default 60/min) sa tunay na source IP.
     ///
-    /// BABALA SA SECURITY:
-    ///   Ang X-Forwarded-For ay pwedeng i-spoof ng client (e.g. mag-set ng header
-    ///   na "X-Forwarded-For: 1.2.3.4" para mawala sa rate limiting).
-    ///   SOLUSYON DITO: tinatanggap lang natin ang header kapag ang request ay
-    ///   nagmula sa lokal na network (private IP ranges). Ang mga external na
-    ///   request ay gumagamit pa rin ng UserHostAddress.
-    ///
-    ///   Para sa Phase 4 (kapag may nginx reverse proxy na), mas angkop na gamitin
-    ///   ang X-Real-IP header na isineset ng nginx — hindi ito pwedeng i-spoof ng client
-    ///   dahil isineset ito ng proxy sa server side.
+    ///   Kahit i-spoof ng attacker ang XFF, ang tunay na IP (UserHostAddress)
+    ///   ay mananatiling naka-throttle. Hindi maaaring ma-bypass ang rate limit
+    ///   sa pamamagitan ng XFF spoofing.
     /// </summary>
     [AttributeUsage(AttributeTargets.Method | AttributeTargets.Class,
                     AllowMultiple = true, Inherited = true)]
     public class RateLimitAttribute : ActionFilterAttribute
     {
         private static readonly MemoryCache _cache = MemoryCache.Default;
-        private const string CachePrefix = "RATELIMIT_TB::";
+        private const string CachePrefix        = "RATELIMIT_TB::";
+        private const string CachePrefixHardCap = "RATELIMIT_HC::";
+
+        // Hard cap applied to the real connection IP when using X-Forwarded-For.
+        // Configurable via Web.config: RateLimit:XffHardCapPerMinute (default 60).
+        private static int GetXffHardCapPerMinute()
+        {
+            var v = System.Configuration.ConfigurationManager.AppSettings["RateLimit:XffHardCapPerMinute"];
+            return int.TryParse(v, out var n) && n > 0 ? n : 60;
+        }
 
         public string Name          { get; set; } = "default";
         public int    MaxRequests   { get; set; } = 10;
@@ -51,87 +48,120 @@ namespace FaceAttend.Filters
 
         public override void OnActionExecuting(ActionExecutingContext filterContext)
         {
-            // Fail-open kapag invalid ang config — mas mainam na magpatuloy
-            // kaysa mag-block ng lahat ng requests.
+            // Fail-open kapag invalid ang config.
             if (MaxRequests <= 0 || WindowSeconds <= 0)
             {
                 base.OnActionExecuting(filterContext);
                 return;
             }
 
-            var directIp = filterContext.HttpContext.Request.UserHostAddress ?? "unknown";
-            var ip = GetClientIp(filterContext);
+            var request   = filterContext.HttpContext.Request;
+            var directIp  = request.UserHostAddress ?? "unknown";
+            var clientIp  = GetClientIp(filterContext);
+            var usingXff  = !string.Equals(directIp, clientIp, StringComparison.OrdinalIgnoreCase);
 
-            double retryAfterSecs;
+            // ── Layer 1: Per-clientIp (XFF or directIp) token bucket ──────────────
+            var cacheKey1 = $"{CachePrefix}{Name}:{clientIp}";
+            var bucket1   = GetOrCreateBucket(cacheKey1, MaxRequests, Burst);
 
-            if (!string.Equals(ip, directIp, StringComparison.OrdinalIgnoreCase))
+            bool   denied1;
+            double retryAfterSecs1;
+
+            lock (bucket1)
             {
-                var directCacheKey = string.Format("{0}{1}:direct:{2}", CachePrefix, Name, directIp);
-                if (TryConsumeBucket(directCacheKey, 10, 60, 0, out retryAfterSecs))
-                {
-                    Deny(filterContext, retryAfterSecs);
-                    return;
-                }
+                ConsumeToken(bucket1, MaxRequests, WindowSeconds, Burst,
+                    out denied1, out retryAfterSecs1);
             }
 
-            var cacheKey = string.Format("{0}{1}:{2}", CachePrefix, Name, ip);
-            if (TryConsumeBucket(cacheKey, MaxRequests, WindowSeconds, Burst, out retryAfterSecs))
+            if (denied1)
             {
-                Deny(filterContext, retryAfterSecs);
+                WriteDeniedResult(filterContext, (int)retryAfterSecs1);
                 return;
+            }
+
+            // ── Layer 2: Hard cap on directIp when XFF is in use ─────────────────
+            // AUDIT FIX (M-07): Kahit i-spoof ang XFF, ang tunay na source IP
+            // ay mananatiling naka-throttle ng hard cap.
+            if (usingXff)
+            {
+                var hardCap    = GetXffHardCapPerMinute();
+                var cacheKey2  = $"{CachePrefixHardCap}{directIp}";
+                var bucket2    = GetOrCreateBucket(cacheKey2, hardCap, 0);
+
+                bool   denied2;
+                double retryAfterSecs2;
+
+                lock (bucket2)
+                {
+                    ConsumeToken(bucket2, hardCap, 60, 0,
+                        out denied2, out retryAfterSecs2);
+                }
+
+                if (denied2)
+                {
+                    WriteDeniedResult(filterContext, (int)retryAfterSecs2);
+                    return;
+                }
             }
 
             base.OnActionExecuting(filterContext);
         }
 
-        private static void Deny(ActionExecutingContext filterContext, double retryAfterSecs)
+        // ── Helpers ───────────────────────────────────────────────────────────────
+
+        private static void ConsumeToken(
+            TokenBucket bucket,
+            int maxRequests,
+            int windowSeconds,
+            int burst,
+            out bool denied,
+            out double retryAfterSecs)
+        {
+            var now     = DateTimeOffset.UtcNow;
+            var elapsed = (now - bucket.LastRefill).TotalSeconds;
+            if (elapsed < 0) elapsed = 0;
+
+            double rate = (double)maxRequests / windowSeconds;
+
+            if (rate <= 0)
+            {
+                denied         = false;
+                retryAfterSecs = 0;
+                return;
+            }
+
+            bucket.Tokens    = Math.Min(bucket.Tokens + elapsed * rate, maxRequests + burst);
+            bucket.LastRefill = now;
+
+            if (bucket.Tokens >= 1.0)
+            {
+                bucket.Tokens -= 1.0;
+                denied         = false;
+                retryAfterSecs = 0;
+            }
+            else
+            {
+                denied         = true;
+                retryAfterSecs = Math.Ceiling((1.0 - bucket.Tokens) / rate);
+            }
+        }
+
+        private static void WriteDeniedResult(ActionExecutingContext filterContext, int retryAfter)
         {
             var response = filterContext.HttpContext.Response;
             response.StatusCode = 429;
-            response.AddHeader("Retry-After", ((int)retryAfterSecs).ToString());
+            response.AddHeader("Retry-After", retryAfter.ToString());
 
             filterContext.Result = new JsonResult
             {
                 Data = new
                 {
-                    ok = false,
-                    error = "RATE_LIMIT_EXCEEDED",
-                    retryAfter = (int)retryAfterSecs
+                    ok         = false,
+                    error      = "RATE_LIMIT_EXCEEDED",
+                    retryAfter
                 },
                 JsonRequestBehavior = JsonRequestBehavior.AllowGet
             };
-        }
-
-        private bool TryConsumeBucket(string cacheKey, int maxRequests, int windowSeconds, int burst, out double retryAfterSecs)
-        {
-            retryAfterSecs = 0;
-            if (maxRequests <= 0 || windowSeconds <= 0)
-                return false;
-
-            var bucket = GetOrCreateBucket(cacheKey, maxRequests, burst);
-
-            lock (bucket)
-            {
-                var now = DateTimeOffset.UtcNow;
-                var elapsed = (now - bucket.LastRefill).TotalSeconds;
-                if (elapsed < 0) elapsed = 0;
-
-                double rate = (double)maxRequests / windowSeconds;
-                if (rate <= 0)
-                    return false;
-
-                bucket.Tokens = Math.Min(bucket.Tokens + elapsed * rate, maxRequests + burst);
-                bucket.LastRefill = now;
-
-                if (bucket.Tokens >= 1.0)
-                {
-                    bucket.Tokens -= 1.0;
-                    return false;
-                }
-
-                retryAfterSecs = Math.Ceiling((1.0 - bucket.Tokens) / rate);
-                return true;
-            }
         }
 
         private TokenBucket GetOrCreateBucket(string cacheKey, int maxRequests, int burst)
@@ -141,13 +171,12 @@ namespace FaceAttend.Filters
 
             var newBucket = new TokenBucket
             {
-                Tokens    = maxRequests + burst,
+                Tokens     = maxRequests + burst,
                 LastRefill = DateTimeOffset.UtcNow
             };
 
             var policy = new CacheItemPolicy
             {
-                // 2 minuto ng inactivity bago ma-expire ang bucket
                 SlidingExpiration = TimeSpan.FromMinutes(2)
             };
 
@@ -156,47 +185,21 @@ namespace FaceAttend.Filters
         }
 
         /// <summary>
-        /// PHASE 3 FIX (S-10): Kinukuha ang tunay na client IP.
-        ///
+        /// Kinukuha ang tunay na client IP.
         /// Hierarchy ng trust:
-        ///   1. X-Forwarded-For — kung nagmula ang request sa lokal/trusted na IP
-        ///      (isineset ng router o reverse proxy ng internal network).
+        ///   1. X-Forwarded-For — kung nagmula ang request sa lokal/trusted na IP.
         ///   2. UserHostAddress — ang direktang IP ng koneksyon.
-        ///
-        /// BAKIT LOKAL LANG:
-        ///   Tinatanggap lang natin ang X-Forwarded-For mula sa private IP ranges:
-        ///     10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 127.0.0.1
-        ///   Ang mga external IP (public internet) ay hindi pinagkakatiwalaan —
-        ///   maaari nilang i-set ang X-Forwarded-For para lagusan ang rate limiting.
-        ///
-        /// HALIMBAWA NG FLOW SA OFFICE A:
-        ///   - Office A router IP (public): 123.45.67.89
-        ///   - Employee phone (private): 192.168.1.50
-        ///   - X-Forwarded-For: 192.168.1.50 (isineset ng router/proxy)
-        ///   - UserHostAddress: 123.45.67.89 (ang router)
-        ///   - RESULT: Rate limit ay per-phone (192.168.1.50), hindi per-router.
-        ///
-        /// PARA SA PHASE 4 (nginx):
-        ///   Kapag naka-configure na ang nginx bilang reverse proxy, gamitin na lang
-        ///   ang X-Real-IP header (hindi X-Forwarded-For) dahil mas reliable:
-        ///     proxy_set_header X-Real-IP $remote_addr;
-        ///   Pagkatapos ay tanggapin natin ang header kahit galing sa anumang IP.
         /// </summary>
         private static string GetClientIp(ActionExecutingContext ctx)
         {
-            var request        = ctx.HttpContext.Request;
-            var directIp       = request.UserHostAddress ?? "unknown";
+            var request   = ctx.HttpContext.Request;
+            var directIp  = request.UserHostAddress ?? "unknown";
 
-            // Tingnan kung lokal/trusted ang direktang koneksyon.
-            // Kapag lokal, tinatanggap natin ang X-Forwarded-For.
             if (IsPrivateOrLoopback(directIp))
             {
                 var forwarded = request.Headers["X-Forwarded-For"];
                 if (!string.IsNullOrWhiteSpace(forwarded))
                 {
-                    // Ang X-Forwarded-For ay pwedeng may maraming IPs kung may multiple proxies.
-                    // Format: "client, proxy1, proxy2"
-                    // Gusto natin ang pinaka-unang IP (ang tunay na client).
                     var firstIp = forwarded.Split(',')[0].Trim();
                     if (!string.IsNullOrWhiteSpace(firstIp))
                         return firstIp;
@@ -206,38 +209,31 @@ namespace FaceAttend.Filters
             return directIp;
         }
 
-        /// <summary>
-        /// Tinitingnan kung ang IP ay lokal (private range o loopback).
-        /// Tinatanggap ang IPv4 private ranges at loopback.
-        /// </summary>
         private static bool IsPrivateOrLoopback(string ip)
         {
             if (string.IsNullOrWhiteSpace(ip)) return false;
+            if (ip == "127.0.0.1" || ip == "::1" || ip == "localhost") return true;
 
-            // Loopback
-            if (ip == "127.0.0.1" || ip == "::1" || ip == "localhost")
-                return true;
+            var parts = ip.Split('.');
+            if (parts.Length != 4) return false;
 
-            // Para sa simplicity: sinusuri natin ang prefix ng IP.
-            // Sa production, mas tumpak ang System.Net.IPAddress parsing.
-            if (ip.StartsWith("10."))         return true;  // 10.0.0.0/8
-            if (ip.StartsWith("192.168."))    return true;  // 192.168.0.0/16
-            if (ip.StartsWith("172."))
-            {
-                // 172.16.0.0/12 — sinisigurado natin ang exact range
-                var parts = ip.Split('.');
-                if (parts.Length >= 2 && int.TryParse(parts[1], out var second))
-                    if (second >= 16 && second <= 31)
-                        return true;
-            }
+            if (!byte.TryParse(parts[0], out var a)) return false;
+            if (!byte.TryParse(parts[1], out var b)) return false;
+
+            // 10.x.x.x
+            if (a == 10) return true;
+            // 172.16.x.x – 172.31.x.x
+            if (a == 172 && b >= 16 && b <= 31) return true;
+            // 192.168.x.x
+            if (a == 192 && b == 168) return true;
 
             return false;
         }
 
-        private sealed class TokenBucket
+        private class TokenBucket
         {
-            public double          Tokens    { get; set; }
-            public DateTimeOffset  LastRefill { get; set; }
+            public double        Tokens    { get; set; }
+            public DateTimeOffset LastRefill { get; set; }
         }
     }
 }

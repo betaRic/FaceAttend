@@ -77,6 +77,12 @@ namespace FaceAttend.Services.Biometrics
         private static DateTime _circuitUntilUtc = DateTime.MinValue;
         private static bool     _stuck           = false;
 
+        // AUDIT FIX (L-02): Error log rate limiting para sa high-load scenarios.
+        // Sa 100 concurrent failures, i-log lang ang 1st at bawat 10th error.
+        // Ginagamit ang Interlocked para thread-safe na increment nang walang lock.
+        private static int _errorLogCounter = 0;
+        private const  int ErrorLogEvery    = 10;
+
         // ─────────────────────────────────────────────────────────────────────
         // Warm-up
         // ─────────────────────────────────────────────────────────────────────
@@ -253,9 +259,15 @@ namespace FaceAttend.Services.Biometrics
                 // I-record ang failure para sa circuit breaker.
                 RecordFailure();
 
-                // Log ang error details para sa debugging, pero huwag i-expose
-                // sa client response (security hardening).
-                Trace.TraceError("[OnnxLiveness.ScoreFromFile] Error: " + ex.Message);
+                // AUDIT FIX (L-02): Rate-limited error logging.
+                // Sa 100 concurrent failures, i-log lang ang 1st at bawat 10th
+                // para hindi mapuno ang log file at maging I/O bottleneck.
+                var errCount = System.Threading.Interlocked.Increment(ref _errorLogCounter);
+                if (errCount == 1 || errCount % ErrorLogEvery == 0)
+                {
+                    Trace.TraceError(
+                        $"[OnnxLiveness.ScoreFromFile] Error #{errCount}: {ex.Message}");
+                }
 
                 return Fail("ONNX_ERROR");
             }
@@ -280,9 +292,27 @@ namespace FaceAttend.Services.Biometrics
                 if (_failStreak >= failStreak)
                 {
                     _circuitUntilUtc = DateTime.UtcNow.AddSeconds(disableSecs);
-                    Trace.TraceWarning(
-                        $"[OnnxLiveness] Circuit breaker naka-open — nag-fail ng {_failStreak}x. " +
-                        $"Hindi tatanggapin ang requests hanggang {_circuitUntilUtc:HH:mm:ss} UTC.");
+                    var msg = $"[OnnxLiveness] Circuit breaker naka-open — nag-fail ng {_failStreak}x. " +
+                              $"Hindi tatanggapin ang requests hanggang {_circuitUntilUtc:HH:mm:ss} UTC.";
+
+                    Trace.TraceWarning(msg);
+
+                    // AUDIT FIX (M-04): Isulat sa Windows Event Log para makita ng
+                    // server admin kahit hindi nakatingin sa dashboard.
+                    try
+                    {
+                        using (var el = new System.Diagnostics.EventLog("Application"))
+                        {
+                            el.Source = "FaceAttend";
+                            el.WriteEntry(
+                                $"Liveness circuit breaker OPENED after {_failStreak} failures. " +
+                                $"All scans blocked until {_circuitUntilUtc:HH:mm:ss} UTC. " +
+                                "Go to Admin Dashboard to reset manually.",
+                                System.Diagnostics.EventLogEntryType.Warning,
+                                2001);
+                        }
+                    }
+                    catch { /* Best effort — EventLog source baka hindi pa registered */ }
                 }
             }
         }
