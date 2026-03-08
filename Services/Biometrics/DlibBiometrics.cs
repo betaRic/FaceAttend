@@ -48,6 +48,11 @@ namespace FaceAttend.Services.Biometrics
     {
         // ─── FaceBox DTO ──────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Simpleng rectangle DTO na kumakatawan sa posisyon ng mukha sa larawan.
+        /// Ginagamit para ibalik ang face detection results nang hindi kailangang
+        /// i-expose ang FaceRecognitionDotNet.Location type sa mga caller.
+        /// </summary>
         public class FaceBox
         {
             public int Left   { get; set; }
@@ -68,53 +73,48 @@ namespace FaceAttend.Services.Biometrics
         // Ini-initialize sa Application_Start pagkatapos mabasa ang config.
         private static SemaphoreSlim _semaphore;
 
-        // Para malaman kung initialized na ang pool.
-        private static volatile bool _poolReady = false;
+        // Lock para sa pool initialization — iniiwasan ang double-init.
         private static readonly object _initLock = new object();
+        private static volatile bool   _poolReady = false;
 
-        // Ang model at models directory — ini-initialize minsan lang.
+        // Dlib detector model — HOG (default, mas mabilis) o CNN (mas tumpak, mas mabagal).
+        private static Model _model = Model.Hog;
+
+        // Absolute path ng Dlib models directory.
         private static string _absModelsDir;
-        private static Model  _model;
 
-        // ─── Initialization ───────────────────────────────────────────────────────
+        // ─── Pool initialization ──────────────────────────────────────────────────
 
         /// <summary>
-        /// Ini-initialize ang instance pool. Tinatawagin ito sa Application_Start
-        /// para mainit-init na ang pool bago pa man dumating ang unang request.
+        /// Ini-initialize ang Dlib pool sa Application_Start.
+        /// DAPAT tawagin ito ISANG BESES lang sa Global.asax bago dumating ang requests.
         ///
-        /// Thread-safe: ligtas na tawagin ng maraming beses — ang double-check
-        /// locking ay nagtitigarantiya na isa lang ang mag-initialize.
+        /// Thread-safe: gumagamit ng double-check locking para matiyak na
+        /// isang beses lang mag-initialize kahit multiple threads ang tatawag.
         /// </summary>
         public static void InitializePool()
         {
-            // Fast path: kung initialized na, lumabas agad.
             if (_poolReady) return;
 
             lock (_initLock)
             {
-                // Double-check: baka nag-initialize na ang ibang thread habang naghihintay.
                 if (_poolReady) return;
 
-                var modelsDir = AppSettings.GetString("Biometrics:DlibModelsDir",
-                    "~/App_Data/models/dlib");
-                var detector  = AppSettings.GetString("Biometrics:DlibDetector", "hog");
-                var poolSize  = AppSettings.GetInt("Biometrics:DlibPoolSize", 4);
-                var timeoutMs = AppSettings.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
-
-                // Siguraduhing ang pool size ay nasa makatwirang hanay.
+                var poolSize   = AppSettings.GetInt("Biometrics:DlibPoolSize", 4);
                 if (poolSize < 1)  poolSize = 1;
-                if (poolSize > 16) poolSize = 16;  // Huwag maglalagay ng sobrang dami
+                if (poolSize > 16) poolSize = 16; // Safety cap — bawat instance ≈ 50 MB
 
-                _absModelsDir = HostingEnvironment.MapPath(modelsDir);
+                var modelsRel  = AppSettings.GetString(
+                    "Biometrics:DlibModelsDir",
+                    "~/App_Data/models/dlib");
+                _absModelsDir  = HostingEnvironment.MapPath(modelsRel);
 
-                if (string.IsNullOrWhiteSpace(_absModelsDir) ||
-                    !Directory.Exists(_absModelsDir))
-                {
+                if (string.IsNullOrWhiteSpace(_absModelsDir) || !Directory.Exists(_absModelsDir))
                     throw new InvalidOperationException(
-                        "Hindi mahanap ang Dlib models directory: " + modelsDir);
-                }
+                        "Hindi mahanap ang Dlib models directory: " + modelsRel);
 
-                _model = detector.Equals("cnn", StringComparison.OrdinalIgnoreCase)
+                var detectorStr = AppSettings.GetString("Biometrics:DlibDetector", "hog");
+                _model = detectorStr.Equals("cnn", StringComparison.OrdinalIgnoreCase)
                     ? Model.Cnn
                     : Model.Hog;
 
@@ -160,8 +160,8 @@ namespace FaceAttend.Services.Biometrics
         /// Naghe-hold kung puno ang pool, hanggang sa DlibPoolTimeoutMs.
         /// Nagrereturn ng null kapag nag-timeout.
         ///
-        /// IMPORTANTENG GAMITIN KASAMA ANG using() PATTERN o try/finally
-        /// para matiyak na naibabalik ang instance sa pool:
+        /// IMPORTANTENG GAMITIN KASAMA ANG try/finally para matiyak na
+        /// naibabalik ang instance sa pool:
         ///
         ///   var fr = RentInstance();
         ///   if (fr == null) return null; // pool timeout
@@ -212,7 +212,6 @@ namespace FaceAttend.Services.Biometrics
         {
             if (string.IsNullOrWhiteSpace(imagePath)) return Array.Empty<FaceBox>();
 
-            // Kumuha ng instance mula sa pool.
             var fr = RentInstance();
             if (fr == null)
             {
@@ -256,10 +255,10 @@ namespace FaceAttend.Services.Biometrics
         ///   - Nag-timeout ang pool (error = "POOL_TIMEOUT")
         /// </summary>
         public bool TryDetectSingleFaceFromFile(
-            string      imagePath,
-            out FaceBox faceBox,
+            string       imagePath,
+            out FaceBox  faceBox,
             out Location faceLocation,
-            out string  error)
+            out string   error)
         {
             faceBox      = null;
             faceLocation = default(Location);
@@ -316,8 +315,8 @@ namespace FaceAttend.Services.Biometrics
         /// Ginagamit pagkatapos ng liveness check para maiwasan ang double detection.
         /// </summary>
         public bool TryEncodeFromFileWithLocation(
-            string   imagePath,
-            Location faceLocation,
+            string       imagePath,
+            Location     faceLocation,
             out double[] embedding,
             out string   error)
         {
@@ -356,6 +355,55 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
+        /// <summary>
+        /// COMPATIBILITY SHIM — para sa mga lumang caller na gumagamit ng
+        /// GetSingleFaceEncodingFromFile().
+        ///
+        /// BAKIT KAILANGAN ITO:
+        ///   Nang na-refactor ang DlibBiometrics sa pool pattern (Phase 2),
+        ///   ang lumang one-shot GetSingleFaceEncodingFromFile() ay pinalitan ng
+        ///   dalawang hakbang: TryDetectSingleFaceFromFile + TryEncodeFromFileWithLocation.
+        ///   Gayunman, tatlong caller ang hindi pa na-update:
+        ///     - BiometricsController.cs (line 124)
+        ///     - VisitorsController.cs (line 227)
+        ///     - VisitorsController.cs (line 375)
+        ///
+        ///   Imbes na baguhin ang tatlong controller nang sabay, mas ligtas na
+        ///   magdagdag ng shim dito para mapanatiling consistent ang behavior.
+        ///
+        /// PAANO GUMAGANA:
+        ///   1. Mag-detect ng isang mukha (TryDetectSingleFaceFromFile)
+        ///   2. I-encode ang detected face (TryEncodeFromFileWithLocation)
+        ///   3. Ibalik ang 128-dim embedding, o null kung may error
+        ///
+        /// BABALA:
+        ///   Gumagamit ito ng DALAWANG pool slots nang sunud-sunod (hindi sabay).
+        ///   Sa mataas na concurrent load, mas magandang gamitin ang
+        ///   TryDetectSingleFaceFromFile + TryEncodeFromFileWithLocation directly
+        ///   para mas mababa ang pool pressure.
+        ///
+        /// TODO: I-migrate ang tatlong caller papunta sa bagong API sa susunod na sprint.
+        /// </summary>
+        /// <param name="imagePath">Absolute path ng image file</param>
+        /// <param name="error">Error code kung null ang return value</param>
+        /// <returns>128-dim face embedding, o null kung nabigo</returns>
+        public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
+        {
+            // Hakbang 1: I-detect ang iisang mukha at kumuha ng Location.
+            FaceBox  faceBox;
+            Location faceLocation;
+
+            if (!TryDetectSingleFaceFromFile(imagePath, out faceBox, out faceLocation, out error))
+                return null; // error ay na-set na ng TryDetectSingleFaceFromFile
+
+            // Hakbang 2: I-encode ang detected face gamit ang kilalang Location.
+            double[] embedding;
+            if (!TryEncodeFromFileWithLocation(imagePath, faceLocation, out embedding, out error))
+                return null; // error ay na-set na ng TryEncodeFromFileWithLocation
+
+            return embedding;
+        }
+
         // ─── Disposal ─────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -385,7 +433,7 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        // ─── Static helpers (unchanged) ───────────────────────────────────────────
+        // ─── Static helpers ───────────────────────────────────────────────────────
 
         /// <summary>
         /// Kinakalkula ang Euclidean distance sa pagitan ng dalawang 128-dim vectors.
@@ -408,7 +456,7 @@ namespace FaceAttend.Services.Biometrics
 
         /// <summary>
         /// Kino-convert ang 128-dim double vector papunta sa byte array
-        /// para ma-store sa database.
+        /// para ma-store sa database (8 bytes per double = 1024 bytes total).
         /// </summary>
         public static byte[] EncodeToBytes(double[] v)
         {

@@ -189,7 +189,8 @@ namespace FaceAttend.Areas.Admin.Controllers
             try
             {
                 var abs = HostingEnvironment.MapPath(virtualPath);
-                return !string.IsNullOrEmpty(abs) && File.Exists(abs);
+                // AYOS: System.IO.File.Exists — hindi Controller.File()
+                return !string.IsNullOrEmpty(abs) && System.IO.File.Exists(abs);
             }
             catch { return false; }
         }
@@ -200,13 +201,16 @@ namespace FaceAttend.Areas.Admin.Controllers
             try
             {
                 var abs = HostingEnvironment.MapPath(virtualDir);
-                if (string.IsNullOrEmpty(abs) || !Directory.Exists(abs)) return false;
+                // Directory.Exists ay OK dito — walang ambiguity sa Controller.
+                if (string.IsNullOrEmpty(abs) || !System.IO.Directory.Exists(abs)) return false;
 
                 // Kailangan ng dalawang model files para gumana ang Dlib.
-                var dat = Directory.GetFiles(abs, "*.dat", SearchOption.TopDirectoryOnly);
+                var dat = System.IO.Directory.GetFiles(
+                    abs, "*.dat", System.IO.SearchOption.TopDirectoryOnly);
                 return dat.Length >= 2;
             }
             catch { return false; }
         }
+
     }
 }
