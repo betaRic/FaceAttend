@@ -1,8 +1,6 @@
-using System;
-using System.IO;
+﻿using System;
 using System.Linq;
 using System.Net;
-using System.Web.Hosting;
 
 namespace FaceAttend.Services.Security
 {
@@ -29,6 +27,7 @@ namespace FaceAttend.Services.Security
     /// </summary>
     public static class AdminAccessControl
     {
+        private const string AllowedRangesEnvVar = "FACEATTEND_ADMIN_ALLOWED_IP_RANGES";
         // WALA NANG dead fields dito. Ang dating _lastBypassResult,
         // _lastBypassCheckUtc, _lock, at BypassFilePath ay tinanggal na
         // dahil hindi na ginagamit (SEC-03 fix).
@@ -52,7 +51,7 @@ namespace FaceAttend.Services.Security
                 return true;
 
             // Config allowlist — kung walang nilista, pinapayagan ang lahat.
-            var allowedRanges = (AppSettings.GetString("Admin:AllowedIpRanges", "") ?? "").Trim();
+            var allowedRanges = GetAllowedRanges();
             if (string.IsNullOrEmpty(allowedRanges))
                 return true;
 
@@ -71,6 +70,15 @@ namespace FaceAttend.Services.Security
             }
 
             return false;
+        }
+
+        private static string GetAllowedRanges()
+        {
+            var env = Environment.GetEnvironmentVariable(AllowedRangesEnvVar);
+            if (!string.IsNullOrWhiteSpace(env))
+                return env.Trim();
+
+            return (AppSettings.GetString("Admin:AllowedIpRanges", "") ?? "").Trim();
         }
 
         /// <summary>

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Runtime.Caching;
 using System.Web.Mvc;
 
@@ -59,76 +59,89 @@ namespace FaceAttend.Filters
                 return;
             }
 
-            var ip       = GetClientIp(filterContext);
-            var cacheKey = $"{CachePrefix}{Name}:{ip}";
-            var bucket   = GetOrCreateBucket(cacheKey);
+            var directIp = filterContext.HttpContext.Request.UserHostAddress ?? "unknown";
+            var ip = GetClientIp(filterContext);
 
-            bool   denied;
             double retryAfterSecs;
 
-            lock (bucket)
+            if (!string.Equals(ip, directIp, StringComparison.OrdinalIgnoreCase))
             {
-                var now     = DateTimeOffset.UtcNow;
-                var elapsed = (now - bucket.LastRefill).TotalSeconds;
-                if (elapsed < 0) elapsed = 0;  // Guard laban sa clock adjustment
-
-                double rate = (double)MaxRequests / WindowSeconds; // tokens per second
-
-                if (rate <= 0)
+                var directCacheKey = string.Format("{0}{1}:direct:{2}", CachePrefix, Name, directIp);
+                if (TryConsumeBucket(directCacheKey, 10, 60, 0, out retryAfterSecs))
                 {
-                    denied        = false;
-                    retryAfterSecs = 0;
-                }
-                else
-                {
-                    // Magdagdag ng tokens batay sa nakalipas na oras.
-                    bucket.Tokens    = Math.Min(bucket.Tokens + elapsed * rate, MaxRequests + Burst);
-                    bucket.LastRefill = now;
-
-                    if (bucket.Tokens >= 1.0)
-                    {
-                        bucket.Tokens -= 1.0;
-                        denied         = false;
-                        retryAfterSecs = 0;
-                    }
-                    else
-                    {
-                        denied         = true;
-                        retryAfterSecs = Math.Ceiling((1.0 - bucket.Tokens) / rate);
-                    }
+                    Deny(filterContext, retryAfterSecs);
+                    return;
                 }
             }
 
-            if (denied)
+            var cacheKey = string.Format("{0}{1}:{2}", CachePrefix, Name, ip);
+            if (TryConsumeBucket(cacheKey, MaxRequests, WindowSeconds, Burst, out retryAfterSecs))
             {
-                var response = filterContext.HttpContext.Response;
-                response.StatusCode = 429;
-                response.AddHeader("Retry-After", ((int)retryAfterSecs).ToString());
-
-                filterContext.Result = new JsonResult
-                {
-                    Data = new
-                    {
-                        ok         = false,
-                        error      = "RATE_LIMIT_EXCEEDED",
-                        retryAfter = (int)retryAfterSecs
-                    },
-                    JsonRequestBehavior = JsonRequestBehavior.AllowGet
-                };
+                Deny(filterContext, retryAfterSecs);
                 return;
             }
 
             base.OnActionExecuting(filterContext);
         }
 
-        private TokenBucket GetOrCreateBucket(string cacheKey)
+        private static void Deny(ActionExecutingContext filterContext, double retryAfterSecs)
+        {
+            var response = filterContext.HttpContext.Response;
+            response.StatusCode = 429;
+            response.AddHeader("Retry-After", ((int)retryAfterSecs).ToString());
+
+            filterContext.Result = new JsonResult
+            {
+                Data = new
+                {
+                    ok = false,
+                    error = "RATE_LIMIT_EXCEEDED",
+                    retryAfter = (int)retryAfterSecs
+                },
+                JsonRequestBehavior = JsonRequestBehavior.AllowGet
+            };
+        }
+
+        private bool TryConsumeBucket(string cacheKey, int maxRequests, int windowSeconds, int burst, out double retryAfterSecs)
+        {
+            retryAfterSecs = 0;
+            if (maxRequests <= 0 || windowSeconds <= 0)
+                return false;
+
+            var bucket = GetOrCreateBucket(cacheKey, maxRequests, burst);
+
+            lock (bucket)
+            {
+                var now = DateTimeOffset.UtcNow;
+                var elapsed = (now - bucket.LastRefill).TotalSeconds;
+                if (elapsed < 0) elapsed = 0;
+
+                double rate = (double)maxRequests / windowSeconds;
+                if (rate <= 0)
+                    return false;
+
+                bucket.Tokens = Math.Min(bucket.Tokens + elapsed * rate, maxRequests + burst);
+                bucket.LastRefill = now;
+
+                if (bucket.Tokens >= 1.0)
+                {
+                    bucket.Tokens -= 1.0;
+                    return false;
+                }
+
+                retryAfterSecs = Math.Ceiling((1.0 - bucket.Tokens) / rate);
+                return true;
+            }
+        }
+
+        private TokenBucket GetOrCreateBucket(string cacheKey, int maxRequests, int burst)
         {
             if (_cache.Get(cacheKey) is TokenBucket existing)
                 return existing;
 
             var newBucket = new TokenBucket
             {
-                Tokens    = MaxRequests + Burst,
+                Tokens    = maxRequests + burst,
                 LastRefill = DateTimeOffset.UtcNow
             };
 

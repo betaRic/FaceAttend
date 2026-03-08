@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Diagnostics;
 using System.Runtime.Caching;
+using System.Threading;
 using System.Web;
 using System.Web.Mvc;
 using FaceAttend;
@@ -22,9 +23,11 @@ namespace FaceAttend.Controllers
             public int OfficeId { get; set; }
             public int? VisitorId { get; set; }
             public string VisitorName { get; set; }
+            public string SessionBinding { get; set; }
         }
 
         private static readonly MemoryCache _visitorScanCache = MemoryCache.Default;
+        private static int _activeScanCount;
         private const string VisitorScanPrefix = "VISITORSCAN::";
 
         private static int GetVisitorScanTtlSeconds()
@@ -120,7 +123,29 @@ namespace FaceAttend.Controllers
             if (!AppSettings.GetBool("Kiosk:UseNextGen", false))
                 return Json(new { ok = false, error = "NEXTGEN_DISABLED" });
 
-            return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
+            var activeScans = Interlocked.Increment(ref _activeScanCount);
+            try
+            {
+                var maxConcurrentScans = GetMaxConcurrentScans();
+                if (activeScans > maxConcurrentScans)
+                {
+                    Response.StatusCode = 503;
+                    return Json(new
+                    {
+                        ok = false,
+                        error = "SYSTEM_BUSY",
+                        message = "System busy. Please try again in 2 minutes.",
+                        activeScans = activeScans,
+                        maxConcurrentScans = maxConcurrentScans
+                    });
+                }
+
+                return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _activeScanCount);
+            }
         }
 
         private ActionResult ScanAttendanceCore(double? lat, double? lon, double? accuracy, HttpPostedFileBase image, bool includePerfTimings)
@@ -170,14 +195,16 @@ namespace FaceAttend.Controllers
                         locationVerified = false;
                     }
                     if (office == null)
-                        return Json(new { ok = false, error = "NO_OFFICES", timings = includePerfTimings ? timings : null });
+                        return NoOfficesResult(includePerfTimings, timings);
 
                     path = SecureFileUpload.SaveTemp(image, "k_", max);
                     mark("saved_ms");
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     bool isProcessed;
                     processedPath = ImagePreprocessor.PreprocessForDetection(path, "k_", out isProcessed);
                     mark("preprocess_ms");
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     var dlib = new DlibBiometrics();
 
@@ -190,11 +217,13 @@ namespace FaceAttend.Controllers
                         return Json(new { ok = false, error = faceErr ?? "FACE_FAIL", timings = includePerfTimings ? timings : null });
 
                     mark("dlib_detect_ms");
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     // Liveness (server truth)
                     var live = new OnnxLiveness();
                     var scored = live.ScoreFromFile(processedPath, faceBox);
                     mark("liveness_ms");
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     if (!scored.Ok)
                         return Json(new { ok = false, error = scored.Error, timings = includePerfTimings ? timings : null });
@@ -234,6 +263,7 @@ namespace FaceAttend.Controllers
                     }
 
                     mark("dlib_encode_ms");
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     var tolFallback = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
                     var tol = SystemConfigService.GetDoubleCached(
@@ -277,6 +307,7 @@ namespace FaceAttend.Controllers
                     double bestDist;
                     var bestEmpId = EmployeeFaceIndex.FindNearest(db, vec, tol, out bestDist);
                     mark("match_ms");
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     if (bestEmpId == null || bestDist > tol)
                     {
@@ -318,7 +349,8 @@ namespace FaceAttend.Controllers
                                 Vec = vec,
                                 OfficeId = office.Id,
                                 VisitorId = isKnownVisitor ? bestVisitorId : (int?)null,
-                                VisitorName = isKnownVisitor ? bestVisitorName : null
+                                VisitorName = isKnownVisitor ? bestVisitorName : null,
+                                SessionBinding = GetVisitorSessionBinding(HttpContext)
                             },
                             DateTimeOffset.UtcNow.AddSeconds(GetVisitorScanTtlSeconds()));
 
@@ -398,8 +430,8 @@ namespace FaceAttend.Controllers
                         OfficeType = Trunc(office.Type, 40),
                         OfficeName = Trunc(office.Name, 400),
 
-                        GPSLatitude = lat,
-                        GPSLongitude = lon,
+                        GPSLatitude = TruncateGpsCoordinate(lat),
+                        GPSLongitude = TruncateGpsCoordinate(lon),
                         GPSAccuracy = accuracy,
 
                         LocationVerified = locationVerified,
@@ -416,6 +448,8 @@ namespace FaceAttend.Controllers
                         NeedsReview = needsReviewFlag,
                         Notes = reviewNotes.Length == 0 ? null : reviewNotes.ToString()
                     };
+
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     var rec = AttendanceService.Record(db, log);
                     mark("db_ms");
@@ -503,6 +537,9 @@ namespace FaceAttend.Controllers
 
             if (item == null || item.Vec == null || item.Vec.Length != 128)
                 return Json(new { ok = false, error = "SCAN_EXPIRED", message = "Scan expired. Please scan again." });
+
+            if (!string.Equals(item.SessionBinding ?? "", GetVisitorSessionBinding(HttpContext), StringComparison.Ordinal))
+                return Json(new { ok = false, error = "SCAN_SESSION_MISMATCH", message = "Scan expired. Please scan again." });
 
             using (var db = new FaceAttendDBEntities())
             {
@@ -612,6 +649,62 @@ namespace FaceAttend.Controllers
         // ------------------------------------------------------------
         // Helpers
         // ------------------------------------------------------------
+
+        private static int GetMaxConcurrentScans()
+        {
+            var value = AppSettings.GetInt("Kiosk:MaxConcurrentScans", 20);
+            if (value < 1) value = 1;
+            return value;
+        }
+
+        private static int GetRequestTimeoutMs()
+        {
+            var value = AppSettings.GetInt("Kiosk:RequestTimeoutMs", 28000);
+            if (value < 5000) value = 5000;
+            return value;
+        }
+
+        private static bool IsRequestTimedOut(Stopwatch sw)
+        {
+            return sw != null && sw.ElapsedMilliseconds > GetRequestTimeoutMs();
+        }
+
+        private ActionResult RequestTimeoutResult(bool includePerfTimings, System.Collections.Generic.IDictionary<string, long> timings)
+        {
+            Response.StatusCode = 503;
+            return Json(new
+            {
+                ok = false,
+                error = "REQUEST_TIMEOUT",
+                message = "Request timed out. Please try again.",
+                timings = includePerfTimings ? timings : null
+            });
+        }
+
+        private ActionResult NoOfficesResult(bool includePerfTimings, System.Collections.Generic.IDictionary<string, long> timings)
+        {
+            return Json(new
+            {
+                ok = false,
+                error = "NO_OFFICES",
+                message = "No office configured. Please contact your administrator.",
+                timings = includePerfTimings ? timings : null
+            });
+        }
+
+        private static string GetVisitorSessionBinding(HttpContextBase httpContext)
+        {
+            if (httpContext == null || httpContext.Session == null)
+                return "";
+
+            return httpContext.Session.SessionID ?? "";
+        }
+
+        private static double? TruncateGpsCoordinate(double? value)
+        {
+            if (!value.HasValue) return null;
+            return Math.Truncate(value.Value * 100d) / 100d;
+        }
 
         private class OfficePick
         {

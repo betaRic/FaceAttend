@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Web;
 using System.Web.Hosting;
@@ -75,10 +75,62 @@ namespace FaceAttend.Services.Security
 
         private static string ResolveExtension(HttpPostedFileBase image)
         {
-            var ct = (image.ContentType ?? "").Trim().ToLowerInvariant();
-            if (ct == "image/png") return ".png";
-            if (ct == "image/jpeg" || ct == "image/jpg") return ".jpg";
-            return ".jpg";
+            var header = ReadHeader(image, 8);
+
+            if (IsJpeg(header)) return ".jpg";
+            if (IsPng(header))  return ".png";
+
+            throw new InvalidOperationException("UNSUPPORTED_IMAGE_FORMAT");
+        }
+
+        private static byte[] ReadHeader(HttpPostedFileBase image, int count)
+        {
+            var stream = image.InputStream;
+            if (stream == null)
+                throw new InvalidOperationException("EMPTY_STREAM");
+
+            var buffer = new byte[count];
+            long originalPosition = 0;
+            bool canSeek = stream.CanSeek;
+
+            if (canSeek)
+                originalPosition = stream.Position;
+
+            var read = stream.Read(buffer, 0, buffer.Length);
+
+            if (canSeek)
+                stream.Position = originalPosition;
+
+            if (read <= 0)
+                throw new InvalidOperationException("EMPTY_STREAM");
+
+            if (read == buffer.Length)
+                return buffer;
+
+            var resized = new byte[read];
+            Array.Copy(buffer, resized, read);
+            return resized;
+        }
+
+        private static bool IsJpeg(byte[] header)
+        {
+            return header != null && header.Length >= 3 &&
+                   header[0] == 0xFF &&
+                   header[1] == 0xD8 &&
+                   header[2] == 0xFF;
+        }
+
+        private static bool IsPng(byte[] header)
+        {
+            return header != null && header.Length >= 8 &&
+                   header[0] == 0x89 &&
+                   header[1] == 0x50 &&
+                   header[2] == 0x4E &&
+                   header[3] == 0x47 &&
+                   header[4] == 0x0D &&
+                   header[5] == 0x0A &&
+                   header[6] == 0x1A &&
+                   header[7] == 0x0A;
         }
 
         private static string GenerateFileName(string prefix, string extension)

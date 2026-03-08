@@ -1,22 +1,29 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
+using System.Configuration;
 using System.Web;
 using System.Web.Mvc;
 using System.Web.Optimization;
 using System.Web.Routing;
 using FaceAttend.Services;
+using FaceAttend.Services.Background;
 using FaceAttend.Services.Biometrics;
 
 namespace FaceAttend
 {
     public class MvcApplication : System.Web.HttpApplication
     {
+        private static volatile int _warmUpState = 0;
+        private static string _warmUpMessage = "NOT_STARTED";
         protected void Application_Start()
         {
             AreaRegistration.RegisterAllAreas();
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
+
+            ValidateCriticalConfiguration();
+            TempFileCleanupTask.Start();
 
             // ================================================================
             // PHASE 2 FIX (P-01, P-02, P-05): Warm-up ng lahat ng mabibigat
@@ -42,7 +49,10 @@ namespace FaceAttend
             //      pagkatapos ng app pool recycle ay magti-trigger ng rebuild
             //      na nag-o-block ng lahat ng ibang scans habang nangyayari ito.
             // ================================================================
-            Task.Run(() =>
+            _warmUpState = 0;
+            _warmUpMessage = "RUNNING";
+
+            var warmUpTask = Task.Run(() =>
             {
                 // Hakbang 1: Initialize ang Dlib instance pool.
                 // Kailangan itong gawin bago ang ONNX warm-up para magamit
@@ -95,6 +105,30 @@ namespace FaceAttend
                     System.Diagnostics.Trace.TraceWarning(
                         "[Application_Start] Hindi na-pre-load ang employee face index: " +
                         ex.Message + " — mag-rebuild sa unang scan.");
+                }
+
+                _warmUpState = 1;
+                _warmUpMessage = "COMPLETE";
+            });
+
+            Task.Run(() =>
+            {
+                try
+                {
+                    if (!warmUpTask.Wait(TimeSpan.FromMinutes(5)))
+                    {
+                        _warmUpState = -1;
+                        _warmUpMessage = "TIMEOUT";
+                        System.Diagnostics.Trace.TraceError(
+                            "[Application_Start] CRITICAL: Warm-up timed out after 5 minutes.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _warmUpState = -1;
+                    _warmUpMessage = "FAILED";
+                    System.Diagnostics.Trace.TraceError(
+                        "[Application_Start] Warm-up observer failed: " + ex.Message);
                 }
             });
         }
@@ -188,6 +222,9 @@ namespace FaceAttend
         /// </summary>
         protected void Application_End()
         {
+            try { TempFileCleanupTask.Stop(false); }
+            catch { /* best effort */ }
+
             // I-dispose ang lahat ng Dlib FaceRecognition instances sa pool.
             try { DlibBiometrics.DisposePool(); }
             catch { /* best effort */ }
@@ -200,6 +237,36 @@ namespace FaceAttend
         // ────────────────────────────────────────────────────────────────────
         // Private helpers
         // ────────────────────────────────────────────────────────────────────
+
+        private static void ValidateCriticalConfiguration()
+        {
+            var pinHash = (
+                Environment.GetEnvironmentVariable("FACEATTEND_ADMIN_PIN_HASH")
+                ?? ConfigurationManager.AppSettings["Admin:PinHash"]
+                ?? ""
+            ).Trim();
+
+            if (string.IsNullOrWhiteSpace(pinHash))
+            {
+                System.Diagnostics.Trace.TraceError(
+                    "[Application_Start] CRITICAL: FACEATTEND_ADMIN_PIN_HASH is not configured. " +
+                    "Admin PIN login will fail until the environment variable is set.");
+            }
+
+            var adminRanges = (
+                Environment.GetEnvironmentVariable("FACEATTEND_ADMIN_ALLOWED_IP_RANGES")
+                ?? AppSettings.GetString("Admin:AllowedIpRanges", "")
+                ?? ""
+            ).Trim();
+
+            if (string.Equals(adminRanges, "127.0.0.1, ::1", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(adminRanges, "127.0.0.1,::1", StringComparison.OrdinalIgnoreCase))
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "[Application_Start] Admin:AllowedIpRanges is still limited to localhost. " +
+                    "Set FACEATTEND_ADMIN_ALLOWED_IP_RANGES or update Web.config before production deployment.");
+            }
+        }
 
         private static bool IsAdminRequest(HttpRequest request)
         {

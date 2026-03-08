@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Threading;
 using System.Web.Hosting;
@@ -174,12 +174,8 @@ namespace FaceAttend.Services.Background
                     if (info.LastWriteTimeUtc > cutoff)
                         continue;
 
-                    // Tinatanggap lang natin ang mga expected na extensions.
-                    // Hindi tayo mag-delete ng ibang files na hindi natin ginawa.
-                    var ext = info.Extension.ToLowerInvariant();
-                    if (ext != ".jpg" && ext != ".jpeg" && ext != ".png")
-                        continue;
-
+                    // Ang tmp folder ay para sa temp files lang.
+                    // Kapag stale na ang file, ligtas na itong alisin kahit ano pa ang extension.
                     File.Delete(file);
                     deleted++;
                 }
