@@ -4,7 +4,7 @@
   <edmx:Runtime>
     <!-- SSDL content -->
     <edmx:StorageModels>
-      <Schema Namespace="FaceAttendDBModel.Store" Provider="System.Data.SqlClient" ProviderManifestToken="2012" Alias="Self" xmlns:store="http://schemas.microsoft.com/ado/2007/12/edm/EntityStoreSchemaGenerator" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm/ssdl">
+    <Schema Namespace="FaceAttendDBModel.Store" Provider="System.Data.SqlClient" ProviderManifestToken="2012" Alias="Self" xmlns:store="http://schemas.microsoft.com/ado/2007/12/edm/EntityStoreSchemaGenerator" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm/ssdl">
         <EntityType Name="AttendanceLogs">
           <Key>
             <PropertyRef Name="Id" />
@@ -35,6 +35,10 @@
           <Property Name="UserAgent" Type="nvarchar" MaxLength="500" />
           <Property Name="NeedsReview" Type="bit" Nullable="false" />
           <Property Name="Notes" Type="nvarchar(max)" />
+          <Property Name="OfficeCode" Type="nvarchar" MaxLength="20" />
+          <Property Name="ProvinceName" Type="nvarchar" MaxLength="100" />
+          <Property Name="HUCName" Type="nvarchar" MaxLength="100" />
+          <Property Name="IsAutoRecorded" Type="bit" Nullable="false" />
         </EntityType>
         <EntityType Name="Employees">
           <Key>
@@ -54,6 +58,8 @@
           <Property Name="MiddleName" Type="nvarchar" MaxLength="100" />
           <Property Name="LastName" Type="nvarchar" MaxLength="100" Nullable="false" />
           <Property Name="Position" Type="nvarchar" MaxLength="150" Nullable="false" />
+          <Property Name="FaceEncodingsJson" Type="nvarchar(max)" />
+          <Property Name="CreatedDate" Type="datetime2" Precision="7" Nullable="false" />
         </EntityType>
         <EntityType Name="Offices">
           <Key>
@@ -198,11 +204,38 @@
             <End Role="VisitorLogs" EntitySet="VisitorLogs" />
           </AssociationSet>
         </EntityContainer>
-      </Schema>
-    </edmx:StorageModels>
+      </Schema></edmx:StorageModels>
     <!-- CSDL content -->
     <edmx:ConceptualModels>
       <Schema Namespace="FaceAttendDBModel" Alias="Self" annotation:UseStrongSpatialTypes="false" xmlns:annotation="http://schemas.microsoft.com/ado/2009/02/edm/annotation" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
+        <EntityContainer Name="FaceAttendDBEntities" annotation:LazyLoadingEnabled="true">
+          <EntitySet Name="AttendanceLogs" EntityType="FaceAttendDBModel.AttendanceLog" />
+          <EntitySet Name="Employees" EntityType="FaceAttendDBModel.Employee" />
+          <EntitySet Name="Offices" EntityType="FaceAttendDBModel.Office" />
+          <EntitySet Name="SystemConfigurations" EntityType="FaceAttendDBModel.SystemConfiguration" />
+          <EntitySet Name="VisitorLogs" EntityType="FaceAttendDBModel.VisitorLog" />
+          <EntitySet Name="Visitors" EntityType="FaceAttendDBModel.Visitor" />
+          <AssociationSet Name="FK_AttendanceLogs_Employees" Association="FaceAttendDBModel.FK_AttendanceLogs_Employees">
+            <End Role="Employee" EntitySet="Employees" />
+            <End Role="AttendanceLog" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_AttendanceLogs_Offices" Association="FaceAttendDBModel.FK_AttendanceLogs_Offices">
+            <End Role="Office" EntitySet="Offices" />
+            <End Role="AttendanceLog" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_Employees_Offices" Association="FaceAttendDBModel.FK_Employees_Offices">
+            <End Role="Office" EntitySet="Offices" />
+            <End Role="Employee" EntitySet="Employees" />
+          </AssociationSet>
+          <AssociationSet Name="FK_VisitorLogs_Offices" Association="FaceAttendDBModel.FK_VisitorLogs_Offices">
+            <End Role="Office" EntitySet="Offices" />
+            <End Role="VisitorLog" EntitySet="VisitorLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_VisitorLogs_Visitors" Association="FaceAttendDBModel.FK_VisitorLogs_Visitors">
+            <End Role="Visitor" EntitySet="Visitors" />
+            <End Role="VisitorLog" EntitySet="VisitorLogs" />
+          </AssociationSet>
+        </EntityContainer>
         <EntityType Name="AttendanceLog">
           <Key>
             <PropertyRef Name="Id" />
@@ -210,8 +243,8 @@
           <Property Name="Id" Type="Int64" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
           <Property Name="EmployeeId" Type="Int32" Nullable="false" />
           <Property Name="Timestamp" Type="DateTime" Nullable="false" Precision="7" />
-          <Property Name="EventType" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
-          <Property Name="Source" Type="String" MaxLength="50" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="EventType" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="Source" Type="String" Nullable="false" MaxLength="50" FixedLength="false" Unicode="true" />
           <Property Name="EmployeeFullName" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
           <Property Name="Department" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="OfficeId" Type="Int32" Nullable="false" />
@@ -233,15 +266,19 @@
           <Property Name="UserAgent" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
           <Property Name="NeedsReview" Type="Boolean" Nullable="false" />
           <Property Name="Notes" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
-          <NavigationProperty Name="Employee" Relationship="Self.FK_AttendanceLogs_Employees" FromRole="AttendanceLogs" ToRole="Employees" />
-          <NavigationProperty Name="Office" Relationship="Self.FK_AttendanceLogs_Offices" FromRole="AttendanceLogs" ToRole="Offices" />
+          <Property Name="OfficeCode" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="ProvinceName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="HUCName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="IsAutoRecorded" Type="Boolean" Nullable="false" />
+          <NavigationProperty Name="Employee" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="AttendanceLog" ToRole="Employee" />
+          <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="AttendanceLog" ToRole="Office" />
         </EntityType>
         <EntityType Name="Employee">
           <Key>
             <PropertyRef Name="Id" />
           </Key>
           <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
-          <Property Name="EmployeeId" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="EmployeeId" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
           <Property Name="Department" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="OfficeId" Type="Int32" Nullable="false" />
           <Property Name="IsFlexi" Type="Boolean" Nullable="false" />
@@ -250,21 +287,23 @@
           <Property Name="EnrolledDate" Type="DateTime" Precision="7" />
           <Property Name="LastModifiedDate" Type="DateTime" Precision="7" />
           <Property Name="ModifiedBy" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
-          <Property Name="FirstName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="FirstName" Type="String" Nullable="false" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="MiddleName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
-          <Property Name="LastName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
-          <Property Name="Position" Type="String" MaxLength="150" FixedLength="false" Unicode="true" Nullable="false" />
-          <NavigationProperty Name="AttendanceLogs" Relationship="Self.FK_AttendanceLogs_Employees" FromRole="Employees" ToRole="AttendanceLogs" />
-          <NavigationProperty Name="Office" Relationship="Self.FK_Employees_Offices" FromRole="Employees" ToRole="Offices" />
+          <Property Name="LastName" Type="String" Nullable="false" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="Position" Type="String" Nullable="false" MaxLength="150" FixedLength="false" Unicode="true" />
+          <Property Name="FaceEncodingsJson" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
+          <NavigationProperty Name="AttendanceLogs" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="Employee" ToRole="AttendanceLog" />
+          <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_Employees_Offices" FromRole="Employee" ToRole="Office" />
         </EntityType>
         <EntityType Name="Office">
           <Key>
             <PropertyRef Name="Id" />
           </Key>
           <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
-          <Property Name="Code" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
-          <Property Name="Name" Type="String" MaxLength="200" FixedLength="false" Unicode="true" Nullable="false" />
-          <Property Name="Type" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Code" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="Name" Type="String" Nullable="false" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="Type" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
           <Property Name="ProvinceName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="HUCCity" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="Latitude" Type="Double" Nullable="false" />
@@ -273,18 +312,18 @@
           <Property Name="WiFiSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="IsActive" Type="Boolean" Nullable="false" />
           <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
-          <NavigationProperty Name="AttendanceLogs" Relationship="Self.FK_AttendanceLogs_Offices" FromRole="Offices" ToRole="AttendanceLogs" />
-          <NavigationProperty Name="Employees" Relationship="Self.FK_Employees_Offices" FromRole="Offices" ToRole="Employees" />
-          <NavigationProperty Name="VisitorLogs" Relationship="Self.FK_VisitorLogs_Offices" FromRole="Offices" ToRole="VisitorLogs" />
+          <NavigationProperty Name="AttendanceLogs" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="Office" ToRole="AttendanceLog" />
+          <NavigationProperty Name="Employees" Relationship="FaceAttendDBModel.FK_Employees_Offices" FromRole="Office" ToRole="Employee" />
+          <NavigationProperty Name="VisitorLogs" Relationship="FaceAttendDBModel.FK_VisitorLogs_Offices" FromRole="Office" ToRole="VisitorLog" />
         </EntityType>
         <EntityType Name="SystemConfiguration">
           <Key>
             <PropertyRef Name="Id" />
           </Key>
           <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
-          <Property Name="Key" Type="String" MaxLength="100" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Key" Type="String" Nullable="false" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="Value" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
-          <Property Name="DataType" Type="String" MaxLength="20" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="DataType" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
           <Property Name="Description" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
           <Property Name="ModifiedDate" Type="DateTime" Nullable="false" Precision="7" />
           <Property Name="ModifiedBy" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
@@ -297,115 +336,87 @@
           <Property Name="VisitorId" Type="Int32" />
           <Property Name="OfficeId" Type="Int32" Nullable="false" />
           <Property Name="Timestamp" Type="DateTime" Nullable="false" Precision="7" />
-          <Property Name="VisitorName" Type="String" MaxLength="200" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="VisitorName" Type="String" Nullable="false" MaxLength="200" FixedLength="false" Unicode="true" />
           <Property Name="Purpose" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
-          <Property Name="Source" Type="String" MaxLength="50" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Source" Type="String" Nullable="false" MaxLength="50" FixedLength="false" Unicode="true" />
           <Property Name="ClientIP" Type="String" MaxLength="50" FixedLength="false" Unicode="true" />
           <Property Name="UserAgent" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
-          <NavigationProperty Name="Office" Relationship="Self.FK_VisitorLogs_Offices" FromRole="VisitorLogs" ToRole="Offices" />
-          <NavigationProperty Name="Visitor" Relationship="Self.FK_VisitorLogs_Visitors" FromRole="VisitorLogs" ToRole="Visitors" />
+          <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_VisitorLogs_Offices" FromRole="VisitorLog" ToRole="Office" />
+          <NavigationProperty Name="Visitor" Relationship="FaceAttendDBModel.FK_VisitorLogs_Visitors" FromRole="VisitorLog" ToRole="Visitor" />
         </EntityType>
         <EntityType Name="Visitor">
           <Key>
             <PropertyRef Name="Id" />
           </Key>
           <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
-          <Property Name="Name" Type="String" MaxLength="200" FixedLength="false" Unicode="true" Nullable="false" />
+          <Property Name="Name" Type="String" Nullable="false" MaxLength="200" FixedLength="false" Unicode="true" />
           <Property Name="FaceEncodingBase64" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
           <Property Name="VisitCount" Type="Int32" Nullable="false" />
           <Property Name="FirstVisitDate" Type="DateTime" Nullable="false" Precision="7" />
           <Property Name="LastVisitDate" Type="DateTime" Nullable="false" Precision="7" />
           <Property Name="IsActive" Type="Boolean" Nullable="false" />
-          <NavigationProperty Name="VisitorLogs" Relationship="Self.FK_VisitorLogs_Visitors" FromRole="Visitors" ToRole="VisitorLogs" />
+          <NavigationProperty Name="VisitorLogs" Relationship="FaceAttendDBModel.FK_VisitorLogs_Visitors" FromRole="Visitor" ToRole="VisitorLog" />
         </EntityType>
         <Association Name="FK_AttendanceLogs_Employees">
-          <End Role="Employees" Type="Self.Employee" Multiplicity="1" />
-          <End Role="AttendanceLogs" Type="Self.AttendanceLog" Multiplicity="*" />
+          <End Type="FaceAttendDBModel.Employee" Role="Employee" Multiplicity="1" />
+          <End Type="FaceAttendDBModel.AttendanceLog" Role="AttendanceLog" Multiplicity="*" />
           <ReferentialConstraint>
-            <Principal Role="Employees">
+            <Principal Role="Employee">
               <PropertyRef Name="Id" />
             </Principal>
-            <Dependent Role="AttendanceLogs">
+            <Dependent Role="AttendanceLog">
               <PropertyRef Name="EmployeeId" />
             </Dependent>
           </ReferentialConstraint>
         </Association>
         <Association Name="FK_AttendanceLogs_Offices">
-          <End Role="Offices" Type="Self.Office" Multiplicity="1" />
-          <End Role="AttendanceLogs" Type="Self.AttendanceLog" Multiplicity="*" />
+          <End Type="FaceAttendDBModel.Office" Role="Office" Multiplicity="1" />
+          <End Type="FaceAttendDBModel.AttendanceLog" Role="AttendanceLog" Multiplicity="*" />
           <ReferentialConstraint>
-            <Principal Role="Offices">
+            <Principal Role="Office">
               <PropertyRef Name="Id" />
             </Principal>
-            <Dependent Role="AttendanceLogs">
+            <Dependent Role="AttendanceLog">
               <PropertyRef Name="OfficeId" />
             </Dependent>
           </ReferentialConstraint>
         </Association>
         <Association Name="FK_Employees_Offices">
-          <End Role="Offices" Type="Self.Office" Multiplicity="1" />
-          <End Role="Employees" Type="Self.Employee" Multiplicity="*" />
+          <End Type="FaceAttendDBModel.Office" Role="Office" Multiplicity="1" />
+          <End Type="FaceAttendDBModel.Employee" Role="Employee" Multiplicity="*" />
           <ReferentialConstraint>
-            <Principal Role="Offices">
+            <Principal Role="Office">
               <PropertyRef Name="Id" />
             </Principal>
-            <Dependent Role="Employees">
+            <Dependent Role="Employee">
               <PropertyRef Name="OfficeId" />
             </Dependent>
           </ReferentialConstraint>
         </Association>
         <Association Name="FK_VisitorLogs_Offices">
-          <End Role="Offices" Type="Self.Office" Multiplicity="1" />
-          <End Role="VisitorLogs" Type="Self.VisitorLog" Multiplicity="*" />
+          <End Type="FaceAttendDBModel.Office" Role="Office" Multiplicity="1" />
+          <End Type="FaceAttendDBModel.VisitorLog" Role="VisitorLog" Multiplicity="*" />
           <ReferentialConstraint>
-            <Principal Role="Offices">
+            <Principal Role="Office">
               <PropertyRef Name="Id" />
             </Principal>
-            <Dependent Role="VisitorLogs">
+            <Dependent Role="VisitorLog">
               <PropertyRef Name="OfficeId" />
             </Dependent>
           </ReferentialConstraint>
         </Association>
         <Association Name="FK_VisitorLogs_Visitors">
-          <End Role="Visitors" Type="Self.Visitor" Multiplicity="0..1" />
-          <End Role="VisitorLogs" Type="Self.VisitorLog" Multiplicity="*" />
+          <End Type="FaceAttendDBModel.Visitor" Role="Visitor" Multiplicity="0..1" />
+          <End Type="FaceAttendDBModel.VisitorLog" Role="VisitorLog" Multiplicity="*" />
           <ReferentialConstraint>
-            <Principal Role="Visitors">
+            <Principal Role="Visitor">
               <PropertyRef Name="Id" />
             </Principal>
-            <Dependent Role="VisitorLogs">
+            <Dependent Role="VisitorLog">
               <PropertyRef Name="VisitorId" />
             </Dependent>
           </ReferentialConstraint>
         </Association>
-        <EntityContainer Name="FaceAttendDBEntities" annotation:LazyLoadingEnabled="true">
-          <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLog" />
-          <EntitySet Name="Employees" EntityType="Self.Employee" />
-          <EntitySet Name="Offices" EntityType="Self.Office" />
-          <EntitySet Name="SystemConfigurations" EntityType="Self.SystemConfiguration" />
-          <EntitySet Name="VisitorLogs" EntityType="Self.VisitorLog" />
-          <EntitySet Name="Visitors" EntityType="Self.Visitor" />
-          <AssociationSet Name="FK_AttendanceLogs_Employees" Association="Self.FK_AttendanceLogs_Employees">
-            <End Role="Employees" EntitySet="Employees" />
-            <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
-          </AssociationSet>
-          <AssociationSet Name="FK_AttendanceLogs_Offices" Association="Self.FK_AttendanceLogs_Offices">
-            <End Role="Offices" EntitySet="Offices" />
-            <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
-          </AssociationSet>
-          <AssociationSet Name="FK_Employees_Offices" Association="Self.FK_Employees_Offices">
-            <End Role="Offices" EntitySet="Offices" />
-            <End Role="Employees" EntitySet="Employees" />
-          </AssociationSet>
-          <AssociationSet Name="FK_VisitorLogs_Offices" Association="Self.FK_VisitorLogs_Offices">
-            <End Role="Offices" EntitySet="Offices" />
-            <End Role="VisitorLogs" EntitySet="VisitorLogs" />
-          </AssociationSet>
-          <AssociationSet Name="FK_VisitorLogs_Visitors" Association="Self.FK_VisitorLogs_Visitors">
-            <End Role="Visitors" EntitySet="Visitors" />
-            <End Role="VisitorLogs" EntitySet="VisitorLogs" />
-          </AssociationSet>
-        </EntityContainer>
       </Schema>
     </edmx:ConceptualModels>
     <!-- C-S mapping content -->
@@ -415,111 +426,117 @@
           <EntitySetMapping Name="AttendanceLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
               <MappingFragment StoreEntitySet="AttendanceLogs">
-                <ScalarProperty Name="Id" ColumnName="Id" />
-                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
-                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
-                <ScalarProperty Name="EventType" ColumnName="EventType" />
-                <ScalarProperty Name="Source" ColumnName="Source" />
-                <ScalarProperty Name="EmployeeFullName" ColumnName="EmployeeFullName" />
-                <ScalarProperty Name="Department" ColumnName="Department" />
-                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
-                <ScalarProperty Name="OfficeType" ColumnName="OfficeType" />
-                <ScalarProperty Name="OfficeName" ColumnName="OfficeName" />
-                <ScalarProperty Name="GPSLatitude" ColumnName="GPSLatitude" />
-                <ScalarProperty Name="GPSLongitude" ColumnName="GPSLongitude" />
-                <ScalarProperty Name="GPSAccuracy" ColumnName="GPSAccuracy" />
-                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
-                <ScalarProperty Name="LocationVerified" ColumnName="LocationVerified" />
-                <ScalarProperty Name="LocationError" ColumnName="LocationError" />
-                <ScalarProperty Name="FaceDistance" ColumnName="FaceDistance" />
-                <ScalarProperty Name="FaceSimilarity" ColumnName="FaceSimilarity" />
-                <ScalarProperty Name="MatchThreshold" ColumnName="MatchThreshold" />
-                <ScalarProperty Name="LivenessScore" ColumnName="LivenessScore" />
-                <ScalarProperty Name="LivenessResult" ColumnName="LivenessResult" />
-                <ScalarProperty Name="LivenessError" ColumnName="LivenessError" />
-                <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
-                <ScalarProperty Name="UserAgent" ColumnName="UserAgent" />
-                <ScalarProperty Name="NeedsReview" ColumnName="NeedsReview" />
+                <ScalarProperty Name="IsAutoRecorded" ColumnName="IsAutoRecorded" />
+                <ScalarProperty Name="HUCName" ColumnName="HUCName" />
+                <ScalarProperty Name="ProvinceName" ColumnName="ProvinceName" />
+                <ScalarProperty Name="OfficeCode" ColumnName="OfficeCode" />
                 <ScalarProperty Name="Notes" ColumnName="Notes" />
+                <ScalarProperty Name="NeedsReview" ColumnName="NeedsReview" />
+                <ScalarProperty Name="UserAgent" ColumnName="UserAgent" />
+                <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
+                <ScalarProperty Name="LivenessError" ColumnName="LivenessError" />
+                <ScalarProperty Name="LivenessResult" ColumnName="LivenessResult" />
+                <ScalarProperty Name="LivenessScore" ColumnName="LivenessScore" />
+                <ScalarProperty Name="MatchThreshold" ColumnName="MatchThreshold" />
+                <ScalarProperty Name="FaceSimilarity" ColumnName="FaceSimilarity" />
+                <ScalarProperty Name="FaceDistance" ColumnName="FaceDistance" />
+                <ScalarProperty Name="LocationError" ColumnName="LocationError" />
+                <ScalarProperty Name="LocationVerified" ColumnName="LocationVerified" />
+                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
+                <ScalarProperty Name="GPSAccuracy" ColumnName="GPSAccuracy" />
+                <ScalarProperty Name="GPSLongitude" ColumnName="GPSLongitude" />
+                <ScalarProperty Name="GPSLatitude" ColumnName="GPSLatitude" />
+                <ScalarProperty Name="OfficeName" ColumnName="OfficeName" />
+                <ScalarProperty Name="OfficeType" ColumnName="OfficeType" />
+                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
+                <ScalarProperty Name="Department" ColumnName="Department" />
+                <ScalarProperty Name="EmployeeFullName" ColumnName="EmployeeFullName" />
+                <ScalarProperty Name="Source" ColumnName="Source" />
+                <ScalarProperty Name="EventType" ColumnName="EventType" />
+                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
+                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
           <EntitySetMapping Name="Employees">
             <EntityTypeMapping TypeName="FaceAttendDBModel.Employee">
               <MappingFragment StoreEntitySet="Employees">
-                <ScalarProperty Name="Id" ColumnName="Id" />
-                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
-                <ScalarProperty Name="Department" ColumnName="Department" />
-                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
-                <ScalarProperty Name="IsFlexi" ColumnName="IsFlexi" />
-                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
-                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
-                <ScalarProperty Name="EnrolledDate" ColumnName="EnrolledDate" />
-                <ScalarProperty Name="LastModifiedDate" ColumnName="LastModifiedDate" />
-                <ScalarProperty Name="ModifiedBy" ColumnName="ModifiedBy" />
-                <ScalarProperty Name="FirstName" ColumnName="FirstName" />
-                <ScalarProperty Name="MiddleName" ColumnName="MiddleName" />
-                <ScalarProperty Name="LastName" ColumnName="LastName" />
+                <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
+                <ScalarProperty Name="FaceEncodingsJson" ColumnName="FaceEncodingsJson" />
                 <ScalarProperty Name="Position" ColumnName="Position" />
+                <ScalarProperty Name="LastName" ColumnName="LastName" />
+                <ScalarProperty Name="MiddleName" ColumnName="MiddleName" />
+                <ScalarProperty Name="FirstName" ColumnName="FirstName" />
+                <ScalarProperty Name="ModifiedBy" ColumnName="ModifiedBy" />
+                <ScalarProperty Name="LastModifiedDate" ColumnName="LastModifiedDate" />
+                <ScalarProperty Name="EnrolledDate" ColumnName="EnrolledDate" />
+                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
+                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
+                <ScalarProperty Name="IsFlexi" ColumnName="IsFlexi" />
+                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
+                <ScalarProperty Name="Department" ColumnName="Department" />
+                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
           <EntitySetMapping Name="Offices">
             <EntityTypeMapping TypeName="FaceAttendDBModel.Office">
               <MappingFragment StoreEntitySet="Offices">
-                <ScalarProperty Name="Id" ColumnName="Id" />
-                <ScalarProperty Name="Code" ColumnName="Code" />
-                <ScalarProperty Name="Name" ColumnName="Name" />
-                <ScalarProperty Name="Type" ColumnName="Type" />
-                <ScalarProperty Name="ProvinceName" ColumnName="ProvinceName" />
-                <ScalarProperty Name="HUCCity" ColumnName="HUCCity" />
-                <ScalarProperty Name="Latitude" ColumnName="Latitude" />
-                <ScalarProperty Name="Longitude" ColumnName="Longitude" />
-                <ScalarProperty Name="RadiusMeters" ColumnName="RadiusMeters" />
-                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
-                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
                 <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
+                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
+                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
+                <ScalarProperty Name="RadiusMeters" ColumnName="RadiusMeters" />
+                <ScalarProperty Name="Longitude" ColumnName="Longitude" />
+                <ScalarProperty Name="Latitude" ColumnName="Latitude" />
+                <ScalarProperty Name="HUCCity" ColumnName="HUCCity" />
+                <ScalarProperty Name="ProvinceName" ColumnName="ProvinceName" />
+                <ScalarProperty Name="Type" ColumnName="Type" />
+                <ScalarProperty Name="Name" ColumnName="Name" />
+                <ScalarProperty Name="Code" ColumnName="Code" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
           <EntitySetMapping Name="SystemConfigurations">
             <EntityTypeMapping TypeName="FaceAttendDBModel.SystemConfiguration">
               <MappingFragment StoreEntitySet="SystemConfigurations">
-                <ScalarProperty Name="Id" ColumnName="Id" />
-                <ScalarProperty Name="Key" ColumnName="Key" />
-                <ScalarProperty Name="Value" ColumnName="Value" />
-                <ScalarProperty Name="DataType" ColumnName="DataType" />
-                <ScalarProperty Name="Description" ColumnName="Description" />
-                <ScalarProperty Name="ModifiedDate" ColumnName="ModifiedDate" />
                 <ScalarProperty Name="ModifiedBy" ColumnName="ModifiedBy" />
+                <ScalarProperty Name="ModifiedDate" ColumnName="ModifiedDate" />
+                <ScalarProperty Name="Description" ColumnName="Description" />
+                <ScalarProperty Name="DataType" ColumnName="DataType" />
+                <ScalarProperty Name="Value" ColumnName="Value" />
+                <ScalarProperty Name="Key" ColumnName="Key" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
           <EntitySetMapping Name="VisitorLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.VisitorLog">
               <MappingFragment StoreEntitySet="VisitorLogs">
-                <ScalarProperty Name="Id" ColumnName="Id" />
-                <ScalarProperty Name="VisitorId" ColumnName="VisitorId" />
-                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
-                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
-                <ScalarProperty Name="VisitorName" ColumnName="VisitorName" />
-                <ScalarProperty Name="Purpose" ColumnName="Purpose" />
-                <ScalarProperty Name="Source" ColumnName="Source" />
-                <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
                 <ScalarProperty Name="UserAgent" ColumnName="UserAgent" />
+                <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
+                <ScalarProperty Name="Source" ColumnName="Source" />
+                <ScalarProperty Name="Purpose" ColumnName="Purpose" />
+                <ScalarProperty Name="VisitorName" ColumnName="VisitorName" />
+                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
+                <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
+                <ScalarProperty Name="VisitorId" ColumnName="VisitorId" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
           <EntitySetMapping Name="Visitors">
             <EntityTypeMapping TypeName="FaceAttendDBModel.Visitor">
               <MappingFragment StoreEntitySet="Visitors">
-                <ScalarProperty Name="Id" ColumnName="Id" />
-                <ScalarProperty Name="Name" ColumnName="Name" />
-                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
-                <ScalarProperty Name="VisitCount" ColumnName="VisitCount" />
-                <ScalarProperty Name="FirstVisitDate" ColumnName="FirstVisitDate" />
-                <ScalarProperty Name="LastVisitDate" ColumnName="LastVisitDate" />
                 <ScalarProperty Name="IsActive" ColumnName="IsActive" />
+                <ScalarProperty Name="LastVisitDate" ColumnName="LastVisitDate" />
+                <ScalarProperty Name="FirstVisitDate" ColumnName="FirstVisitDate" />
+                <ScalarProperty Name="VisitCount" ColumnName="VisitCount" />
+                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
+                <ScalarProperty Name="Name" ColumnName="Name" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>

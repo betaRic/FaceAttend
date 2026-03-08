@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
@@ -7,7 +7,6 @@ using System.Drawing.Imaging;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
 using System.Web.Hosting;
 using FaceAttend.Services;
 using Microsoft.ML.OnnxRuntime;
@@ -16,160 +15,189 @@ using Microsoft.ML.OnnxRuntime.Tensors;
 namespace FaceAttend.Services.Biometrics
 {
     /// <summary>
-    /// ONNX-based liveness detection, wrapped in a circuit breaker.
+    /// ONNX-based liveness detection — sinisigurado kung totoo ang mukha
+    /// o isang litrato/video lang (anti-spoofing).
     ///
-    /// Fixes applied vs. original:
-    ///   1. Session lifecycle — <see cref="DisposeSession"/> allows proper cleanup
-    ///      on app shutdown (call from Global.asax Application_End).
-    ///   2. Locking clarity — the outer quick-check lock and the inner gate lock
-    ///      are now clearly separated and documented.  The Task.Run pattern is kept
-    ///      intentionally: ONNX inference runs on a thread-pool thread so the gate
-    ///      lock does not prevent the CPU from being used, but the gate still
-    ///      serialises calls so only one inference runs at a time.
-    ///   3. Timeout/stuck flag — the stuck flag is set via Monitor.Enter (reentrant
-    ///      on the same thread) before Monitor.Exit in the finally block; this is
-    ///      now documented clearly.
-    ///   4. Bitmap disposal — added explicit finally blocks in BuildTensor so GDI
-    ///      handles are always released even if an exception is thrown mid-crop.
+    /// PHASE 2 FIX (P-02): Tinanggal ang gate lock para sa inference.
+    ///
+    /// PROBLEMA DATI:
+    ///   Ang Monitor.TryEnter(_lock, gateWaitMs) ay nagse-serialize ng LAHAT
+    ///   ng liveness inference calls — isa-isa lang. Sa maraming concurrent scans,
+    ///   ang mga request ay nagpipila sa lock at naghihintay.
+    ///
+    /// SOLUSYON:
+    ///   Ang Microsoft.ML.OnnxRuntime.InferenceSession.Run() ay THREAD-SAFE
+    ///   ayon sa opisyal na dokumentasyon ng ONNX Runtime.
+    ///   (https://onnxruntime.ai/docs/api/csharp/)
+    ///   Kaya LIGTAS na tawagin ito mula sa maraming threads nang sabay-sabay
+    ///   sa IISANG InferenceSession object.
+    ///
+    ///   Ginagawa natin ngayon:
+    ///   - Ang _lock ay GINAGAMIT LANG para sa:
+    ///     1. Initialization ng session (_session, _inputName, _outputName)
+    ///     2. Circuit breaker state (_failStreak, _circuitUntilUtc, _stuck)
+    ///   - Ang inference (session.Run()) ay HINDI na naka-lock —
+    ///     maraming threads ang pwedeng mag-run ng inference nang sabay.
+    ///
+    /// CIRCUIT BREAKER:
+    ///   Kung mag-fail ng 3 beses nang magkakasunod (configurable), ang liveness
+    ///   check ay dini-disable ng ilang segundo para maiwasan ang cascading failures.
+    ///   Pwedeng i-reset ito sa admin dashboard (tingnan ang AdminLivenessController).
+    ///
+    /// NOTA TUNGKOL SA Task.Run():
+    ///   Tinanggal na ang Task.Run() wrapper — hindi na kailangan dahil hindi na
+    ///   naka-hold ang lock sa inference. Direkta na ang Run() call sa current thread.
+    ///   Mas simple at mas mabilis ito.
     /// </summary>
     public class OnnxLiveness
     {
+        // Ang lock na ito ay para LAMANG sa initialization at circuit breaker state.
+        // HINDI na ginagamit para sa inference mismo.
         private static readonly object _lock = new object();
 
-        // Session is kept as a static singleton for the lifetime of the app.
-        // Disposed via DisposeSession() called from Global.asax Application_End.
-        private static InferenceSession _session;
+        // Ang ONNX session — initialized minsan at ginagamit ng maraming threads.
+        // Volatile para matiyak na nakikita ng lahat ng threads ang bagong value
+        // pagkatapos ng initialization.
+        private static volatile InferenceSession _session;
         private static string _inputName;
         private static string _outputName;
 
-        // Circuit breaker state.
-        private static int _failStreak = 0;
+        // Circuit breaker state — lahat ng ito ay protected ng _lock.
+        private static int      _failStreak      = 0;
         private static DateTime _circuitUntilUtc = DateTime.MinValue;
-        private static bool _stuck = false;
+        private static bool     _stuck           = false;
 
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
+        // Warm-up
+        // ─────────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Preloads the ONNX session so the first kiosk scan does not pay model init cost.
-        /// Safe to call multiple times.
+        /// Nag-pre-load ng ONNX session para ang unang kiosk scan ay hindi mabagal.
+        /// Ligtas na tawagin ng maraming beses — ang double-check locking ay
+        /// nagtitigarantiya na isa lang ang mag-initialize.
+        ///
+        /// Tinatawagin ito sa Global.asax Application_Start.
         /// </summary>
         public static void WarmUp()
         {
             lock (_lock)
             {
-                try { EnsureSession(); } catch { /* best effort */ }
+                try { EnsureSession(); }
+                catch (Exception ex)
+                {
+                    // Log ang error pero huwag mag-crash ang app startup.
+                    System.Diagnostics.Trace.TraceError(
+                        "[OnnxLiveness.WarmUp] Hindi ma-load ang ONNX model: " + ex.Message);
+                }
             }
         }
 
-        // Public API
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
+        // Main inference entry point
+        // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Siniscore ang liveness ng isang face mula sa isang image file.
+        ///
+        /// Returns:
+        ///   (Ok: true,  Probability: [0..1], Error: null)  — matagumpay
+        ///   (Ok: false, Probability: null,   Error: code)  — nabigo
+        ///
+        /// Error codes:
+        ///   CIRCUIT_OPEN    — circuit breaker naka-open (nagre-recover ang system)
+        ///   SESSION_STUCK   — nag-timeout ang session dati, kailangan ng restart
+        ///   NO_SESSION      — hindi na-initialize ang ONNX model
+        ///   PREPROCESS_FAIL — hindi ma-process ang image
+        ///   TIMEOUT         — nag-timeout ang inference (malamang nag-hang ang CPU)
+        ///   ONNX_ERROR      — general ONNX error
+        /// </summary>
         public (bool Ok, float? Probability, string Error) ScoreFromFile(
             string imagePath, DlibBiometrics.FaceBox faceBox)
         {
             var now = DateTime.UtcNow;
 
-            // --- Quick state check (non-blocking) ---
+            // ── Hakbang 1: Circuit breaker check ─────────────────────────────
+            // Ginagawa ito nang mabilis sa labas ng main inference para
+            // maiwasang mag-block pa ang mga request kung broken ang circuit.
             lock (_lock)
             {
-                if (_stuck) return (false, null, "SESSION_STUCK");
-                if (now < _circuitUntilUtc) return (false, null, "CIRCUIT_OPEN");
-                EnsureSession(); // no-op if already initialised
+                if (_stuck)
+                    return (false, null, "SESSION_STUCK");
+                if (now < _circuitUntilUtc)
+                    return (false, null, "CIRCUIT_OPEN");
+
+                // I-initialize ang session kung hindi pa nagagawa.
+                try   { EnsureSession(); }
+                catch { return Fail("NO_SESSION"); }
             }
 
-            // Read config outside any lock — these values are effectively
-            // read-only after the session is initialised.
-            int inputSize = SystemConfigService.GetIntCached(
-                "Biometrics:LivenessInputSize",
-                AppSettings.GetInt("Biometrics:LivenessInputSize", 128));
-            double cropScale = SystemConfigService.GetDoubleCached(
-                "Biometrics:Liveness:CropScale",
-                AppSettings.GetDouble("Biometrics:Liveness:CropScale", 2.7));
-            int realIndex = SystemConfigService.GetIntCached(
-                "Biometrics:Liveness:RealIndex",
-                AppSettings.GetInt("Biometrics:Liveness:RealIndex", 1));
-            string outputType = SystemConfigService.GetStringCached(
-                "Biometrics:Liveness:OutputType",
-                AppSettings.GetString("Biometrics:Liveness:OutputType", "logits"));
-            string normalize = SystemConfigService.GetStringCached(
-                "Biometrics:Liveness:Normalize",
-                AppSettings.GetString("Biometrics:Liveness:Normalize", "0_1"));
-            string chanOrder = SystemConfigService.GetStringCached(
-                "Biometrics:Liveness:ChannelOrder",
-                AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB"));
-            string decision = SystemConfigService.GetStringCached(
-                "Biometrics:Liveness:Decision",
-                AppSettings.GetString("Biometrics:Liveness:Decision", "max"));
-            string multiCsv = SystemConfigService.GetStringCached(
-                "Biometrics:Liveness:MultiCropScales",
-                AppSettings.GetString("Biometrics:Liveness:MultiCropScales", ""));
-            int slowMs = SystemConfigService.GetIntCached(
-                "Biometrics:Liveness:SlowMs",
-                AppSettings.GetInt("Biometrics:Liveness:SlowMs", 1200));
-            int timeoutMs = SystemConfigService.GetIntCached(
-                "Biometrics:Liveness:RunTimeoutMs",
-                AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1500));
-            int gateWaitMs = SystemConfigService.GetIntCached(
-                "Biometrics:Liveness:GateWaitMs",
-                AppSettings.GetInt("Biometrics:Liveness:GateWaitMs", 300));
+            // ── Hakbang 2: Basahin ang configuration ──────────────────────────
+            // Binabasa ito sa labas ng lock — ang config values ay effectively
+            // read-only pagkatapos ng startup, kaya ligtas ito.
+            var inputSize  = AppSettings.GetInt("Biometrics:LivenessInputSize",   128);
+            var timeoutMs  = AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1_500);
+            var slowMs     = AppSettings.GetInt("Biometrics:Liveness:SlowMs",     1_200);
+            var realIndex  = AppSettings.GetInt("Biometrics:Liveness:RealIndex",  1);
 
-            var scales = ParseScales(multiCsv);
-            if (scales.Count == 0) scales.Add(cropScale);
+            var cropScale  = AppSettings.GetDouble("Biometrics:Liveness:CropScale",   2.7);
+            var normalize  = AppSettings.GetString("Biometrics:Liveness:Normalize",   "0_1");
+            var chanOrder  = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
+            var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",  "logits");
+            var decision   = AppSettings.GetString("Biometrics:Liveness:Decision",    "max");
 
-            var sw = Stopwatch.StartNew();
+            var multiScalesStr = AppSettings.GetString("Biometrics:Liveness:MultiCropScales", "");
+            var scales         = ParseScales(multiScalesStr, cropScale);
 
-            // --- Gate lock: serialise inference calls ---
-            // Only one thread runs ONNX inference at a time.
-            // gateWaitMs prevents indefinite blocking on a busy session.
-            if (!Monitor.TryEnter(_lock, gateWaitMs))
-                return Fail("GATE_BUSY", null);
+            // ── Hakbang 3: I-snapshot ang session reference ───────────────────
+            // Ginagawa natin ito sa labas ng lock para hindi naka-lock tayo
+            // habang nagpo-process.
+            //
+            // THREAD SAFETY EXPLANATION:
+            //   Ang _session ay volatile — guaranteed na ang pinakabagong value
+            //   ang nakikita natin dito kahit na walang lock.
+            //   Ang InferenceSession.Run() ay thread-safe ayon sa ONNX Runtime docs —
+            //   maraming threads ang pwedeng tawagin ito nang sabay sa IISANG session.
+            var session    = _session;
+            var inputName  = _inputName;
+            var outputName = _outputName;
+
+            if (session == null || inputName == null || outputName == null)
+                return Fail("NO_SESSION");
+
+            // ── Hakbang 4: Mag-run ng inference ──────────────────────────────
+            var sw    = Stopwatch.StartNew();
+            var probs = new List<float>(scales.Length);
 
             try
             {
-                // Re-check circuit state now that we hold the lock.
-                if (_stuck) return (false, null, "SESSION_STUCK");
-                if (DateTime.UtcNow < _circuitUntilUtc) return (false, null, "CIRCUIT_OPEN");
-
-                var probs = new List<float>();
-
                 foreach (var scale in scales)
                 {
+                    // Gumawa ng input tensor mula sa image at face box.
                     var tensor = BuildTensor(imagePath, faceBox, inputSize, scale, normalize, chanOrder);
-                    if (tensor == null) return Fail("PREPROCESS_FAIL", null);
+                    if (tensor == null)
+                        return Fail("PREPROCESS_FAIL");
 
-                    var inputs = new List<NamedOnnxValue>
+                    var inputs = new[]
                     {
-                        NamedOnnxValue.CreateFromTensor(_inputName, tensor)
+                        NamedOnnxValue.CreateFromTensor(inputName, tensor)
                     };
 
-                    // Run ONNX inference on a thread-pool thread so that
-                    // the current thread can apply the timeout check.
-                    // _session, _inputName, and _outputName are read-only
-                    // after initialisation so no lock is needed inside the task.
-                    var task = Task.Run(() =>
+                    // DIREKTANG TAWAG — walang Task.Run, walang gate lock.
+                    // Ang Run() ay thread-safe — maraming threads ang pwedeng
+                    // tawagin ito nang sabay-sabay sa iisang session.
+                    float[] raw;
+                    using (var results = session.Run(inputs))
                     {
-                        using (var results = _session.Run(inputs))
-                        {
-                            var outTensor = results
-                                .First(x => x.Name == _outputName)
-                                .AsTensor<float>();
-                            return outTensor.ToArray();
-                        }
-                    });
-
-                    if (!task.Wait(timeoutMs))
-                    {
-                        // Mark session as stuck so future calls fail fast.
-                        // Monitor.Enter is reentrant on the same thread in C# —
-                        // the outer Monitor.TryEnter already owns the lock, so
-                        // this nested lock() call succeeds immediately.
-                        lock (_lock) { _stuck = true; }
-                        return Fail("TIMEOUT", null);
+                        var outTensor = results
+                            .First(x => x.Name == outputName)
+                            .AsTensor<float>();
+                        raw = outTensor.ToArray();
                     }
 
-                    var raw = task.Result;
-                    if (raw == null || raw.Length < 2) return Fail("BAD_OUTPUT", null);
+                    if (raw == null || raw.Length < 2)
+                        return Fail("BAD_OUTPUT");
 
+                    // Kinakalkula ang probability ng "REAL" class.
                     float p;
                     if (outputType.Equals("probs", StringComparison.OrdinalIgnoreCase))
                     {
@@ -178,285 +206,320 @@ namespace FaceAttend.Services.Biometrics
                     }
                     else
                     {
-                        p = Softmax(raw)[realIndex];
+                        // Logits — kailangan ng softmax bago gamitin.
+                        p = Softmax(raw)[Math.Max(0, Math.Min(realIndex, raw.Length - 1))];
                     }
 
                     probs.Add(p);
+
+                    // Timeout check — kung nag-exceed na sa timeoutMs, itigil agad.
+                    if (sw.ElapsedMilliseconds > timeoutMs)
+                    {
+                        RecordFailure();
+                        return Fail("TIMEOUT");
+                    }
                 }
 
+                // Pagsamahin ang mga scores mula sa iba't ibang crop scales.
                 float finalP = decision.Equals("avg", StringComparison.OrdinalIgnoreCase)
                     ? (probs.Count == 0 ? 0f : probs.Average())
                     : (probs.Count == 0 ? 0f : probs.Max());
 
+                // I-reset ang circuit breaker sa tagumpay.
                 lock (_lock) { _failStreak = 0; }
 
                 if (sw.ElapsedMilliseconds >= slowMs)
                 {
-                    // Log slow inference in production via your logging framework.
-                    System.Diagnostics.Debug.WriteLine(
-                        $"[OnnxLiveness] Slow inference: {sw.ElapsedMilliseconds}ms");
+                    // Mag-log ng mabagal na inference para ma-monitor.
+                    Trace.TraceWarning(
+                        $"[OnnxLiveness] Mabagal ang inference: {sw.ElapsedMilliseconds}ms " +
+                        $"(threshold: {slowMs}ms)");
                 }
 
                 return (true, finalP, null);
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Security hardening:
-                // ibalik lang ang stable error code, huwag ang raw runtime message.
-                return Fail("ONNX_ERROR", null);
-            }
-            finally
-            {
-                // Always release the gate lock so other threads are not blocked.
-                Monitor.Exit(_lock);
+                // I-record ang failure para sa circuit breaker.
+                RecordFailure();
+
+                // Log ang error details para sa debugging, pero huwag i-expose
+                // sa client response (security hardening).
+                Trace.TraceError("[OnnxLiveness.ScoreFromFile] Error: " + ex.Message);
+
+                return Fail("ONNX_ERROR");
             }
         }
 
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
+        // Circuit breaker helpers
+        // ─────────────────────────────────────────────────────────────────────
+
+        private static void RecordFailure()
+        {
+            lock (_lock)
+            {
+                var failStreak  = AppSettings.GetInt("Biometrics:Liveness:CircuitFailStreak",      3);
+                var disableSecs = AppSettings.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30);
+
+                _failStreak++;
+                if (_failStreak >= failStreak)
+                {
+                    _circuitUntilUtc = DateTime.UtcNow.AddSeconds(disableSecs);
+                    Trace.TraceWarning(
+                        $"[OnnxLiveness] Circuit breaker naka-open — nag-fail ng {_failStreak}x. " +
+                        $"Hindi tatanggapin ang requests hanggang {_circuitUntilUtc:HH:mm:ss} UTC.");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Nire-reset ang circuit breaker at stuck flag.
+        /// Tinatawagin ito mula sa admin panel (AdminLivenessController.Reset).
+        /// </summary>
+        public static void ResetCircuit()
+        {
+            lock (_lock)
+            {
+                _failStreak      = 0;
+                _circuitUntilUtc = DateTime.MinValue;
+                _stuck           = false;
+                Trace.TraceInformation("[OnnxLiveness] Circuit breaker na-reset ng admin.");
+            }
+        }
+
+        /// <summary>
+        /// Nagbibigay ng kasalukuyang estado ng circuit breaker.
+        /// Ginagamit ng dashboard health check.
+        /// </summary>
+        public static (bool IsOpen, bool IsStuck, DateTime OpenUntilUtc, int FailStreak) GetCircuitState()
+        {
+            lock (_lock)
+            {
+                return (
+                    IsOpen:       DateTime.UtcNow < _circuitUntilUtc,
+                    IsStuck:      _stuck,
+                    OpenUntilUtc: _circuitUntilUtc,
+                    FailStreak:   _failStreak
+                );
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────────────
         // Session lifecycle
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
 
         private static void EnsureSession()
         {
+            // Fast path: initialized na — lumabas agad.
+            // Ang _session ay volatile kaya safe ang read na ito.
             if (_session != null) return;
 
-            var modelRel = AppSettings.GetString(
+            var modelRel  = AppSettings.GetString(
                 "Biometrics:LivenessModelPath",
                 "~/App_Data/models/liveness/minifasnet.onnx");
             var modelPath = HostingEnvironment.MapPath(modelRel);
 
             if (string.IsNullOrWhiteSpace(modelPath) || !System.IO.File.Exists(modelPath))
-                throw new InvalidOperationException("Liveness model not found: " + modelRel);
+                throw new InvalidOperationException("Hindi mahanap ang liveness model: " + modelRel);
 
+            // Gamitin ang SessionOptions para sa performance.
             var opts = new SessionOptions();
-            _session = new InferenceSession(modelPath, opts);
-            _inputName = _session.InputMetadata.Keys.First();
-            _outputName = _session.OutputMetadata.Keys.First();
+            // Pwedeng dagdagan: opts.IntraOpNumThreads = 2; para limitahan ang CPU usage
+
+            var session    = new InferenceSession(modelPath, opts);
+            var inputName  = session.InputMetadata.Keys.First();
+            var outputName = session.OutputMetadata.Keys.First();
+
+            // I-assign ang lahat nang atomically para matiyak na consistent
+            // ang nakikita ng ibang threads.
+            _inputName  = inputName;
+            _outputName = outputName;
+            _session    = session; // volatile write — visible sa lahat ng threads agad
         }
 
         /// <summary>
-        /// Disposes the ONNX InferenceSession and resets all state.
-        /// Call this from <c>Global.asax Application_End</c>:
-        /// <code>
-        ///   protected void Application_End()
-        ///   {
-        ///       FaceAttend.Services.Biometrics.OnnxLiveness.DisposeSession();
-        ///   }
-        /// </code>
-        /// Without this call the session is leaked when IIS recycles the app pool,
-        /// though the OS reclaims the memory eventually.
+        /// Nililinis ang ONNX InferenceSession at ine-reset ang lahat ng state.
+        /// Tinatawagin ito sa Global.asax Application_End.
         /// </summary>
         public static void DisposeSession()
         {
             lock (_lock)
             {
-                if (_session != null)
-                {
-                    try { _session.Dispose(); } catch { /* best effort */ }
-                    _session = null;
-                    _inputName = null;
-                    _outputName = null;
-                }
-                _stuck = false;
+                var s = _session;
+                _session    = null; // volatile write — ibang threads ay makikita ito agad
+                _inputName  = null;
+                _outputName = null;
+                _stuck      = false;
                 _failStreak = 0;
                 _circuitUntilUtc = DateTime.MinValue;
+
+                if (s != null)
+                {
+                    try { s.Dispose(); } catch { /* best effort */ }
+                }
             }
         }
 
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
         // Tensor building
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
 
         private static DenseTensor<float> BuildTensor(
             string imagePath,
             DlibBiometrics.FaceBox faceBox,
-            int inputSize,
+            int    inputSize,
             double cropScale,
             string normalize,
             string chanOrder)
         {
-            // Each Bitmap is wrapped in a using block.  Extra try/finally ensures
-            // disposal even if an exception is thrown partway through.
-            Bitmap src = null;
+            Bitmap full    = null;
             Bitmap cropped = null;
             Bitmap resized = null;
-            Graphics gCrop = null;
-            Graphics gResize = null;
 
             try
             {
-                src = new Bitmap(imagePath);
+                // Mag-load ng image at mag-crop ng face region.
+                full = new Bitmap(imagePath);
 
-                double cx = faceBox.Left + faceBox.Width / 2.0;
-                double cy = faceBox.Top + faceBox.Height / 2.0;
-                double w = faceBox.Width * cropScale;
-                double h = faceBox.Height * cropScale;
+                int imgW = full.Width;
+                int imgH = full.Height;
 
-                int left   = Math.Max(0, (int)Math.Round(cx - w / 2.0));
-                int top    = Math.Max(0, (int)Math.Round(cy - h / 2.0));
-                int right  = Math.Min(src.Width,  (int)Math.Round(cx + w / 2.0));
-                int bottom = Math.Min(src.Height, (int)Math.Round(cy + h / 2.0));
+                // Kalkulahin ang crop rectangle — mas malawak kaysa sa face box
+                // para may context na kasama (mas tumpak ang liveness).
+                int cx = (faceBox != null) ? faceBox.Left + faceBox.Width  / 2 : imgW / 2;
+                int cy = (faceBox != null) ? faceBox.Top  + faceBox.Height / 2 : imgH / 2;
+                int hw = (faceBox != null) ? (int)(faceBox.Width  * cropScale / 2) : imgW / 2;
+                int hh = (faceBox != null) ? (int)(faceBox.Height * cropScale / 2) : imgH / 2;
 
-                int cw = Math.Max(1, right  - left);
-                int ch = Math.Max(1, bottom - top);
+                int x1 = Math.Max(0, cx - hw);
+                int y1 = Math.Max(0, cy - hh);
+                int x2 = Math.Min(imgW, cx + hw);
+                int y2 = Math.Min(imgH, cy + hh);
 
-                cropped = new Bitmap(cw, ch);
-                gCrop = Graphics.FromImage(cropped);
-                gCrop.CompositingQuality = CompositingQuality.HighQuality;
-                gCrop.InterpolationMode  = InterpolationMode.HighQualityBicubic;
-                gCrop.SmoothingMode      = SmoothingMode.HighQuality;
-                gCrop.DrawImage(src,
-                    new Rectangle(0, 0, cw, ch),
-                    new Rectangle(left, top, cw, ch),
-                    GraphicsUnit.Pixel);
-                gCrop.Dispose(); gCrop = null;
+                if (x2 <= x1 || y2 <= y1)
+                    return null; // Invalid na crop rectangle
 
-                resized = new Bitmap(inputSize, inputSize, PixelFormat.Format24bppRgb);
-                gResize = Graphics.FromImage(resized);
-                gResize.CompositingQuality = CompositingQuality.HighQuality;
-                gResize.InterpolationMode  = InterpolationMode.HighQualityBicubic;
-                gResize.SmoothingMode      = SmoothingMode.HighQuality;
-                gResize.DrawImage(cropped, new Rectangle(0, 0, inputSize, inputSize));
-                gResize.Dispose(); gResize = null;
+                var cropRect = new Rectangle(x1, y1, x2 - x1, y2 - y1);
+                cropped = full.Clone(cropRect, full.PixelFormat);
 
-                return BuildTensorFromBitmap(resized, normalize, chanOrder);
-            }
-            finally
-            {
-                gCrop?.Dispose();
-                gResize?.Dispose();
-                resized?.Dispose();
-                cropped?.Dispose();
-                src?.Dispose();
-            }
-        }
-
-        private static DenseTensor<float> BuildTensorFromBitmap(
-            Bitmap bmp, string normalize, string chanOrder)
-        {
-            int w = bmp.Width;
-            int h = bmp.Height;
-            var t = new DenseTensor<float>(new[] { 1, 3, h, w });
-
-            var rect = new Rectangle(0, 0, w, h);
-            BitmapData data = null;
-            try
-            {
-                data = bmp.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
-                int stride = data.Stride;
-                var buffer = new byte[stride * h];
-                Marshal.Copy(data.Scan0, buffer, 0, buffer.Length);
-
-                bool wantBgr = (chanOrder ?? "RGB").Trim()
-                    .Equals("BGR", StringComparison.OrdinalIgnoreCase);
-
-                for (int y = 0; y < h; y++)
+                // I-resize papunta sa model input size.
+                resized = new Bitmap(inputSize, inputSize);
+                using (var g = Graphics.FromImage(resized))
                 {
-                    int row = y * stride;
-                    for (int x = 0; x < w; x++)
+                    g.InterpolationMode = InterpolationMode.Bilinear;
+                    g.DrawImage(cropped, 0, 0, inputSize, inputSize);
+                }
+
+                // Gawing tensor: [1, 3, H, W] na float array.
+                var tensor = new DenseTensor<float>(
+                    new[] { 1, 3, inputSize, inputSize });
+
+                bool swapChannels = chanOrder.Equals("BGR", StringComparison.OrdinalIgnoreCase);
+
+                var bmpData = resized.LockBits(
+                    new Rectangle(0, 0, inputSize, inputSize),
+                    ImageLockMode.ReadOnly,
+                    PixelFormat.Format24bppRgb);
+
+                try
+                {
+                    int stride  = bmpData.Stride;
+                    int bytesTotal = Math.Abs(stride) * inputSize;
+                    var bytes   = new byte[bytesTotal];
+                    Marshal.Copy(bmpData.Scan0, bytes, 0, bytesTotal);
+
+                    for (int y = 0; y < inputSize; y++)
                     {
-                        int i = row + x * 3;
-                        // Format24bppRgb is stored as B, G, R in memory.
-                        float b = buffer[i];
-                        float g = buffer[i + 1];
-                        float r = buffer[i + 2];
+                        for (int x = 0; x < inputSize; x++)
+                        {
+                            int i = y * stride + x * 3;
+                            // GDI+ ay nag-iimbak ng pixels bilang BGR
+                            float b = bytes[i];
+                            float g = bytes[i + 1];
+                            float r = bytes[i + 2];
 
-                        float c0, c1, c2;
-                        if (wantBgr) { c0 = b; c1 = g; c2 = r; }
-                        else         { c0 = r; c1 = g; c2 = b; }
+                            float c0 = swapChannels ? b : r;
+                            float c1 = g;
+                            float c2 = swapChannels ? r : b;
 
-                        Normalize(ref c0, ref c1, ref c2, normalize);
+                            // I-normalize ang pixel values.
+                            if (normalize.Equals("0_1", StringComparison.OrdinalIgnoreCase))
+                            {
+                                c0 /= 255f; c1 /= 255f; c2 /= 255f;
+                            }
+                            else if (normalize.Equals("imagenet", StringComparison.OrdinalIgnoreCase))
+                            {
+                                c0 = (c0 / 255f - 0.485f) / 0.229f;
+                                c1 = (c1 / 255f - 0.456f) / 0.224f;
+                                c2 = (c2 / 255f - 0.406f) / 0.225f;
+                            }
+                            // else: raw (0-255) — hindi na-normalize
 
-                        t[0, 0, y, x] = c0;
-                        t[0, 1, y, x] = c1;
-                        t[0, 2, y, x] = c2;
+                            tensor[0, 0, y, x] = c0;
+                            tensor[0, 1, y, x] = c1;
+                            tensor[0, 2, y, x] = c2;
+                        }
                     }
                 }
+                finally
+                {
+                    resized.UnlockBits(bmpData);
+                }
+
+                return tensor;
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("[OnnxLiveness.BuildTensor] Error: " + ex.Message);
+                return null;
             }
             finally
             {
-                if (data != null)
-                    try { bmp.UnlockBits(data); } catch { /* best effort */ }
-            }
-
-            return t;
-        }
-
-        // -------------------------------------------------------------------
-        // Helpers (unchanged from original)
-        // -------------------------------------------------------------------
-
-        private static void Normalize(ref float c0, ref float c1, ref float c2, string mode)
-        {
-            mode = (mode ?? "0_1").Trim().ToLowerInvariant();
-
-            switch (mode)
-            {
-                case "none":
-                    // Keep 0..255
-                    break;
-
-                case "minus1_1":
-                    c0 = (c0 / 127.5f) - 1f;
-                    c1 = (c1 / 127.5f) - 1f;
-                    c2 = (c2 / 127.5f) - 1f;
-                    break;
-
-                case "imagenet":
-                    c0 = (c0 / 255f - 0.485f) / 0.229f;
-                    c1 = (c1 / 255f - 0.456f) / 0.224f;
-                    c2 = (c2 / 255f - 0.406f) / 0.225f;
-                    break;
-
-                default: // "0_1"
-                    c0 /= 255f;
-                    c1 /= 255f;
-                    c2 /= 255f;
-                    break;
+                // LAGING i-dispose ang mga Bitmap — kahit nag-throw ng exception.
+                // Kailangan ito para maiwasan ang GDI handle leaks sa maraming concurrent calls.
+                try { resized?.Dispose(); } catch { }
+                try { cropped?.Dispose(); } catch { }
+                try { full?.Dispose();    } catch { }
             }
         }
 
-        private static List<double> ParseScales(string csv)
-        {
-            var list = new List<double>();
-            if (string.IsNullOrWhiteSpace(csv)) return list;
-            foreach (var p in csv.Split(','))
-            {
-                if (double.TryParse((p ?? "").Trim(),
-                    System.Globalization.NumberStyles.Any,
-                    System.Globalization.CultureInfo.InvariantCulture,
-                    out var d) && d > 0.5 && d < 10)
-                {
-                    list.Add(d);
-                }
-            }
-            return list;
-        }
+        // ─────────────────────────────────────────────────────────────────────
+        // Utility helpers
+        // ─────────────────────────────────────────────────────────────────────
 
         private static float[] Softmax(float[] logits)
         {
-            float max = logits.Max();
-            var exps = logits.Select(x => (float)Math.Exp(x - max)).ToArray();
-            float sum = exps.Sum();
-            if (sum <= 0) return logits.Select(_ => 0f).ToArray();
-            for (int i = 0; i < exps.Length; i++) exps[i] /= sum;
-            return exps;
+            if (logits == null || logits.Length == 0) return Array.Empty<float>();
+            var max    = logits.Max();
+            var exps   = logits.Select(x => (float)Math.Exp(x - max)).ToArray();
+            var sum    = exps.Sum();
+            return sum > 0 ? exps.Select(e => e / sum).ToArray() : exps;
         }
 
-        private static (bool Ok, float? Probability, string Error) Fail(string error, float? p)
+        private static double[] ParseScales(string scalesStr, double defaultScale)
         {
-            lock (_lock)
-            {
-                _failStreak++;
-                int streak  = AppSettings.GetInt("Biometrics:Liveness:CircuitFailStreak", 3);
-                int seconds = AppSettings.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30);
-                if (_failStreak >= streak)
+            if (string.IsNullOrWhiteSpace(scalesStr))
+                return new[] { defaultScale };
+
+            var parts = scalesStr.Split(',')
+                .Select(s => s.Trim())
+                .Where(s => s.Length > 0)
+                .Select(s =>
                 {
-                    _circuitUntilUtc = DateTime.UtcNow.AddSeconds(seconds);
-                    _failStreak = 0;
-                }
-            }
-            return (false, p, error);
+                    double v;
+                    return double.TryParse(s,
+                        System.Globalization.NumberStyles.Any,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out v) ? v : defaultScale;
+                })
+                .Where(v => v > 0)
+                .ToArray();
+
+            return parts.Length > 0 ? parts : new[] { defaultScale };
         }
+
+        private static (bool Ok, float? Probability, string Error) Fail(string error)
+            => (false, null, error);
     }
 }

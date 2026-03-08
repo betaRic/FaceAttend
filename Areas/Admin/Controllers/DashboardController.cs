@@ -6,37 +6,34 @@ using System.Web.Mvc;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
 using FaceAttend.Services;
+using FaceAttend.Services.Biometrics;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
     [AdminAuthorize]
     public class DashboardController : Controller
     {
-        // P4-F2: Load real data into DashboardViewModel.
-        // The original controller returned View() with no model — every KPI card
-        // showed "-" and the recent logs table showed "No records yet." permanently.
+        // ====================================================================
+        // INDEX — Naglo-load ng full dashboard page
+        //
+        // PHASE 2 FIX (P-03): Tinanggal ang 60-segundo full page reload.
+        // Ang page ay naglo-load ng isang beses lang.
+        // Ang KPI numbers ay ina-update ng AJAX (tingnan ang KpiJson action).
+        // ====================================================================
         public ActionResult Index()
         {
             var vm = new DashboardViewModel();
 
-            // ----------------------------------------------------------------
-            // Database queries — wrapped in a single try/catch so a DB failure
-            // degrades gracefully: the dashboard loads with zeros and
-            // DatabaseHealthy = false rather than throwing a 500.
-            // ----------------------------------------------------------------
+            // Kung may error sa DB, mag-render pa rin ng page pero may warning.
             try
             {
                 using (var db = new FaceAttendDBEntities())
                 {
-                    // KPI: active employee count.
+                    // Bilang ng aktibong empleyado.
                     vm.TotalEmployees = db.Employees.Count(e => e.IsActive);
 
-                    // KPI: today's time-ins and time-outs.
-                    // AttendanceLog.Timestamp is stored as UTC (set by KioskController).
-                    // Compare against today's UTC midnight so the count matches the
-                    // server's local date when the timezone offset is small, and is
-                    // unambiguous on servers in any timezone.
-                    var todayUtc = DateTime.UtcNow.Date;
+                    // Time-ins at time-outs ngayong araw (UTC range).
+                    var todayUtc    = DateTime.UtcNow.Date;
                     var tomorrowUtc = todayUtc.AddDays(1);
 
                     vm.TodayTimeIns = db.AttendanceLogs.Count(l =>
@@ -49,15 +46,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                         l.Timestamp <  tomorrowUtc &&
                         l.EventType == "OUT");
 
-                    // KPI: known (active) visitor profiles.
-                    vm.TotalVisitors = db.Visitors.Count(v => v.IsActive);
-
-                    // KPI: attendance logs pending manual review.
+                    vm.TotalVisitors  = db.Visitors.Count(v => v.IsActive);
                     vm.PendingReviews = db.AttendanceLogs.Count(l => l.NeedsReview);
 
-                    // Recent attendance — last 10 records across all employees,
-                    // newest first. Projected to the slim RecentAttendanceRow DTO
-                    // so EF doesn't load the entire entity graph.
+                    // Pinakabagong 10 attendance records.
                     vm.RecentLogs =
                         (from l in db.AttendanceLogs
                          join e in db.Employees on l.EmployeeId equals e.Id into ej
@@ -75,19 +67,19 @@ namespace FaceAttend.Areas.Admin.Controllers
                          })
                         .Take(10)
                         .ToList();
+
                     vm.DatabaseHealthy = true;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                // Non-fatal: dashboard renders with zeros and red DB health indicator.
+                // I-log ang error — hindi na anonymous catch.
+                System.Diagnostics.Trace.TraceError(
+                    "[Dashboard.Index] DB error: " + ex.Message);
                 vm.DatabaseHealthy = false;
             }
 
-            // ----------------------------------------------------------------
-            // System health checks — file presence only, no model loading.
-            // These are fast synchronous checks safe to run on every page load.
-            // ----------------------------------------------------------------
+            // Liveness model at Dlib models — file check lang, hindi naglo-load.
             vm.LivenessModelLoaded = CheckFileExists(
                 AppSettings.GetString("Biometrics:LivenessModelPath",
                     "~/App_Data/models/liveness/minifasnet.onnx"));
@@ -96,61 +88,125 @@ namespace FaceAttend.Areas.Admin.Controllers
                 AppSettings.GetString("Biometrics:DlibModelsDir",
                     "~/App_Data/models/dlib"));
 
-            // OfflineAssetsOk defaults to true in the ViewModel constructor.
-            // Extend here if you add offline asset checks (e.g. face-api.js wasm files).
             vm.OfflineAssetsOk = true;
+
+            // PHASE 2 FIX: Circuit breaker status para sa dashboard health card.
+            var circuitState = OnnxLiveness.GetCircuitState();
+            vm.LivenessCircuitOpen  = circuitState.IsOpen;
+            vm.LivenessCircuitStuck = circuitState.IsStuck;
 
             ViewBag.Title = "Dashboard";
             return View(vm);
         }
 
-        // -------------------------------------------------------------------
-        // Helpers
-        // -------------------------------------------------------------------
-
-        /// <summary>
-        /// Maps a virtual path (~/...) to a physical path and checks existence.
-        /// Returns false if the path is empty or the file does not exist.
-        /// </summary>
-        private static bool CheckFileExists(string virtualPath)
+        // ====================================================================
+        // KPI JSON — Lightweight endpoint para sa AJAX refresh ng dashboard
+        //
+        // PHASE 2 FIX (P-03): Palitan ang 60-segundo full page reload.
+        // Tinatawag ito ng JavaScript bawat 2 minuto para i-update ang mga
+        // KPI numbers nang HINDI nagre-reload ng buong page.
+        //
+        // Mga query: 5 COUNT queries lang — napakamura sa DB.
+        // Hindi kasama ang RecentLogs — para sa full refresh ng logs,
+        // kailangan ng manual na click ng admin.
+        // ====================================================================
+        [HttpGet]
+        public ActionResult KpiJson()
         {
-            if (string.IsNullOrWhiteSpace(virtualPath))
-                return false;
-
             try
             {
-                var physical = HostingEnvironment.MapPath(virtualPath);
-                return !string.IsNullOrWhiteSpace(physical) && System.IO.File.Exists(physical);
+                using (var db = new FaceAttendDBEntities())
+                {
+                    var todayUtc    = DateTime.UtcNow.Date;
+                    var tomorrowUtc = todayUtc.AddDays(1);
+
+                    var totalEmployees = db.Employees.Count(e => e.IsActive);
+                    var todayIns       = db.AttendanceLogs.Count(l =>
+                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc &&
+                        l.EventType == "IN");
+                    var todayOuts      = db.AttendanceLogs.Count(l =>
+                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc &&
+                        l.EventType == "OUT");
+                    var visitors       = db.Visitors.Count(v => v.IsActive);
+                    var pending        = db.AttendanceLogs.Count(l => l.NeedsReview);
+
+                    var circuit = OnnxLiveness.GetCircuitState();
+
+                    return Json(new
+                    {
+                        ok             = true,
+                        totalEmployees,
+                        todayIns,
+                        todayOuts,
+                        totalVisitors  = visitors,
+                        pendingReviews = pending,
+                        dbHealthy      = true,
+                        livenessCircuitOpen  = circuit.IsOpen,
+                        livenessCircuitStuck = circuit.IsStuck,
+                        serverTimeLocal = TimeZoneHelper.NowLocal().ToString("HH:mm:ss")
+                    }, JsonRequestBehavior.AllowGet);
+                }
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                System.Diagnostics.Trace.TraceError("[Dashboard.KpiJson] Error: " + ex.Message);
+                return Json(new { ok = false, dbHealthy = false }, JsonRequestBehavior.AllowGet);
             }
         }
 
-
-        /// <summary>
-        /// Checks whether the Dlib models directory exists and contains at least
-        /// one .dat file (the expected model format). A missing or empty directory
-        /// means Dlib face detection will fail at runtime.
-        /// </summary>
-        private static bool CheckDlibModelsPresent(string virtualDir)
+        // ====================================================================
+        // LIVENESS CIRCUIT RESET — Para sa admin kung nag-open ang circuit breaker
+        //
+        // PHASE 2 FIX (WC-07): Admin action para i-reset ang circuit breaker
+        // nang hindi kailangan ng IIS app pool recycle.
+        // ====================================================================
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult ResetLivenessCircuit()
         {
-            if (string.IsNullOrWhiteSpace(virtualDir))
-                return false;
             try
             {
-                var physical = HostingEnvironment.MapPath(virtualDir);
-                if (string.IsNullOrWhiteSpace(physical) || !Directory.Exists(physical))
-                    return false;
-
-                return Directory.EnumerateFiles(physical, "*.dat",
-                    SearchOption.TopDirectoryOnly).Any();
+                OnnxLiveness.ResetCircuit();
+                TempData["msg"]     = "Liveness circuit breaker na-reset. Maaari na ulit mag-scan.";
+                TempData["msgKind"] = "success";
             }
-            catch
+            catch (Exception ex)
             {
-                return false;
+                TempData["msg"]     = "Error: " + ex.Message;
+                TempData["msgKind"] = "danger";
             }
+
+            return RedirectToAction("Index");
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // Private helpers
+        // ────────────────────────────────────────────────────────────────────
+
+        private static bool CheckFileExists(string virtualPath)
+        {
+            if (string.IsNullOrWhiteSpace(virtualPath)) return false;
+            try
+            {
+                var abs = HostingEnvironment.MapPath(virtualPath);
+                return !string.IsNullOrEmpty(abs) && File.Exists(abs);
+            }
+            catch { return false; }
+        }
+
+        private static bool CheckDlibModelsPresent(string virtualDir)
+        {
+            if (string.IsNullOrWhiteSpace(virtualDir)) return false;
+            try
+            {
+                var abs = HostingEnvironment.MapPath(virtualDir);
+                if (string.IsNullOrEmpty(abs) || !Directory.Exists(abs)) return false;
+
+                // Kailangan ng dalawang model files para gumana ang Dlib.
+                var dat = Directory.GetFiles(abs, "*.dat", SearchOption.TopDirectoryOnly);
+                return dat.Length >= 2;
+            }
+            catch { return false; }
         }
     }
 }

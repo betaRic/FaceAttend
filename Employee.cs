@@ -34,6 +34,8 @@ namespace FaceAttend
         public string MiddleName { get; set; }
         public string LastName { get; set; }
         public string Position { get; set; }
+        public string FaceEncodingsJson { get; set; }
+        public System.DateTime CreatedDate { get; set; }
     
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
         public virtual ICollection<AttendanceLog> AttendanceLogs { get; set; }

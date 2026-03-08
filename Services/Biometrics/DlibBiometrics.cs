@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Web.Hosting;
 using FaceAttend.Services;
 using FaceRecognitionDotNet;
@@ -8,139 +10,260 @@ using FaceRecognitionDotNet;
 namespace FaceAttend.Services.Biometrics
 {
     /// <summary>
-    /// Wraps FaceRecognitionDotNet for face detection and encoding.
+    /// Nagbibigay ng face detection at encoding gamit ang FaceRecognitionDotNet (DLib).
     ///
-    /// Fix applied vs. original:
-    ///   The static FaceRecognition instance <c>_fr</c> was never disposed on app shutdown,
-    ///   leaking unmanaged DLib resources when IIS recycles the app pool.
-    ///   Added <see cref="DisposeInstance"/> to be called from Global.asax Application_End.
+    /// PHASE 2 FIX (P-01): Instance Pool Pattern — pinalitan ang single global lock.
     ///
-    /// NOTE on static lock scope:
-    ///   Both DetectFacesFromFile and GetSingleFaceEncodingFromFile hold _lock for the
-    ///   entire inference duration.  For a single-kiosk deployment this is fine.
-    ///   For multi-threaded deployments with concurrent scans, consider creating one
-    ///   DlibBiometrics instance per request (each with its own FaceRecognition snapshot)
-    ///   or upgrading to a reader-writer or pool pattern.
+    /// PROBLEMA DATI:
+    ///   Isang static FaceRecognition instance lang ang ginagamit, na naka-lock sa
+    ///   buong tagal ng inference. Ibig sabihin, lahat ng concurrent scans ay
+    ///   nagpipila — isa-isa silang nare-serve. Sa 10 users = 12 segundo ang hihintayin
+    ///   ng huli. Sa 30 users = 36 segundo = HTTP timeout na.
+    ///
+    /// SOLUSYON NGAYON:
+    ///   Pool ng N instances ng FaceRecognition (default: 4, configurable).
+    ///   Bawat instance ay nagse-serve ng isang request sa isang pagkakataon.
+    ///   Hanggang N scans ang pwedeng mag-parallel.
+    ///   Ang SemaphoreSlim ay ginagamit para mag-gate ng access sa pool —
+    ///   kapag puno na ang pool, naghe-hold ang request (max 30 segundo)
+    ///   bago mag-timeout na may malinaw na error.
+    ///
+    /// MEMORY COST:
+    ///   Bawat FaceRecognition instance (HOG model) ≈ 30-50 MB.
+    ///   4 instances ≈ 120-200 MB dagdag na RAM — katanggap-tanggap para sa server.
+    ///
+    /// PAANO MAG-CONFIGURE:
+    ///   Web.config: Biometrics:DlibPoolSize (default 4)
+    ///               Biometrics:DlibPoolTimeoutMs (default 30000 = 30 segundo)
+    ///
+    ///   Kung may 8 CPU cores ang server: pwedeng itaas sa 6-8.
+    ///   Kung mababa ang RAM: ibaba sa 2.
+    ///
+    /// NOTA:
+    ///   Ang FaceRecognition.Create() ay HINDI thread-safe (gumagamit ng dlib C++ objects).
+    ///   Kaya bawat instance ay sa isang thread lang ginagamit sa isang pagkakataon.
+    ///   Hindi ito katulad ng OnnxLiveness kung saan ang InferenceSession ay thread-safe.
     /// </summary>
     public class DlibBiometrics
     {
+        // ─── FaceBox DTO ──────────────────────────────────────────────────────────
+
         public class FaceBox
         {
-            public int Left { get; set; }
-            public int Top { get; set; }
-            public int Width { get; set; }
+            public int Left   { get; set; }
+            public int Top    { get; set; }
+            public int Width  { get; set; }
             public int Height { get; set; }
         }
 
-        private static readonly object _lock = new object();
-        private static FaceRecognition _fr;
-        private static Model _model;
+        // ─── Pool state ───────────────────────────────────────────────────────────
 
-        public DlibBiometrics()
+        // Ang pool ng FaceRecognition instances.
+        // ConcurrentBag: thread-safe na "bag" ng objects — walang ordering.
+        private static readonly ConcurrentBag<FaceRecognition> _pool =
+            new ConcurrentBag<FaceRecognition>();
+
+        // SemaphoreSlim: nagko-control kung gaano karaming concurrent users ang
+        // maaaring kumuha ng instance mula sa pool.
+        // Ini-initialize sa Application_Start pagkatapos mabasa ang config.
+        private static SemaphoreSlim _semaphore;
+
+        // Para malaman kung initialized na ang pool.
+        private static volatile bool _poolReady = false;
+        private static readonly object _initLock = new object();
+
+        // Ang model at models directory — ini-initialize minsan lang.
+        private static string _absModelsDir;
+        private static Model  _model;
+
+        // ─── Initialization ───────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Ini-initialize ang instance pool. Tinatawagin ito sa Application_Start
+        /// para mainit-init na ang pool bago pa man dumating ang unang request.
+        ///
+        /// Thread-safe: ligtas na tawagin ng maraming beses — ang double-check
+        /// locking ay nagtitigarantiya na isa lang ang mag-initialize.
+        /// </summary>
+        public static void InitializePool()
         {
-            EnsureInit();
-        }
+            // Fast path: kung initialized na, lumabas agad.
+            if (_poolReady) return;
 
-        private static void EnsureInit()
-        {
-            if (_fr != null) return;
-
-            lock (_lock)
+            lock (_initLock)
             {
-                if (_fr != null) return;
+                // Double-check: baka nag-initialize na ang ibang thread habang naghihintay.
+                if (_poolReady) return;
 
-                var modelsDir  = AppSettings.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
-                var detector   = AppSettings.GetString("Biometrics:DlibDetector", "hog");
-                var absModelsDir = HostingEnvironment.MapPath(modelsDir);
+                var modelsDir = AppSettings.GetString("Biometrics:DlibModelsDir",
+                    "~/App_Data/models/dlib");
+                var detector  = AppSettings.GetString("Biometrics:DlibDetector", "hog");
+                var poolSize  = AppSettings.GetInt("Biometrics:DlibPoolSize", 4);
+                var timeoutMs = AppSettings.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
 
-                if (string.IsNullOrWhiteSpace(absModelsDir) || !Directory.Exists(absModelsDir))
-                    throw new InvalidOperationException("Dlib models directory not found: " + modelsDir);
+                // Siguraduhing ang pool size ay nasa makatwirang hanay.
+                if (poolSize < 1)  poolSize = 1;
+                if (poolSize > 16) poolSize = 16;  // Huwag maglalagay ng sobrang dami
 
-                _fr    = FaceRecognition.Create(absModelsDir);
+                _absModelsDir = HostingEnvironment.MapPath(modelsDir);
+
+                if (string.IsNullOrWhiteSpace(_absModelsDir) ||
+                    !Directory.Exists(_absModelsDir))
+                {
+                    throw new InvalidOperationException(
+                        "Hindi mahanap ang Dlib models directory: " + modelsDir);
+                }
+
                 _model = detector.Equals("cnn", StringComparison.OrdinalIgnoreCase)
                     ? Model.Cnn
                     : Model.Hog;
+
+                // Gumawa ng pool instances.
+                // TALA: Ang FaceRecognition.Create() ay matagal (naglo-load ng mga model files).
+                // Kaya ginagawa ito sa Application_Start, hindi sa unang request.
+                _semaphore = new SemaphoreSlim(poolSize, poolSize);
+
+                for (int i = 0; i < poolSize; i++)
+                {
+                    _pool.Add(FaceRecognition.Create(_absModelsDir));
+                }
+
+                _poolReady = true;
             }
         }
 
         /// <summary>
-        /// Disposes the static FaceRecognition instance.
-        /// Call from <c>Global.asax Application_End</c>:
-        /// <code>
-        ///   protected void Application_End()
-        ///   {
-        ///       FaceAttend.Services.Biometrics.DlibBiometrics.DisposeInstance();
-        ///       FaceAttend.Services.Biometrics.OnnxLiveness.DisposeSession();
-        ///   }
-        /// </code>
+        /// Constructor — tinitiyak na initialized ang pool.
+        /// Para sa backward compatibility, ang existing na code na gumagamit ng
+        /// "new DlibBiometrics()" ay hindi na kailangang baguhin.
         /// </summary>
-        public static void DisposeInstance()
+        public DlibBiometrics()
         {
-            lock (_lock)
-            {
-                if (_fr != null)
-                {
-                    try { _fr.Dispose(); } catch { /* best effort */ }
-                    _fr = null;
-                }
-            }
+            EnsurePoolReady();
         }
 
+        /// <summary>
+        /// Tinitiyak na naka-initialize ang pool.
+        /// Kapag hindi pa naka-initialize (e.g. hindi natawag ang InitializePool sa startup),
+        /// ini-initialize ito inline — mas mabagal ang unang call pero hindi mag-crash.
+        /// </summary>
+        private static void EnsurePoolReady()
+        {
+            if (!_poolReady)
+                InitializePool();
+        }
+
+        // ─── Pool acquisition ─────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Kumukuha ng FaceRecognition instance mula sa pool.
+        /// Naghe-hold kung puno ang pool, hanggang sa DlibPoolTimeoutMs.
+        /// Nagrereturn ng null kapag nag-timeout.
+        ///
+        /// IMPORTANTENG GAMITIN KASAMA ANG using() PATTERN o try/finally
+        /// para matiyak na naibabalik ang instance sa pool:
+        ///
+        ///   var fr = RentInstance();
+        ///   if (fr == null) return null; // pool timeout
+        ///   try { /* gamitin ang fr */ }
+        ///   finally { ReturnInstance(fr); }
+        /// </summary>
+        private static FaceRecognition RentInstance()
+        {
+            EnsurePoolReady();
+
+            var timeoutMs = AppSettings.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
+
+            // Hintayin ang available na slot sa pool.
+            // Kapag nag-timeout, ibabalik ang null.
+            if (!_semaphore.Wait(timeoutMs))
+                return null; // Pool timeout — masyadong maraming concurrent scans.
+
+            // Kumuha ng instance mula sa bag.
+            FaceRecognition instance;
+            if (!_pool.TryTake(out instance))
+            {
+                // Hindi dapat mangyari (may semaphore tayo), pero safety net lang.
+                _semaphore.Release();
+                return null;
+            }
+
+            return instance;
+        }
+
+        /// <summary>
+        /// Ibinabalik ang isang instance sa pool pagkatapos gamitin.
+        /// LAGING tawagin ito sa finally block para hindi maubusan ang pool.
+        /// </summary>
+        private static void ReturnInstance(FaceRecognition instance)
+        {
+            if (instance == null) return;
+            _pool.Add(instance);
+            _semaphore.Release();
+        }
+
+        // ─── Public inference methods ─────────────────────────────────────────────
+
+        /// <summary>
+        /// Nagde-detect ng mga mukha mula sa isang image file.
+        /// Ginagamit sa admin enrollment preview at ScanFramePipeline.
+        /// </summary>
         public FaceBox[] DetectFacesFromFile(string imagePath)
         {
-            EnsureInit();
-            lock (_lock)
+            if (string.IsNullOrWhiteSpace(imagePath)) return Array.Empty<FaceBox>();
+
+            // Kumuha ng instance mula sa pool.
+            var fr = RentInstance();
+            if (fr == null)
+            {
+                // Nag-timeout ang pool — masyadong maraming concurrent scans.
+                // Ibalik ang empty array para ang caller ay mag-handle ng NO_FACE error.
+                return Array.Empty<FaceBox>();
+            }
+
+            try
             {
                 using (var img = FaceRecognition.LoadImageFile(imagePath))
                 {
-                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
-                    return locs.Select(l => new FaceBox
+                    var locs = fr.FaceLocations(
+                        img,
+                        numberOfTimesToUpsample: 0,
+                        model: _model).ToArray();
+
+                    return locs.Select(loc => new FaceBox
                     {
-                        Left   = l.Left,
-                        Top    = l.Top,
-                        Width  = Math.Max(0, l.Right  - l.Left),
-                        Height = Math.Max(0, l.Bottom - l.Top)
+                        Left   = loc.Left,
+                        Top    = loc.Top,
+                        Width  = Math.Max(0, loc.Right  - loc.Left),
+                        Height = Math.Max(0, loc.Bottom - loc.Top)
                     }).ToArray();
                 }
             }
-        }
-
-        public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
-        {
-            error = null;
-            EnsureInit();
-
-            lock (_lock)
+            finally
             {
-                using (var img = FaceRecognition.LoadImageFile(imagePath))
-                {
-                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
-                    if (locs.Length == 0) { error = "NO_FACE";      return null; }
-                    if (locs.Length > 1)  { error = "MULTI_FACE";   return null; }
-
-                    var enc = _fr.FaceEncodings(img, new[] { locs[0] }).FirstOrDefault();
-                    if (enc == null) { error = "ENCODING_FAIL"; return null; }
-
-                    return enc.GetRawEncoding();
-                }
+                // LAGING ibalik ang instance — kahit nag-throw ng exception.
+                ReturnInstance(fr);
             }
         }
 
-        
         /// <summary>
-        /// Detects exactly one face and returns both its bounding box and the underlying
-        /// FaceRecognitionDotNet <see cref="Location"/>. Use this to avoid running
-        /// FaceLocations twice in the kiosk pipeline.
+        /// Nagde-detect ng isang mukha at nagbibigay ng Location object
+        /// para gamitin sa encoding (para hindi na kailangang mag-detect ulit).
+        ///
+        /// Returns false kapag:
+        ///   - Walang nakitang mukha (error = "NO_FACE")
+        ///   - Maraming mukha (error = "MULTI_FACE")
+        ///   - Nag-timeout ang pool (error = "POOL_TIMEOUT")
         /// </summary>
         public bool TryDetectSingleFaceFromFile(
-            string imagePath,
+            string      imagePath,
             out FaceBox faceBox,
             out Location faceLocation,
-            out string error)
+            out string  error)
         {
-            faceBox = null;
+            faceBox      = null;
             faceLocation = default(Location);
-            error = null;
+            error        = null;
 
             if (string.IsNullOrWhiteSpace(imagePath))
             {
@@ -148,44 +271,58 @@ namespace FaceAttend.Services.Biometrics
                 return false;
             }
 
-            EnsureInit();
+            var fr = RentInstance();
+            if (fr == null)
+            {
+                error = "POOL_TIMEOUT";
+                return false;
+            }
 
-            lock (_lock)
+            try
             {
                 using (var img = FaceRecognition.LoadImageFile(imagePath))
                 {
-                    var locs = _fr.FaceLocations(img, numberOfTimesToUpsample: 0, model: _model).ToArray();
-                    if (locs.Length == 0) { error = "NO_FACE"; return false; }
+                    var locs = fr.FaceLocations(
+                        img,
+                        numberOfTimesToUpsample: 0,
+                        model: _model).ToArray();
+
+                    if (locs.Length == 0) { error = "NO_FACE";    return false; }
                     if (locs.Length > 1)  { error = "MULTI_FACE"; return false; }
 
-                    var loc = locs[0];
+                    var loc      = locs[0];
                     faceLocation = loc;
-
-                    faceBox = new FaceBox
+                    faceBox      = new FaceBox
                     {
                         Left   = loc.Left,
                         Top    = loc.Top,
-                        Width  = Math.Max(0, loc.Right - loc.Left),
+                        Width  = Math.Max(0, loc.Right  - loc.Left),
                         Height = Math.Max(0, loc.Bottom - loc.Top)
                     };
 
                     return true;
                 }
             }
+            finally
+            {
+                ReturnInstance(fr);
+            }
         }
 
         /// <summary>
-        /// Encodes a face using a known <see cref="Location"/> (skips FaceLocations).
-        /// Call this after liveness passes to avoid expensive work on spoof frames.
+        /// Nag-e-encode ng mukha gamit ang kilalang Location (hindi na kailangang
+        /// mag-detect ulit — mas mabilis ito).
+        ///
+        /// Ginagamit pagkatapos ng liveness check para maiwasan ang double detection.
         /// </summary>
         public bool TryEncodeFromFileWithLocation(
-            string imagePath,
+            string   imagePath,
             Location faceLocation,
             out double[] embedding,
-            out string error)
+            out string   error)
         {
             embedding = null;
-            error = null;
+            error     = null;
 
             if (string.IsNullOrWhiteSpace(imagePath))
             {
@@ -193,25 +330,68 @@ namespace FaceAttend.Services.Biometrics
                 return false;
             }
 
-            EnsureInit();
+            var fr = RentInstance();
+            if (fr == null)
+            {
+                error = "POOL_TIMEOUT";
+                return false;
+            }
 
-            lock (_lock)
+            try
             {
                 using (var img = FaceRecognition.LoadImageFile(imagePath))
                 {
-                    var enc = _fr.FaceEncodings(img, new[] { faceLocation }).FirstOrDefault();
+                    var enc = fr.FaceEncodings(img, new[] { faceLocation })
+                               .FirstOrDefault();
+
                     if (enc == null) { error = "ENCODING_FAIL"; return false; }
 
                     embedding = enc.GetRawEncoding();
                     return true;
                 }
             }
+            finally
+            {
+                ReturnInstance(fr);
+            }
         }
 
-// -------------------------------------------------------------------
-        // Static helpers (unchanged)
-        // -------------------------------------------------------------------
+        // ─── Disposal ─────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Nililinis ang lahat ng FaceRecognition instances sa pool.
+        /// Tawagin ito sa Global.asax Application_End para ma-release ang
+        /// unmanaged dlib resources bago mag-shutdown ang IIS app pool.
+        ///
+        /// Thread-safe: ligtas na tawagin kahit may ongoing requests,
+        /// kahit na magreresulta ito sa POOL_TIMEOUT errors para sa mga
+        /// requests na dumating habang nag-shutdown.
+        /// </summary>
+        public static void DisposePool()
+        {
+            lock (_initLock)
+            {
+                _poolReady = false;
+
+                // Alisin at i-dispose ang lahat ng instances.
+                while (_pool.TryTake(out var fr))
+                {
+                    try { fr.Dispose(); } catch { /* best effort */ }
+                }
+
+                // I-dispose ang semaphore.
+                try { _semaphore?.Dispose(); } catch { /* best effort */ }
+                _semaphore = null;
+            }
+        }
+
+        // ─── Static helpers (unchanged) ───────────────────────────────────────────
+
+        /// <summary>
+        /// Kinakalkula ang Euclidean distance sa pagitan ng dalawang 128-dim vectors.
+        /// Mas mababa ang distance = mas magkahawig ang mga mukha.
+        /// Typical threshold: 0.60 (configurable sa Biometrics:DlibTolerance).
+        /// </summary>
         public static double Distance(double[] a, double[] b)
         {
             if (a == null || b == null || a.Length != b.Length)
@@ -226,6 +406,10 @@ namespace FaceAttend.Services.Biometrics
             return Math.Sqrt(sum);
         }
 
+        /// <summary>
+        /// Kino-convert ang 128-dim double vector papunta sa byte array
+        /// para ma-store sa database.
+        /// </summary>
         public static byte[] EncodeToBytes(double[] v)
         {
             if (v == null || v.Length != 128) return null;
@@ -238,6 +422,9 @@ namespace FaceAttend.Services.Biometrics
             return bytes;
         }
 
+        /// <summary>
+        /// Kino-convert ang byte array mula sa database papunta sa 128-dim double vector.
+        /// </summary>
         public static double[] DecodeFromBytes(byte[] bytes)
         {
             if (bytes == null || bytes.Length != 128 * 8) return null;

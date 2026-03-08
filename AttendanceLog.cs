@@ -40,6 +40,10 @@ namespace FaceAttend
         public string UserAgent { get; set; }
         public bool NeedsReview { get; set; }
         public string Notes { get; set; }
+        public string OfficeCode { get; set; }
+        public string ProvinceName { get; set; }
+        public string HUCName { get; set; }
+        public bool IsAutoRecorded { get; set; }
     
         public virtual Employee Employee { get; set; }
         public virtual Office Office { get; set; }

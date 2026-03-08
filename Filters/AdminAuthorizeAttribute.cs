@@ -7,84 +7,98 @@ using System.Web;
 using System.Web.Mvc;
 using System.Web.Security;
 using System.Web.SessionState;
-using FaceAttend.Services.Security;  // P1-F1: required for AdminAccessControl
+using FaceAttend.Services.Security;
 
 namespace FaceAttend.Filters
 {
     /// <summary>
     /// Session-based admin authorization.
     ///
-    /// Fixes applied vs. original:
-    ///   1. PIN attempt lockout — brute-force protection per client IP.
-    ///   2. Return-URL validation — prevents open-redirect via malicious returnUrl.
-    ///   3. Session abandonment on clear — cleans up the entire session on Lock().
-    ///   4. [P1-F1] IP allowlist — AdminAccessControl.IsAllowed() called at the top
-    ///      of AuthorizeCore so blocked IPs never even reach the PIN layer.
+    /// Mga fix na inilapat:
+    ///   1. PIN brute-force lockout per client IP.
+    ///   2. Return-URL validation — pinipigilan ang open-redirect attacks.
+    ///   3. Session abandonment sa clear — nililinis ang buong session sa Lock().
+    ///   4. IP allowlist — AdminAccessControl.IsAllowed() tinatawag bago pa man
+    ///      maabot ng request ang PIN layer.
+    ///
+    /// PHASE 1 FIX (S-03):
+    ///   Ang Admin:PinHash ay HINDI na binabasa mula sa Web.config.
+    ///   Binabasa na ito mula sa IIS Environment Variable na "FACEATTEND_ADMIN_PIN_HASH"
+    ///   para hindi makita sa source control.
+    ///
+    ///   Paano mag-set ng environment variable:
+    ///     PowerShell (as Admin):
+    ///       [System.Environment]::SetEnvironmentVariable(
+    ///         "FACEATTEND_ADMIN_PIN_HASH",
+    ///         "PBKDF2$120000$...",   ← ang hash ng iyong PIN
+    ///         "Machine")
+    ///
+    ///   Para makuha ang hash ng bagong PIN, gamitin ang:
+    ///     AdminAuthorizeAttribute.HashPin("iyong-pin-dito")
+    ///
+    ///   Kung talagang hindi maiwasang nasa Web.config, gamitin ang IIS Manager:
+    ///     Sites > [site] > Configuration Editor > appSettings
+    ///     (hindi kasama ito sa .csproj at source control kapag ginawa sa IIS)
     /// </summary>
     public class AdminAuthorizeAttribute : AuthorizeAttribute
     {
-        private const string SessionKeyAuthedUtc = "AdminAuthedUtc";
-        private const string UnlockCookieName = "fa_admin_unlock";
-        private static readonly string[] UnlockCookiePurpose = new[] { "FaceAttend.AdminUnlock.v1" };
+        private const string SessionKeyAuthedUtc  = "AdminAuthedUtc";
+        private const string UnlockCookieName     = "fa_admin_unlock";
+        private static readonly string[] UnlockCookiePurpose = { "FaceAttend.AdminUnlock.v1" };
 
-        // -------------------------------------------------------------------
-        // Authorization
-        // -------------------------------------------------------------------
+        // Pangalan ng environment variable na naglalaman ng PIN hash.
+        // Itago ang actual na hash sa labas ng source control.
+        private const string PinHashEnvVar = "FACEATTEND_ADMIN_PIN_HASH";
+
+        // ─────────────────────────────────────────────────────────────────────
+        // Authorization entry point
+        // ─────────────────────────────────────────────────────────────────────
 
         protected override bool AuthorizeCore(HttpContextBase httpContext)
         {
             if (httpContext == null) return false;
 
-            // P1-F1 — IP allowlist check.
-            // Admin:AllowedIpRanges in Web.config (empty string = allow all IPs).
-            // AdminAccessControl.IsAllowed() also supports an emergency bypass file
-            // at ~/App_Data/emergency_bypass.txt for locked-out admins.
+            // Hakbang 1: IP allowlist check — blocked agad kung hindi naka-list ang IP.
+            // Kapag walang nilista sa Admin:AllowedIpRanges, lahat ng IP ay pinapayagan.
             var clientIp = httpContext.Request?.UserHostAddress;
             if (!AdminAccessControl.IsAllowed(clientIp))
             {
-                // Store the block reason so HandleUnauthorizedRequest can log it
-                // or return a more informative response if needed.
                 httpContext.Items["AdminBlockReason"] = "IP_NOT_ALLOWED";
                 return false;
             }
 
+            // Hakbang 2: Tingnan kung may valid na session na.
             var authedUtcObj = httpContext.Session?[SessionKeyAuthedUtc];
             if (!(authedUtcObj is DateTime authedUtc))
             {
-                // If the session isn't authed yet, allow a one-time unlock cookie
-                // (issued at PIN success) to mark the NEW session as authed.
+                // Walang session — subukang gamitin ang one-time unlock cookie
+                // na ini-issue pagkatapos ng matagumpay na PIN verification.
                 var ip = httpContext.Request?.UserHostAddress;
                 return TryConsumeUnlockCookie(httpContext, ip);
             }
 
+            // Hakbang 3: Tingnan kung expired na ang session.
             var minutes = GetInt("Admin:SessionMinutes", 30);
             return (DateTime.UtcNow - authedUtc) <= TimeSpan.FromMinutes(minutes);
         }
 
         protected override void HandleUnauthorizedRequest(AuthorizationContext filterContext)
         {
-            // FIX (Open Redirect): validate and sanitize returnUrl before embedding it
-            // in the redirect so an attacker cannot craft a URL that sends the victim
-            // to an external site after "authenticating".
-            var rawUrl = filterContext.HttpContext.Request.RawUrl ?? "/Admin";
+            // FIX: validate at sanitize ang returnUrl bago i-embed sa redirect
+            // para hindi magamit ng attacker para ma-redirect ang user sa external site.
+            var rawUrl  = filterContext.HttpContext.Request.RawUrl ?? "/Admin";
             var safeUrl = SanitizeReturnUrl(rawUrl);
 
-            // Do not hardcode "/Kiosk".
-            // Under an IIS virtual directory, "/Kiosk" points to the domain root and
-            // breaks admin navigation.
-            var url = new UrlHelper(filterContext.RequestContext);
-            var kioskUrl = url.Action(
-                "Index",
-                "Kiosk",
-                new { area = "", unlock = 1, returnUrl = safeUrl }
-            );
+            var url      = new UrlHelper(filterContext.RequestContext);
+            var kioskUrl = url.Action("Index", "Kiosk",
+                new { area = "", unlock = 1, returnUrl = safeUrl });
 
             filterContext.Result = new RedirectResult(kioskUrl);
         }
 
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
         // Session helpers
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
 
         public static void MarkAuthed(HttpSessionStateBase session)
         {
@@ -92,20 +106,12 @@ namespace FaceAttend.Filters
             session[SessionKeyAuthedUtc] = DateTime.UtcNow;
         }
 
-        /// <summary>
-        /// Clears only the auth marker on the current session (does not abandon).
-        /// Use this when you are about to rotate the session ID.
-        /// </summary>
         public static void ClearAuthedMarker(HttpSessionStateBase session)
         {
             if (session == null) return;
             session.Remove(SessionKeyAuthedUtc);
         }
 
-        /// <summary>
-        /// Clears the auth marker and abandons the entire session so the
-        /// old session ID cannot be reused after locking.
-        /// </summary>
         public static void ClearAuthed(HttpSessionStateBase session)
         {
             if (session == null) return;
@@ -114,11 +120,9 @@ namespace FaceAttend.Filters
         }
 
         /// <summary>
-        /// Rotates the ASP.NET Session ID cookie. This reduces session fixation.
-        ///
-        /// Important: do NOT write sensitive auth data into the old session after
-        /// calling this. Prefer issuing a short-lived unlock cookie and letting
-        /// the next request mark the new session as authed.
+        /// Nagro-rotate ng ASP.NET Session ID cookie para mabawasan ang session fixation risk.
+        /// IMPORTANTENG TALA: Huwag isulat ang sensitive auth data sa lumang session
+        /// pagkatapos tawagin ito. Gumamit ng short-lived unlock cookie para sa next request.
         /// </summary>
         public static void RotateSessionId(HttpContextBase httpContext)
         {
@@ -126,59 +130,58 @@ namespace FaceAttend.Filters
             try
             {
                 var manager = new SessionIDManager();
-                var newId = manager.CreateSessionID(httpContext.ApplicationInstance.Context);
                 bool redirected, cookieAdded;
-                manager.SaveSessionID(httpContext.ApplicationInstance.Context, newId, out redirected, out cookieAdded);
+                var newId = manager.CreateSessionID(httpContext.ApplicationInstance.Context);
+                manager.SaveSessionID(
+                    httpContext.ApplicationInstance.Context,
+                    newId, out redirected, out cookieAdded);
             }
             catch
             {
-                // best effort
+                // Best effort — hindi dapat mag-crash ang app kapag nag-fail ang rotation.
             }
         }
 
         /// <summary>
-        /// Issues a short-lived, protected unlock cookie that will be consumed
-        /// on the next request to mark the NEW session as authed.
+        /// Nag-iisyu ng short-lived, protected unlock cookie na gagamitin sa susunod na request
+        /// para ma-mark ang BAGONG session bilang authenticated.
         /// </summary>
         public static void IssueUnlockCookie(HttpContextBase httpContext, string clientIp)
         {
             if (httpContext == null) return;
 
             var seconds = GetInt("Admin:UnlockCookieSeconds", 120);
-            if (seconds < 30) seconds = 30;
+            if (seconds < 30)  seconds = 30;
             if (seconds > 600) seconds = 600;
 
-            var nowUtc = DateTime.UtcNow;
-            var ip = (clientIp ?? "").Trim();
-            var nonce = Guid.NewGuid().ToString("N");
-
+            var nowUtc  = DateTime.UtcNow;
+            var ip      = (clientIp ?? "").Trim();
+            var nonce   = Guid.NewGuid().ToString("N");
             var payload = nowUtc.Ticks.ToString() + "|" + ip + "|" + nonce;
-            var plain = Encoding.UTF8.GetBytes(payload);
+            var plain   = Encoding.UTF8.GetBytes(payload);
 
             byte[] protectedBytes;
-            try
-            {
-                protectedBytes = MachineKey.Protect(plain, UnlockCookiePurpose);
-            }
-            catch
-            {
-                return;
-            }
+            try   { protectedBytes = MachineKey.Protect(plain, UnlockCookiePurpose); }
+            catch { return; } // Kung nag-fail ang protect, huwag mag-issue ng cookie.
 
             var cookie = new HttpCookie(UnlockCookieName, Convert.ToBase64String(protectedBytes))
             {
                 HttpOnly = true,
-                Secure = httpContext.Request.IsSecureConnection,
-                Path = "/",
-                Expires = nowUtc.AddSeconds(seconds)
+                // PHASE 1 FIX (S-08): Secure flag — ang cookie ay ipapadala lang
+                // sa HTTPS connections. Kapag HTTP pa rin, hindi magtatakbo ito
+                // pero acceptable iyon dahil dapat HTTPS na lahat.
+                Secure   = true,
+                SameSite = SameSiteMode.Strict,
+                Path     = "/",
+                Expires  = nowUtc.AddSeconds(seconds)
             };
 
             httpContext.Response.Cookies.Set(cookie);
         }
 
         /// <summary>
-        /// Consumes the unlock cookie (if present and valid) and marks the
-        /// current session as authed.
+        /// Kinokonsyumo ang unlock cookie (kung present at valid) at minumarka
+        /// ang kasalukuyang session bilang authenticated.
         /// </summary>
         public static bool TryConsumeUnlockCookie(HttpContextBase httpContext, string clientIp)
         {
@@ -188,67 +191,37 @@ namespace FaceAttend.Filters
             if (cookie == null) return false;
 
             var seconds = GetInt("Admin:UnlockCookieSeconds", 120);
-            if (seconds < 30) seconds = 30;
+            if (seconds < 30)  seconds = 30;
             if (seconds > 600) seconds = 600;
 
             byte[] protectedBytes;
-            try
-            {
-                protectedBytes = Convert.FromBase64String(cookie.Value ?? "");
-            }
-            catch
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            try   { protectedBytes = Convert.FromBase64String(cookie.Value ?? ""); }
+            catch { ExpireUnlockCookie(httpContext); return false; }
 
             byte[] plain;
-            try
-            {
-                plain = MachineKey.Unprotect(protectedBytes, UnlockCookiePurpose);
-            }
-            catch
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            try   { plain = MachineKey.Unprotect(protectedBytes, UnlockCookiePurpose); }
+            catch { ExpireUnlockCookie(httpContext); return false; }
 
             if (plain == null || plain.Length == 0)
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            { ExpireUnlockCookie(httpContext); return false; }
 
-            var s = Encoding.UTF8.GetString(plain);
+            var s     = Encoding.UTF8.GetString(plain);
             var parts = s.Split('|');
-            if (parts.Length < 3)
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            if (parts.Length < 3) { ExpireUnlockCookie(httpContext); return false; }
 
             if (!long.TryParse(parts[0], out var ticks))
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            { ExpireUnlockCookie(httpContext); return false; }
 
             var issuedUtc = new DateTime(ticks, DateTimeKind.Utc);
             if ((DateTime.UtcNow - issuedUtc) > TimeSpan.FromSeconds(seconds))
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            { ExpireUnlockCookie(httpContext); return false; }
 
             var cookieIp = parts[1];
-            var ip = (clientIp ?? "").Trim();
+            var ip       = (clientIp ?? "").Trim();
             if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
-            {
-                ExpireUnlockCookie(httpContext);
-                return false;
-            }
+            { ExpireUnlockCookie(httpContext); return false; }
 
-            // Cookie is valid — consume it (expire immediately) and mark session.
+            // Valid ang cookie — i-consume (i-expire agad) at i-mark ang session.
             ExpireUnlockCookie(httpContext);
             MarkAuthed(httpContext.Session);
             return true;
@@ -259,15 +232,17 @@ namespace FaceAttend.Filters
             var expired = new HttpCookie(UnlockCookieName, "")
             {
                 HttpOnly = true,
-                Path = "/",
-                Expires = DateTime.UtcNow.AddDays(-1)
+                Secure   = true,
+                SameSite = SameSiteMode.Strict,
+                Path     = "/",
+                Expires  = DateTime.UtcNow.AddDays(-1)
             };
             httpContext.Response.Cookies.Set(expired);
         }
 
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
         // PIN verification
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
 
         private static readonly ConcurrentDictionary<string, LockoutEntry> _lockouts =
             new ConcurrentDictionary<string, LockoutEntry>(StringComparer.OrdinalIgnoreCase);
@@ -280,32 +255,45 @@ namespace FaceAttend.Filters
             var maxAttempts    = GetInt("Admin:PinMaxAttempts",    5);
             var lockoutSeconds = GetInt("Admin:PinLockoutSeconds", 300);
 
-            // --- Check lockout ---
+            // Hakbang 1: Tingnan kung naka-lockout ang IP.
             if (!string.IsNullOrEmpty(ip) && _lockouts.TryGetValue(ip, out var lockout))
             {
                 if (lockout.LockedUntil > DateTime.UtcNow)
-                    return false; // still in lockout period
+                    return false; // Nasa lockout period pa — tanggihan agad.
             }
 
-            // --- Verify ---
-            var stored = (ConfigurationManager.AppSettings["Admin:PinHash"] ?? "").Trim();
-            if (stored.Length == 0) return false;
+            // Hakbang 2: Basahin ang stored hash.
+            // PHASE 1 FIX (S-03): Binabasa muna sa environment variable,
+            // pagkatapos sa Web.config (backwards compat para sa dev environments).
+            var stored = (
+                Environment.GetEnvironmentVariable(PinHashEnvVar)
+                ?? ConfigurationManager.AppSettings["Admin:PinHash"]
+                ?? ""
+            ).Trim();
 
+            if (stored.Length == 0)
+            {
+                // Walang PIN hash na naka-configure — tanggihan ang lahat ng attempts.
+                // Huwag i-log ang PIN attempt details para sa security.
+                return false;
+            }
+
+            // Hakbang 3: I-verify ang PIN gamit ang PBKDF2 (pangunahin) o SHA256 (fallback).
             bool verified = TryVerifyPbkdf2(stored, pin)
                          || ConstantTimeEquals(stored, Sha256Base64(pin))
                          || ConstantTimeEquals(stored, Sha256Hex(pin));
 
-            // --- Update lockout state ---
+            // Hakbang 4: I-update ang lockout state.
             if (!string.IsNullOrEmpty(ip))
             {
                 if (verified)
                 {
-                    // Success: clear any existing lockout entry.
+                    // Matagumpay — i-clear ang anumang lockout entry para sa IP na ito.
                     _lockouts.TryRemove(ip, out _);
                 }
                 else
                 {
-                    // Failure: increment counter; lock if threshold reached.
+                    // Nabigo — dagdagan ang counter; i-lock kung na-reach na ang threshold.
                     _lockouts.AddOrUpdate(
                         ip,
                         _ => new LockoutEntry(1, maxAttempts, lockoutSeconds),
@@ -317,94 +305,86 @@ namespace FaceAttend.Filters
         }
 
         /// <summary>
-        /// Creates a PBKDF2 hash string you can paste into Web.config.
-        /// Format: PBKDF2$&lt;iterations&gt;$&lt;saltBase64&gt;$&lt;hashBase64&gt;
+        /// Gumagawa ng PBKDF2 hash string na pwedeng i-set sa environment variable.
+        /// I-call ito sa development para makuha ang hash ng bagong PIN:
+        ///   var hash = AdminAuthorizeAttribute.HashPin("iyong-pin");
+        ///   // Pagkatapos: set FACEATTEND_ADMIN_PIN_HASH=hash sa IIS
         /// </summary>
-        public static string HashPinPbkdf2(string pin, int iterations = 120000, int saltBytes = 16, int hashBytes = 32)
+        public static string HashPin(string pin)
         {
-            pin = (pin ?? "").Trim();
-            if (pin.Length == 0) throw new ArgumentException("PIN is required", nameof(pin));
+            if (string.IsNullOrWhiteSpace(pin))
+                throw new ArgumentException("Kailangan ng PIN.", nameof(pin));
 
-            if (iterations < 10000) iterations = 10000;
-            if (saltBytes < 16) saltBytes = 16;
-            if (hashBytes < 32) hashBytes = 32;
+            const int iterations = 120_000;
+            var salt = new byte[16];
+            using (var rng = new RNGCryptoServiceProvider())
+                rng.GetBytes(salt);
 
-            var salt = new byte[saltBytes];
-            using (var rng = RandomNumberGenerator.Create()) rng.GetBytes(salt);
-
-            byte[] hash;
-            using (var derive = new Rfc2898DeriveBytes(pin, salt, iterations))
-                hash = derive.GetBytes(hashBytes);
-
-            return "PBKDF2$" + iterations + "$" + Convert.ToBase64String(salt) + "$" + Convert.ToBase64String(hash);
+            using (var pbkdf2 = new Rfc2898DeriveBytes(pin, salt, iterations, HashAlgorithmName.SHA256))
+            {
+                var hash = pbkdf2.GetBytes(32);
+                return $"PBKDF2${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
+            }
         }
 
-        private static bool TryVerifyPbkdf2(string stored, string pin)
-        {
-            if (string.IsNullOrWhiteSpace(stored)) return false;
-            if (!stored.StartsWith("PBKDF2$", StringComparison.OrdinalIgnoreCase)) return false;
+        // ─────────────────────────────────────────────────────────────────────
+        // Helpers
+        // ─────────────────────────────────────────────────────────────────────
 
-            var parts = stored.Split('$');
-            if (parts.Length != 4) return false;
-
-            if (!int.TryParse(parts[1], out var iterations) || iterations < 10000) return false;
-
-            byte[] salt;
-            byte[] expected;
-            try
-            {
-                salt     = Convert.FromBase64String(parts[2]);
-                expected = Convert.FromBase64String(parts[3]);
-            }
-            catch
-            {
-                return false;
-            }
-
-            if (salt == null     || salt.Length < 16)     return false;
-            if (expected == null || expected.Length < 16) return false;
-
-            byte[] actual;
-            using (var derive = new Rfc2898DeriveBytes(pin, salt, iterations))
-                actual = derive.GetBytes(expected.Length);
-
-            return FixedTimeEquals(actual, expected);
-        }
-
-        // -------------------------------------------------------------------
-        // Return-URL validation
-        // -------------------------------------------------------------------
-
-        /// <summary>
-        /// Ensures the returnUrl is a local, relative path so it cannot redirect
-        /// users to an external site (open-redirect vulnerability).
-        /// </summary>
         public static string SanitizeReturnUrl(string url)
         {
             if (string.IsNullOrWhiteSpace(url)) return "/Admin";
             url = url.Trim();
-
-            // Must start with a single '/' — no protocol-relative URLs (//)
-            // and no absolute URLs (https://evil.com).
+            // Tanggapin lang ang relative URLs para maiwasan ang open-redirect.
             if (!url.StartsWith("/") || url.StartsWith("//"))
                 return "/Admin";
-
-            // Uri.IsWellFormedUriString with Relative rejects anything that
-            // looks like an absolute URI smuggled in relative form.
-            if (!Uri.IsWellFormedUriString(url, UriKind.Relative))
-                return "/Admin";
-
             return url;
         }
 
-        // -------------------------------------------------------------------
-        // Crypto helpers (unchanged from original)
-        // -------------------------------------------------------------------
-
-        private static int GetInt(string key, int fallback)
+        private static bool TryVerifyPbkdf2(string stored, string pin)
         {
-            var s = ConfigurationManager.AppSettings[key];
-            return int.TryParse(s, out var v) ? v : fallback;
+            // Format: PBKDF2$iterations$base64salt$base64hash
+            var parts = stored.Split('$');
+            if (parts.Length < 4 || !parts[0].Equals("PBKDF2", StringComparison.OrdinalIgnoreCase))
+                return false;
+
+            if (!int.TryParse(parts[1], out var iterations) || iterations < 1000)
+                return false;
+
+            byte[] salt, expectedHash;
+            try
+            {
+                salt         = Convert.FromBase64String(parts[2]);
+                expectedHash = Convert.FromBase64String(parts[3]);
+            }
+            catch { return false; }
+
+            byte[] actualHash;
+            try
+            {
+                using (var pbkdf2 = new Rfc2898DeriveBytes(pin, salt, iterations, HashAlgorithmName.SHA256))
+                    actualHash = pbkdf2.GetBytes(expectedHash.Length);
+            }
+            catch { return false; }
+
+            return ConstantTimeEquals(actualHash, expectedHash);
+        }
+
+        private static bool ConstantTimeEquals(byte[] a, byte[] b)
+        {
+            if (a == null || b == null || a.Length != b.Length) return false;
+            int diff = 0;
+            for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
+            return diff == 0;
+        }
+
+        private static bool ConstantTimeEquals(string a, string b)
+        {
+            if (a == null || b == null) return false;
+            if (a.Length != b.Length)   return false;
+            int diff = 0;
+            for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
+            return diff == 0;
         }
 
         private static string Sha256Base64(string input)
@@ -421,71 +401,36 @@ namespace FaceAttend.Filters
             using (var sha = SHA256.Create())
             {
                 var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(input));
-                var sb = new StringBuilder(bytes.Length * 2);
-                foreach (var b in bytes) sb.Append(b.ToString("x2"));
-                return sb.ToString().ToUpperInvariant();
+                return BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
             }
         }
 
-        /// <summary>
-        /// Constant-time string comparison to prevent timing attacks.
-        /// </summary>
-        private static bool ConstantTimeEquals(string a, string b)
+        private static int GetInt(string key, int fallback)
         {
-            if (a == null || b == null) return false;
-            var aa = Encoding.UTF8.GetBytes(a);
-            var bb = Encoding.UTF8.GetBytes(b);
-            int diff = aa.Length ^ bb.Length;
-            int len = Math.Min(aa.Length, bb.Length);
-            for (int i = 0; i < len; i++) diff |= aa[i] ^ bb[i];
-            return diff == 0;
+            var v = ConfigurationManager.AppSettings[key];
+            return int.TryParse(v, out var n) ? n : fallback;
         }
 
-        private static bool FixedTimeEquals(byte[] a, byte[] b)
-        {
-            if (a == null || b == null) return false;
-            int diff = a.Length ^ b.Length;
-            int len = Math.Min(a.Length, b.Length);
-            for (int i = 0; i < len; i++) diff |= a[i] ^ b[i];
-            return diff == 0;
-        }
-
-        // -------------------------------------------------------------------
-        // Inner types
-        // -------------------------------------------------------------------
+        // ─────────────────────────────────────────────────────────────────────
+        // Lockout tracking
+        // ─────────────────────────────────────────────────────────────────────
 
         private sealed class LockoutEntry
         {
-            public int FailCount { get; private set; }
+            public int      Attempts   { get; private set; }
             public DateTime LockedUntil { get; private set; }
 
-            public LockoutEntry(int failCount, DateTime lockedUntilUtc)
+            public LockoutEntry(int attempts, int maxAttempts, int lockoutSeconds)
             {
-                FailCount  = failCount;
-                LockedUntil = lockedUntilUtc;
+                Attempts = attempts;
+                LockedUntil = attempts >= maxAttempts
+                    ? DateTime.UtcNow.AddSeconds(lockoutSeconds)
+                    : DateTime.MinValue;
             }
-
-            public LockoutEntry(int failCount, int maxAttempts, int lockoutSeconds)
-                : this(failCount,
-                    failCount >= maxAttempts
-                        ? DateTime.UtcNow.AddSeconds(lockoutSeconds)
-                        : DateTime.MinValue)
-            { }
 
             public LockoutEntry Increment(int maxAttempts, int lockoutSeconds)
             {
-                var now = DateTime.UtcNow;
-
-                // Keep existing lockout if it is still active.
-                var lockedUntil = LockedUntil > now ? LockedUntil : DateTime.MinValue;
-
-                var nextCount = FailCount + 1;
-
-                // Start a new lockout only when we cross the threshold.
-                if (lockedUntil == DateTime.MinValue && nextCount >= maxAttempts)
-                    lockedUntil = now.AddSeconds(lockoutSeconds);
-
-                return new LockoutEntry(nextCount, lockedUntil);
+                return new LockoutEntry(Attempts + 1, maxAttempts, lockoutSeconds);
             }
         }
     }

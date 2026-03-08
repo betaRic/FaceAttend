@@ -1,10 +1,11 @@
+using System;
+using System.Threading.Tasks;
+using System.Web;
 using System.Web.Mvc;
 using System.Web.Optimization;
 using System.Web.Routing;
-using System.Threading.Tasks;
-using System;
-using System.Web;
-using FaceAttend.Services.Biometrics;  // P1-F2: required for DlibBiometrics + OnnxLiveness
+using FaceAttend.Services;
+using FaceAttend.Services.Biometrics;
 
 namespace FaceAttend
 {
@@ -17,55 +18,130 @@ namespace FaceAttend
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
 
-            // Warm up Dlib + ONNX so the first scan is not slow.
+            // ================================================================
+            // PHASE 2 FIX (P-01, P-02, P-05): Warm-up ng lahat ng mabibigat
+            // na resources sa background bago pa dumating ang unang request.
+            //
+            // BAKIT BACKGROUND TASK?
+            //   Ang Application_Start ay tumatakbo sa main thread ng IIS startup.
+            //   Kung mag-block tayo dito, mabagal ang startup at baka mag-timeout
+            //   ang IIS health checks. Kaya ginagawa natin ito sa background.
+            //
+            // ANO ANG GINAGAWA NG WARM-UP?
+            //   1. DlibBiometrics.InitializePool() — gumagawa ng N instances ng
+            //      FaceRecognition. Ito ang pinakamatagal (30-60 segundo depende
+            //      sa pool size at CPU speed). Habang hindi pa tapos ito,
+            //      ang mga unang scans ay mag-queue sa pool at hihintay.
+            //
+            //   2. OnnxLiveness.WarmUp() — naglo-load ng ONNX model sa memory.
+            //      Mas mabilis kaysa sa Dlib (3-5 segundo).
+            //
+            //   3. EmployeeFaceIndex warm-up — naglo-load ng lahat ng face
+            //      encodings ng mga empleyado mula sa database papunta sa
+            //      in-memory cache. Kapag hindi ito ginawa, ang unang scan
+            //      pagkatapos ng app pool recycle ay magti-trigger ng rebuild
+            //      na nag-o-block ng lahat ng ibang scans habang nangyayari ito.
+            // ================================================================
             Task.Run(() =>
             {
-                try { new DlibBiometrics(); } catch { }
-                try { OnnxLiveness.WarmUp(); } catch { }
+                // Hakbang 1: Initialize ang Dlib instance pool.
+                // Kailangan itong gawin bago ang ONNX warm-up para magamit
+                // ng mga unang requests ang pool agad pagkatapos ng startup.
+                try
+                {
+                    DlibBiometrics.InitializePool();
+                    System.Diagnostics.Trace.TraceInformation(
+                        "[Application_Start] Dlib instance pool — na-initialize na.");
+                }
+                catch (Exception ex)
+                {
+                    // Hindi dapat mag-crash ang app kahit hindi ma-load ang Dlib.
+                    // Magbibigay ng POOL_TIMEOUT error sa mga scans hanggang hindi
+                    // pa nare-resolve ang problema.
+                    System.Diagnostics.Trace.TraceError(
+                        "[Application_Start] BABALA: Hindi na-initialize ang Dlib pool: " +
+                        ex.Message);
+                }
+
+                // Hakbang 2: I-load ang ONNX liveness model.
+                try
+                {
+                    OnnxLiveness.WarmUp();
+                    System.Diagnostics.Trace.TraceInformation(
+                        "[Application_Start] ONNX liveness model — na-load na.");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceError(
+                        "[Application_Start] BABALA: Hindi na-load ang ONNX model: " +
+                        ex.Message);
+                }
+
+                // Hakbang 3: I-pre-load ang face encodings ng mga empleyado.
+                // Ito ang PHASE 2 FIX (P-05) — winarm-up na natin ang index
+                // para ang unang scan ay hindi na kailangang mag-rebuild.
+                try
+                {
+                    using (var db = new FaceAttendDBEntities())
+                    {
+                        EmployeeFaceIndex.Rebuild(db);
+                        System.Diagnostics.Trace.TraceInformation(
+                            "[Application_Start] Employee face index — na-load na.");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    // Non-fatal: mag-rebuild ito sa unang scan request.
+                    System.Diagnostics.Trace.TraceWarning(
+                        "[Application_Start] Hindi na-pre-load ang employee face index: " +
+                        ex.Message + " — mag-rebuild sa unang scan.");
+                }
             });
         }
 
-        // -------------------------------------------------------------------
+        // ────────────────────────────────────────────────────────────────────
         // Custom error routing
-        // -------------------------------------------------------------------
+        // ────────────────────────────────────────────────────────────────────
 
         protected void Application_Error()
         {
             // Sa local debug mode: hayaan ang ASP.NET na mag-show ng YSOD.
-            // Gumagamit tayo ng Server.ClearError() dito para ma-suppress ang IIS 500 page,
-            // at ang ASP.NET mismo ang mag-re-render ng detailed error page.
-            if (Context != null && Context.IsDebuggingEnabled && Request != null && Request.IsLocal)
+            if (Context != null && Context.IsDebuggingEnabled &&
+                Request != null && Request.IsLocal)
             {
                 Response.TrySkipIisCustomErrors = true;
-                return; // ASP.NET ang bahala sa YSOD rendering
+                return;
             }
 
             var ex = Server.GetLastError();
             if (ex == null) return;
 
-            // Avoid loops if the error is thrown while rendering an error page.
+            // Iwasan ang infinite loop kapag nag-error sa error page mismo.
             var rawUrl = (Request?.RawUrl ?? "");
-            if (rawUrl.StartsWith(VirtualPathUtility.ToAbsolute("~/Error"), StringComparison.OrdinalIgnoreCase) ||
-                rawUrl.StartsWith(VirtualPathUtility.ToAbsolute("~/Admin/Error"), StringComparison.OrdinalIgnoreCase))
+            if (rawUrl.StartsWith(
+                    VirtualPathUtility.ToAbsolute("~/Error"),
+                    StringComparison.OrdinalIgnoreCase) ||
+                rawUrl.StartsWith(
+                    VirtualPathUtility.ToAbsolute("~/Admin/Error"),
+                    StringComparison.OrdinalIgnoreCase))
             {
                 return;
             }
 
-            int code = 500;
+            int    code   = 500;
             if (ex is HttpException httpEx)
                 code = httpEx.GetHttpCode();
 
-            string action = MapStatusToAction(code);
-            bool isAdmin = IsAdminRequest(Request);
-            string target = isAdmin ? $"~/Admin/Error/{action}" : $"~/Error/{action}";
+            string action  = MapStatusToAction(code);
+            bool   isAdmin = IsAdminRequest(Request);
+            string target  = isAdmin
+                ? $"~/Admin/Error/{action}"
+                : $"~/Error/{action}";
 
-            // Clear the error and rewrite the request to our error controller.
             Server.ClearError();
             Response.Clear();
             Response.TrySkipIisCustomErrors = true;
             Response.StatusCode = code;
-
-            // Mark to prevent EndRequest from rewriting again.
             Context.Items["__fa_error_handled"] = true;
 
             Server.TransferRequest(VirtualPathUtility.ToAbsolute(target), true);
@@ -73,36 +149,63 @@ namespace FaceAttend
 
         protected void Application_EndRequest()
         {
-            // Handle "no route" 404s and some IIS-generated 404s.
-            // During local debugging, do not interfere.
             if (Context == null || Request == null || Response == null) return;
             if (Context.IsDebuggingEnabled && Request.IsLocal) return;
-
-            // Skip if already handled in Application_Error.
             if (Context.Items["__fa_error_handled"] != null) return;
 
             if (Response.StatusCode == 404)
             {
                 var rawUrl = (Request.RawUrl ?? "");
-                if (rawUrl.StartsWith(VirtualPathUtility.ToAbsolute("~/Error"), StringComparison.OrdinalIgnoreCase) ||
-                    rawUrl.StartsWith(VirtualPathUtility.ToAbsolute("~/Admin/Error"), StringComparison.OrdinalIgnoreCase))
+                if (rawUrl.StartsWith(
+                        VirtualPathUtility.ToAbsolute("~/Error"),
+                        StringComparison.OrdinalIgnoreCase) ||
+                    rawUrl.StartsWith(
+                        VirtualPathUtility.ToAbsolute("~/Admin/Error"),
+                        StringComparison.OrdinalIgnoreCase))
+                {
                     return;
+                }
 
-                bool isAdmin = IsAdminRequest(Request);
-                string target = isAdmin ? "~/Admin/Error/NotFound" : "~/Error/NotFound";
+                bool   isAdmin = IsAdminRequest(Request);
+                string target  = isAdmin ? "~/Admin/Error/NotFound" : "~/Error/NotFound";
 
-                Response.TrySkipIisCustomErrors = true;
+                Response.TrySkipIisCustomErrors   = true;
                 Context.Items["__fa_error_handled"] = true;
-
                 Server.TransferRequest(VirtualPathUtility.ToAbsolute(target), true);
             }
         }
+
+        // ────────────────────────────────────────────────────────────────────
+        // Shutdown cleanup
+        // ────────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Nililinis ang lahat ng unmanaged resources bago mag-shutdown ang app pool.
+        /// Tinatawagin ito ng IIS isang beses lang sa bawat app domain shutdown.
+        ///
+        /// PHASE 2 FIX (P-01): DlibBiometrics.DisposePool() — pinalitan ang
+        /// lumang DisposeInstance() para ma-dispose ang lahat ng pool instances.
+        /// </summary>
+        protected void Application_End()
+        {
+            // I-dispose ang lahat ng Dlib FaceRecognition instances sa pool.
+            try { DlibBiometrics.DisposePool(); }
+            catch { /* best effort */ }
+
+            // I-dispose ang ONNX InferenceSession.
+            try { OnnxLiveness.DisposeSession(); }
+            catch { /* best effort */ }
+        }
+
+        // ────────────────────────────────────────────────────────────────────
+        // Private helpers
+        // ────────────────────────────────────────────────────────────────────
 
         private static bool IsAdminRequest(HttpRequest request)
         {
             if (request == null) return false;
             var adminRoot = VirtualPathUtility.ToAbsolute("~/Admin");
-            var path = request.Path ?? "";
+            var path      = request.Path ?? "";
             return path.StartsWith(adminRoot, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -111,24 +214,13 @@ namespace FaceAttend
             switch (statusCode)
             {
                 case 400: return "BadRequest";
-                case 401: return "Forbidden"; // treat as forbidden for UI
+                case 401: return "Forbidden";
                 case 403: return "Forbidden";
                 case 404: return "NotFound";
                 case 429: return "TooManyRequests";
                 case 503: return "Unavailable";
                 default:  return "Index";
             }
-        }
-
-        // P1-F2: Dispose unmanaged Dlib and ONNX resources on IIS app pool recycle.
-        // Both DisposeInstance() and DisposeSession() are fully implemented in their
-        // respective classes but were never called — this was a resource leak on every
-        // recycle. Application_End is the correct place: it is called once per app
-        // domain shutdown, before the process terminates.
-        protected void Application_End()
-        {
-            DlibBiometrics.DisposeInstance();
-            OnnxLiveness.DisposeSession();
         }
     }
 }
