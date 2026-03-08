@@ -61,59 +61,27 @@ namespace FaceAttend.Services.Security
 
         private static bool CheckEmergencyBypass()
         {
-            lock (_lock)
-            {
-                // Cache for 5 seconds to reduce disk I/O.
-                if ((DateTime.UtcNow - _lastBypassCheckUtc) < TimeSpan.FromSeconds(5))
-                    return _lastBypassResult;
-
-                _lastBypassCheckUtc = DateTime.UtcNow;
-                _lastBypassResult = false;
-
-                var path = HostingEnvironment.MapPath(BypassFilePath);
-                if (string.IsNullOrEmpty(path) || !File.Exists(path))
-                    return false;
-
-                try
-                {
-                    var lines = File.ReadAllLines(path);
-                    var expiresLine = lines.FirstOrDefault(l =>
-                        (l ?? "").TrimStart().StartsWith("EXPIRES:", StringComparison.OrdinalIgnoreCase));
-
-                    if (expiresLine == null)
-                    {
-                        TryDelete(path);
-                        return false;
-                    }
-
-                    var expiresStr = expiresLine.Substring("EXPIRES:".Length).Trim();
-                    DateTime expiresUtc;
-                    if (!DateTime.TryParseExact(
-                            expiresStr,
-                            "yyyy-MM-ddTHH:mm:ssZ",
-                            System.Globalization.CultureInfo.InvariantCulture,
-                            System.Globalization.DateTimeStyles.AssumeUniversal |
-                            System.Globalization.DateTimeStyles.AdjustToUniversal,
-                            out expiresUtc))
-                    {
-                        TryDelete(path);
-                        return false;
-                    }
-
-                    if (DateTime.UtcNow > expiresUtc)
-                    {
-                        TryDelete(path);
-                        return false;
-                    }
-
-                    _lastBypassResult = true;
-                    return true;
-                }
-                catch
-                {
-                    return false;
-                }
-            }
+            // SEC-03 FIX: Emergency bypass ay PERMANENTENG DISABLED.
+            //
+            // Ang dati ay nagche-check ng ~/App_Data/emergency_bypass.txt file —
+            // kung nandoon ang file at may valid na expiry date, lahat ng
+            // IP restrictions ay nabe-bypass.
+            //
+            // BAKIT PINABABA:
+            //   Sinumang may write access sa App_Data (IIS worker process,
+            //   compromised file upload, atbp.) ay pwedeng gumawa ng file na ito
+            //   at makakuha ng admin access mula sa kahit saan sa internet.
+            //   Hindi ito acceptable para sa isang government system na nag-iingat
+            //   ng biometric at attendance data ng mga empleyado.
+            //
+            // ALTERNATIBO SA EMERGENCY:
+            //   Kapag hindi ma-access ang admin (IP restriction):
+            //   1. I-update ang Admin:AllowedIpRanges sa Web.config
+            //      mula sa server mismo (RDP access)
+            //   2. O mag-restart ng IIS app pool pagkatapos baguhin ang config
+            //
+            // HUWAG I-UNCOMMENT / I-RESTORE ANG LUMANG CODE.
+            return false;
         }
 
         private static bool IsIpInRange(string ip, string range)

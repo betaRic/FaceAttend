@@ -73,10 +73,8 @@
                 <i class="fa-solid fa-gauge-high" aria-hidden="true"></i>
                 Dashboard
             </h1>
-            {{--
-                TodayDateDisplay is computed in the ViewModel using the configured
-                Philippine timezone (Asia/Manila) so it always shows local date.
-            --}}
+            @* TodayDateDisplay is computed in the ViewModel using the configured
+                Philippine timezone (Asia/Manila) so it always shows local date. *@
             <div class="ea-page-subtitle">@Model.TodayDateDisplay</div>
         </div>
         <div class="ea-page-actions">
@@ -139,7 +137,7 @@
     ─────────────────────────────────────────────────────────────────────────── *@
     <div class="row g-3 mb-3">
 
-        {{-- Active Employees --}}
+        @* Active Employees *@
         <div class="col-6 col-xl-3">
             <a class="ea-kpi" href="@Url.Action("Index", "Employees", new { area = "Admin" })">
                 <div class="ea-kpi-icon primary">
@@ -152,7 +150,7 @@
             </a>
         </div>
 
-        {{-- Time-Ins Today --}}
+        @* Time-Ins Today *@
         <div class="col-6 col-xl-3">
             <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "IN" })">
                 <div class="ea-kpi-icon success">
@@ -165,7 +163,7 @@
             </a>
         </div>
 
-        {{-- Time-Outs Today --}}
+        @* Time-Outs Today *@
         <div class="col-6 col-xl-3">
             <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "OUT" })">
                 <div class="ea-kpi-icon warning">
@@ -178,7 +176,7 @@
             </a>
         </div>
 
-        {{-- Known Visitors --}}
+        @* Known Visitors *@
         <div class="col-6 col-xl-3">
             <a class="ea-kpi" href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
                 <div class="ea-kpi-icon" style="background:rgba(111,66,193,.1);color:#6f42c1;">
@@ -237,14 +235,14 @@
                                     var isIn = string.Equals(row.EventType, "IN", StringComparison.OrdinalIgnoreCase);
                                     <tr class="@(row.NeedsReview ? "table-warning" : "")">
 
-                                        {{-- Timestamp (local Philippine time) --}}
+                                        @* Timestamp (local Philippine time) *@
                                         <td class="text-nowrap">
                                             <span class="fw-semibold" style="font-size:.85rem;">
                                                 @row.TimestampLocalDisplay
                                             </span>
                                         </td>
 
-                                        {{-- Employee name + ID --}}
+                                        @* Employee name + ID *@
                                         <td>
                                             <div class="fw-semibold" style="font-size:.875rem;">@row.EmployeeFullName</div>
                                             @if (!string.IsNullOrWhiteSpace(row.EmployeeId))
@@ -253,7 +251,7 @@
                                             }
                                         </td>
 
-                                        {{-- IN / OUT badge --}}
+                                        @* IN / OUT badge *@
                                         <td>
                                             @if (isIn)
                                             {
@@ -269,12 +267,12 @@
                                             }
                                         </td>
 
-                                        {{-- Office name (snapshot stored on the log row) --}}
+                                        @* Office name (snapshot stored on the log row) *@
                                         <td class="ea-cell-muted" style="font-size:.82rem;">
                                             @(string.IsNullOrWhiteSpace(row.OfficeName) ? "-" : row.OfficeName)
                                         </td>
 
-                                        {{-- NeedsReview flag --}}
+                                        @* NeedsReview flag *@
                                         <td class="text-end">
                                             @if (row.NeedsReview)
                                             {

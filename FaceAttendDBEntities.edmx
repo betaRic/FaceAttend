@@ -5,6 +5,20 @@
     <!-- SSDL content -->
     <edmx:StorageModels>
     <Schema Namespace="FaceAttendDBModel.Store" Provider="System.Data.SqlClient" ProviderManifestToken="2012" Alias="Self" xmlns:store="http://schemas.microsoft.com/ado/2007/12/edm/EntityStoreSchemaGenerator" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm/ssdl">
+        <EntityType Name="AdminAuditLogs">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="bigint" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="Timestamp" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="AdminIp" Type="nvarchar" MaxLength="50" />
+          <Property Name="Action" Type="nvarchar" MaxLength="100" Nullable="false" />
+          <Property Name="EntityType" Type="nvarchar" MaxLength="50" />
+          <Property Name="EntityId" Type="nvarchar" MaxLength="100" />
+          <Property Name="Description" Type="nvarchar" MaxLength="1000" />
+          <Property Name="OldValues" Type="nvarchar(max)" />
+          <Property Name="NewValues" Type="nvarchar(max)" />
+        </EntityType>
         <EntityType Name="AttendanceLogs">
           <Key>
             <PropertyRef Name="Id" />
@@ -177,6 +191,7 @@
           </ReferentialConstraint>
         </Association>
         <EntityContainer Name="FaceAttendDBModelStoreContainer">
+          <EntitySet Name="AdminAuditLogs" EntityType="Self.AdminAuditLogs" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLogs" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="Employees" EntityType="Self.Employees" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="Offices" EntityType="Self.Offices" Schema="dbo" store:Type="Tables" />
@@ -209,6 +224,7 @@
     <edmx:ConceptualModels>
       <Schema Namespace="FaceAttendDBModel" Alias="Self" annotation:UseStrongSpatialTypes="false" xmlns:annotation="http://schemas.microsoft.com/ado/2009/02/edm/annotation" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
         <EntityContainer Name="FaceAttendDBEntities" annotation:LazyLoadingEnabled="true">
+          <EntitySet Name="AdminAuditLogs" EntityType="FaceAttendDBModel.AdminAuditLog" />
           <EntitySet Name="AttendanceLogs" EntityType="FaceAttendDBModel.AttendanceLog" />
           <EntitySet Name="Employees" EntityType="FaceAttendDBModel.Employee" />
           <EntitySet Name="Offices" EntityType="FaceAttendDBModel.Office" />
@@ -236,6 +252,20 @@
             <End Role="VisitorLog" EntitySet="VisitorLogs" />
           </AssociationSet>
         </EntityContainer>
+        <EntityType Name="AdminAuditLog">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int64" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="Timestamp" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="AdminIp" Type="String" MaxLength="50" FixedLength="false" Unicode="true" />
+          <Property Name="Action" Type="String" Nullable="false" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="EntityType" Type="String" MaxLength="50" FixedLength="false" Unicode="true" />
+          <Property Name="EntityId" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="Description" Type="String" MaxLength="1000" FixedLength="false" Unicode="true" />
+          <Property Name="OldValues" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <Property Name="NewValues" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+        </EntityType>
         <EntityType Name="AttendanceLog">
           <Key>
             <PropertyRef Name="Id" />
@@ -417,12 +447,27 @@
             </Dependent>
           </ReferentialConstraint>
         </Association>
-      </Schema>
+        </Schema>
     </edmx:ConceptualModels>
     <!-- C-S mapping content -->
     <edmx:Mappings>
       <Mapping Space="C-S" xmlns="http://schemas.microsoft.com/ado/2009/11/mapping/cs">
         <EntityContainerMapping StorageEntityContainer="FaceAttendDBModelStoreContainer" CdmEntityContainer="FaceAttendDBEntities">
+          <EntitySetMapping Name="AdminAuditLogs">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.AdminAuditLog">
+              <MappingFragment StoreEntitySet="AdminAuditLogs">
+                <ScalarProperty Name="NewValues" ColumnName="NewValues" />
+                <ScalarProperty Name="OldValues" ColumnName="OldValues" />
+                <ScalarProperty Name="Description" ColumnName="Description" />
+                <ScalarProperty Name="EntityId" ColumnName="EntityId" />
+                <ScalarProperty Name="EntityType" ColumnName="EntityType" />
+                <ScalarProperty Name="Action" ColumnName="Action" />
+                <ScalarProperty Name="AdminIp" ColumnName="AdminIp" />
+                <ScalarProperty Name="Timestamp" ColumnName="Timestamp" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
           <EntitySetMapping Name="AttendanceLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
               <MappingFragment StoreEntitySet="AttendanceLogs">

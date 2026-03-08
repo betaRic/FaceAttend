@@ -279,13 +279,19 @@ namespace FaceAttend.Services.Biometrics
         /// </summary>
         public static void ResetCircuit()
         {
+            // I-reset ang LAHAT ng 3 circuit breaker fields.
+            // Kung isa lang ang nare-reset, mananatiling bukas ang circuit.
             lock (_lock)
             {
                 _failStreak      = 0;
                 _circuitUntilUtc = DateTime.MinValue;
                 _stuck           = false;
-                Trace.TraceInformation("[OnnxLiveness] Circuit breaker na-reset ng admin.");
+
+                System.Diagnostics.Trace.TraceInformation(
+                    "[OnnxLiveness] Circuit breaker manually reset by admin.");
             }
+        }
+        }
         }
 
         /// <summary>

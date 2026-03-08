@@ -47,7 +47,7 @@ namespace FaceAttend.Services
 
             int minGapSeconds = SystemConfigService.GetInt(
                 db, "Attendance:MinGapSeconds",
-                AppSettings.GetInt("Attendance:MinGapSeconds", 10));
+                AppSettings.GetInt("Attendance:MinGapSeconds", 180));
 
             // --- Transaction: prevents concurrent duplicate scans ---
             // Serializable prevents phantom inserts into the read range between

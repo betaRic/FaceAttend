@@ -25,6 +25,7 @@ namespace FaceAttend
             throw new UnintentionalCodeFirstException();
         }
     
+        public virtual DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
         public virtual DbSet<AttendanceLog> AttendanceLogs { get; set; }
         public virtual DbSet<Employee> Employees { get; set; }
         public virtual DbSet<Office> Offices { get; set; }
