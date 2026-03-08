@@ -48,9 +48,19 @@ namespace FaceAttend.Services.Biometrics
     ///   Tinanggal na ang Task.Run() wrapper — hindi na kailangan dahil hindi na
     ///   naka-hold ang lock sa inference. Direkta na ang Run() call sa current thread.
     ///   Mas simple at mas mabilis ito.
+    ///
+    /// BUG FIX (COMPILE ERROR CS8803 / CS0106 / CS1022):
+    ///   Tinanggal ang dalawang dagdag na closing brace `} }` na nasa dulo ng
+    ///   ResetCircuit() — ang mga ito ang nagpasara ng class at namespace nang maaga,
+    ///   kaya lahat ng method pagkatapos (GetCircuitState, EnsureSession, DisposeSession,
+    ///   BuildTensor, Softmax, ParseScales, Fail) ay na-treat bilang top-level statements.
     /// </summary>
     public class OnnxLiveness
     {
+        // ─────────────────────────────────────────────────────────────────────
+        // Static fields
+        // ─────────────────────────────────────────────────────────────────────
+
         // Ang lock na ito ay para LAMANG sa initialization at circuit breaker state.
         // HINDI na ginagamit para sa inference mismo.
         private static readonly object _lock = new object();
@@ -86,7 +96,7 @@ namespace FaceAttend.Services.Biometrics
                 catch (Exception ex)
                 {
                     // Log ang error pero huwag mag-crash ang app startup.
-                    System.Diagnostics.Trace.TraceError(
+                    Trace.TraceError(
                         "[OnnxLiveness.WarmUp] Hindi ma-load ang ONNX model: " + ex.Message);
                 }
             }
@@ -134,16 +144,16 @@ namespace FaceAttend.Services.Biometrics
             // ── Hakbang 2: Basahin ang configuration ──────────────────────────
             // Binabasa ito sa labas ng lock — ang config values ay effectively
             // read-only pagkatapos ng startup, kaya ligtas ito.
-            var inputSize  = AppSettings.GetInt("Biometrics:LivenessInputSize",   128);
+            var inputSize  = AppSettings.GetInt("Biometrics:LivenessInputSize",     128);
             var timeoutMs  = AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1_500);
-            var slowMs     = AppSettings.GetInt("Biometrics:Liveness:SlowMs",     1_200);
-            var realIndex  = AppSettings.GetInt("Biometrics:Liveness:RealIndex",  1);
+            var slowMs     = AppSettings.GetInt("Biometrics:Liveness:SlowMs",       1_200);
+            var realIndex  = AppSettings.GetInt("Biometrics:Liveness:RealIndex",    1);
 
-            var cropScale  = AppSettings.GetDouble("Biometrics:Liveness:CropScale",   2.7);
-            var normalize  = AppSettings.GetString("Biometrics:Liveness:Normalize",   "0_1");
+            var cropScale  = AppSettings.GetDouble("Biometrics:Liveness:CropScale",    2.7);
+            var normalize  = AppSettings.GetString("Biometrics:Liveness:Normalize",    "0_1");
             var chanOrder  = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
-            var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",  "logits");
-            var decision   = AppSettings.GetString("Biometrics:Liveness:Decision",    "max");
+            var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",   "logits");
+            var decision   = AppSettings.GetString("Biometrics:Liveness:Decision",     "max");
 
             var multiScalesStr = AppSettings.GetString("Biometrics:Liveness:MultiCropScales", "");
             var scales         = ParseScales(multiScalesStr, cropScale);
@@ -152,7 +162,7 @@ namespace FaceAttend.Services.Biometrics
             // Ginagawa natin ito sa labas ng lock para hindi naka-lock tayo
             // habang nagpo-process.
             //
-            // THREAD SAFETY EXPLANATION:
+            // THREAD SAFETY NOTE:
             //   Ang _session ay volatile — guaranteed na ang pinakabagong value
             //   ang nakikita natin dito kahit na walang lock.
             //   Ang InferenceSession.Run() ay thread-safe ayon sa ONNX Runtime docs —
@@ -255,6 +265,10 @@ namespace FaceAttend.Services.Biometrics
         // Circuit breaker helpers
         // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Nagtatala ng isang inference failure at nagbubukas ng circuit
+        /// kung naabot na ang threshold ng magkakasunod na failures.
+        /// </summary>
         private static void RecordFailure()
         {
             lock (_lock)
@@ -276,6 +290,10 @@ namespace FaceAttend.Services.Biometrics
         /// <summary>
         /// Nire-reset ang circuit breaker at stuck flag.
         /// Tinatawagin ito mula sa admin panel (AdminLivenessController.Reset).
+        ///
+        /// TANDAAN: Huwag dagdagan ng extra closing braces pagkatapos ng method na ito!
+        /// Ang nakaraang bug (CS8803) ay dulot ng dalawang extra } } dito na nagpasara
+        /// ng class at namespace nang maaga.
         /// </summary>
         public static void ResetCircuit()
         {
@@ -287,12 +305,10 @@ namespace FaceAttend.Services.Biometrics
                 _circuitUntilUtc = DateTime.MinValue;
                 _stuck           = false;
 
-                System.Diagnostics.Trace.TraceInformation(
+                Trace.TraceInformation(
                     "[OnnxLiveness] Circuit breaker manually reset by admin.");
             }
-        }
-        }
-        }
+        }   // ← ISANG CLOSING BRACE LANG DITO — huwag dagdag pa!
 
         /// <summary>
         /// Nagbibigay ng kasalukuyang estado ng circuit breaker.
@@ -315,6 +331,11 @@ namespace FaceAttend.Services.Biometrics
         // Session lifecycle
         // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Tinitiyak na naka-initialize ang ONNX session.
+        /// DAPAT tawagin LAMANG habang hawak ang _lock.
+        /// Gumagamit ng fast-path check para maiwasan ang paulit-ulit na initialization.
+        /// </summary>
         private static void EnsureSession()
         {
             // Fast path: initialized na — lumabas agad.
@@ -371,6 +392,15 @@ namespace FaceAttend.Services.Biometrics
         // Tensor building
         // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Gumagawa ng DenseTensor mula sa isang image file at face box.
+        /// Ang tensor ay nasa format na [1, 3, H, W] (batch, channels, height, width).
+        ///
+        /// Ang faceBox ay pwedeng null — kung wala, gagamitin ang buong larawan.
+        ///
+        /// Palaging ini-dispose ang mga Bitmap pagkatapos gamitin para maiwasan
+        /// ang GDI handle leaks sa maraming concurrent calls.
+        /// </summary>
         private static DenseTensor<float> BuildTensor(
             string imagePath,
             DlibBiometrics.FaceBox faceBox,
@@ -430,9 +460,9 @@ namespace FaceAttend.Services.Biometrics
 
                 try
                 {
-                    int stride  = bmpData.Stride;
+                    int stride     = bmpData.Stride;
                     int bytesTotal = Math.Abs(stride) * inputSize;
-                    var bytes   = new byte[bytesTotal];
+                    var bytes      = new byte[bytesTotal];
                     Marshal.Copy(bmpData.Scan0, bytes, 0, bytesTotal);
 
                     for (int y = 0; y < inputSize; y++)
@@ -440,22 +470,25 @@ namespace FaceAttend.Services.Biometrics
                         for (int x = 0; x < inputSize; x++)
                         {
                             int i = y * stride + x * 3;
-                            // GDI+ ay nag-iimbak ng pixels bilang BGR
+
+                            // GDI+ ay nag-iimbak ng pixels bilang BGR order
                             float b = bytes[i];
                             float g = bytes[i + 1];
                             float r = bytes[i + 2];
 
+                            // Piliin ang channel order batay sa config.
                             float c0 = swapChannels ? b : r;
                             float c1 = g;
                             float c2 = swapChannels ? r : b;
 
-                            // I-normalize ang pixel values.
+                            // I-normalize ang pixel values batay sa config.
                             if (normalize.Equals("0_1", StringComparison.OrdinalIgnoreCase))
                             {
                                 c0 /= 255f; c1 /= 255f; c2 /= 255f;
                             }
                             else if (normalize.Equals("imagenet", StringComparison.OrdinalIgnoreCase))
                             {
+                                // ImageNet mean/std normalization
                                 c0 = (c0 / 255f - 0.485f) / 0.229f;
                                 c1 = (c1 / 255f - 0.456f) / 0.224f;
                                 c2 = (c2 / 255f - 0.406f) / 0.225f;
@@ -494,15 +527,24 @@ namespace FaceAttend.Services.Biometrics
         // Utility helpers
         // ─────────────────────────────────────────────────────────────────────
 
+        /// <summary>
+        /// Nagko-convert ng raw logit scores papunta sa probabilities
+        /// gamit ang softmax function.
+        /// </summary>
         private static float[] Softmax(float[] logits)
         {
             if (logits == null || logits.Length == 0) return Array.Empty<float>();
-            var max    = logits.Max();
-            var exps   = logits.Select(x => (float)Math.Exp(x - max)).ToArray();
-            var sum    = exps.Sum();
+            var max  = logits.Max();
+            var exps = logits.Select(x => (float)Math.Exp(x - max)).ToArray();
+            var sum  = exps.Sum();
             return sum > 0 ? exps.Select(e => e / sum).ToArray() : exps;
         }
 
+        /// <summary>
+        /// Nagpa-parse ng comma-separated list ng crop scale values.
+        /// Ginagamit para sa multi-scale liveness inference.
+        /// Kung walang valid values, ibinabalik ang defaultScale.
+        /// </summary>
         private static double[] ParseScales(string scalesStr, double defaultScale)
         {
             if (string.IsNullOrWhiteSpace(scalesStr))
@@ -514,7 +556,8 @@ namespace FaceAttend.Services.Biometrics
                 .Select(s =>
                 {
                     double v;
-                    return double.TryParse(s,
+                    return double.TryParse(
+                        s,
                         System.Globalization.NumberStyles.Any,
                         System.Globalization.CultureInfo.InvariantCulture,
                         out v) ? v : defaultScale;
@@ -525,7 +568,11 @@ namespace FaceAttend.Services.Biometrics
             return parts.Length > 0 ? parts : new[] { defaultScale };
         }
 
+        /// <summary>
+        /// Helper para gumawa ng consistent na failed result tuple.
+        /// </summary>
         private static (bool Ok, float? Probability, string Error) Fail(string error)
             => (false, null, error);
-    }
-}
+
+    }   // ← END OF CLASS OnnxLiveness
+}       // ← END OF NAMESPACE FaceAttend.Services.Biometrics
