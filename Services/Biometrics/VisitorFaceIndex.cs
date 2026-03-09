@@ -22,9 +22,7 @@ namespace FaceAttend.Services.Biometrics
     ///      the same pattern as the employee FaceMatchTuner service.
     /// </summary>
     public static class VisitorFaceIndex
-    {        // TODO H-03 (next sprint): add BallTree nearest-neighbor search when
-        // visitor count exceeds Visitors:BallTreeThreshold.
-        // Current linear scan is acceptable for small visitor counts.
+    {
         // ── Entry ────────────────────────────────────────────────────────────────
 
         public class Entry

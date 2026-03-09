@@ -314,45 +314,16 @@ namespace FaceAttend.Filters
             {
                 if (verified)
                 {
-                    // FIX H-11: successful admin unlock audit log.
+                    // Matagumpay — i-clear ang anumang lockout entry para sa IP na ito.
                     _lockouts.TryRemove(ip, out _);
-                    System.Diagnostics.Trace.TraceInformation(
-                        $"[AdminAuth] Successful PIN unlock from {ip} at {DateTime.UtcNow:u}");
                 }
                 else
                 {
-                    // FIX H-11: log failed attempts and lockout events.
-                    var state = _lockouts.AddOrUpdate(
+                    // Nabigo — dagdagan ang counter; i-lock kung na-reach na ang threshold.
+                    _lockouts.AddOrUpdate(
                         ip,
                         _ => new LockoutEntry(1, maxAttempts, lockoutSeconds),
                         (_, existing) => existing.Increment(maxAttempts, lockoutSeconds));
-
-                    var count = state.Attempts;
-                    System.Diagnostics.Trace.TraceWarning(
-                        $"[AdminAuth] FAILED PIN attempt #{count} from {ip} at {DateTime.UtcNow:u}");
-
-                    if (state.LockedUntil > DateTime.UtcNow)
-                    {
-                        System.Diagnostics.Trace.TraceWarning(
-                            $"[AdminAuth] IP LOCKED OUT: {ip} until {state.LockedUntil:HH:mm:ss} UTC after {count} failed attempts.");
-
-                        try
-                        {
-                            using (var el = new System.Diagnostics.EventLog("Application"))
-                            {
-                                el.Source = "FaceAttend";
-                                el.WriteEntry(
-                                    $"ADMIN LOCKOUT: IP {ip} locked after {count} failed PINs. Until {state.LockedUntil:HH:mm:ss} UTC. Check server if unexpected.",
-                                    System.Diagnostics.EventLogEntryType.Warning);
-                            }
-                        }
-                        catch { /* best effort */ }
-                    }
-                    else if (count == 3)
-                    {
-                        System.Diagnostics.Trace.TraceWarning(
-                            $"[AdminAuth] ALERT: 3 failed PIN attempts from {ip}. {maxAttempts - count} more before lockout.");
-                    }
                 }
             }
 

@@ -167,11 +167,10 @@
     return await res.json();
   }
 
-  async function postEnrollMany(blobs, force) {
+  async function postEnrollMany(blobs) {
     var fd = new FormData();
     fd.append("__RequestVerificationToken", token());
     fd.append("employeeId", empId);
-    if (force === true) fd.append('force', 'true');
 
     if (!blobs || !blobs.length) return { ok: false, error: "NO_IMAGE" };
 
@@ -181,17 +180,6 @@
 
     var res = await fetch(enrollUrl, { method: "POST", body: fd });
     return await res.json();
-  }
-  async function retryIfAlreadyEnrolled(result, sendAgain) {
-    if (!result || result.error !== 'ALREADY_ENROLLED') return result;
-
-    var ok = window.confirm(
-      (result.message || 'Employee already enrolled.') +
-      '\n\nPress OK to confirm re-enrollment (this replaces the existing face data).'
-    );
-
-    if (!ok) return result;
-    return await sendAgain(true);
   }
 
   async function collectGoodEnrollFrames() {
@@ -350,10 +338,7 @@
             }
 
             setStatus(camStatus, "saving enrollment (" + frames.length + " frame(s))...", "info");
-            var saved = await postEnrollMany(frames, false);
-            saved = await retryIfAlreadyEnrolled(saved, async function (force) {
-                return await postEnrollMany(frames, force);
-            });
+            var saved = await postEnrollMany(frames);
 
             if (saved && saved.ok === true) {
                 enrolled = true;
@@ -397,13 +382,16 @@
       setStatus(upStatus, "verifying...", "info");
 
       var imgs = Array.prototype.slice.call(file.files || [], 0, ENROLL_MAX_IMAGES);
+      var fd = new FormData();
+      fd.append("__RequestVerificationToken", token());
+      fd.append("employeeId", empId);
 
-      async function sendUpload(force) {
-        return await postEnrollMany(imgs, force);
-      }
+      imgs.forEach(function (f, i) {
+        fd.append("image", f, f.name || ("upload_" + (i + 1) + ".jpg"));
+      });
 
-      var r = await sendUpload(false);
-      r = await retryIfAlreadyEnrolled(r, sendUpload);
+      var res = await fetch(enrollUrl, { method: "POST", body: fd });
+      var r = await res.json();
 
       if (r && r.ok === true) {
         setStatus(upStatus, "enrollment saved.", "success");
@@ -416,6 +404,7 @@
       busy = false;
     }
   }
+
   // ------------------------
   // wizard wiring
   // ------------------------

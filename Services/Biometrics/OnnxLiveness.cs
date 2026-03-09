@@ -159,7 +159,8 @@ namespace FaceAttend.Services.Biometrics
             var cropScale  = AppSettings.GetDouble("Biometrics:Liveness:CropScale",    2.7);
             var normalize  = AppSettings.GetString("Biometrics:Liveness:Normalize",    "0_1");
             var chanOrder  = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
-            // FIX L-05: duplicate normalize / channel-order calls removed.
+            normalize = CanonicalNormalize(normalize);
+            chanOrder = CanonicalChannelOrder(chanOrder);
             normalize = CanonicalNormalize(normalize);
             chanOrder = CanonicalChannelOrder(chanOrder);
             var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",   "logits");
@@ -386,11 +387,7 @@ namespace FaceAttend.Services.Biometrics
 
             // Gamitin ang SessionOptions para sa performance.
             var opts = new SessionOptions();
-            // FIX C-07: Limit ONNX CPU usage para hindi ma-starve ang Dlib pool.
-            // Default: max(1, min(4, cores / 2)). Override via Biometrics:Liveness:IntraOpThreads.
-            opts.IntraOpNumThreads = AppSettings.GetInt(
-                "Biometrics:Liveness:IntraOpThreads",
-                Math.Max(1, Math.Min(4, Environment.ProcessorCount / 2)));
+            // Pwedeng dagdagan: opts.IntraOpNumThreads = 2; para limitahan ang CPU usage
 
             var session    = new InferenceSession(modelPath, opts);
             var inputName  = session.InputMetadata.Keys.First();

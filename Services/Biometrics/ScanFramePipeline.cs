@@ -74,25 +74,6 @@ namespace FaceAttend.Services.Biometrics
                     };
                 }
 
-                // FIX M-05: reject tiny faces before liveness / encoding.
-                if (faces != null && faces.Length > 0)
-                {
-                    var bestFace2 = faces.OrderByDescending(f => (long)f.Width * f.Height).First();
-                    var area = (long)bestFace2.Width * bestFace2.Height;
-                    var minArea = AppSettings.GetInt("Biometrics:MinFaceAreaPixels", 3600);
-                    if (area < minArea)
-                    {
-                        return new
-                        {
-                            ok = true,
-                            count = 1,
-                            faceBox,
-                            liveness = (float?)null,
-                            livenessOk = false,
-                            error = "FACE_TOO_SMALL"
-                        };
-                    }
-                }
                 var live = new OnnxLiveness();
                 var scored = live.ScoreFromFile(processedPath, faces[0]);
                 if (!scored.Ok)

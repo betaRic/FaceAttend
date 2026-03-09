@@ -138,36 +138,6 @@ namespace FaceAttend
                         ex.Message + " — mag-rebuild sa unang scan.");
                 }
 
-                // FIX H-01 + C-08: startup config validation.
-                try
-                {
-                    var pool = AppSettings.GetInt("Biometrics:DlibPoolSize", 4);
-                    var maxC = AppSettings.GetInt("Kiosk:MaxConcurrentScans", 20);
-
-                    if (maxC > pool)
-                    {
-                        System.Diagnostics.Trace.TraceWarning(
-                            $"[Startup] CONFIG MISMATCH: MaxConcurrentScans ({maxC}) > DlibPoolSize ({pool}). Requests above pool size will block at the semaphore. Set Kiosk:MaxConcurrentScans = {pool}.");
-                    }
-
-                    long ramMb = 0;
-                    try
-                    {
-                        var pc = new System.Diagnostics.PerformanceCounter("Memory", "Available MBytes");
-                        ramMb = (long)pc.NextValue();
-                    }
-                    catch { }
-
-                    if (ramMb > 0 -and (pool * 50L) -gt [long]($ramMb * 0.25))
-                    {
-                        System.Diagnostics.Trace.TraceWarning(
-                            $"[Startup] RAM WARNING: Dlib pool ({pool} x ~50 MB = {pool * 50} MB) exceeds 25% of available RAM ({ramMb} MB).");
-                    }
-                }
-                catch (Exception svEx)
-                {
-                    System.Diagnostics.Trace.TraceWarning("[Startup] Validation check error: " + svEx.Message);
-                }
                 _warmUpState = 1;
                 _warmUpMessage = "COMPLETE";
             });

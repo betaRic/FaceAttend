@@ -625,8 +625,7 @@ namespace FaceAttend.Controllers
         }
         [HttpPost]
         [ValidateAntiForgeryToken]
-        // FIX H-12: 5 attempts per 5 minutes.
-        [RateLimit(Name = "UnlockPin", MaxRequests = 5, WindowSeconds = 300, Burst = 0)]
+        [RateLimit(Name = "UnlockPin", MaxRequests = 5, WindowSeconds = 60)]
         public ActionResult UnlockPin(string pin, string returnUrl)
         {
             var safeReturn = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
