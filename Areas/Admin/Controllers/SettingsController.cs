@@ -1,7 +1,8 @@
-using FaceAttend.Areas.Admin.Helpers;
+﻿using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
 using FaceAttend.Services;
+using FaceAttend.Services.Biometrics;
 using System;
 using System.Globalization;
 using System.Linq;
@@ -34,6 +35,88 @@ namespace FaceAttend.Areas.Admin.Controllers
                 safeVm.SavedMessage = TempData["msg"] as string;
                 return View(safeVm);
             }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult MigrateBiometricEncryption()
+        {
+            try
+            {
+                using (var db = new FaceAttendDBEntities())
+                {
+                    int employeePrimary = 0;
+                    int employeeJson = 0;
+                    int visitorPrimary = 0;
+
+                    var employees = db.Employees
+                        .Where(e => e.FaceEncodingBase64 != null || e.FaceEncodingsJson != null)
+                        .ToList();
+
+                    foreach (var emp in employees)
+                    {
+                        if (BiometricCrypto.NeedsMigration(emp.FaceEncodingBase64))
+                        {
+                            emp.FaceEncodingBase64 = BiometricCrypto.ProtectString(emp.FaceEncodingBase64);
+                            employeePrimary++;
+                        }
+
+                        if (BiometricCrypto.NeedsMigration(emp.FaceEncodingsJson))
+                        {
+                            emp.FaceEncodingsJson = BiometricCrypto.ProtectString(emp.FaceEncodingsJson);
+                            employeeJson++;
+                        }
+                    }
+
+                    var visitors = db.Visitors
+                        .Where(v => v.FaceEncodingBase64 != null)
+                        .ToList();
+
+                    foreach (var v in visitors)
+                    {
+                        if (BiometricCrypto.NeedsMigration(v.FaceEncodingBase64))
+                        {
+                            v.FaceEncodingBase64 = BiometricCrypto.ProtectString(v.FaceEncodingBase64);
+                            visitorPrimary++;
+                        }
+                    }
+
+                    db.SaveChanges();
+
+                    if (employeePrimary > 0 || employeeJson > 0)
+                        EmployeeFaceIndex.Invalidate();
+
+                    if (visitorPrimary > 0)
+                        VisitorFaceIndex.Invalidate();
+
+                    AuditHelper.Log(
+                        db,
+                        Request,
+                        AuditHelper.ActionSettingChange,
+                        "System",
+                        "BiometricEncryptionMigration",
+                        "Nag-run ng one-time biometric at-rest encryption migration.",
+                        null,
+                        new
+                        {
+                            employeePrimary,
+                            employeeJson,
+                            visitorPrimary
+                        });
+
+                    TempData["msg"] =
+                        "Biometric encryption migration done. " +
+                        "Employees(primary): " + employeePrimary + ", " +
+                        "Employees(json): " + employeeJson + ", " +
+                        "Visitors: " + visitorPrimary + ".";
+                }
+            }
+            catch (Exception ex)
+            {
+                TempData["msg"] = "Biometric migration failed: " + ex.Message;
+            }
+
+            return RedirectToAction("Index");
         }
 
         [HttpPost]
@@ -386,6 +469,33 @@ namespace FaceAttend.Areas.Admin.Controllers
                     "int",
                     "Delete visitor logs older than this many years when cleanup is run.",
                     by);
+
+                // Extra safety: may mga config reads na naka-cache sa ibang code path.
+                // I-flush lahat pagkatapos ng bulk save para walang stale thresholds.
+                SystemConfigService.InvalidateAll();
+
+                AuditHelper.Log(
+                    db,
+                    Request,
+                    AuditHelper.ActionSettingChange,
+                    "SystemConfiguration",
+                    "bulk-save",
+                    "Nag-save ng admin settings.",
+                    null,
+                    new
+                    {
+                        vm.DlibTolerance,
+                        vm.LivenessThreshold,
+                        vm.GPSAccuracyRequired,
+                        vm.GPSRadiusDefault,
+                        vm.MinGapSeconds,
+                        vm.NeedsReviewNearMatchRatio,
+                        vm.NeedsReviewLivenessMargin,
+                        vm.NeedsReviewGpsMargin,
+                        vm.VisitorMaxRecords,
+                        vm.VisitorRetentionYears,
+                        savedBy = by
+                    });
 
                 TempData["msg"] = "Settings saved.";
                 return RedirectToAction("Index");

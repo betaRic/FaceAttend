@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.Mvc;
+using FaceRecognitionDotNet;
 using FaceAttend.Filters;
 using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Areas.Admin.Models;
@@ -204,15 +205,15 @@ namespace FaceAttend.Areas.Admin.Controllers
                 processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
 
                 var dlib = new DlibBiometrics();
-                var faces = dlib.DetectFacesFromFile(processedPath);
-
-                if (faces == null || faces.Length == 0)
-                    return Json(new { ok = false, error = "NO_FACE" });
-                if (faces.Length > 1)
-                    return Json(new { ok = false, error = "MULTI_FACE" });
+                // FaceBox ay nested class ng DlibBiometrics — kailangan ng fully-qualified name.
+                DlibBiometrics.FaceBox faceBox;
+                Location faceLocation;
+                string detectErr;
+                if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLocation, out detectErr))
+                    return Json(new { ok = false, error = detectErr ?? "DETECT_FAIL" });
 
                 var live = new OnnxLiveness();
-                var scored = live.ScoreFromFile(processedPath, faces[0]);
+                var scored = live.ScoreFromFile(processedPath, faceBox);
                 if (!scored.Ok)
                     return Json(new { ok = false, error = scored.Error });
 
@@ -224,14 +225,14 @@ namespace FaceAttend.Areas.Admin.Controllers
                     return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p });
 
                 string encErr;
-                var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
-                if (vec == null)
+                double[] vec;
+                if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr) || vec == null)
                 {
                     var debug = AppSettings.GetBool("Biometrics:Debug", false);
                     if (debug)
-                        return Json(new { ok = false, error = "ENCODING_FAIL", detail = encErr });
+                        return Json(new { ok = false, error = encErr ?? "ENCODING_FAIL", detail = encErr });
 
-                    return Json(new { ok = false, error = "ENCODING_FAIL" });
+                    return Json(new { ok = false, error = encErr ?? "ENCODING_FAIL" });
                 }
 
                 var tol = AppSettings.GetDouble("Visitors:DlibTolerance",
@@ -261,7 +262,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     }
 
                     var bytes = DlibBiometrics.EncodeToBytes(vec);
-                    v.FaceEncodingBase64 = Convert.ToBase64String(bytes);
+                    v.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(bytes);
                     db.SaveChanges();
 
                     VisitorFaceIndex.Invalidate();
@@ -286,9 +287,9 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         private class EnrollCandidate
         {
-            public double[] Vec   { get; set; }
-            public float    Liveness { get; set; }
-            public int      Area  { get; set; }
+            public double[] Vec { get; set; }
+            public float Liveness { get; set; }
+            public int Area { get; set; }
         }
 
         [HttpPost]
@@ -303,7 +304,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             if (!int.TryParse(idText, out id) || id <= 0)
                 return Json(new { ok = false, error = "NO_VISITOR_ID" });
 
-            var maxBytes  = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var maxBytes = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
             var maxImages = AppSettings.GetInt("Biometrics:Enroll:MaxImages", 5);
 
             var files = new List<HttpPostedFileBase>();
@@ -360,28 +361,31 @@ namespace FaceAttend.Areas.Admin.Controllers
                     bool isProcessed;
                     processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
 
-                    var faces = dlib.DetectFacesFromFile(processedPath);
+                    // FaceBox ay nested class ng DlibBiometrics — kailangan ng fully-qualified name.
+                    DlibBiometrics.FaceBox faceBox;
+                    Location faceLocation;
+                    string detectErr;
+                    if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLocation, out detectErr))
+                        continue;
 
-                    if (faces == null || faces.Length == 0) continue;
-                    if (faces.Length > 1) continue;
-
-                    var scored = live.ScoreFromFile(processedPath, faces[0]);
+                    var scored = live.ScoreFromFile(processedPath, faceBox);
                     if (!scored.Ok) continue;
 
                     var p = scored.Probability ?? 0f;
                     if (p < th) continue;
 
                     string encErr;
-                    var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
-                    if (vec == null) continue;
+                    double[] vec;
+                    if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr) || vec == null)
+                        continue;
 
-                    var area = Math.Max(1, faces[0].Width * faces[0].Height);
+                    var area = Math.Max(1, faceBox.Width * faceBox.Height);
 
                     candidates.Add(new EnrollCandidate
                     {
-                        Vec      = vec,
+                        Vec = vec,
                         Liveness = p,
-                        Area     = area
+                        Area = area
                     });
                 }
                 catch
@@ -434,7 +438,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 }
 
                 var bytes = DlibBiometrics.EncodeToBytes(best.Vec);
-                v.FaceEncodingBase64 = Convert.ToBase64String(bytes);
+                v.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(bytes);
                 db.SaveChanges();
 
                 VisitorFaceIndex.Invalidate();

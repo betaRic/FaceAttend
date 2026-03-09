@@ -51,6 +51,7 @@ namespace FaceAttend.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RateLimit(Name = "KioskResolve", MaxRequests = 20, WindowSeconds = 60, Burst = 5)]
         public ActionResult ResolveOffice(double? lat, double? lon, double? accuracy)
         {
             using (var db = new FaceAttendDBEntities())
@@ -119,9 +120,10 @@ namespace FaceAttend.Controllers
         [RateLimit(Name = "KioskAttend", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
         public ActionResult Attend(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
         {
-            // Feature flag / rollback
-            if (!AppSettings.GetBool("Kiosk:UseNextGen", false))
-                return Json(new { ok = false, error = "NEXTGEN_DISABLED" });
+            // Walang tunay na legacy fallback path sa codebase.
+            // Kapag pinatay ang kiosk endpoint sa config lang, lahat ng attendance ay
+            // hihinto. Kung kailangan ng emergency rollback, i-stop ang IIS site o
+            // i-block muna ang public access sa reverse proxy / firewall layer.
 
             var activeScans = Interlocked.Increment(ref _activeScanCount);
             try
@@ -134,7 +136,7 @@ namespace FaceAttend.Controllers
                     {
                         ok = false,
                         error = "SYSTEM_BUSY",
-                        message = "System busy. Please try again in 2 minutes.",
+                        message = "System busy. Please try again in a few seconds.",
                         activeScans = activeScans,
                         maxConcurrentScans = maxConcurrentScans
                     });
@@ -569,7 +571,7 @@ namespace FaceAttend.Controllers
                         var now = DateTime.UtcNow;
 
                         var bytes = DlibBiometrics.EncodeToBytes(item.Vec);
-                        var b64 = bytes == null ? null : Convert.ToBase64String(bytes);
+                        var b64 = BiometricCrypto.ProtectBase64Bytes(bytes);
 
                         if (string.IsNullOrWhiteSpace(b64))
                             return Json(new { ok = false, error = "ENCODE_ERROR", message = "Could not save face." });

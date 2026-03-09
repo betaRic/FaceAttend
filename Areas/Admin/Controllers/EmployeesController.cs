@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Data.Entity;
 using System.Linq;
 using System.Web.Mvc;
@@ -7,6 +7,7 @@ using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using System.Globalization;
+using Newtonsoft.Json;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -123,11 +124,32 @@ namespace FaceAttend.Areas.Admin.Controllers
                     IsFlexi = vm.IsFlexi,
                     IsActive = vm.IsActive,
                     LastModifiedDate = DateTime.UtcNow,
-                    ModifiedBy = "ADMIN"
+                    ModifiedBy = AuditHelper.GetActorIp(Request)
                 };
 
                 db.Employees.Add(emp);
                 db.SaveChanges();
+
+                AuditHelper.Log(
+                    db,
+                    Request,
+                    AuditHelper.ActionEmployeeCreate,
+                    "Employee",
+                    emp.EmployeeId,
+                    "Gumawa ng bagong employee record.",
+                    null,
+                    new
+                    {
+                        emp.EmployeeId,
+                        emp.FirstName,
+                        emp.MiddleName,
+                        emp.LastName,
+                        emp.Position,
+                        emp.Department,
+                        emp.OfficeId,
+                        emp.IsFlexi,
+                        emp.IsActive
+                    });
 
                 // Wizard flow: go straight to face enrollment
                 return RedirectToAction("Enroll", new { id = emp.Id });
@@ -190,6 +212,19 @@ namespace FaceAttend.Areas.Admin.Controllers
                     return View(vm);
                 }
 
+                var oldValues = new
+                {
+                    emp.EmployeeId,
+                    emp.FirstName,
+                    emp.MiddleName,
+                    emp.LastName,
+                    emp.Position,
+                    emp.Department,
+                    emp.OfficeId,
+                    emp.IsFlexi,
+                    emp.IsActive
+                };
+
                 emp.EmployeeId = vm.EmployeeId;
                 emp.FirstName = vm.FirstName;
                 emp.MiddleName = string.IsNullOrWhiteSpace(vm.MiddleName) ? null : vm.MiddleName;
@@ -200,9 +235,30 @@ namespace FaceAttend.Areas.Admin.Controllers
                 emp.IsFlexi = vm.IsFlexi;
                 emp.IsActive = vm.IsActive;
                 emp.LastModifiedDate = DateTime.UtcNow;
-                emp.ModifiedBy = "ADMIN";
+                emp.ModifiedBy = AuditHelper.GetActorIp(Request);
 
                 db.SaveChanges();
+
+                AuditHelper.Log(
+                    db,
+                    Request,
+                    AuditHelper.ActionEmployeeEdit,
+                    "Employee",
+                    emp.EmployeeId,
+                    "Nag-update ng employee record.",
+                    oldValues,
+                    new
+                    {
+                        emp.EmployeeId,
+                        emp.FirstName,
+                        emp.MiddleName,
+                        emp.LastName,
+                        emp.Position,
+                        emp.Department,
+                        emp.OfficeId,
+                        emp.IsFlexi,
+                        emp.IsActive
+                    });
 
                 // EmployeeId and IsActive can affect the in-memory index.
                 EmployeeFaceIndex.Invalidate();
@@ -220,11 +276,38 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var emp = db.Employees.FirstOrDefault(e => e.Id == id);
                 if (emp == null) return HttpNotFound();
 
+                var oldValues = new
+                {
+                    emp.EmployeeId,
+                    emp.FirstName,
+                    emp.MiddleName,
+                    emp.LastName,
+                    emp.Position,
+                    emp.Department,
+                    emp.OfficeId,
+                    emp.IsFlexi,
+                    emp.IsActive
+                };
+
                 emp.IsActive = false;
                 emp.LastModifiedDate = DateTime.UtcNow;
-                emp.ModifiedBy = "ADMIN";
+                emp.ModifiedBy = AuditHelper.GetActorIp(Request);
 
                 db.SaveChanges();
+
+                AuditHelper.Log(
+                    db,
+                    Request,
+                    AuditHelper.ActionEmployeeDeactivate,
+                    "Employee",
+                    emp.EmployeeId,
+                    "Nag-deactivate ng employee record.",
+                    oldValues,
+                    new
+                    {
+                        emp.EmployeeId,
+                        emp.IsActive
+                    });
 
                 EmployeeFaceIndex.Invalidate();
 

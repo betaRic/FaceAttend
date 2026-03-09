@@ -3,6 +3,8 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using System.Web;
 using System.Web.Mvc;
+using FaceRecognitionDotNet;
+using Newtonsoft.Json;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
@@ -110,21 +112,25 @@ namespace FaceAttend.Controllers
                     path = SecureFileUpload.SaveTemp(f, "u_", maxBytes);
                     processedPath = ImagePreprocessor.PreprocessForDetection(path, "u_", out isProcessed);
 
-                    var faces = dlib.DetectFacesFromFile(processedPath);
-                    if (faces == null || faces.Length == 0) continue;
-                    if (faces.Length > 1) continue;
+                    // FaceBox ay nested class ng DlibBiometrics — kailangan ng fully-qualified name.
+                    DlibBiometrics.FaceBox faceBox;
+                    Location faceLocation;
+                    string detectErr;
+                    if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLocation, out detectErr))
+                        continue;
 
-                    var scored = live.ScoreFromFile(processedPath, faces[0]);
+                    var scored = live.ScoreFromFile(processedPath, faceBox);
                     if (!scored.Ok) continue;
 
                     var p = scored.Probability ?? 0f;
                     if (p < th) continue;
 
                     string encErr;
-                    var vec = dlib.GetSingleFaceEncodingFromFile(processedPath, out encErr);
-                    if (vec == null) continue;
+                    double[] vec;
+                    if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr) || vec == null)
+                        continue;
 
-                    var area = Math.Max(0, faces[0].Width) * Math.Max(0, faces[0].Height);
+                    var area = Math.Max(0, faceBox.Width) * Math.Max(0, faceBox.Height);
                     candidates.Add(new EnrollCandidate { Vec = vec, Liveness = p, Area = area });
                 }
                 catch
@@ -177,16 +183,18 @@ namespace FaceAttend.Controllers
 
                 var bestVec = candidates[0].Vec;
                 var bestBytes = DlibBiometrics.EncodeToBytes(bestVec);
-                emp.FaceEncodingBase64 = Convert.ToBase64String(bestBytes);
+                emp.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(bestBytes);
                 emp.EnrolledDate = emp.EnrolledDate ?? DateTime.UtcNow;
                 emp.LastModifiedDate = DateTime.UtcNow;
-                emp.ModifiedBy = "ADMIN";
+                emp.ModifiedBy = AuditHelper.GetActorIp(Request);
 
                 var encList = candidates
-                    .Select(c => Convert.ToBase64String(DlibBiometrics.EncodeToBytes(c.Vec)))
+                    .Select(c => BiometricCrypto.ProtectBase64Bytes(DlibBiometrics.EncodeToBytes(c.Vec)))
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
                     .ToList();
 
-                var encJson = Newtonsoft.Json.JsonConvert.SerializeObject(encList);
+                var encJson = BiometricCrypto.ProtectString(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(encList));
 
                 using (var tx = db.Database.BeginTransaction())
                 {
@@ -199,13 +207,28 @@ namespace FaceAttend.Controllers
                             encJson,
                             employeeId);
                     }
-                    catch(Exception ex)
+                    catch (Exception ex)
                     {
                         System.Diagnostics.Debug.WriteLine("[BiometricsController] FaceEncodingsJson update skipped: " + ex.Message);
                     }
 
                     tx.Commit();
                 }
+
+                AuditHelper.Log(
+                    db,
+                    Request,
+                    AuditHelper.ActionFaceEnroll,
+                    "Employee",
+                    employeeId,
+                    "Nag-enroll ng face vectors para sa employee.",
+                    null,
+                    new
+                    {
+                        savedVectors = encList.Count,
+                        primaryVector = !string.IsNullOrWhiteSpace(emp.FaceEncodingBase64),
+                        hasJson = !string.IsNullOrWhiteSpace(encJson)
+                    });
 
                 EmployeeFaceIndex.Invalidate();
 

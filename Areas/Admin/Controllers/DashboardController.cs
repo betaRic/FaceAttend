@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.IO;
 using System.Linq;
 using System.Web.Hosting;
@@ -32,9 +32,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                     // Bilang ng aktibong empleyado.
                     vm.TotalEmployees = db.Employees.Count(e => e.IsActive);
 
-                    // Time-ins at time-outs ngayong araw (UTC range).
-                    var todayUtc    = DateTime.UtcNow.Date;
-                    var tomorrowUtc = todayUtc.AddDays(1);
+                    // Gamitin ang PH local date bago i-convert sa UTC range.
+                    // HINDI tama ang DateTime.UtcNow.Date para sa dashboard cards
+                    // dahil ang PHT midnight ay 4:00 PM UTC ng nakaraang araw.
+                    var todayLocal  = TimeZoneHelper.TodayLocalDate();
+                    var todayRange  = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
+                    var todayUtc    = todayRange.fromUtc;
+                    var tomorrowUtc = todayRange.toUtcExclusive;
 
                     vm.TodayTimeIns = db.AttendanceLogs.Count(l =>
                         l.Timestamp >= todayUtc &&
@@ -117,8 +121,10 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 using (var db = new FaceAttendDBEntities())
                 {
-                    var todayUtc    = DateTime.UtcNow.Date;
-                    var tomorrowUtc = todayUtc.AddDays(1);
+                    var todayLocal  = TimeZoneHelper.TodayLocalDate();
+                    var todayRange  = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
+                    var todayUtc    = todayRange.fromUtc;
+                    var tomorrowUtc = todayRange.toUtcExclusive;
 
                     var totalEmployees = db.Employees.Count(e => e.IsActive);
                     var todayIns       = db.AttendanceLogs.Count(l =>

@@ -68,7 +68,7 @@ namespace FaceAttend.Services.Background
             _thread = new Thread(RunLoop)
             {
                 IsBackground = true,
-                Name         = "FaceAttend.TempFileCleanup"
+                Name = "FaceAttend.TempFileCleanup"
             };
         }
 
@@ -98,7 +98,7 @@ namespace FaceAttend.Services.Background
         }
 
         /// <summary>
-        /// Tinatawag ng IIS sa app pool shutdown.
+        /// Tinatawag ng IIS sa app pool shutdown (instance method — kinakailangan ng IRegisteredObject).
         /// Ang immediate parameter:
         ///   false = "please stop soon" — nagbibigay ng pagkakataon para matapos ang cleanup.
         ///   true  = "stop NOW" — forced shutdown na.
@@ -113,6 +113,28 @@ namespace FaceAttend.Services.Background
                 _thread.Join(TimeSpan.FromSeconds(5));
 
             HostingEnvironment.UnregisterObject(this);
+        }
+
+        /// <summary>
+        /// Static na convenience overload para sa Global.asax.cs Application_End.
+        ///
+        /// BAKIT KAILANGAN ITO:
+        ///   Ang IRegisteredObject.Stop(bool) ay instance method — kaya hindi pwedeng
+        ///   tawagin bilang TempFileCleanupTask.Stop(false) sa Global.asax.
+        ///   Ang static wrapper na ito ang nag-rereroute ng tawag sa singleton instance
+        ///   nang hindi kailangan ng panlabas na reference.
+        ///
+        ///   Kapag hindi pa na-start ang task (null si _instance), safe na mag-return lang —
+        ///   walang thread na kailangang ihinto.
+        /// </summary>
+        public static void StopSingleton(bool immediate)
+        {
+            TempFileCleanupTask instance;
+            lock (_startLock)
+            {
+                instance = _instance;
+            }
+            instance?.Stop(immediate);
         }
 
         // ─── Cleanup logic ────────────────────────────────────────────────────────
@@ -158,9 +180,9 @@ namespace FaceAttend.Services.Background
             if (string.IsNullOrWhiteSpace(tmpDir) || !Directory.Exists(tmpDir))
                 return;
 
-            var cutoff  = DateTime.UtcNow.AddMinutes(-MaxAgeMinutes);
+            var cutoff = DateTime.UtcNow.AddMinutes(-MaxAgeMinutes);
             int deleted = 0;
-            int errors  = 0;
+            int errors = 0;
 
             foreach (var file in Directory.GetFiles(tmpDir))
             {

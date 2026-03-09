@@ -15,6 +15,17 @@ namespace FaceAttend
     {
         private static volatile int _warmUpState = 0;
         private static string _warmUpMessage = "NOT_STARTED";
+
+        public static int WarmUpState
+        {
+            get { return _warmUpState; }
+        }
+
+        public static string WarmUpMessage
+        {
+            get { return _warmUpMessage; }
+        }
+
         protected void Application_Start()
         {
             AreaRegistration.RegisterAllAreas();
@@ -162,13 +173,13 @@ namespace FaceAttend
                 return;
             }
 
-            int    code   = 500;
+            int code = 500;
             if (ex is HttpException httpEx)
                 code = httpEx.GetHttpCode();
 
-            string action  = MapStatusToAction(code);
-            bool   isAdmin = IsAdminRequest(Request);
-            string target  = isAdmin
+            string action = MapStatusToAction(code);
+            bool isAdmin = IsAdminRequest(Request);
+            string target = isAdmin
                 ? $"~/Admin/Error/{action}"
                 : $"~/Error/{action}";
 
@@ -200,10 +211,10 @@ namespace FaceAttend
                     return;
                 }
 
-                bool   isAdmin = IsAdminRequest(Request);
-                string target  = isAdmin ? "~/Admin/Error/NotFound" : "~/Error/NotFound";
+                bool isAdmin = IsAdminRequest(Request);
+                string target = isAdmin ? "~/Admin/Error/NotFound" : "~/Error/NotFound";
 
-                Response.TrySkipIisCustomErrors   = true;
+                Response.TrySkipIisCustomErrors = true;
                 Context.Items["__fa_error_handled"] = true;
                 Server.TransferRequest(VirtualPathUtility.ToAbsolute(target), true);
             }
@@ -222,7 +233,10 @@ namespace FaceAttend
         /// </summary>
         protected void Application_End()
         {
-            try { TempFileCleanupTask.Stop(false); }
+            // I-stop ang background cleanup thread bago mag-shutdown ang app pool.
+            // Ginagamit natin ang StopSingleton() — static wrapper para hindi kailangan
+            // ng reference sa instance (ang Stop() mismo ay instance method ng IRegisteredObject).
+            try { TempFileCleanupTask.StopSingleton(false); }
             catch { /* best effort */ }
 
             // I-dispose ang lahat ng Dlib FaceRecognition instances sa pool.
@@ -272,7 +286,7 @@ namespace FaceAttend
         {
             if (request == null) return false;
             var adminRoot = VirtualPathUtility.ToAbsolute("~/Admin");
-            var path      = request.Path ?? "";
+            var path = request.Path ?? "";
             return path.StartsWith(adminRoot, StringComparison.OrdinalIgnoreCase);
         }
 
@@ -286,7 +300,7 @@ namespace FaceAttend
                 case 404: return "NotFound";
                 case 429: return "TooManyRequests";
                 case 503: return "Unavailable";
-                default:  return "Index";
+                default: return "Index";
             }
         }
     }

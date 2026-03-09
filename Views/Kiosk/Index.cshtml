@@ -1,4 +1,4 @@
-@{
+﻿@{
     Layout = null;
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
@@ -17,7 +17,7 @@
 
     <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
 </head>
-<body data-app-base="@Url.Content("~/")" data-nextgen="@((System.Configuration.ConfigurationManager.AppSettings["Kiosk:UseNextGen"] ?? "false"))" data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
+<body data-app-base="@Url.Content("~/")" data-nextgen="true" data-return-url="@ViewBag.ReturnUrl" data-unlock-hint="@ViewBag.UnlockHint">
     @Html.AntiForgeryToken()
 
     <div id="kioskRoot">

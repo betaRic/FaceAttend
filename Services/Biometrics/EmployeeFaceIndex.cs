@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Newtonsoft.Json;
@@ -168,7 +168,11 @@ namespace FaceAttend.Services.Biometrics
                     {
                         try
                         {
-                            var b64s = JsonConvert.DeserializeObject<List<string>>(r.FaceEncodingsJson) ?? new List<string>();
+                            string encJsonPlain;
+                            if (!BiometricCrypto.TryUnprotectString(r.FaceEncodingsJson, out encJsonPlain))
+                                encJsonPlain = r.FaceEncodingsJson;
+
+                            var b64s = JsonConvert.DeserializeObject<List<string>>(encJsonPlain) ?? new List<string>();
                             int added = 0;
                             foreach (var b64 in b64s)
                             {
@@ -176,7 +180,10 @@ namespace FaceAttend.Services.Biometrics
                                 if (string.IsNullOrWhiteSpace(b64)) continue;
                                 try
                                 {
-                                    var bytes = Convert.FromBase64String(b64);
+                                    byte[] bytes;
+                                    if (!BiometricCrypto.TryGetBytesFromStoredBase64(b64, out bytes))
+                                        continue;
+
                                     var vec = DlibBiometrics.DecodeFromBytes(bytes);
                                     if (vec != null && vec.Length == 128)
                                     {
@@ -201,7 +208,10 @@ namespace FaceAttend.Services.Biometrics
                     {
                         try
                         {
-                            var bytes = Convert.FromBase64String(r.FaceEncodingBase64);
+                            byte[] bytes;
+                            if (!BiometricCrypto.TryGetBytesFromStoredBase64(r.FaceEncodingBase64, out bytes))
+                                continue;
+
                             var vec = DlibBiometrics.DecodeFromBytes(bytes);
                             if (vec != null && vec.Length == 128)
                                 list.Add(new Entry { EmployeeId = r.EmployeeId, Vec = vec });
@@ -228,7 +238,10 @@ namespace FaceAttend.Services.Biometrics
                 {
                     try
                     {
-                        var bytes = Convert.FromBase64String(emp.FaceEncodingBase64);
+                        byte[] bytes;
+                        if (!BiometricCrypto.TryGetBytesFromStoredBase64(emp.FaceEncodingBase64, out bytes))
+                            continue;
+
                         var vec = DlibBiometrics.DecodeFromBytes(bytes);
                         if (vec != null && vec.Length == 128)
                             list.Add(new Entry { EmployeeId = emp.EmployeeId, Vec = vec });

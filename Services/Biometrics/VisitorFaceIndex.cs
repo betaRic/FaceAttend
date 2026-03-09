@@ -96,7 +96,10 @@ namespace FaceAttend.Services.Biometrics
             {
                 try
                 {
-                    var bytes = Convert.FromBase64String(v.FaceEncodingBase64);
+                    byte[] bytes;
+                    if (!BiometricCrypto.TryGetBytesFromStoredBase64(v.FaceEncodingBase64, out bytes))
+                        continue;
+
                     var vec   = DlibBiometrics.DecodeFromBytes(bytes);
                     if (vec != null && vec.Length == 128)
                         list.Add(new Entry

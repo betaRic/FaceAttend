@@ -1,4 +1,4 @@
-@model FaceAttend.Areas.Admin.Models.SettingsVm
+﻿@model FaceAttend.Areas.Admin.Models.SettingsVm
 @{
     ViewBag.Title = "Settings";
 }
@@ -570,6 +570,30 @@
             </div>
         </div>
     }
+
+    <div class="ea-form-card mt-3">
+        <div class="ea-form-header">
+            <div class="ea-form-title">
+                <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                Security Maintenance
+            </div>
+        </div>
+        <div class="ea-form-body">
+            <div class="small text-muted mb-3">
+                One-time migration ito para i-encrypt ang mga lumang face encodings na naka-plain pa sa database.
+                Safe ito sa mixed data. Lalaktawan nito ang rows na encrypted na.
+            </div>
+
+            @using (Html.BeginForm("MigrateBiometricEncryption", "Settings", new { area = "Admin" }, FormMethod.Post))
+            {
+                @Html.AntiForgeryToken()
+                <button type="submit" class="btn btn-outline-danger"
+                        onclick="return confirm('Run one-time biometric encryption migration now?');">
+                    <i class="fa-solid fa-lock me-1" aria-hidden="true"></i>Encrypt Existing Biometric Rows
+                </button>
+            }
+        </div>
+    </div>
 
 </div>
 
