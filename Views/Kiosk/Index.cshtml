@@ -3,7 +3,6 @@
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
 }
-
 <!doctype html>
 <html lang="en">
 <head>
@@ -11,175 +10,196 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Kiosk — FaceAttend</title>
-
+    <title>FaceAttend - Kiosk</title>
     <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
     <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
 </head>
-<body data-app-base="@Url.Content("~/")"
-      data-nextgen="true"
-      data-return-url="@ViewBag.ReturnUrl"
-      data-unlock-hint="@ViewBag.UnlockHint">
+<body
+    data-app-base="@Url.Content("~/")"
+    data-nextgen="true"
+    data-return-url="@ViewBag.ReturnUrl"
+    data-unlock-hint="@ViewBag.UnlockHint">
 
     @Html.AntiForgeryToken()
 
     <div id="kioskRoot">
+
+        <!-- Camera feed - always running, visible through idle overlay -->
         <video id="kioskVideo" playsinline autoplay muted></video>
+
+        <!-- Face detection bounding box canvas -->
         <canvas id="overlayCanvas"></canvas>
 
-        <!-- ══════════════════════════════════════════════════════════════
+        <!-- ==============================================================
              IDLE OVERLAY
-             Shown when no face is detected. Hidden on first detection.
-             idleClock / idleDate are synced by kiosk.js nowText() every second.
-             ══════════════════════════════════════════════════════════════ -->
-        <div id="idleOverlay" class="hidden" aria-hidden="true" aria-label="Kiosk idle">
+             Semi-transparent so the camera feed is visible underneath.
+             idleClock and idleDate are updated by kiosk.js every second.
+             ============================================================== -->
+        <div id="idleOverlay" class="hidden" aria-hidden="true">
 
-            <!-- Grain texture (purely decorative) -->
-            <div class="idle-grain" aria-hidden="true"></div>
+            <!-- Moving scan line across the full screen -->
+            <div class="idle-scanline" aria-hidden="true"></div>
 
-            <!-- Animated concentric rings -->
-            <div class="idle-rings" aria-hidden="true">
-                <div class="idle-ring r1"></div>
-                <div class="idle-ring r2"></div>
-                <div class="idle-ring r3"></div>
+            <!-- Sonar / pulse rings radiating from center -->
+            <div class="idle-sonar" aria-hidden="true">
+                <div class="idle-sonar-ring sr1"></div>
+                <div class="idle-sonar-ring sr2"></div>
+                <div class="idle-sonar-ring sr3"></div>
+                <div class="idle-sonar-ring sr4"></div>
             </div>
 
-            <!-- Main content card -->
+            <!-- Center card -->
             <div class="idle-card">
 
-                <div class="idle-brand">FaceAttend</div>
+                <div class="idle-brand-label">FaceAttend</div>
 
-                <!-- Face scan ring SVG -->
+                <!-- Animated face scan ring SVG -->
                 <div class="idle-face-ring" aria-hidden="true">
                     <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <!-- Outer dashed rotating ring -->
-                        <circle class="idle-ring-outer" cx="100" cy="100" r="92" stroke-width="1.2" fill="none"/>
-                        <!-- Inner solid ring -->
-                        <circle class="idle-ring-inner" cx="100" cy="100" r="74" stroke-width="1.5" fill="none"/>
 
-                        <!-- Corner brackets — top left -->
-                        <path class="idle-face-bracket" stroke-width="3" d="M44 64 L44 44 L64 44"/>
-                        <!-- top right -->
-                        <path class="idle-face-bracket" stroke-width="3" d="M136 44 L156 44 L156 64"/>
-                        <!-- bottom left -->
-                        <path class="idle-face-bracket" stroke-width="3" d="M44 136 L44 156 L64 156"/>
-                        <!-- bottom right -->
-                        <path class="idle-face-bracket" stroke-width="3" d="M156 136 L156 156 L136 156"/>
+                        <!-- Outer slowly rotating dashed ring -->
+                        <circle class="ifr-spin"     cx="100" cy="100" r="94" stroke-width="1.0" fill="none"/>
 
-                        <!-- Stylised face silhouette (head oval + eye dots) -->
-                        <ellipse cx="100" cy="97" rx="26" ry="30" stroke="rgba(0,255,122,0.28)" stroke-width="1.2" fill="none"/>
-                        <circle cx="91" cy="91" r="2.5" fill="rgba(0,255,122,0.45)"/>
-                        <circle cx="109" cy="91" r="2.5" fill="rgba(0,255,122,0.45)"/>
-                        <path d="M92 103 Q100 108 108 103" stroke="rgba(0,255,122,0.45)" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+                        <!-- Counter-rotating inner ring -->
+                        <circle class="ifr-spin-ccw" cx="100" cy="100" r="78" stroke-width="0.8" fill="none"/>
+
+                        <!-- Glow ring -->
+                        <circle class="ifr-glow"     cx="100" cy="100" r="70" stroke-width="1.2" fill="none"/>
+
+                        <!-- Corner brackets: top-left -->
+                        <path class="ifr-bracket" stroke-width="2.5" d="M46 66 L46 46 L66 46"/>
+                        <!-- top-right -->
+                        <path class="ifr-bracket" stroke-width="2.5" d="M134 46 L154 46 L154 66"/>
+                        <!-- bottom-left -->
+                        <path class="ifr-bracket" stroke-width="2.5" d="M46 134 L46 154 L66 154"/>
+                        <!-- bottom-right -->
+                        <path class="ifr-bracket" stroke-width="2.5" d="M154 134 L154 154 L134 154"/>
+
+                        <!-- Stylised face: head oval -->
+                        <ellipse class="ifr-face" cx="100" cy="96" rx="24" ry="28" stroke-width="1.0" fill="none"/>
+                        <!-- eyes -->
+                        <circle class="ifr-eye" cx="91"  cy="90" r="2.5"/>
+                        <circle class="ifr-eye" cx="109" cy="90" r="2.5"/>
+                        <!-- mouth line -->
+                        <path class="ifr-face" d="M93 104 Q100 109 107 104" stroke-width="1.2" stroke-linecap="round" fill="none"/>
+
                     </svg>
-                    <div class="idle-face-dot" aria-hidden="true"></div>
+                    <!-- Pulsing center dot -->
+                    <div class="idle-center-dot" aria-hidden="true"></div>
                 </div>
 
-                <!-- Live clock — updated by kiosk.js every second -->
+                <!-- Live clock synced by kiosk.js every second -->
                 <div id="idleClock" aria-live="off">--:--:--</div>
-                <div id="idleDate" aria-live="off">----</div>
+                <div id="idleDate"  aria-live="off">---</div>
 
-                <!-- Call to action -->
-                <div class="idle-cta">
-                    <span class="idle-cta-icon">◎</span>Look at the camera to begin
+                <!-- CTA -->
+                <div class="idle-cta-row">
+                    <div class="idle-cta-pip" aria-hidden="true"></div>
+                    <div class="idle-cta-text">Look at the camera to begin</div>
                 </div>
 
             </div>
-        </div>
 
-        <!-- ── HUD: top left — brand + office ──────────────────────────── -->
+        </div>
+        <!-- end #idleOverlay -->
+
+        <!-- ---- HUD: top left - brand and office ----------------------- -->
         <div id="topLeft">
             <div class="brand">FaceAttend</div>
-            <div class="sub" id="officeLine">Locating…</div>
+            <div class="sub" id="officeLine">Locating...</div>
         </div>
 
-        <!-- ── HUD: top center — time + date ───────────────────────────── -->
+        <!-- ---- HUD: top center - clock -------------------------------- -->
         <div id="topCenter">
             <div id="timeLine">--:--:--</div>
-            <div id="dateLine">----</div>
+            <div id="dateLine">---</div>
         </div>
 
-        <!-- ── HUD: top right — liveness + ETA ────────────────────────── -->
+        <!-- ---- HUD: top right - liveness and scan ETA ----------------- -->
         <div id="topRight">
-            <div id="livenessLine">Live: --</div>
+            <div id="livenessLine" class="live-unk">Live: --</div>
             <div id="scanEtaLine">ETA: --</div>
         </div>
 
-        <!-- ── Center block — not in allowed area ──────────────────────── -->
+        <!-- ---- Center block: out of allowed area ---------------------- -->
         <div id="centerBlock" class="hidden" aria-live="polite">
             <div class="blockTitle">Not in allowed area.</div>
             <div class="blockSub">Move closer to a designated office.</div>
         </div>
 
-        <!-- ── Bottom center — main prompt ─────────────────────────────── -->
+        <!-- ---- Bottom center - scan prompt ---------------------------- -->
         <div id="bottomCenter">
             <div id="mainPrompt">Ready.</div>
             <div id="subPrompt">Stand still. One face only.</div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════════════════
+        <!-- ==============================================================
              ADMIN UNLOCK MODAL
-             ══════════════════════════════════════════════════════════════ -->
-        <div id="unlockBackdrop" class="hidden" aria-hidden="true">
-            <div id="unlockModal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
-                <div class="unlockHeader">
-                    <div id="unlockTitle" class="unlockTitle">Admin Unlock</div>
-                    <button id="unlockClose" type="button" class="unlockClose" aria-label="Close">✕</button>
+             ============================================================== -->
+        <div id="unlockBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
+            <div id="unlockModal" class="kiosk-modal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+                <div class="modal-header">
+                    <div id="unlockTitle" class="modal-title">Admin Unlock</div>
+                    <button id="unlockClose" type="button" class="modal-close-btn" aria-label="Close">X</button>
                 </div>
-                <div class="unlockHint">Enter PIN · Enter to unlock · Esc to cancel</div>
-                <input id="unlockPin"
-                       class="unlockInput"
-                       type="password"
-                       inputmode="numeric"
-                       autocomplete="one-time-code"
-                       placeholder="Enter PIN" />
-                <div id="unlockErr" class="unlockErr" role="alert"></div>
-                <div class="unlockActions">
-                    <button id="unlockCancel" type="button" class="btnGhost">Cancel</button>
-                    <button id="unlockSubmit" type="button" class="btnPrimary">Unlock</button>
+                <div class="modal-hint">Enter PIN -- press Enter to unlock or Esc to cancel</div>
+                <input
+                    id="unlockPin"
+                    class="modal-input modal-input-mono"
+                    type="password"
+                    inputmode="numeric"
+                    autocomplete="one-time-code"
+                    placeholder="PIN" />
+                <div id="unlockErr" class="modal-err" role="alert"></div>
+                <div class="modal-actions">
+                    <button id="unlockCancel" type="button" class="btn-ghost">Cancel</button>
+                    <button id="unlockSubmit" type="button" class="btn-primary">Unlock</button>
                 </div>
             </div>
         </div>
 
-        <!-- ══════════════════════════════════════════════════════════════
+        <!-- ==============================================================
              VISITOR MODAL
-             ══════════════════════════════════════════════════════════════ -->
-        <div id="visitorBackdrop" class="hidden" aria-hidden="true">
-            <div id="visitorModal" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
-                <div class="unlockHeader">
-                    <div id="visitorTitle" class="unlockTitle">Visitor Sign-In</div>
-                    <button id="visitorClose" type="button" class="unlockClose" aria-label="Close">✕</button>
+             ============================================================== -->
+        <div id="visitorBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
+            <div id="visitorModal" class="kiosk-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
+                <div class="modal-header">
+                    <div id="visitorTitle" class="modal-title">Visitor Sign-In</div>
+                    <button id="visitorClose" type="button" class="modal-close-btn" aria-label="Close">X</button>
                 </div>
-                <div class="unlockHint">Please fill in the details below · Enter to submit</div>
+                <div class="modal-hint">Fill in the details below -- press Enter to submit</div>
 
                 <div id="visitorNameRow">
-                    <input id="visitorName"
-                           class="unlockInput"
-                           type="text"
-                           autocomplete="name"
-                           placeholder="Full name" />
+                    <input
+                        id="visitorName"
+                        class="modal-input"
+                        type="text"
+                        autocomplete="name"
+                        placeholder="Full name" />
                 </div>
 
-                <input id="visitorPurpose"
-                       class="unlockInput"
-                       type="text"
-                       autocomplete="off"
-                       placeholder="Reason for visit" />
+                <input
+                    id="visitorPurpose"
+                    class="modal-input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Reason for visit" />
 
-                <div id="visitorErr" class="unlockErr" role="alert"></div>
+                <div id="visitorErr" class="modal-err" role="alert"></div>
 
-                <div class="unlockActions">
-                    <button id="visitorCancel" type="button" class="btnGhost">Cancel</button>
-                    <button id="visitorSubmit" type="button" class="btnPrimary">Submit</button>
+                <div class="modal-actions">
+                    <button id="visitorCancel" type="button" class="btn-ghost">Cancel</button>
+                    <button id="visitorSubmit" type="button" class="btn-primary">Submit</button>
                 </div>
             </div>
         </div>
 
-    </div><!-- #kioskRoot -->
+    </div><!-- end #kioskRoot -->
 
     <script src="~/Scripts/jquery-3.7.1.min.js"></script>
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
     <script src="@Url.Content("~/Scripts/vendor/toastify/toastify.min.js")"></script>
     <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
+
 </body>
 </html>

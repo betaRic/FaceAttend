@@ -13,27 +13,12 @@ namespace FaceAttend.Areas.Admin.Controllers
     [AdminAuthorize]
     public class DashboardController : Controller
     {
-        // ====================================================================
-        // INDEX — Naglo-load ng full dashboard page
-        //
-        // FIX (QA-01): Tinanggal ang LEFT JOIN sa RecentLogs query.
-        //   DATI:  join e in db.Employees on l.EmployeeId equals e.Id
-        //   BAGO:  walang join — ginagamit na lang ang denormalized na
-        //          EmployeeFullName at OfficeName na naka-store na sa log row.
-        //   BAKIT: Ang e.Id ay int PK; ang l.EmployeeId ay string — type mismatch
-        //          na nagdudulot ng EF translation exception o silent wrong results.
-        //          Mas mabilis pa ito (isang table scan lang, walang JOIN).
-        //
-        // FIX (QA-02): Dagdag na outer try/catch para ma-catch ang view
-        //   rendering exceptions na hindi nahuhuli ng inner try/catch.
-        // ====================================================================
         public ActionResult Index()
         {
             var vm = new DashboardViewModel();
 
             try
             {
-                // ── Inner try/catch: DB queries ───────────────────────────────
                 try
                 {
                     using (var db = new FaceAttendDBEntities())
@@ -46,48 +31,52 @@ namespace FaceAttend.Areas.Admin.Controllers
                         var tomorrowUtc = todayRange.toUtcExclusive;
 
                         vm.TodayTimeIns = db.AttendanceLogs.Count(l =>
-                            l.Timestamp >= todayUtc &&
-                            l.Timestamp < tomorrowUtc &&
-                            l.EventType == "IN");
+                            l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "IN");
 
                         vm.TodayTimeOuts = db.AttendanceLogs.Count(l =>
-                            l.Timestamp >= todayUtc &&
-                            l.Timestamp < tomorrowUtc &&
-                            l.EventType == "OUT");
+                            l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "OUT");
 
                         vm.TotalVisitors = db.Visitors.Count(v => v.IsActive);
                         vm.PendingReviews = db.AttendanceLogs.Count(l => l.NeedsReview);
 
-                        // FIX (QA-01): Simple single-table query — no JOIN needed.
-                        // EmployeeFullName and OfficeName are already denormalized
-                        // on the AttendanceLog row at write time.
-                        vm.RecentLogs = db.AttendanceLogs
+                        // FIX (CS0019): l.EmployeeId is int — materialize first,
+                        // then convert int->string in C# memory (not inside EF LINQ).
+                        // EF6 cannot translate .ToString() to SQL.
+                        var rawLogs = db.AttendanceLogs
                             .OrderByDescending(l => l.Timestamp)
                             .Take(10)
-                            .Select(l => new RecentAttendanceRow
+                            .Select(l => new
                             {
-                                Id = l.Id,
-                                TimestampUtc = l.Timestamp,
-                                EmployeeId = l.EmployeeId ?? "",
-                                EmployeeFullName = l.EmployeeFullName ?? "",
-                                EventType = l.EventType,
-                                OfficeName = l.OfficeName ?? "",
-                                NeedsReview = l.NeedsReview
+                                l.Id,
+                                l.Timestamp,
+                                l.EmployeeId,
+                                l.EmployeeFullName,
+                                l.EventType,
+                                l.OfficeName,
+                                l.NeedsReview,
                             })
                             .ToList();
+
+                        vm.RecentLogs = rawLogs.Select(l => new RecentAttendanceRow
+                        {
+                            Id = l.Id,
+                            TimestampUtc = l.Timestamp,
+                            EmployeeId = l.EmployeeId.ToString(),
+                            EmployeeFullName = l.EmployeeFullName ?? "",
+                            EventType = l.EventType,
+                            OfficeName = l.OfficeName ?? "",
+                            NeedsReview = l.NeedsReview,
+                        }).ToList();
 
                         vm.DatabaseHealthy = true;
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Trace.TraceError(
-                        "[Dashboard.Index] DB error: " + ex.Message);
+                    System.Diagnostics.Trace.TraceError("[Dashboard.Index] DB error: " + ex.Message);
                     vm.DatabaseHealthy = false;
-                    // vm.RecentLogs defaults to empty list — view handles this gracefully.
                 }
 
-                // ── Model file checks (each has internal try/catch) ───────────
                 vm.LivenessModelLoaded = CheckFileExists(
                     AppSettings.GetString("Biometrics:LivenessModelPath",
                         "~/App_Data/models/liveness/minifasnet.onnx"));
@@ -98,7 +87,6 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 vm.OfflineAssetsOk = true;
 
-                // ── Circuit breaker status ────────────────────────────────────
                 try
                 {
                     var circuitState = OnnxLiveness.GetCircuitState();
@@ -107,8 +95,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Trace.TraceError(
-                        "[Dashboard.Index] Liveness health error: " + ex);
+                    System.Diagnostics.Trace.TraceError("[Dashboard.Index] Liveness health error: " + ex);
                     vm.LivenessCircuitOpen = false;
                     vm.LivenessCircuitStuck = true;
                 }
@@ -118,24 +105,14 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
             catch (Exception ex)
             {
-                // FIX (QA-02): Outer safety net — catches Razor view rendering
-                // exceptions that bypass the inner try/catch blocks above.
-                // We redirect to the Admin error page rather than re-rendering
-                // the view (which might itself be the source of the exception).
-                System.Diagnostics.Trace.TraceError(
-                    "[Dashboard.Index] Unhandled error: " + ex.ToString());
-
+                System.Diagnostics.Trace.TraceError("[Dashboard.Index] Unhandled error: " + ex.ToString());
                 TempData["msg"] = "Dashboard error. Details written to application log.";
                 TempData["msgKind"] = "danger";
-
                 Response.StatusCode = 500;
                 return RedirectToAction("Index", "Error", new { area = "Admin" });
             }
         }
 
-        // ====================================================================
-        // KPI JSON — Lightweight AJAX refresh endpoint (every 2 minutes)
-        // ====================================================================
         [HttpGet]
         public ActionResult KpiJson()
         {
@@ -150,14 +127,11 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                     var totalEmployees = db.Employees.Count(e => e.IsActive);
                     var todayIns = db.AttendanceLogs.Count(l =>
-                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc &&
-                        l.EventType == "IN");
+                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "IN");
                     var todayOuts = db.AttendanceLogs.Count(l =>
-                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc &&
-                        l.EventType == "OUT");
+                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "OUT");
                     var visitors = db.Visitors.Count(v => v.IsActive);
                     var pending = db.AttendanceLogs.Count(l => l.NeedsReview);
-
                     var circuit = OnnxLiveness.GetCircuitState();
 
                     return Json(new
@@ -182,9 +156,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
-        // ====================================================================
-        // LIVENESS CIRCUIT RESET
-        // ====================================================================
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult ResetLivenessCircuit()
@@ -200,13 +171,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                 TempData["msg"] = "Error: " + ex.Message;
                 TempData["msgKind"] = "danger";
             }
-
             return RedirectToAction("Index");
         }
-
-        // ────────────────────────────────────────────────────────────────────
-        // Private helpers
-        // ────────────────────────────────────────────────────────────────────
 
         private static bool CheckFileExists(string virtualPath)
         {
@@ -226,9 +192,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 var abs = HostingEnvironment.MapPath(virtualDir);
                 if (string.IsNullOrEmpty(abs) || !System.IO.Directory.Exists(abs)) return false;
-
-                var dat = System.IO.Directory.GetFiles(
-                    abs, "*.dat", System.IO.SearchOption.TopDirectoryOnly);
+                var dat = System.IO.Directory.GetFiles(abs, "*.dat", System.IO.SearchOption.TopDirectoryOnly);
                 return dat.Length >= 2;
             }
             catch { return false; }
