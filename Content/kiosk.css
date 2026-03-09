@@ -1115,3 +1115,219 @@ body.kiosk-body {
         transform: scale(0.68);
     }
 }
+
+/* === DILG Region XII kiosk minimalist idle === */
+#idleOverlay:not(.hidden) ~ #topLeft,
+#idleOverlay:not(.hidden) ~ #topCenter,
+#idleOverlay:not(.hidden) ~ #topRight,
+#idleOverlay:not(.hidden) ~ #centerBlock,
+#idleOverlay:not(.hidden) ~ #bottomCenter {
+    opacity: 0 !important;
+    pointer-events: none !important;
+    transform: translateY(8px);
+}
+
+#idleOverlay {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: rgba(7, 14, 24, 0.78);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+#idleOverlay.hidden {
+    display: none !important;
+}
+
+.idle-backdrop-grid,
+.idle-scanline,
+.idle-sonar,
+.idle-face-ring,
+.idle-center-dot,
+.idle-card,
+.idle-brand-stack,
+.idle-brand-copy,
+.idle-card-shell,
+.idle-cta-row,
+.idle-cta-pip,
+.idle-cta-text {
+    display: none !important;
+}
+
+#kioskVideo {
+    filter: brightness(0.36) contrast(1.02) saturate(0.78);
+}
+
+.idle-min-shell {
+    width: min(92vw, 760px);
+}
+
+.idle-min-header {
+    margin-bottom: 18px;
+}
+
+.idle-min-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+}
+
+.idle-min-logo-wrap {
+    width: 64px;
+    height: 64px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: #ffffff;
+    box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+    flex-shrink: 0;
+}
+
+.idle-min-logo {
+    width: 48px;
+    height: 48px;
+    object-fit: contain;
+}
+
+.idle-min-brand-copy {
+    text-align: left;
+}
+
+.idle-min-eyebrow {
+    margin-bottom: 4px;
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: rgba(226, 232, 240, 0.72);
+}
+
+.idle-min-title {
+    font-size: clamp(28px, 3.2vw, 40px);
+    line-height: 1.05;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #f8fafc;
+}
+
+.idle-min-subtitle {
+    margin-top: 4px;
+    font-size: 13px;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(226, 232, 240, 0.72);
+}
+
+.idle-min-panel {
+    width: 100%;
+    border-radius: 18px;
+    padding: 28px 22px 24px;
+    text-align: center;
+    background: rgba(8, 18, 31, 0.94);
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    box-shadow: 0 16px 40px rgba(0,0,0,0.24);
+}
+
+.idle-min-status-row {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.idle-min-pulse {
+    width: 10px;
+    height: 10px;
+    border-radius: 999px;
+    background: #60a5fa;
+    box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.45);
+    animation: idlePulse 1.8s infinite;
+}
+
+@keyframes idlePulse {
+    0%   { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0.45); }
+    70%  { box-shadow: 0 0 0 14px rgba(96, 165, 250, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(96, 165, 250, 0); }
+}
+
+.idle-status-badge {
+    min-width: 180px;
+    min-height: 34px;
+    margin: 0;
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.idle-location-title {
+    max-width: 540px;
+    margin: 0 auto;
+    font-size: clamp(22px, 2.5vw, 34px);
+    line-height: 1.15;
+    font-weight: 700;
+    color: #f8fafc;
+}
+
+.idle-location-sub {
+    max-width: 520px;
+    margin: 8px auto 0;
+    font-size: 14px;
+    line-height: 1.55;
+    color: rgba(226, 232, 240, 0.76);
+}
+
+.idle-min-clock-wrap {
+    margin-top: 26px;
+}
+
+#idleClock {
+    font-size: clamp(52px, 8vw, 88px);
+    line-height: 1;
+    font-weight: 700;
+    color: #e2e8f0;
+    margin-bottom: 8px;
+}
+
+#idleDate {
+    font-size: 14px;
+    color: rgba(226, 232, 240, 0.72);
+    margin-bottom: 0;
+}
+
+.idle-min-help {
+    margin-top: 24px;
+    font-size: 13px;
+    color: rgba(226, 232, 240, 0.66);
+}
+
+@media (max-width: 767.98px) {
+    #idleOverlay {
+        padding: 16px;
+    }
+
+    .idle-min-brand {
+        flex-direction: column;
+        text-align: center;
+        gap: 10px;
+    }
+
+    .idle-min-brand-copy {
+        text-align: center;
+    }
+
+    .idle-min-panel {
+        padding: 22px 16px 18px;
+        border-radius: 16px;
+    }
+
+    #idleClock {
+        font-size: clamp(42px, 13vw, 64px);
+    }
+}

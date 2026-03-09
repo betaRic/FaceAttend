@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Configuration;
 using System.Security.Cryptography;
@@ -60,7 +60,7 @@ namespace FaceAttend.Filters
 
             // Hakbang 1: IP allowlist check — blocked agad kung hindi naka-list ang IP.
             // Kapag walang nilista sa Admin:AllowedIpRanges, lahat ng IP ay pinapayagan.
-            var clientIp = httpContext.Request?.UserHostAddress;
+            var clientIp = NormalizeClientIp(httpContext.Request?.UserHostAddress);
             if (!AdminAccessControl.IsAllowed(clientIp))
             {
                 httpContext.Items["AdminBlockReason"] = "IP_NOT_ALLOWED";
@@ -73,7 +73,7 @@ namespace FaceAttend.Filters
             {
                 // Walang session — subukang gamitin ang one-time unlock cookie
                 // na ini-issue pagkatapos ng matagumpay na PIN verification.
-                var ip = httpContext.Request?.UserHostAddress;
+                var ip = NormalizeClientIp(httpContext.Request?.UserHostAddress);
                 return TryConsumeUnlockCookie(httpContext, ip);
             }
 
@@ -182,7 +182,7 @@ namespace FaceAttend.Filters
             if (seconds > 600) seconds = 600;
 
             var nowUtc  = DateTime.UtcNow;
-            var ip      = (clientIp ?? "").Trim();
+            var ip      = NormalizeClientIp(clientIp);
             var nonce   = Guid.NewGuid().ToString("N");
             var payload = nowUtc.Ticks.ToString() + "|" + ip + "|" + nonce;
             var plain   = Encoding.UTF8.GetBytes(payload);
@@ -243,8 +243,8 @@ namespace FaceAttend.Filters
             if ((DateTime.UtcNow - issuedUtc) > TimeSpan.FromSeconds(seconds))
             { ExpireUnlockCookie(httpContext); return false; }
 
-            var cookieIp = parts[1];
-            var ip       = (clientIp ?? "").Trim();
+                        var cookieIp = NormalizeClientIp(parts[1]);
+            var ip       = NormalizeClientIp(clientIp);
             if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
             { ExpireUnlockCookie(httpContext); return false; }
 
@@ -277,7 +277,9 @@ namespace FaceAttend.Filters
         public static bool VerifyPin(string pin, string ip)
         {
             pin = (pin ?? "").Trim();
-            if (pin.Length == 0) return false;
+            
+            ip  = NormalizeClientIp(ip);
+if (pin.Length == 0) return false;
 
             var maxAttempts    = GetInt("Admin:PinMaxAttempts",    5);
             var lockoutSeconds = GetInt("Admin:PinLockoutSeconds", 300);
@@ -292,8 +294,11 @@ namespace FaceAttend.Filters
             // Hakbang 2: Basahin ang stored hash.
             // PHASE 1 FIX (S-03): Binabasa muna sa environment variable,
             // pagkatapos sa Web.config (backwards compat para sa dev environments).
-            var stored = (
+                        var stored = (
                 Environment.GetEnvironmentVariable(PinHashEnvVar)
+                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Process)
+                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.User)
+                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Machine)
                 ?? ""
             ).Trim();
 
@@ -431,6 +436,23 @@ namespace FaceAttend.Filters
             }
         }
 
+
+        private static string NormalizeClientIp(string ip)
+        {
+            ip = (ip ?? "").Trim();
+
+            if (ip.Length == 0)
+                return "";
+
+            if (ip.Equals("::1", StringComparison.OrdinalIgnoreCase) ||
+                ip.Equals("0:0:0:0:0:0:0:1", StringComparison.OrdinalIgnoreCase))
+                return "127.0.0.1";
+
+            if (ip.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase))
+                return ip.Substring(7);
+
+            return ip;
+        }
         private static int GetInt(string key, int fallback)
         {
             var v = ConfigurationManager.AppSettings[key];

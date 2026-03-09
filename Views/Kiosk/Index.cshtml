@@ -32,62 +32,37 @@
         <video id="kioskVideo" playsinline autoplay muted></video>
         <canvas id="overlayCanvas"></canvas>
 
-        <div id="idleOverlay" class="hidden" aria-hidden="true">
-            <div class="idle-backdrop-grid" aria-hidden="true"></div>
-            <div class="idle-scanline" aria-hidden="true"></div>
+                <div id="idleOverlay" class="hidden" aria-hidden="true">
+            <div class="idle-min-shell">
+                <div class="idle-min-header">
+                    <div class="idle-min-brand">
+                        <div class="idle-min-logo-wrap">
+                            <img class="idle-min-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG Region XII" />
+                        </div>
 
-            <div class="idle-sonar" aria-hidden="true">
-                <div class="idle-sonar-ring sr1"></div>
-                <div class="idle-sonar-ring sr2"></div>
-                <div class="idle-sonar-ring sr3"></div>
-                <div class="idle-sonar-ring sr4"></div>
-            </div>
-
-            <div class="idle-card container-fluid px-3 px-md-4">
-                <div class="idle-brand-stack">
-                    <div class="idle-brand-logo-wrap">
-                        <img class="idle-brand-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG Region XII" />
-                    </div>
-
-                    <div class="idle-brand-copy">
-                        <div class="idle-brand-eyebrow">Department of the Interior and Local Government</div>
-                        <div id="idleOrgName" class="idle-brand-title">DILG Region XII</div>
-                        <div class="idle-brand-subtitle">Face attendance kiosk</div>
+                        <div class="idle-min-brand-copy">
+                            <div class="idle-min-eyebrow">Department of the Interior and Local Government</div>
+                            <div id="idleOrgName" class="idle-min-title">DILG Region XII</div>
+                            <div class="idle-min-subtitle">Face attendance kiosk</div>
+                        </div>
                     </div>
                 </div>
 
-                <div class="idle-card-shell">
-                    <div class="idle-face-ring" aria-hidden="true">
-                        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <circle class="ifr-spin" cx="100" cy="100" r="94" stroke-width="1.0" fill="none" />
-                            <circle class="ifr-spin-ccw" cx="100" cy="100" r="78" stroke-width="0.8" fill="none" />
-                            <circle class="ifr-glow" cx="100" cy="100" r="70" stroke-width="1.2" fill="none" />
-                            <path class="ifr-bracket" stroke-width="2.5" d="M46 66 L46 46 L66 46" />
-                            <path class="ifr-bracket" stroke-width="2.5" d="M134 46 L154 46 L154 66" />
-                            <path class="ifr-bracket" stroke-width="2.5" d="M46 134 L46 154 L66 154" />
-                            <path class="ifr-bracket" stroke-width="2.5" d="M154 134 L154 154 L134 154" />
-                            <ellipse class="ifr-face" cx="100" cy="96" rx="24" ry="28" stroke-width="1.0" fill="none" />
-                            <circle class="ifr-eye" cx="91" cy="90" r="2.5" />
-                            <circle class="ifr-eye" cx="109" cy="90" r="2.5" />
-                            <path class="ifr-face" d="M93 104 Q100 109 107 104" stroke-width="1.2" stroke-linecap="round" fill="none" />
-                        </svg>
-                        <div class="idle-center-dot" aria-hidden="true"></div>
+                <div class="idle-min-panel">
+                    <div class="idle-min-status-row">
+                        <span class="idle-min-pulse" aria-hidden="true"></span>
+                        <div id="idleStatusBadge" class="idle-status-badge is-pending">Checking location</div>
                     </div>
 
-                    <div id="idleStatusBadge" class="idle-status-badge is-pending">Checking location</div>
+                    <div id="idleLocationTitle" class="idle-location-title">Preparing kiosk</div>
+                    <div id="idleLocationSub" class="idle-location-sub">Please wait while the kiosk verifies the current office location.</div>
 
-                    <div class="idle-location-card">
-                        <div id="idleLocationTitle" class="idle-location-title">Preparing kiosk</div>
-                        <div id="idleLocationSub" class="idle-location-sub">Please wait while the kiosk verifies the current office location.</div>
+                    <div class="idle-min-clock-wrap">
+                        <div id="idleClock" aria-live="off">--:--:--</div>
+                        <div id="idleDate" aria-live="off">---</div>
                     </div>
 
-                    <div id="idleClock" aria-live="off">--:--:--</div>
-                    <div id="idleDate" aria-live="off">---</div>
-
-                    <div class="idle-cta-row">
-                        <div class="idle-cta-pip" aria-hidden="true"></div>
-                        <div class="idle-cta-text">Look at the camera when location is verified</div>
-                    </div>
+                    <div class="idle-min-help">Look at the camera when location is verified.</div>
                 </div>
             </div>
         </div>

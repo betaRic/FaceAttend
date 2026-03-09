@@ -106,10 +106,9 @@ namespace FaceAttend.Areas.Admin.Controllers
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError("[Dashboard.Index] Unhandled error: " + ex.ToString());
-                TempData["msg"] = "Dashboard error. Details written to application log.";
-                TempData["msgKind"] = "danger";
-                Response.StatusCode = 500;
-                return RedirectToAction("Index", "Error", new { area = "Admin" });
+                vm.DatabaseHealthy = false;
+                ViewBag.Title = "Dashboard";
+                return View(vm);
             }
         }
 
