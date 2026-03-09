@@ -1,11 +1,43 @@
+/* ==========================================================================
+   FaceAttend — Kiosk UI
+   Design: dark biometric terminal — precision & trust
+   Font: DM Sans + JetBrains Mono for data readout
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+:root {
+    --accent:       #00ff7a;
+    --accent-dim:   rgba(0,255,122,0.18);
+    --accent-border: rgba(0,255,122,0.45);
+    --danger:       #ff4455;
+    --warn:         #ffcc00;
+    --info:         #00d4ff;
+    --glass-bg:     rgba(10,12,16,0.72);
+    --glass-border: rgba(255,255,255,0.09);
+    --text:         #f0f4f8;
+    --text-dim:     rgba(240,244,248,0.65);
+    --shadow-lg:    0 24px 72px rgba(0,0,0,0.70);
+    --radius-lg:    20px;
+    --radius-md:    14px;
+    --radius-sm:    10px;
+    --font-ui:      'DM Sans', 'Segoe UI', system-ui, sans-serif;
+    --font-mono:    'JetBrains Mono', 'Courier New', monospace;
+}
+
+/* ── reset ─────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; }
+
 html, body {
     height: 100%;
     margin: 0;
     background: #000;
     overflow: hidden;
-    font-family: Arial, sans-serif;
+    font-family: var(--font-ui);
+    -webkit-font-smoothing: antialiased;
 }
 
+/* ── root ───────────────────────────────────────────────────────────────── */
 #kioskRoot {
     position: fixed;
     inset: 0;
@@ -20,359 +52,497 @@ html, body {
     object-fit: cover;
 }
 
-#kioskVideo {
-    transform: scaleX(-1);
-}
+#kioskVideo    { transform: scaleX(-1); }
+#overlayCanvas { pointer-events: none; }
 
-#overlayCanvas {
-    pointer-events: none;
-}
-
-/* dim ui when unlock modal open */
-#kioskRoot.unlockOpen #overlayCanvas {
-    opacity: 0.10;
-}
-
+/* dim everything when unlock modal is open */
+#kioskRoot.unlockOpen #overlayCanvas,
 #kioskRoot.unlockOpen #topLeft,
 #kioskRoot.unlockOpen #topCenter,
 #kioskRoot.unlockOpen #topRight,
-#kioskRoot.unlockOpen #bottomCenter {
-    opacity: 0.10;
-}
+#kioskRoot.unlockOpen #bottomCenter { opacity: 0.08; transition: opacity .2s; }
 
+/* ── HUD elements ───────────────────────────────────────────────────────── */
 #topLeft, #topCenter, #topRight, #bottomCenter {
     position: absolute;
-    color: #fff;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+    color: var(--text);
+    text-shadow: 0 1px 4px rgba(0,0,0,0.9);
     z-index: 5;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-md);
+    padding: 10px 16px;
+    backdrop-filter: blur(14px) saturate(1.1);
+    transition: opacity .3s ease;
 }
 
-/* subtle hud boxes (simple, not distracting) */
-#topLeft, #topCenter, #topRight, #bottomCenter {
-    background: rgba(0,0,0,0.35);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 12px;
-    padding: 10px 12px;
-}
-
-#topLeft {
-    left: 16px;
-    top: 12px;
-}
-
-#topCenter {
+#topLeft    { left: 16px; top: 14px; }
+#topCenter  { left: 50%; top: 12px; transform: translateX(-50%); text-align: center; }
+#topRight   { right: 16px; top: 14px; text-align: right; }
+#bottomCenter {
     left: 50%;
-    top: 10px;
+    bottom: 24px;
     transform: translateX(-50%);
     text-align: center;
+    min-width: 220px;
 }
 
-#topRight {
-    right: 16px;
-    top: 12px;
-    text-align: right;
+/* dim HUD elements in idle mode */
+#kioskRoot.kioskIdle #topRight,
+#kioskRoot.kioskIdle #bottomCenter {
+    opacity: 0.06;
+    transition: opacity .5s ease;
+}
+#kioskRoot.kioskIdle #topLeft,
+#kioskRoot.kioskIdle #topCenter {
+    opacity: 0.20;
+    transition: opacity .5s ease;
 }
 
 .brand {
-    font-size: 22px;
-    font-weight: 700;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -0.3px;
+    color: var(--accent);
+    text-shadow: 0 0 20px rgba(0,255,122,0.4);
 }
 
 .sub {
-    margin-top: 4px;
-    font-size: 14px;
-    opacity: 0.9;
+    margin-top: 3px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
 }
 
 #timeLine {
     font-size: 22px;
     font-weight: 700;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
 }
 
 #dateLine {
-    margin-top: 2px;
-    font-size: 14px;
-    opacity: 0.9;
+    margin-top: 1px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
 }
 
 #livenessLine {
-    font-size: 16px;
+    font-size: 13px;
     font-weight: 700;
+    font-family: var(--font-mono);
 }
 
 #scanEtaLine {
-    font-size: 12px;
-    opacity: 0.85;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
     margin-top: 2px;
 }
 
 /* liveness colors */
-#livenessLine.live-pass {
-    color: #00ff7a;
-}
-
-#livenessLine.live-near {
-    color: #ffcc00;
-}
-
-#livenessLine.live-fail {
-    color: #ff4d4d;
-}
-
-#livenessLine.live-unk {
-    color: #ffffff;
-    opacity: 0.9;
-}
-
-#bottomCenter {
-    left: 50%;
-    bottom: 22px;
-    transform: translateX(-50%);
-    text-align: center;
-}
+#livenessLine.live-pass { color: var(--accent);  text-shadow: 0 0 12px rgba(0,255,122,0.5); }
+#livenessLine.live-near { color: var(--warn);    text-shadow: 0 0 12px rgba(255,204,0,0.4);  }
+#livenessLine.live-fail { color: var(--danger);  }
+#livenessLine.live-unk  { color: var(--text);    opacity: 0.85; }
 
 #mainPrompt {
-    font-size: 26px;
+    font-size: 24px;
     font-weight: 800;
+    letter-spacing: -0.2px;
 }
 
 #subPrompt {
     margin-top: 4px;
-    font-size: 14px;
-    opacity: 0.9;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
 }
 
-/* --- Admin unlock modal --- */
+/* center block (not in allowed area) */
+#centerBlock {
+    position: absolute;
+    left: 50%; top: 50%;
+    transform: translate(-50%,-50%);
+    text-align: center;
+    z-index: 6;
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 24px 32px;
+    backdrop-filter: blur(16px);
+}
+#centerBlock.hidden { display: none; }
+.blockTitle { font-size: 20px; font-weight: 800; color: var(--warn); }
+.blockSub   { font-size: 14px; color: var(--text-dim); margin-top: 6px; }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   IDLE OVERLAY — redesigned
+   Concentric animated rings + clock + face ring + CTA
+   ══════════════════════════════════════════════════════════════════════════ */
+#idleOverlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(ellipse at 50% 45%,
+        rgba(0, 18, 10, 0.82) 0%,
+        rgba(0, 0, 0, 0.96)  80%);
+    backdrop-filter: blur(6px);
+    transition: opacity .35s ease;
+}
+
+#idleOverlay.hidden {
+    display: none;
+}
+
+/* ── Animated concentric rings ─────────────────────────────────── */
+.idle-rings {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.idle-ring {
+    position: absolute;
+    border-radius: 50%;
+    border: 1px solid rgba(0,255,122,0.12);
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) scale(1);
+    animation: ringPulse 4s ease-out infinite;
+}
+
+.idle-ring.r1 {
+    width: min(60vmin, 380px);
+    height: min(60vmin, 380px);
+    border-color: rgba(0,255,122,0.18);
+    animation-delay: 0s;
+    animation-duration: 3.6s;
+}
+
+.idle-ring.r2 {
+    width: min(80vmin, 520px);
+    height: min(80vmin, 520px);
+    border-color: rgba(0,255,122,0.09);
+    animation-delay: 0.9s;
+    animation-duration: 3.6s;
+}
+
+.idle-ring.r3 {
+    width: min(100vmin, 660px);
+    height: min(100vmin, 660px);
+    border-color: rgba(0,255,122,0.05);
+    animation-delay: 1.8s;
+    animation-duration: 3.6s;
+}
+
+@keyframes ringPulse {
+    0%   { opacity: 0.9; transform: translate(-50%, -50%) scale(0.88); }
+    60%  { opacity: 0.4; transform: translate(-50%, -50%) scale(1.04); }
+    100% { opacity: 0;   transform: translate(-50%, -50%) scale(1.14); }
+}
+
+/* ── Idle card content ─────────────────────────────────────────── */
+.idle-card {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0;
+    text-align: center;
+    color: var(--text);
+    user-select: none;
+}
+
+.idle-brand {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-shadow: 0 0 24px rgba(0,255,122,0.55);
+    margin-bottom: 28px;
+}
+
+/* ── Face scan ring graphic ────────────────────────────────────── */
+.idle-face-ring {
+    position: relative;
+    width: min(36vmin, 200px);
+    height: min(36vmin, 200px);
+    margin-bottom: 28px;
+}
+
+.idle-face-ring svg {
+    width: 100%;
+    height: 100%;
+}
+
+/* Outer rotating dash ring */
+.idle-ring-outer {
+    stroke: rgba(0,255,122,0.35);
+    stroke-dasharray: 8 6;
+    animation: spinRing 12s linear infinite;
+    transform-origin: center;
+    transform-box: fill-box;
+}
+
+/* Inner glow ring */
+.idle-ring-inner {
+    stroke: rgba(0,255,122,0.70);
+    filter: drop-shadow(0 0 6px rgba(0,255,122,0.5));
+}
+
+/* Pulsing center dot */
+.idle-face-dot {
+    position: absolute;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    top: 50%; left: 50%;
+    transform: translate(-50%,-50%);
+    box-shadow: 0 0 18px 4px rgba(0,255,122,0.55);
+    animation: idleDotPulse 1.8s ease-in-out infinite;
+}
+
+/* Corner scan brackets inside the ring */
+.idle-face-bracket {
+    stroke: rgba(0,255,122,0.55);
+    stroke-linecap: round;
+}
+
+@keyframes spinRing {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+@keyframes idleDotPulse {
+    0%, 100% { opacity: 0.5; transform: translate(-50%,-50%) scale(0.8); }
+    50%       { opacity: 1;   transform: translate(-50%,-50%) scale(1.2); }
+}
+
+/* ── Idle clock ────────────────────────────────────────────────── */
+#idleClock {
+    font-size: clamp(52px, 9vmin, 88px);
+    font-family: var(--font-mono);
+    font-weight: 700;
+    letter-spacing: 2px;
+    line-height: 1;
+    color: var(--text);
+    text-shadow: 0 0 40px rgba(255,255,255,0.15);
+    margin-bottom: 8px;
+}
+
+#idleDate {
+    font-size: clamp(12px, 1.8vmin, 16px);
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    letter-spacing: 1px;
+    margin-bottom: 36px;
+}
+
+/* ── Idle CTA ──────────────────────────────────────────────────── */
+.idle-cta {
+    font-size: clamp(14px, 2vmin, 18px);
+    font-weight: 500;
+    color: var(--text-dim);
+    letter-spacing: 0.5px;
+    animation: ctaBlink 3.2s ease-in-out infinite;
+}
+
+.idle-cta-icon {
+    display: inline-block;
+    margin-right: 8px;
+    animation: ctaBlink 3.2s ease-in-out infinite;
+    animation-delay: 0.2s;
+}
+
+@keyframes ctaBlink {
+    0%, 80%, 100% { opacity: 0.55; }
+    40%            { opacity: 1; }
+}
+
+/* ── Noise texture overlay on idle ────────────────────────────── */
+.idle-grain {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: 0.025;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    background-size: 200px 200px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   ADMIN UNLOCK MODAL
+   ══════════════════════════════════════════════════════════════════════════ */
 #unlockBackdrop {
     position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(10px) saturate(1.05);
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(16px) saturate(1.1);
     z-index: 60;
+    animation: backdropIn .18s ease;
 }
 
-    #unlockBackdrop.hidden {
-        display: none;
-    }
+#unlockBackdrop.hidden { display: none; }
 
 #unlockModal {
-    width: min(420px, calc(100vw - 32px));
-    background: rgba(16,16,18,0.92);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 18px 60px rgba(0,0,0,0.65);
-    color: #fff;
+    width: min(440px, calc(100vw - 32px));
+    background: rgba(12,14,18,0.95);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 22px 22px 18px;
+    box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.06);
+    color: var(--text);
+    animation: modalSlideIn .2s cubic-bezier(.22,.8,.5,1);
 }
+
+@keyframes backdropIn   { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalSlideIn { from { opacity: 0; transform: translateY(12px) scale(.98); } to { opacity: 1; transform: none; } }
 
 .unlockHeader {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 12px;
+    margin-bottom: 4px;
 }
 
 .unlockTitle {
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 800;
-    letter-spacing: 0.2px;
+    letter-spacing: -0.2px;
 }
 
 .unlockHint {
-    margin-top: 6px;
-    font-size: 13px;
-    color: rgba(255,255,255,0.78);
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    margin-bottom: 12px;
 }
 
 .unlockClose {
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.06);
-    color: rgba(255,255,255,0.9);
+    width: 34px; height: 34px;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--glass-border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-dim);
     cursor: pointer;
-    font-size: 22px;
+    font-size: 16px;
     line-height: 1;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, color .15s;
+    flex-shrink: 0;
 }
 
-    .unlockClose:focus {
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(0,255,122,0.18);
-        border-color: rgba(0,255,122,0.45);
-    }
+.unlockClose:hover { background: rgba(255,255,255,0.10); color: var(--text); }
+.unlockClose:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-border); }
 
 .unlockInput {
-    margin-top: 14px;
-    width: 90%;
-    height: 44px;
-    border-radius: 12px;
-    border: 1px solid rgba(255,255,255,0.14);
-    background: rgba(0,0,0,0.40);
-    color: #fff;
-    padding: 0 12px;
+    display: block;
+    width: 100%;
+    height: 46px;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--glass-border);
+    background: rgba(0,0,0,0.45);
+    color: var(--text);
+    padding: 0 14px;
     outline: none;
     font-size: 15px;
+    font-family: var(--font-mono);
+    letter-spacing: 1px;
+    transition: border-color .15s, box-shadow .15s;
+    margin-bottom: 4px;
 }
 
-    .unlockInput:focus {
-        border-color: rgba(0,255,122,0.65);
-        box-shadow: 0 0 0 3px rgba(0,255,122,0.18);
-    }
+.unlockInput:focus {
+    border-color: var(--accent-border);
+    box-shadow: 0 0 0 3px var(--accent-dim);
+}
+
+.unlockInput::placeholder { color: rgba(255,255,255,0.28); font-family: var(--font-ui); letter-spacing: 0; }
 
 .unlockErr {
     min-height: 18px;
-    margin-top: 8px;
-    font-size: 13px;
-    color: #ffcc00;
+    margin: 6px 0 4px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--warn);
 }
 
 .unlockActions {
     display: flex;
-    gap: 10px;
+    gap: 8px;
     justify-content: flex-end;
-    margin-top: 12px;
+    margin-top: 10px;
 }
 
 .btnGhost, .btnPrimary {
     height: 40px;
-    padding: 0 14px;
-    border-radius: 12px;
+    padding: 0 18px;
+    border-radius: var(--radius-md);
     font-size: 14px;
     font-weight: 700;
     cursor: pointer;
+    transition: background .15s, box-shadow .15s, opacity .15s;
+    letter-spacing: 0.2px;
+    border: 1px solid;
 }
 
 .btnGhost {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.14);
-    color: #fff;
+    background: rgba(255,255,255,0.05);
+    border-color: var(--glass-border);
+    color: var(--text-dim);
 }
+.btnGhost:hover { background: rgba(255,255,255,0.09); color: var(--text); }
 
 .btnPrimary {
-    background: rgba(0,255,122,0.22);
-    border: 1px solid rgba(0,255,122,0.55);
-    color: #fff;
+    background: rgba(0,255,122,0.16);
+    border-color: var(--accent-border);
+    color: var(--text);
 }
+.btnPrimary:hover { background: rgba(0,255,122,0.26); box-shadow: 0 0 18px rgba(0,255,122,0.2); }
 
-    .btnGhost:disabled, .btnPrimary:disabled {
-        opacity: 0.55;
-        cursor: not-allowed;
-    }
+.btnGhost:disabled, .btnPrimary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* Idle overlay */
-#idleOverlay {
-    position: absolute;
-    inset: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    gap: 14px;
-    padding: 18px;
-    background: radial-gradient(circle at 50% 55%, rgba(15, 26, 48, 0.65), rgba(0,0,0,0.80));
-    backdrop-filter: blur(10px) saturate(1.05);
-    z-index: 30;
-}
-
-    #idleOverlay.hidden {
-        display: none;
-    }
-
-.idleCard {
-    width: min(560px, calc(100vw - 44px));
-    background: rgba(16,16,18,0.70);
-    border: 1px solid rgba(255,255,255,0.10);
-    border-radius: 16px;
-    padding: 18px 20px;
-    box-shadow: 0 18px 60px rgba(0,0,0,0.55);
-    text-align: center;
-    color: #fff;
-}
-
-.idleCard.hidden {
-    display: none;
-}
-
-.idleBrand {
-    font-size: 20px;
-    font-weight: 800;
-    letter-spacing: 0.2px;
-}
-
-.idleTitle {
-    margin-top: 10px;
-    font-size: 22px;
-    font-weight: 800;
-}
-
-.idleSub {
-    margin-top: 6px;
-    font-size: 14px;
-    opacity: 0.88;
-}
-
-@keyframes idlePulse {
-    0% {
-        transform: scale(0.88);
-        opacity: 0.55;
-    }
-
-    50% {
-        transform: scale(1.05);
-        opacity: 1;
-    }
-
-    100% {
-        transform: scale(0.88);
-        opacity: 0.55;
-    }
-}
-
-.idleDot {
-    width: 12px;
-    height: 12px;
-    border-radius: 999px;
-    background: rgba(0,255,122,0.95);
-    margin: 12px auto 0 auto;
-    animation: idlePulse 1.2s ease-in-out infinite;
-}
-
-/* Dim HUD while idle */
-#kioskRoot.kioskIdle #topRight,
-#kioskRoot.kioskIdle #bottomCenter {
-    opacity: 0.10;
-}
-
-/* visitor modal overlay (same pattern as admin unlock) */
+/* ══════════════════════════════════════════════════════════════════════════
+   VISITOR MODAL
+   ══════════════════════════════════════════════════════════════════════════ */
 #visitorBackdrop {
     position: absolute;
     inset: 0;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(0,0,0,0.72);
-    backdrop-filter: blur(10px) saturate(1.05);
-    z-index: 50; /* below unlockBackdrop (60) */
+    background: rgba(0,0,0,0.75);
+    backdrop-filter: blur(16px) saturate(1.1);
+    z-index: 50;
+    animation: backdropIn .18s ease;
 }
 
-#visitorBackdrop.hidden {
-    display: none;
-}
+#visitorBackdrop.hidden { display: none; }
 
 #visitorModal {
-    width: min(420px, calc(100vw - 32px));
-    background: rgba(16,16,18,0.92);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 16px;
-    padding: 18px;
-    box-shadow: 0 18px 60px rgba(0,0,0,0.65);
-    color: #fff;
+    width: min(440px, calc(100vw - 32px));
+    background: rgba(12,14,18,0.95);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--radius-lg);
+    padding: 22px 22px 18px;
+    box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255,255,255,0.06);
+    color: var(--text);
+    animation: modalSlideIn .2s cubic-bezier(.22,.8,.5,1);
 }
 
 #visitorNameRow {
-    margin-bottom: 8px;
+    margin-bottom: 10px;
 }
+
+#visitorNameRow.hidden { display: none; }

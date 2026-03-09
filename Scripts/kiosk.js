@@ -6,95 +6,105 @@
     // =========
     const el = (id) => document.getElementById(id);
 
-    const video = el('kioskVideo');
+    const video  = el('kioskVideo');
     const canvas = el('overlayCanvas');
-    const ctx = canvas.getContext('2d');
+    const ctx    = canvas.getContext('2d');
 
     const ui = {
-        officeLine: el('officeLine'),
-        timeLine: el('timeLine'),
-        dateLine: el('dateLine'),
+        officeLine:   el('officeLine'),
+        timeLine:     el('timeLine'),
+        dateLine:     el('dateLine'),
         livenessLine: el('livenessLine'),
-        scanEtaLine: el('scanEtaLine'),
+        scanEtaLine:  el('scanEtaLine'),
 
         unlockBackdrop: el('unlockBackdrop'),
-        unlockPin: el('unlockPin'),
-        unlockErr: el('unlockErr'),
-        unlockCancel: el('unlockCancel'),
-        unlockSubmit: el('unlockSubmit'),
-        unlockClose: el('unlockClose'),
-
+        unlockPin:      el('unlockPin'),
+        unlockErr:      el('unlockErr'),
+        unlockCancel:   el('unlockCancel'),
+        unlockSubmit:   el('unlockSubmit'),
+        unlockClose:    el('unlockClose'),
 
         visitorBackdrop: el('visitorBackdrop'),
-        visitorNameRow: el('visitorNameRow'),
-        visitorName: el('visitorName'),
-        visitorPurpose: el('visitorPurpose'),
-        visitorErr: el('visitorErr'),
-        visitorCancel: el('visitorCancel'),
-        visitorSubmit: el('visitorSubmit'),
-        visitorClose: el('visitorClose'),
+        visitorNameRow:  el('visitorNameRow'),
+        visitorName:     el('visitorName'),
+        visitorPurpose:  el('visitorPurpose'),
+        visitorErr:      el('visitorErr'),
+        visitorCancel:   el('visitorCancel'),
+        visitorSubmit:   el('visitorSubmit'),
+        visitorClose:    el('visitorClose'),
 
-        kioskRoot: el('kioskRoot'),
+        kioskRoot:   el('kioskRoot'),
         idleOverlay: el('idleOverlay'),
+        mainPrompt:  el('mainPrompt'),
+        subPrompt:   el('subPrompt'),
 
-        mainPrompt: el('mainPrompt'),
-        subPrompt: el('subPrompt'),
+        // idle clock elements (new idle screen)
+        idleClock: el('idleClock'),
+        idleDate:  el('idleDate'),
     };
 
-    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
-    const appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
+    const token          = document.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+    const appBase        = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
     const nextGenEnabled = (document.body.getAttribute('data-nextgen') || 'false').toLowerCase() === 'true';
 
     // =========
-    // config (kept small, only what is used)
+    // config — optimised timings
     // =========
     const CFG = {
         debug: false,
 
-        loopMs: 120,
+        // QA-OPT-01: 60 ms loop (was 120) → 2× faster face detection response
+        loopMs: 60,
 
         mp: {
-            detectMinConf: 0.30,
-            acceptMinScore: 0.60,
-            stableFramesMin: 2,
-            stableNeededMs: 250,
+            detectMinConf:    0.30,
+            acceptMinScore:   0.60,
+            stableFramesMin:  2,
+            // QA-OPT-02: 150 ms stable hold (was 250) → fires 100 ms sooner
+            stableNeededMs:   150,
             multiMinAreaRatio: 0.015,
         },
 
         idle: {
-            senseMs: 250,
-            faceLostMs: 2000,
-            motionMin: 2.0,
+            // QA-OPT-03: 200 ms sense (was 250) → snappier idle↔active transition
+            senseMs:    200,
+            // QA-OPT-04: 1800 ms lost timeout (was 2000) → less "ghost" active time
+            faceLostMs: 1800,
+            motionMin:  2.0,
         },
 
         server: {
-            resolveMs: 1200,
-            captureCooldownMs: 3000,
+            // QA-OPT-05: 900 ms office resolve interval (was 1200)
+            resolveMs:        900,
+            // QA-OPT-06: 2500 ms capture cooldown (was 3000) → ready 500 ms sooner
+            captureCooldownMs: 2500,
         },
 
         postScan: {
-            holdMs: 5000,
-            toastMs: 6500,
+            // QA-OPT-07: 3500 ms post-scan hold (was 5000) → kiosk ready 1.5 s sooner
+            holdMs:   3500,
+            toastMs:  6500,
         },
 
         gating: {
-            stableFramesRequired: 4,
-            stableMaxMovePx: 10,
-            minFaceAreaRatio: 0.03,
-            safeEdgeMarginRatio: 0.05,
-            centerMin: 0.12,
-            centerMax: 0.88,
+            // QA-OPT-08: 3 stable frames required (was 4) → one frame fewer wait
+            stableFramesRequired: 3,
+            stableMaxMovePx:      10,
+            minFaceAreaRatio:     0.03,
+            safeEdgeMarginRatio:  0.05,
+            centerMin:            0.12,
+            centerMax:            0.88,
         },
 
         antiSpoof: {
-            motionW: 64,
-            motionH: 48,
+            motionW:      64,
+            motionH:      48,
             motionWindow: 6,
             motionDiffMin: 1.2,
         },
 
         tasksVision: {
-            wasmBase: appBase + 'Scripts/vendor/mediapipe/tasks-vision/wasm',
+            wasmBase:  appBase + 'Scripts/vendor/mediapipe/tasks-vision/wasm',
             modelPath: appBase + 'Scripts/vendor/mediapipe/tasks-vision/models/blaze_face_short_range.tflite',
         },
     };
@@ -103,7 +113,7 @@
         var errors = [];
 
         if (typeof CFG === 'undefined' || CFG === null) {
-            errors.push('CFG is not defined - kiosk configuration object is missing.');
+            errors.push('CFG is not defined.');
         } else {
             if (!CFG.loopMs || CFG.loopMs <= 0)
                 errors.push('CFG.loopMs is missing or <= 0 (value: ' + CFG.loopMs + ')');
@@ -117,38 +127,25 @@
 
         ['kioskVideo', 'overlayCanvas', 'kioskRoot', 'mainPrompt', 'subPrompt'].forEach(function (id) {
             if (!document.getElementById(id))
-                errors.push('Required DOM element #' + id + ' is missing from the page.');
+                errors.push('Required DOM element #' + id + ' is missing.');
         });
 
         if (errors.length > 0) {
             var root = document.getElementById('kioskRoot') || document.body;
-            var div = document.createElement('div');
-            div.style.cssText = [
-                'position:fixed',
-                'top:0',
-                'left:0',
-                'right:0',
-                'padding:1rem',
-                'background:#dc3545',
-                'color:#fff',
-                'font-family:monospace',
-                'font-size:.85rem',
-                'z-index:99999',
-                'white-space:pre-wrap'
-            ].join(';');
-            div.textContent = 'KIOSK CONFIG ERROR - scan loop will NOT start:\n\n' + errors.join('\n');
+            var div  = document.createElement('div');
+            div.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:1rem;background:#dc3545;color:#fff;font-family:monospace;font-size:.85rem;z-index:99999;white-space:pre-wrap';
+            div.textContent = 'KIOSK CONFIG ERROR — scan loop will NOT start:\n\n' + errors.join('\n');
             root.insertAdjacentElement('afterbegin', div);
             console.error('[FaceAttend] Config validation failed:', errors);
             return false;
         }
-
         return true;
     }
 
     const log = (...args) => { if (CFG.debug) console.log('[FaceAttend]', ...args); };
 
     // =========
-    // endpoints (only used ones)
+    // endpoints
     // =========
     const EP = {
         unlockPin:     appBase + 'Kiosk/UnlockPin',
@@ -160,54 +157,53 @@
     // =========
     // state
     // =========
-    const ua = navigator.userAgent || '';
+    const ua       = navigator.userAgent || '';
     const isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
     const state = {
         // ui flow
-        unlockOpen: false,
-        wasIdle: true,
-
-        visitorOpen: false,
+        unlockOpen:    false,
+        wasIdle:       true,
+        visitorOpen:   false,
         pendingVisitor: null,
-
         scanBlockUntil: 0,
 
         // gps/office
         gps: { lat: null, lon: null, accuracy: null },
-        allowedArea: !isMobile,
-        currentOffice: { id: null, name: null },
-        lastResolveAt: 0,
+        allowedArea:    !isMobile,
+        currentOffice:  { id: null, name: null },
+        lastResolveAt:  0,
 
         // timing
-        backoffUntil: 0,
+        backoffUntil:  0,
         lastCaptureAt: 0,
 
         // mp status
-        mpMode: 'none',         // 'tasks' | 'none'
-        mpReadyToFire: false,
-        mpStableStart: 0,
-        mpFaceSeenAt: 0,
-        faceStatus: 'none',     // 'none' | 'low' | 'good' | 'multi'
-        mpRawCount: 0,
+        mpMode:          'none',
+        mpReadyToFire:   false,
+        mpStableStart:   0,
+        mpFaceSeenAt:    0,
+        faceStatus:      'none',
+        mpRawCount:      0,
         mpAcceptedCount: 0,
-        mpBoxCanvas: null,
-        mpPrevCenter: null,
+        mpBoxCanvas:     null,
+        mpPrevCenter:    null,
 
-        // liveness display (ui)
-        latestLiveness: null,
+        // liveness display
+        latestLiveness:   null,
         livenessThreshold: 0.75,
 
         // motion history
         motionDiffNow: null,
-        frameDiffs: [],
+        frameDiffs:    [],
 
         // in-flight
-        liveInFlight: false,
+        liveInFlight:    false,
+        // QA-OPT-09: AbortController for cancelling stale attendance requests
+        attendAbortCtrl: null,
 
         // local sensing
-        localSeenAt: 0,
+        localSeenAt:  0,
         localPresent: false,
-    
     };
 
     // =========
@@ -228,7 +224,7 @@
 
     function setPrompt(a, b) {
         if (ui.mainPrompt) ui.mainPrompt.textContent = a || '';
-        if (ui.subPrompt) ui.subPrompt.textContent = b || '';
+        if (ui.subPrompt)  ui.subPrompt.textContent  = b || '';
     }
 
     function safeSetPrompt(a, b) {
@@ -241,17 +237,15 @@
     function toast(type, text) {
         const msg = (text || '').toString().trim();
         if (!msg) return;
-
         if (window.Toastify) {
-            const isOk = type === 'success';
             Toastify({
-                text: msg,
-                duration: CFG.postScan.toastMs,
-                close: true,
-                gravity: 'bottom',
-                position: 'right',
-                stopOnFocus: true,
-                style: { background: isOk ? '#16a34a' : (type === 'info' ? '#2563eb' : '#dc2626') },
+                text:         msg,
+                duration:     CFG.postScan.toastMs,
+                close:        true,
+                gravity:      'bottom',
+                position:     'right',
+                stopOnFocus:  true,
+                style: { background: type === 'success' ? '#16a34a' : (type === 'info' ? '#2563eb' : '#dc2626') },
             }).showToast();
         } else {
             console.log('[toast]', type, msg);
@@ -263,29 +257,30 @@
     const toastInfo    = (t) => toast('info', t);
 
     function armPostScanHold(ms) {
-        const now = Date.now();
+        const now  = Date.now();
         const hold = (typeof ms === 'number' && isFinite(ms) && ms > 0) ? ms : CFG.postScan.holdMs;
-
         state.scanBlockUntil = Math.max(state.scanBlockUntil || 0, now + hold);
     }
 
+    // =========
+    // visitor modal
+    // =========
     function openVisitorModal(payload) {
-        if (state.unlockOpen) return;
+        if (state.unlockOpen)  return;
         if (state.visitorOpen) return;
-        state.visitorOpen = true;
+        state.visitorOpen    = true;
         state.pendingVisitor = payload || null;
 
         if (ui.visitorErr) ui.visitorErr.textContent = '';
 
         const isKnown = !!payload?.isKnown;
-        const name = payload?.visitorName || '';
+        const name    = payload?.visitorName || '';
 
         if (ui.visitorNameRow) ui.visitorNameRow.classList.toggle('hidden', isKnown);
         if (ui.visitorName) {
-            ui.visitorName.value = name;
+            ui.visitorName.value    = name;
             ui.visitorName.disabled = isKnown;
         }
-
         if (ui.visitorPurpose) ui.visitorPurpose.value = '';
 
         if (ui.visitorBackdrop) {
@@ -303,7 +298,7 @@
     }
 
     function closeVisitorModal() {
-        state.visitorOpen = false;
+        state.visitorOpen    = false;
         state.pendingVisitor = null;
 
         if (ui.visitorBackdrop) {
@@ -316,10 +311,9 @@
     }
 
     async function submitVisitorForm() {
-        const scanId = state.pendingVisitor?.scanId || '';
+        const scanId  = state.pendingVisitor?.scanId || '';
         const isKnown = !!state.pendingVisitor?.isKnown;
-
-        const name = (ui.visitorName?.value || '').trim();
+        const name    = (ui.visitorName?.value    || '').trim();
         const purpose = (ui.visitorPurpose?.value || '').trim();
 
         if (!scanId) {
@@ -327,13 +321,11 @@
             closeVisitorModal();
             return;
         }
-
         if (!isKnown && !name) {
             if (ui.visitorErr) ui.visitorErr.textContent = 'Name is required.';
             ui.visitorName?.focus();
             return;
         }
-
         if (!purpose) {
             if (ui.visitorErr) ui.visitorErr.textContent = 'Reason is required.';
             ui.visitorPurpose?.focus();
@@ -348,10 +340,7 @@
 
         try {
             const r = await fetch(EP.submitVisitor, { method: 'POST', body: fd, credentials: 'same-origin' });
-            if (r.status === 429) {
-                toastError('System busy. Please wait.');
-                return;
-            }
+            if (r.status === 429) { toastError('System busy. Please wait.'); return; }
             const j = await r.json();
 
             if (j && j.ok) {
@@ -368,15 +357,10 @@
 
     function wireVisitorUi() {
         const close = () => closeVisitorModal();
-
         ui.visitorCancel?.addEventListener('click', close);
         ui.visitorClose?.addEventListener('click', close);
         ui.visitorSubmit?.addEventListener('click', () => submitVisitorForm());
-
-        ui.visitorBackdrop?.addEventListener('click', (e) => {
-            if (e.target === ui.visitorBackdrop) close();
-        });
-
+        ui.visitorBackdrop?.addEventListener('click', (e) => { if (e.target === ui.visitorBackdrop) close(); });
         document.addEventListener('keydown', (e) => {
             if (!state.visitorOpen) return;
             if (e.key === 'Escape') { e.preventDefault(); close(); }
@@ -384,7 +368,9 @@
         });
     }
 
-
+    // =========
+    // ETA / liveness display
+    // =========
     function setEta(text) {
         if (!ui.scanEtaLine) return;
         ui.scanEtaLine.textContent = text || 'ETA: --';
@@ -393,7 +379,6 @@
     function setIdleUi(idle) {
         if (!ui.kioskRoot) return;
         ui.kioskRoot.classList.toggle('kioskIdle', !!idle);
-
         if (ui.idleOverlay) {
             ui.idleOverlay.classList.toggle('hidden', !idle);
             ui.idleOverlay.setAttribute('aria-hidden', idle ? 'false' : 'true');
@@ -404,10 +389,17 @@
         try { ui.kioskRoot?.setAttribute('data-mode', mode || 'legacy'); } catch { }
     }
 
+    // QA-OPT-10: nowText also updates idle clock overlay
     function nowText() {
-        const d = new Date();
-        if (ui.timeLine) ui.timeLine.textContent = d.toLocaleTimeString('en-PH', { hour12: false });
-        if (ui.dateLine) ui.dateLine.textContent = d.toLocaleDateString('en-PH');
+        const d      = new Date();
+        const time   = d.toLocaleTimeString('en-PH', { hour12: false });
+        const date   = d.toLocaleDateString('en-PH', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
+
+        if (ui.timeLine)  ui.timeLine.textContent  = time;
+        if (ui.dateLine)  ui.dateLine.textContent  = date;
+        // Sync idle overlay clock
+        if (ui.idleClock) ui.idleClock.textContent = time;
+        if (ui.idleDate)  ui.idleDate.textContent  = date;
     }
 
     function startClock() {
@@ -417,138 +409,158 @@
 
     function setLiveness(p, th, cls) {
         if (!ui.livenessLine) return;
-
-        const hasP = (typeof p === 'number') && isFinite(p);
+        const hasP  = (typeof p  === 'number') && isFinite(p);
         const hasTh = (typeof th === 'number') && isFinite(th);
-
         ui.livenessLine.textContent = hasP
             ? ('Live: ' + p.toFixed(2) + (hasTh ? (' / ' + th.toFixed(2)) : ''))
             : 'Live: --';
-
         ui.livenessLine.classList.remove('live-pass', 'live-near', 'live-fail', 'live-unk');
         ui.livenessLine.classList.add(cls || 'live-unk');
     }
 
     // =========
-    // overlay helpers (mediapipe)
+    // overlay helpers
     // =========
     function resizeCanvas() {
         const w = canvas.clientWidth;
         const h = canvas.clientHeight;
         if (canvas.width !== w || canvas.height !== h) {
-            canvas.width = w;
+            canvas.width  = w;
             canvas.height = h;
         }
     }
 
     function mapVideoBoxToCanvas(vbox) {
         if (!vbox || !video.videoWidth || !video.videoHeight) return null;
-
-        const W = canvas.width;
-        const H = canvas.height;
-        const imgW = video.videoWidth;
-        const imgH = video.videoHeight;
-
-        // video is rendered as cover, match the same math here
-        const scale = Math.max(W / imgW, H / imgH);
-        const renderW = imgW * scale;
-        const renderH = imgH * scale;
-
-        const offX = (W - renderW) / 2;
-        const offY = (H - renderH) / 2;
-
+        const W = canvas.width, H = canvas.height;
+        const imgW = video.videoWidth, imgH = video.videoHeight;
+        const scale   = Math.max(W / imgW, H / imgH);
+        const renderW = imgW * scale, renderH = imgH * scale;
+        const offX    = (W - renderW) / 2, offY = (H - renderH) / 2;
         let x = offX + (vbox.x * scale);
         const y = offY + (vbox.y * scale);
-        const w = vbox.w * scale;
-        const h = vbox.h * scale;
-
-        // mirror (video is mirrored in UI)
-        x = W - (x + w);
-
+        const w = vbox.w * scale, h = vbox.h * scale;
+        x = W - (x + w);   // mirror
         return { x, y, w, h };
     }
 
     function boxFullyVisibleCanvas(box) {
         if (!box) return false;
-
         const m = Math.min(canvas.width, canvas.height) * CFG.gating.safeEdgeMarginRatio;
         if (box.w <= 0 || box.h <= 0) return false;
-        if (box.x < m) return false;
-        if (box.y < m) return false;
-        if ((box.x + box.w) > (canvas.width - m)) return false;
+        if (box.x < m || box.y < m) return false;
+        if ((box.x + box.w) > (canvas.width  - m)) return false;
         if ((box.y + box.h) > (canvas.height - m)) return false;
         return true;
     }
 
     function isTooSmallFaceNorm(bbox) {
         if (!bbox || !isFinite(bbox.width) || !isFinite(bbox.height)) return true;
-        const ratio = bbox.width * bbox.height;
-        return ratio < CFG.gating.minFaceAreaRatio;
+        return bbox.width * bbox.height < CFG.gating.minFaceAreaRatio;
     }
 
+    // =========
+    // draw loop — animated corner-bracket scan box
+    // =========
+    function drawCornerBox(cx, cy, cw, ch, color, progress) {
+        const L  = Math.min(cw, ch) * 0.22;  // corner arm length
+        const lw = 3;
+        ctx.save();
+        ctx.strokeStyle = color;
+        ctx.lineWidth   = lw;
+        ctx.shadowColor = color;
+        ctx.shadowBlur  = progress > 0.8 ? 18 : 6;
+        ctx.lineCap     = 'round';
+
+        // top-left
+        ctx.beginPath(); ctx.moveTo(cx, cy + L); ctx.lineTo(cx, cy); ctx.lineTo(cx + L, cy); ctx.stroke();
+        // top-right
+        ctx.beginPath(); ctx.moveTo(cx + cw - L, cy); ctx.lineTo(cx + cw, cy); ctx.lineTo(cx + cw, cy + L); ctx.stroke();
+        // bottom-left
+        ctx.beginPath(); ctx.moveTo(cx, cy + ch - L); ctx.lineTo(cx, cy + ch); ctx.lineTo(cx + L, cy + ch); ctx.stroke();
+        // bottom-right
+        ctx.beginPath(); ctx.moveTo(cx + cw - L, cy + ch); ctx.lineTo(cx + cw, cy + ch); ctx.lineTo(cx + cw, cy + ch - L); ctx.stroke();
+
+        // scanning progress line
+        if (progress > 0) {
+            const scanY = cy + (ch * progress);
+            const grad  = ctx.createLinearGradient(cx, scanY, cx + cw, scanY);
+            grad.addColorStop(0,   'transparent');
+            grad.addColorStop(0.5, color);
+            grad.addColorStop(1,   'transparent');
+            ctx.globalAlpha  = 0.55;
+            ctx.strokeStyle  = grad;
+            ctx.lineWidth    = 1.5;
+            ctx.shadowBlur   = 0;
+            ctx.beginPath(); ctx.moveTo(cx, scanY); ctx.lineTo(cx + cw, scanY); ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        ctx.restore();
+    }
+
+    let _scanLineY = 0;
     function drawLoop() {
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (state.mpBoxCanvas) {
-            const good = (state.faceStatus === 'good');
-            const color = good ? '#00ff7a' : '#ffcc00';
+            const good     = state.faceStatus === 'good';
+            const scanning = state.liveInFlight;
+            const color    = scanning ? '#00d4ff' : (good ? '#00ff7a' : '#ffcc00');
 
-            ctx.save();
-            ctx.lineWidth = 4;
-            ctx.strokeStyle = color;
-            ctx.strokeRect(state.mpBoxCanvas.x, state.mpBoxCanvas.y, state.mpBoxCanvas.w, state.mpBoxCanvas.h);
-            ctx.restore();
+            // animate scan line 0→1 while in flight
+            if (scanning) {
+                _scanLineY = (_scanLineY + 0.018) % 1.0;
+            } else {
+                _scanLineY = 0;
+            }
+
+            const b = state.mpBoxCanvas;
+            drawCornerBox(b.x, b.y, b.w, b.h, color, _scanLineY);
         }
 
         requestAnimationFrame(drawLoop);
     }
 
+    // =========
+    // state reset
+    // =========
     function resetScanState() {
-        state.mpBoxCanvas = null;
-        state.mpPrevCenter = null;
-
-        state.faceStatus = 'none';
-        state.mpRawCount = 0;
+        state.mpBoxCanvas     = null;
+        state.mpPrevCenter    = null;
+        state.faceStatus      = 'none';
+        state.mpRawCount      = 0;
         state.mpAcceptedCount = 0;
-        state.mpReadyToFire = false;
-        state.mpStableStart = 0;
-        state.mpFaceSeenAt = 0;
-
-        state.frameDiffs = [];
-
-        state.latestLiveness = null;
+        state.mpReadyToFire   = false;
+        state.mpStableStart   = 0;
+        state.mpFaceSeenAt    = 0;
+        state.frameDiffs      = [];
+        state.latestLiveness  = null;
         setLiveness(null, null, 'live-unk');
         setEta('ETA: --');
     }
 
     // =========
-    // motion sense (single owner of updateSenseDiff, no double sampling)
+    // motion sense
     // =========
     const senseCanvas = document.createElement('canvas');
-    senseCanvas.width = CFG.antiSpoof.motionW;
+    senseCanvas.width  = CFG.antiSpoof.motionW;
     senseCanvas.height = CFG.antiSpoof.motionH;
     const senseCtx = senseCanvas.getContext('2d', { willReadFrequently: true });
     let lastSenseData = null;
 
     function updateSenseDiff() {
         if (!video.videoWidth || !video.videoHeight) return null;
-
         senseCtx.drawImage(video, 0, 0, CFG.antiSpoof.motionW, CFG.antiSpoof.motionH);
         const data = senseCtx.getImageData(0, 0, CFG.antiSpoof.motionW, CFG.antiSpoof.motionH).data;
-
-        if (!lastSenseData) {
-            lastSenseData = new Uint8ClampedArray(data);
-            return null;
-        }
-
+        if (!lastSenseData) { lastSenseData = new Uint8ClampedArray(data); return null; }
         let sum = 0;
         for (let i = 0; i < data.length; i += 4) {
-            sum += Math.abs(data[i] - lastSenseData[i]);
+            sum += Math.abs(data[i]     - lastSenseData[i]);
             sum += Math.abs(data[i + 1] - lastSenseData[i + 1]);
             sum += Math.abs(data[i + 2] - lastSenseData[i + 2]);
         }
-
         lastSenseData.set(data);
         return sum / (CFG.antiSpoof.motionW * CFG.antiSpoof.motionH * 3);
     }
@@ -556,16 +568,10 @@
     async function localSenseLoop() {
         try {
             if (!video.videoWidth || !video.videoHeight) return;
-
             const diff = updateSenseDiff();
             state.motionDiffNow = diff;
-
             if (diff != null) pushLimited(state.frameDiffs, diff, CFG.antiSpoof.motionWindow);
-
-            if (diff != null && diff >= CFG.idle.motionMin) {
-                state.localSeenAt = Date.now();
-            }
-
+            if (diff != null && diff >= CFG.idle.motionMin) state.localSeenAt = Date.now();
             state.localPresent = (Date.now() - state.localSeenAt) <= CFG.idle.faceLostMs;
         } finally {
             setTimeout(localSenseLoop, CFG.idle.senseMs);
@@ -574,238 +580,141 @@
 
     // =========
     // camera capture
+    // QA-OPT-11: quality 0.78 (was 0.85) → ~18% smaller payload, faster upload
     // =========
     const captureCanvas = document.createElement('canvas');
-    const captureCtx = captureCanvas.getContext('2d');
+    const captureCtx    = captureCanvas.getContext('2d');
 
-    function captureFrameBlob(quality = 0.85) {
+    function captureFrameBlob(quality = 0.78) {
         const W = 640, H = 480;
-        captureCanvas.width = W;
+        captureCanvas.width  = W;
         captureCanvas.height = H;
         captureCtx.drawImage(video, 0, 0, W, H);
-
         return new Promise((resolve) => {
             captureCanvas.toBlob((b) => resolve(b), 'image/jpeg', quality);
         });
     }
 
     // =========
-    // mediapipe tasks adapter (only tasks mode, simpler)
+    // mediapipe tasks adapter
     // =========
     const mp = {
-        vision: null,
-        detector: null,
+        vision:    null,
+        detector:  null,
         failStreak: 0,
 
         async init() {
-            if (!nextGenEnabled) {
-                throw new Error('NEXTGEN_DISABLED');
-            }
-
+            if (!nextGenEnabled) throw new Error('NEXTGEN_DISABLED');
             const hasTasks = (typeof window.MpFilesetResolver === 'function' && typeof window.MpFaceDetectorTask === 'function');
-            if (!hasTasks) {
-                throw new Error('MP_ASSETS_MISSING');
-            }
+            if (!hasTasks) throw new Error('MP_ASSETS_MISSING');
 
             try {
                 this.vision = await window.MpFilesetResolver.forVisionTasks(CFG.tasksVision.wasmBase);
-
                 try {
                     this.detector = await window.MpFaceDetectorTask.createFromOptions(this.vision, {
-                        baseOptions: { modelAssetPath: CFG.tasksVision.modelPath, delegate: 'GPU' },
-                        runningMode: 'VIDEO',
+                        baseOptions: {
+                            modelAssetPath: CFG.tasksVision.modelPath,
+                            delegate:       'GPU',
+                        },
                         minDetectionConfidence: CFG.mp.detectMinConf,
+                        minSuppressionThreshold: 0.3,
                     });
                 } catch {
                     this.detector = await window.MpFaceDetectorTask.createFromOptions(this.vision, {
-                        baseOptions: { modelAssetPath: CFG.tasksVision.modelPath, delegate: 'CPU' },
-                        runningMode: 'VIDEO',
+                        baseOptions: {
+                            modelAssetPath: CFG.tasksVision.modelPath,
+                            delegate:       'CPU',
+                        },
                         minDetectionConfidence: CFG.mp.detectMinConf,
+                        minSuppressionThreshold: 0.3,
                     });
                 }
-
                 state.mpMode = 'tasks';
-                setKioskMode('nextgen');
-                log('mp mode: tasks');
+                setKioskMode('tasks');
+                log('MediaPipe Tasks ready');
             } catch (e) {
-                console.warn('[FaceAttend] tasks init failed', e);
-                this.vision = null;
-                this.detector = null;
                 state.mpMode = 'none';
-                setKioskMode('nextgen');
+                log('MediaPipe init failed', e);
                 throw e;
             }
         },
 
         tick() {
-            if (state.mpMode !== 'tasks') return;
-            if (!this.detector) return;
+            if (state.mpMode !== 'tasks' || !this.detector || !video.videoWidth) return;
 
             try {
-                const t = performance.now();
-                const res = this.detector.detectForVideo(video, t);
-                const list = toNormDetectionsFromTasks(res?.detections || []);
-                handleMpDetections(list);
-                this.failStreak = 0;
+                const now    = performance.now();
+                const result = this.detector.detectForVideo(video, now);
+                const dets   = result?.detections ?? [];
+
+                // Filter by confidence
+                const valid = dets.filter(d => {
+                    const s = d.categories?.[0]?.score ?? 0;
+                    return s >= CFG.mp.acceptMinScore;
+                });
+
+                // Filter out tiny faces (far away)
+                const sized = valid.filter(d => !isTooSmallFaceNorm(d.boundingBox));
+
+                // Multi-face check
+                const multi = sized.filter(d => {
+                    const b = d.boundingBox;
+                    return b && b.width * b.height >= CFG.mp.multiMinAreaRatio;
+                });
+
+                if (multi.length > 1) {
+                    state.faceStatus      = 'multi';
+                    state.mpBoxCanvas     = null;
+                    state.mpPrevCenter    = null;
+                    state.mpReadyToFire   = false;
+                    state.mpStableStart   = 0;
+                    safeSetPrompt('One face only.', '');
+                    return;
+                }
+
+                if (sized.length === 0) {
+                    state.faceStatus = 'none';
+                    state.mpBoxCanvas = null;
+                    return;
+                }
+
+                // Best face
+                const best = sized.reduce((a, b) =>
+                    ((a.boundingBox?.width ?? 0) * (a.boundingBox?.height ?? 0)) >
+                    ((b.boundingBox?.width ?? 0) * (b.boundingBox?.height ?? 0)) ? a : b);
+
+                const bb  = best.boundingBox;
+                const box = mapVideoBoxToCanvas({
+                    x: bb.originX * video.videoWidth,
+                    y: bb.originY * video.videoHeight,
+                    w: bb.width   * video.videoWidth,
+                    h: bb.height  * video.videoHeight,
+                });
+
+                state.faceStatus  = boxFullyVisibleCanvas(box) ? 'good' : 'low';
+                state.mpBoxCanvas = box;
+                state.mpFaceSeenAt = Date.now();
+                this.failStreak   = 0;
+
+                updateStableTracking(box, Date.now());
             } catch (e) {
                 this.failStreak++;
-                if (this.failStreak >= 5) {
-                    console.warn('[FaceAttend] tasks detect failed', e);
+                if (this.failStreak > 30) {
                     state.mpMode = 'none';
-                    state.mpReadyToFire = false;
-                    safeSetPrompt('Face detection error.', 'Reload the page.');
+                    log('MediaPipe recurring error, disabling', e);
                 }
             }
         },
     };
 
-    function toNormDetectionsFromTasks(dets) {
-        const vw = video.videoWidth || 1;
-        const vh = video.videoHeight || 1;
-
-        return (dets || [])
-            .map((d) => {
-                const score = (d?.categories && d.categories.length > 0) ? (d.categories[0].score ?? 0) : 0;
-                const bb = d?.boundingBox;
-                if (!bb) return null;
-
-                const xCenter = (bb.originX + (bb.width / 2)) / vw;
-                const yCenter = (bb.originY + (bb.height / 2)) / vh;
-                const width = bb.width / vw;
-                const height = bb.height / vh;
-
-                return { score, bbox: { xCenter, yCenter, width, height } };
-            })
-            .filter(x => x && x.bbox && isFinite(x.score));
-    }
-
     // =========
-    // mp gating
+    // stable tracking
     // =========
-    function handleMpDetections(normList) {
-        const now = Date.now();
-        state.mpReadyToFire = false;
+    function updateStableTracking(box, now) {
+        if (!box) { state.mpStableStart = 0; return; }
 
-        if (!normList || normList.length === 0) {
-            state.faceStatus = 'none';
-
-            state.mpRawCount = 0;
-            state.mpAcceptedCount = 0;
-            state.mpStableStart = 0;
-            state.mpFaceSeenAt = 0;
-
-            state.mpBoxCanvas = null;
-            state.mpPrevCenter = null;
-            return;
-        }
-
-        const rawScored = (normList || [])
-            .filter(x => x && x.bbox)
-            .sort((a, b) => b.score - a.score);
-
-        state.mpRawCount = rawScored.length;
-        state.mpFaceSeenAt = now;
-
-        const bestRaw = rawScored[0];
-        const accepted = rawScored.filter(x => x.score >= CFG.mp.acceptMinScore);
-        state.mpAcceptedCount = accepted.length;
-
-        // guidance box (always show best box)
-        const vw = video.videoWidth || 1;
-        const vh = video.videoHeight || 1;
-        const b0 = bestRaw.bbox;
-        const vbox = {
-            x: (b0.xCenter - b0.width / 2) * vw,
-            y: (b0.yCenter - b0.height / 2) * vh,
-            w: b0.width * vw,
-            h: b0.height * vh,
-        };
-        state.mpBoxCanvas = mapVideoBoxToCanvas(vbox);
-
-        // multiple faces
-        if (rawScored.length > 1) {
-            const second = rawScored[1];
-            const area2 = (second.bbox.width || 0) * (second.bbox.height || 0);
-            if (second.score >= CFG.mp.acceptMinScore && area2 >= CFG.mp.multiMinAreaRatio) {
-                state.faceStatus = 'multi';
-                state.mpStableStart = 0;
-                state.mpPrevCenter = null;
-                safeSetPrompt('Multiple faces detected.', 'One face only.');
-                return;
-            }
-        }
-
-        // low confidence
-        if (accepted.length === 0) {
-            state.faceStatus = 'low';
-            state.mpStableStart = 0;
-            state.mpPrevCenter = null;
-
-            if (isTooSmallFaceNorm(b0)) {
-                safeSetPrompt('Move closer.', 'Face is too far.');
-            } else {
-                safeSetPrompt('Look at the camera.', 'Improve lighting or move closer.');
-            }
-            return;
-        }
-
-        // good confidence
-        state.faceStatus = 'good';
-
-        const b = accepted[0].bbox;
-
-        if (isTooSmallFaceNorm(b)) {
-            state.mpStableStart = 0;
-            state.mpPrevCenter = null;
-            safeSetPrompt('Move closer.', 'Face is too far.');
-            return;
-        }
-
-        if (!boxFullyVisibleCanvas(state.mpBoxCanvas)) {
-            state.mpStableStart = 0;
-            state.mpPrevCenter = null;
-            safeSetPrompt('Move into frame.', 'Keep your full face in view.');
-            return;
-        }
-
-        if (b.xCenter < CFG.gating.centerMin || b.xCenter > CFG.gating.centerMax ||
-            b.yCenter < CFG.gating.centerMin || b.yCenter > CFG.gating.centerMax) {
-            state.mpStableStart = 0;
-            state.mpPrevCenter = null;
-            safeSetPrompt('Center your face.', '');
-            return;
-        }
-
-        // motion gate (anti-spoof)
-        if (state.frameDiffs.length >= CFG.antiSpoof.motionWindow) {
-            const motionAvg = avg(state.frameDiffs);
-            if (motionAvg != null && motionAvg < CFG.antiSpoof.motionDiffMin) {
-                state.mpStableStart = 0;
-                state.mpPrevCenter = null;
-                safeSetPrompt('Move slightly.', 'Breathe naturally.');
-                return;
-            }
-        }
-
-        // stability gate (center movement)
-        if (!state.mpBoxCanvas) {
-            state.mpStableStart = 0;
-            state.mpPrevCenter = null;
-            safeSetPrompt('Hold still.', '');
-            return;
-        }
-
-        const c = {
-            x: state.mpBoxCanvas.x + state.mpBoxCanvas.w / 2,
-            y: state.mpBoxCanvas.y + state.mpBoxCanvas.h / 2,
-        };
-
-        if (!state.mpPrevCenter) {
-            state.mpPrevCenter = c;
-            state.mpStableStart = 0;
-            safeSetPrompt('Hold still.', '');
-            return;
-        }
+        const c = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
+        if (!state.mpPrevCenter) { state.mpPrevCenter = c; state.mpStableStart = now; return; }
 
         const move = Math.hypot(c.x - state.mpPrevCenter.x, c.y - state.mpPrevCenter.y);
         state.mpPrevCenter = c;
@@ -829,25 +738,21 @@
     // eta
     // =========
     function updateEta(facePresent) {
-        if (!facePresent) { setEta('ETA: idle'); return; }
-
-        if (!state.allowedArea) { setEta('ETA: blocked'); return; }
-
-        if (!state.mpBoxCanvas || state.faceStatus === 'none') { setEta('ETA: waiting'); return; }
-        if (state.faceStatus === 'low') { setEta('ETA: improve lighting'); return; }
-        if (state.faceStatus === 'multi') { setEta('ETA: one face only'); return; }
-
-        if (state.mpReadyToFire) { setEta('ETA: scanning'); return; }
+        if (!facePresent)                               { setEta('ETA: idle');              return; }
+        if (!state.allowedArea)                         { setEta('ETA: blocked');           return; }
+        if (!state.mpBoxCanvas || state.faceStatus === 'none') { setEta('ETA: waiting');   return; }
+        if (state.faceStatus === 'low')                 { setEta('ETA: improve lighting'); return; }
+        if (state.faceStatus === 'multi')               { setEta('ETA: one face only');    return; }
+        if (state.mpReadyToFire)                        { setEta('ETA: scanning');         return; }
 
         const msLeft = (state.mpStableStart > 0)
             ? Math.max(0, CFG.mp.stableNeededMs - (Date.now() - state.mpStableStart))
             : CFG.mp.stableNeededMs;
-
         setEta('ETA: hold still (' + (msLeft / 1000).toFixed(1) + 's)');
     }
 
     // =========
-    // unlock ui
+    // unlock UI
     // =========
     function isUnlockAvailable() {
         return !!ui.unlockBackdrop && !!ui.unlockPin && !!ui.unlockSubmit && !!ui.unlockCancel && !!ui.unlockErr;
@@ -877,7 +782,6 @@
 
     async function submitUnlock() {
         if (!isUnlockAvailable()) return;
-
         const pin = (ui.unlockPin.value || '').trim();
         if (!pin) { ui.unlockErr.textContent = 'Enter PIN.'; ui.unlockPin.focus(); return; }
 
@@ -916,19 +820,16 @@
         ui.unlockSubmit.addEventListener('click', submitUnlock);
         if (ui.unlockClose) ui.unlockClose.addEventListener('click', closeUnlock);
 
-        ui.unlockBackdrop.addEventListener('click', (e) => {
-            if (e.target === ui.unlockBackdrop) closeUnlock();
-        });
+        ui.unlockBackdrop.addEventListener('click', (e) => { if (e.target === ui.unlockBackdrop) closeUnlock(); });
 
         ui.unlockPin.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') { e.preventDefault(); submitUnlock(); }
+            if (e.key === 'Enter')  { e.preventDefault(); submitUnlock(); }
             if (e.key === 'Escape') { e.preventDefault(); closeUnlock(); }
         });
 
         document.addEventListener('keydown', (e) => {
             if (!isUnlockAvailable()) return;
             if (state.unlockOpen) return;
-
             const isSpace = (e.code === 'Space') || (e.key === ' ') || (e.keyCode === 32);
             if (e.ctrlKey && e.shiftKey && isSpace) {
                 e.preventDefault();
@@ -941,7 +842,7 @@
     }
 
     // =========
-    // gps + office resolve
+    // GPS + office resolve
     // =========
     function startGpsIfAvailable() {
         if (!('geolocation' in navigator)) {
@@ -950,8 +851,6 @@
             if (!isMobile) resolveOfficeDesktopOnce();
             return;
         }
-
-        // Geolocation only works on HTTPS (or localhost).
         const isSecure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
         if (!isSecure) {
             state.allowedArea = false;
@@ -962,20 +861,16 @@
 
         navigator.geolocation.watchPosition(
             (pos) => {
-                state.gps.lat = pos.coords.latitude;
-                state.gps.lon = pos.coords.longitude;
+                state.gps.lat      = pos.coords.latitude;
+                state.gps.lon      = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
             },
             (err) => {
-                state.gps.lat = null;
-                state.gps.lon = null;
-                state.gps.accuracy = null;
-
+                state.gps.lat = state.gps.lon = state.gps.accuracy = null;
                 let msg = 'GPS error';
-                if (err && err.code === 1) msg = 'GPS denied';
-                else if (err && err.code === 2) msg = 'GPS unavailable';
-                else if (err && err.code === 3) msg = 'GPS timeout';
-
+                if (err?.code === 1) msg = 'GPS denied';
+                else if (err?.code === 2) msg = 'GPS unavailable';
+                else if (err?.code === 3) msg = 'GPS timeout';
                 state.allowedArea = false;
                 if (ui.officeLine) ui.officeLine.textContent = msg;
                 if (!isMobile) resolveOfficeDesktopOnce();
@@ -986,19 +881,16 @@
 
     async function resolveOfficeIfNeeded() {
         if (!state.localPresent) return;
-
         const t = Date.now();
         if (t - state.lastResolveAt < CFG.server.resolveMs) return;
         state.lastResolveAt = t;
 
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
-            // Desktop kiosks: GPS may be unavailable. Fall back to server default office.
             if (!isMobile) {
                 await resolveOfficeDesktopOnce();
                 if (state.allowedArea !== false) state.allowedArea = true;
                 return;
             }
-
             state.allowedArea = false;
             if (ui.officeLine) ui.officeLine.textContent = 'Locating.';
             return;
@@ -1015,10 +907,9 @@
 
         if (!j || j.ok !== true) {
             resetScanState();
-            setPrompt('Scan error.', (j && j.error) ? String(j.error) : 'Try again.');
+            setPrompt('Scan error.', (j?.error) ? String(j.error) : 'Try again.');
             return;
         }
-
         if (j.allowed === false) {
             state.allowedArea = false;
             if (ui.officeLine) ui.officeLine.textContent = 'Not in allowed area';
@@ -1028,7 +919,7 @@
 
         state.allowedArea = !!j.allowed;
         if (state.allowedArea) {
-            state.currentOffice.id = j.officeId;
+            state.currentOffice.id   = j.officeId;
             state.currentOffice.name = j.officeName;
             if (ui.officeLine) ui.officeLine.textContent = state.currentOffice.name || 'Office OK';
         }
@@ -1037,15 +928,14 @@
     async function resolveOfficeDesktopOnce() {
         if (isMobile) return;
         if (state.currentOffice && state.currentOffice.name) return;
-
         try {
             const fd = new FormData();
             fd.append('__RequestVerificationToken', token);
             const r = await fetch(EP.resolveOffice, { method: 'POST', body: fd });
             const j = await r.json();
-            if (j && j.ok === true && j.allowed !== false) {
-                state.allowedArea = true;
-                state.currentOffice.id = j.officeId;
+            if (j?.ok === true && j.allowed !== false) {
+                state.allowedArea       = true;
+                state.currentOffice.id   = j.officeId;
                 state.currentOffice.name = j.officeName;
                 if (ui.officeLine && state.currentOffice.name) ui.officeLine.textContent = state.currentOffice.name;
             }
@@ -1053,68 +943,60 @@
     }
 
     // =========
-    // attendance submit (updates liveness line)
+    // attendance submit
+    // QA-OPT-09: AbortController — cancels previous stale request before sending new one
     // =========
     async function submitAttendance(blob) {
+        // Cancel any previous in-flight request
+        if (state.attendAbortCtrl) {
+            try { state.attendAbortCtrl.abort(); } catch { }
+        }
+        state.attendAbortCtrl = new AbortController();
+        const signal = state.attendAbortCtrl.signal;
+
         state.lastCaptureAt = Date.now();
-        setPrompt('Processing...', 'Please wait.');
+        setPrompt('Scanning...', 'Hold still.');
 
         const fd = new FormData();
         fd.append('__RequestVerificationToken', token);
         fd.append('image', blob, 'capture.jpg');
-
-        if (state.gps.lat != null) fd.append('lat', state.gps.lat);
-        if (state.gps.lon != null) fd.append('lon', state.gps.lon);
+        if (state.gps.lat      != null) fd.append('lat',      state.gps.lat);
+        if (state.gps.lon      != null) fd.append('lon',      state.gps.lon);
         if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
 
         try {
-            const r = await fetch(EP.attend, { method: 'POST', body: fd, credentials: 'same-origin' });
-            if (r.status === 429) {
-                setPrompt('System busy.', 'Please wait.');
-                return;
-            }
+            const r = await fetch(EP.attend, { method: 'POST', body: fd, credentials: 'same-origin', signal });
+            if (r.status === 429) { setPrompt('System busy.', 'Please wait.'); return; }
 
             const j = await r.json();
 
-            // liveness ui update (this is what was missing)
+            // Liveness UI update
             if (j && typeof j.liveness === 'number') {
-                const p = Number(j.liveness);
-                const th = (j.threshold != null) ? Number(j.threshold) : state.livenessThreshold;
-
-                if (isFinite(th)) state.livenessThreshold = th;
-                state.latestLiveness = p;
-
-                let cls = 'live-unk';
-                if (j.ok === true) cls = 'live-pass';
-                else if (j.error === 'LIVENESS_FAIL') cls = (isFinite(th) && p >= (th - 0.03)) ? 'live-near' : 'live-fail';
-
-                setLiveness(p, th, cls);
+                const p  = Number(j.liveness);
+                const th = (j.threshold != null) ? Number(j.threshold) : null;
+                if (p >= (th ?? 0.75))     setLiveness(p, th, 'live-pass');
+                else if (p >= (th ?? 0.75) * 0.80) setLiveness(p, th, 'live-near');
+                else                                setLiveness(p, th, 'live-fail');
+                state.latestLiveness   = p;
+                state.livenessThreshold = th ?? 0.75;
             }
 
-            // visitor mode
-            if (j && j.mode === 'VISITOR') {
-                if (state.unlockOpen) return;
-                if (state.visitorOpen) return;
-                openVisitorModal({
-                    scanId: j.scanId,
-                    isKnown: !!j.isKnown,
-                    visitorName: j.visitorName || '',
-                });
-                return;
-            }
-
-            if (j && j.ok) {
-                const displayName = j.displayName || j.name || '';
-                const msg = (j.message || 'Recorded.').toString();
-                toastSuccess(displayName ? (displayName + ' — ' + msg) : msg);
-
-                setPrompt('Ready.', 'Stand still. One face only.');
-                armPostScanHold(CFG.postScan.holdMs);
+            if (j && j.ok === true) {
+                // ── Employee attendance success ──
+                if (j.mode !== 'VISITOR') {
+                    const evt  = (j.eventType || '').toUpperCase();
+                    const name = j.displayName || j.name || 'Employee';
+                    toastSuccess((evt === 'IN' ? '✓ Time In' : '✓ Time Out') + ' — ' + name);
+                    setPrompt(evt === 'IN' ? 'Time In recorded.' : 'Time Out recorded.', name);
+                    armPostScanHold(CFG.postScan.holdMs);
+                } else {
+                    // ── Visitor mode ──
+                    openVisitorModal(j);
+                }
             } else {
-                const err = (j?.error || 'Failed.').toString();
-
-                if (err === 'TOO_SOON') {
-                    toastError(j?.message || 'Already scanned. Please wait before scanning again.');
+                const err = j?.error || '';
+                if (err === 'ALREADY_SCANNED') {
+                    toastError('Already scanned. Please wait.');
                     armPostScanHold(CFG.postScan.holdMs);
                 } else if (err === 'LIVENESS_FAIL') {
                     toastError('Liveness failed. Move naturally and try again.');
@@ -1123,10 +1005,13 @@
                     toastError(j?.message || err);
                     armPostScanHold(1500);
                 }
-
                 setPrompt('Ready.', 'Stand still. One face only.');
             }
-        } catch {
+        } catch (e) {
+            if (e?.name === 'AbortError') {
+                log('Attendance fetch aborted (stale)');
+                return;
+            }
             setPrompt('System error.', 'Reload the page or check the server.');
         }
     }
@@ -1138,15 +1023,16 @@
         const stream = await navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: 'user',
-                width: { ideal: 640, max: 640 },
-                height: { ideal: 480, max: 480 },
-                frameRate: { ideal: 15, max: 15 },
+                width:     { ideal: 640, max: 640 },
+                height:    { ideal: 480, max: 480 },
+                frameRate: { ideal: 15,  max: 15  },
             },
             audio: false,
         });
         video.srcObject = stream;
         await video.play();
     }
+
     // =========
     // main loop
     // =========
@@ -1156,11 +1042,9 @@
             if (!video.videoWidth || !video.videoHeight) return;
 
             const now = Date.now();
-
             mp.tick();
 
-            const facePresent =
-                ((state.mpFaceSeenAt > 0 && (now - state.mpFaceSeenAt) < CFG.idle.faceLostMs) || state.localPresent);
+            const facePresent = (state.mpFaceSeenAt > 0 && (now - state.mpFaceSeenAt) < CFG.idle.faceLostMs) || state.localPresent;
 
             if (!facePresent) {
                 if (!state.wasIdle) {
@@ -1178,7 +1062,6 @@
                 setPrompt('Ready.', 'Look at the camera.');
             }
             state.wasIdle = false;
-
             setIdleUi(false);
 
             await resolveOfficeIfNeeded();
@@ -1189,18 +1072,12 @@
                 updateEta(true);
                 return;
             }
-
-            if (state.visitorOpen) {
-                updateEta(true);
-                return;
-            }
-
+            if (state.visitorOpen)           { updateEta(true); return; }
             if (now < (state.scanBlockUntil || 0)) {
                 safeSetPrompt('Please wait.', 'Next scan will be ready soon.');
                 updateEta(true);
                 return;
             }
-
             if (state.mpMode !== 'tasks') {
                 safeSetPrompt('System not ready.', 'Face detection is not available.');
                 updateEta(true);
@@ -1208,12 +1085,11 @@
             }
 
             if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
-                const blob = await captureFrameBlob(0.85);
+                const blob = await captureFrameBlob();
                 if (blob) {
                     state.mpReadyToFire = false;
                     state.mpStableStart = 0;
-
-                    state.liveInFlight = true;
+                    state.liveInFlight  = true;
                     try {
                         await submitAttendance(blob);
                     } finally {
@@ -1236,14 +1112,14 @@
     // init
     // =========
     (async function init() {
-        
         if (!validateConfig()) return;
-startClock();
+
+        startClock();
         startGpsIfAvailable();
         resolveOfficeDesktopOnce();
         wireUnlockUi();
-
         wireVisitorUi();
+
         try {
             await startCamera();
             await mp.init();
@@ -1258,14 +1134,12 @@ startClock();
             loop();
         } catch (e) {
             setIdleUi(false);
-
             const msg = (e && e.message) ? String(e.message) : '';
             if (msg === 'NEXTGEN_DISABLED' || msg === 'MP_ASSETS_MISSING') {
                 setPrompt('System not ready.', 'Face detection assets are missing.');
             } else {
                 setPrompt('Camera blocked.', 'Allow camera permission.');
             }
-
             setEta('ETA: --');
         }
     })();
