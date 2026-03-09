@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
     'use strict';
 
     // =========
@@ -868,7 +868,7 @@
         tick: function () {
             if (state.mpMode !== 'tasks' || !this.detector || !video.videoWidth) return;
             try {
-                var now    = performance.now();
+                var now    = Math.floor(performance.now());
                 var result = this.detector.detectForVideo(video, now);
                 var dets   = (result && result.detections) ? result.detections : [];
 
@@ -924,8 +924,11 @@
 
             } catch (e) {
                 this.failStreak++;
+                // Always surface the real error so admins can diagnose in DevTools
+                console.error('[FaceAttend] detectForVideo error #' + this.failStreak + ':', (e && e.message) ? e.message : e);
                 if (this.failStreak > 30) {
                     state.mpMode = 'none';
+                    console.error('[FaceAttend] MediaPipe disabled after 30 errors. Open DevTools Console to see the errors above.');
                     log('MediaPipe recurring error, disabling', e);
                 }
             }
@@ -1536,3 +1539,4 @@
     })();
 
 })();
+
