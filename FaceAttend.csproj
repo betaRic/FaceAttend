@@ -480,6 +480,7 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="Areas\Admin\Views\Unlock\" />
     <Folder Include="Models\" />
     <Folder Include="Vendor\" />
     <Folder Include="Views\Shared\" />

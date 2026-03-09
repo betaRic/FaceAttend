@@ -1,4 +1,4 @@
-﻿@* ============================================================================
+@* ============================================================================
    Areas/Admin/Views/Dashboard/Index.cshtml
    
    Main admin dashboard view for FaceAttend.
@@ -449,7 +449,7 @@
 
     // ─────────────────────────────────────────────────────────────────────────
     // CIRCUIT BREAKER: show warning banner on initial page load if needed
-    // This runs synchronously — the Razor @if block emits the JS call only
+    // This runs synchronously — the Razor if block emits the JS call only
     // when the circuit was already open when the page was rendered.
     // ─────────────────────────────────────────────────────────────────────────
     @if (Model.LivenessCircuitOpen || Model.LivenessCircuitStuck)

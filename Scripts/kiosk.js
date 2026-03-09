@@ -66,7 +66,7 @@
             acceptMinScore:    0.60,
             stableFramesMin:   2,
             // OPT-02: 150ms stable hold (was 250) -- fires 100ms sooner
-            stableNeededMs:    150,
+            stableNeededMs:    100,
             multiMinAreaRatio: 0.015,
         },
 
@@ -94,9 +94,9 @@
         gating: {
             // OPT-08: 3 stable frames required (was 4)
             stableFramesRequired: 3,
-            stableMaxMovePx:      10,
+            stableMaxMovePx:      30,
             minFaceAreaRatio:     0.03,
-            safeEdgeMarginRatio:  0.05,
+            safeEdgeMarginRatio:  0.02,
             centerMin:            0.12,
             centerMax:            0.88,
         },
@@ -601,13 +601,48 @@
         return { x: x, y: y, w: w, h: h };
     }
 
+    function toVideoBox(bb) {
+        if (!bb) return null;
+
+        var looksNormalized =
+            bb.width <= 1.5 &&
+            bb.height <= 1.5 &&
+            bb.originX <= 1.5 &&
+            bb.originY <= 1.5;
+
+        if (looksNormalized) {
+            return {
+                x: bb.originX * video.videoWidth,
+                y: bb.originY * video.videoHeight,
+                w: bb.width   * video.videoWidth,
+                h: bb.height  * video.videoHeight
+            };
+        }
+
+        return {
+            x: bb.originX,
+            y: bb.originY,
+            w: bb.width,
+            h: bb.height
+        };
+    }
+
     function boxFullyVisibleCanvas(box) {
         if (!box) return false;
-        var m = Math.min(canvas.width, canvas.height) * CFG.gating.safeEdgeMarginRatio;
         if (box.w <= 0 || box.h <= 0) return false;
-        if (box.x < m || box.y < m) return false;
-        if ((box.x + box.w) > (canvas.width  - m)) return false;
-        if ((box.y + box.h) > (canvas.height - m)) return false;
+
+        var cx = box.x + (box.w / 2);
+        var cy = box.y + (box.h / 2);
+
+        var mx = canvas.width * 0.04;
+        var my = canvas.height * 0.04;
+
+        if (cx < mx || cx > (canvas.width - mx)) return false;
+        if (cy < my || cy > (canvas.height - my)) return false;
+
+        if (box.w < canvas.width * 0.10) return false;
+        if (box.h < canvas.height * 0.14) return false;
+
         return true;
     }
 
@@ -683,17 +718,7 @@
     }
 
     function drawFaceGlow(bx, by, bw, bh, color) {
-        var cx = bx + bw / 2;
-        var cy = by + bh / 2;
-        var r  = Math.max(bw, bh) * 0.55;
-        var grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
-        grad.addColorStop(0,   color.replace('1)', '0.06)').replace('rgb', 'rgba'));
-        grad.addColorStop(0.6, color.replace('1)', '0.03)').replace('rgb', 'rgba'));
-        grad.addColorStop(1,   'rgba(0,0,0,0)');
-        ctx.save();
-        ctx.fillStyle = grad;
-        ctx.fillRect(bx - r * 0.3, by - r * 0.3, bw + r * 0.6, bh + r * 0.6);
-        ctx.restore();
+        return;
     }
 
     function drawLoop() {
@@ -733,6 +758,12 @@
             // corner brackets -- thicker when scanning
             var lw = scanning ? 3.5 : 2.5;
             drawCornerBrackets(b.x, b.y, b.w, b.h, mainColor, glowColor, lw);
+            ctx.save();
+            ctx.strokeStyle = mainColor;
+            ctx.globalAlpha = 0.95;
+            ctx.lineWidth   = scanning ? 2.5 : 2.0;
+            ctx.strokeRect(b.x, b.y, b.w, b.h);
+            ctx.restore();
         }
 
         requestAnimationFrame(drawLoop);
@@ -839,6 +870,7 @@
                             modelAssetPath: CFG.tasksVision.modelPath,
                             delegate: 'GPU',
                         },
+                        runningMode: 'VIDEO',
                         minDetectionConfidence:    CFG.mp.detectMinConf,
                         minSuppressionThreshold:   0.3,
                     }).catch(function () {
@@ -847,6 +879,7 @@
                                 modelAssetPath: CFG.tasksVision.modelPath,
                                 delegate: 'CPU',
                             },
+                            runningMode: 'VIDEO',
                             minDetectionConfidence:  CFG.mp.detectMinConf,
                             minSuppressionThreshold: 0.3,
                         });
@@ -908,17 +941,27 @@
                 });
 
                 var bb  = best.boundingBox;
-                var box = mapVideoBoxToCanvas({
-                    x: bb.originX * video.videoWidth,
-                    y: bb.originY * video.videoHeight,
-                    w: bb.width   * video.videoWidth,
-                    h: bb.height  * video.videoHeight,
-                });
+                var box = mapVideoBoxToCanvas(toVideoBox(bb));
 
-                state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
+                window.__kioskDebug = {
+                    rawBox: bb,
+                    mappedBox: box,
+                    videoWidth: video.videoWidth,
+                    videoHeight: video.videoHeight
+                };
+                // bbox debug log disabled
+state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 state.mpBoxCanvas  = box;
                 state.mpFaceSeenAt = Date.now();
                 this.failStreak    = 0;
+
+                if (state.faceStatus === 'low') {
+                    state.mpReadyToFire = false;
+                    state.mpStableStart = 0;
+                    state.mpPrevCenter  = null;
+                    safeSetPrompt('Center your face.', 'Move slightly back and keep your full face inside the frame.');
+                    return;
+                }
 
                 updateStableTracking(box, Date.now());
 
@@ -971,7 +1014,7 @@
         if (state.locationState === 'pending')     { setEta('ETA: locating');         return; }
         if (state.locationState !== 'allowed')     { setEta('ETA: blocked');          return; }
         if (!state.mpBoxCanvas || state.faceStatus === 'none') { setEta('ETA: waiting');          return; }
-        if (state.faceStatus === 'low')            { setEta('ETA: improve lighting'); return; }
+        if (state.faceStatus === 'low')            { setEta('ETA: center face');      return; }
         if (state.faceStatus === 'multi')          { setEta('ETA: one face only');    return; }
         if (state.mpReadyToFire)                   { setEta('ETA: scanning');         return; }
 

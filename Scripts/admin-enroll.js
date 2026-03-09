@@ -77,22 +77,39 @@
     }
 
     // ---- wizard navigation ----
+    function setPaneState(target) {
+        var isWizard = target === 'wizard';
+        var isLive   = target === 'live';
+        var isUpload = target === 'upload';
+
+        if (wizard) {
+            wizard.style.display = isWizard ? '' : 'none';
+            wizard.classList.toggle('d-none', !isWizard);
+        }
+
+        if (livePane) {
+            livePane.style.display = isLive ? '' : 'none';
+            livePane.classList.toggle('d-none', !isLive);
+            livePane.classList.toggle('active', isLive);
+        }
+
+        if (uploadPane) {
+            uploadPane.style.display = isUpload ? '' : 'none';
+            uploadPane.classList.toggle('d-none', !isUpload);
+            uploadPane.classList.toggle('active', isUpload);
+        }
+    }
+
     function showWizard() {
-        if (wizard)     { wizard.classList.remove('d-none');     wizard.style.display     = ''; }
-        if (livePane)   { livePane.classList.add('d-none');      livePane.style.display   = 'none'; }
-        if (uploadPane) { uploadPane.classList.add('d-none');    uploadPane.style.display = 'none'; }
+        setPaneState('wizard');
     }
 
     function showLive() {
-        if (wizard)     { wizard.classList.add('d-none');        wizard.style.display     = 'none'; }
-        if (livePane)   { livePane.classList.remove('d-none');   livePane.style.display   = 'block'; }
-        if (uploadPane) { uploadPane.classList.add('d-none');    uploadPane.style.display = 'none'; }
+        setPaneState('live');
     }
 
     function showUpload() {
-        if (wizard)     { wizard.classList.add('d-none');        wizard.style.display     = 'none'; }
-        if (livePane)   { livePane.classList.add('d-none');      livePane.style.display   = 'none'; }
-        if (uploadPane) { uploadPane.classList.remove('d-none'); uploadPane.style.display = 'block'; }
+        setPaneState('upload');
     }
 
     // ---- camera ----
@@ -359,14 +376,26 @@
     }
 
     // ---- upload path ----
-    function handleUpload(f) {
-        if (!f) return;
+    function handleUpload(files) {
+        var picked = [];
+
+        if (files && typeof files.length === 'number' && !files.name) {
+            picked = Array.prototype.slice.call(files, 0, ENROLL_MAX_IMAGES);
+        } else if (files) {
+            picked = [files];
+        }
+
+        if (!picked.length) return;
+
         setStatus(upStatus, 'Processing...', 'info');
 
         var fd = new FormData();
         fd.append('__RequestVerificationToken', token());
         fd.append('employeeId', empId);
-        fd.append('image', f, f.name);
+
+        picked.forEach(function (f, idx) {
+            fd.append('image', f, f.name || ('upload_' + (idx + 1) + '.jpg'));
+        });
 
         fetch(enrollUrl, { method: 'POST', body: fd })
             .then(function (r) { return r.json(); })
@@ -409,7 +438,7 @@
         })(choices[ci]);
     }
 
-    var backBtns = document.querySelectorAll('[data-enroll-back]');
+    var backBtns = document.querySelectorAll('[data-enroll-back], #backFromLive, #backFromUpload');
     for (var bi = 0; bi < backBtns.length; bi++) {
         backBtns[bi].addEventListener('click', function () {
             stopCam();
@@ -417,10 +446,19 @@
         });
     }
 
+    document.addEventListener('fa:stopCam', function () {
+        stopCam();
+        showWizard();
+    });
+
     if (file) {
         file.addEventListener('change', function () {
-            if (file.files && file.files[0]) handleUpload(file.files[0]);
+            if (file.files && file.files.length) {
+                handleUpload(Array.prototype.slice.call(file.files, 0, ENROLL_MAX_IMAGES));
+            }
         });
     }
+
+    showWizard();
 
 })();
