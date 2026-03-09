@@ -209,7 +209,7 @@
                 </div>
 
                 <div class="table-responsive">
-                    @if (!Model.RecentLogs.Any())
+                    @if (Model.RecentLogs == null || !Model.RecentLogs.Any())
                     {
                         <div class="ea-empty" style="padding:3rem 2rem;">
                             <i class="fa-solid fa-clock" aria-hidden="true"></i>

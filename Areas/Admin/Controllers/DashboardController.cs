@@ -95,9 +95,20 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.OfflineAssetsOk = true;
 
             // PHASE 2 FIX: Circuit breaker status para sa dashboard health card.
-            var circuitState = OnnxLiveness.GetCircuitState();
-            vm.LivenessCircuitOpen  = circuitState.IsOpen;
-            vm.LivenessCircuitStuck = circuitState.IsStuck;
+            try
+            {
+                var circuitState = OnnxLiveness.GetCircuitState();
+                vm.LivenessCircuitOpen = circuitState.IsOpen;
+                vm.LivenessCircuitStuck = circuitState.IsStuck;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError(
+                    "[Dashboard.Index] Liveness health error: " + ex);
+
+                vm.LivenessCircuitOpen = false;
+                vm.LivenessCircuitStuck = true;
+            }
 
             ViewBag.Title = "Dashboard";
             return View(vm);
