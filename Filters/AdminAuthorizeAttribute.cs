@@ -120,6 +120,33 @@ namespace FaceAttend.Filters
         }
 
         /// <summary>
+        /// Slides the admin session expiry window forward.
+        /// </summary>
+        public static bool RefreshSession(HttpSessionStateBase session)
+        {
+            if (session == null) return false;
+            if (!(session[SessionKeyAuthedUtc] is DateTime)) return false;
+
+            session[SessionKeyAuthedUtc] = DateTime.UtcNow;
+            return true;
+        }
+
+        /// <summary>
+        /// Returns remaining seconds before the admin session expires.
+        /// </summary>
+        public static int GetRemainingSessionSeconds(HttpSessionStateBase session)
+        {
+            if (session == null) return 0;
+            if (!(session[SessionKeyAuthedUtc] is DateTime authedUtc)) return 0;
+
+            var minutes = GetInt("Admin:SessionMinutes", 30);
+            var elapsed = DateTime.UtcNow - authedUtc;
+            var remaining = TimeSpan.FromMinutes(minutes) - elapsed;
+            return remaining.TotalSeconds > 0 ? (int)remaining.TotalSeconds : 0;
+        }
+
+
+        /// <summary>
         /// Nagro-rotate ng ASP.NET Session ID cookie para mabawasan ang session fixation risk.
         /// IMPORTANTENG TALA: Huwag isulat ang sensitive auth data sa lumang session
         /// pagkatapos tawagin ito. Gumamit ng short-lived unlock cookie para sa next request.
@@ -267,7 +294,6 @@ namespace FaceAttend.Filters
             // pagkatapos sa Web.config (backwards compat para sa dev environments).
             var stored = (
                 Environment.GetEnvironmentVariable(PinHashEnvVar)
-                ?? ConfigurationManager.AppSettings["Admin:PinHash"]
                 ?? ""
             ).Trim();
 

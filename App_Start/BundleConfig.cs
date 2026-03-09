@@ -78,7 +78,7 @@ namespace FaceAttend
                 ));
 
             // Vendor CSS (LibMan). Safe even if files are not restored yet.
-            var vendorCss = new StyleBundle("~/Content/vendor")
+            var vendorCss = new StyleBundle("~/bundles/vendor-css")
                 .Include("~/Content/vendor/fontawesome/css/all.min.css", new CssRewriteUrlTransform());
             foreach (var p in new[]
             {
@@ -106,7 +106,7 @@ namespace FaceAttend
                 .Include("~/Content/kiosk.css"));
 
             // Leave disabled while debugging
-            // BundleTable.EnableOptimizations = true;
+            BundleTable.EnableOptimizations = true;
         }
 
         private static bool FileExists(string virtualPath)

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using System.Configuration;
 using System.Web;
@@ -32,8 +32,28 @@ namespace FaceAttend
             FilterConfig.RegisterGlobalFilters(GlobalFilters.Filters);
             RouteConfig.RegisterRoutes(RouteTable.Routes);
             BundleConfig.RegisterBundles(BundleTable.Bundles);
+            try
+            {
+                ValidateCriticalConfiguration();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    using (var el = new System.Diagnostics.EventLog("Application"))
+                    {
+                        el.Source = "FaceAttend";
+                        el.WriteEntry(
+                            "[Application_Start] STARTUP VALIDATION FAILED:\n" + ex.ToString(),
+                            System.Diagnostics.EventLogEntryType.Error);
+                    }
+                }
+                catch { }
 
-            ValidateCriticalConfiguration();
+                System.Diagnostics.Trace.TraceError(
+                    "[Application_Start] STARTUP VALIDATION FAILED: " + ex.ToString());
+                throw;
+            }
             TempFileCleanupTask.Start();
 
             // ================================================================

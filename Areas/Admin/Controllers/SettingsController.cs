@@ -1,4 +1,4 @@
-﻿using FaceAttend.Areas.Admin.Helpers;
+using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
 using FaceAttend.Services;
@@ -37,6 +37,20 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
+        
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Heartbeat()
+        {
+            var refreshed = AdminAuthorizeAttribute.RefreshSession(Session);
+            return Json(new
+            {
+                ok = refreshed,
+                expiresIn = refreshed
+                    ? AdminAuthorizeAttribute.GetRemainingSessionSeconds(Session)
+                    : 0
+            });
+        }
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult MigrateBiometricEncryption()

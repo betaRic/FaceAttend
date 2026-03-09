@@ -6,7 +6,7 @@
     <title>@ViewBag.Title - FaceAttend Admin</title>
 
     @Styles.Render("~/Content/css")
-    @Styles.Render("~/Content/vendor")
+    @Styles.Render("~/bundles/vendor-css")
     @Styles.Render("~/Content/admin")
     @RenderSection("head", required: false)
     @RenderSection("styles", required: false)
@@ -138,5 +138,83 @@
     @Scripts.Render("~/bundles/vendor")
     @Scripts.Render("~/bundles/admin")
     @RenderSection("scripts", required: false)
+
+    <script>
+        (function () {
+            'use strict';
+
+            var HEARTBEAT_MS  = 5 * 60 * 1000;
+            var WARN_BEFORE_S = 5 * 60;
+            var heartbeatUrl  = '@Url.Action("Heartbeat", "Settings", new { area = "Admin" })';
+            var banner;
+
+            function ensureBanner() {
+                if (banner) return banner;
+                banner = document.createElement('div');
+                banner.id = 'session-expiry-warning';
+                banner.style.cssText = [
+                    'display:none',
+                    'position:fixed',
+                    'bottom:1rem',
+                    'right:1rem',
+                    'z-index:9999',
+                    'background:#dc3545',
+                    'color:#fff',
+                    'padding:.65rem 1.1rem',
+                    'border-radius:.5rem',
+                    'font-size:.87rem',
+                    'box-shadow:0 4px 16px rgba(0,0,0,.25)',
+                    'cursor:pointer'
+                ].join(';');
+                banner.addEventListener('click', sendHeartbeat);
+                document.body.appendChild(banner);
+                return banner;
+            }
+
+            function showWarning(secondsLeft) {
+                var el = ensureBanner();
+                el.style.display = 'block';
+                el.innerHTML = '⚠ Admin session expires in <strong>' +
+                    Math.ceil(secondsLeft / 60) + ' min</strong>. ' +
+                    '<span style="text-decoration:underline;cursor:pointer">Click to extend.</span>';
+            }
+
+            function hideWarning() {
+                if (banner) banner.style.display = 'none';
+            }
+
+            function sendHeartbeat() {
+                var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+                var body = tokenInput ? '__RequestVerificationToken=' + encodeURIComponent(tokenInput.value) : '';
+
+                return fetch(heartbeatUrl, {
+                    method: 'POST',
+                    credentials: 'same-origin',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: body
+                }).then(function (res) {
+                    if (res.redirected || res.status === 302 || res.status === 401 || res.status === 403) {
+                        showWarning(0);
+                        setTimeout(function () { window.location.reload(); }, 1500);
+                        return null;
+                    }
+                    return res.json();
+                }).then(function (data) {
+                    if (!data) return;
+                    if (data.ok) {
+                        if (data.expiresIn && data.expiresIn <= WARN_BEFORE_S) showWarning(data.expiresIn);
+                        else hideWarning();
+                    }
+                }).catch(function (err) {
+                    console.warn('[FaceAttend] heartbeat failed', err);
+                });
+            }
+
+            setInterval(sendHeartbeat, HEARTBEAT_MS);
+        })();
+    </script>
 </body>
 </html>
