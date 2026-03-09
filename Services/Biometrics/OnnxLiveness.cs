@@ -158,6 +158,10 @@ namespace FaceAttend.Services.Biometrics
             var cropScale  = AppSettings.GetDouble("Biometrics:Liveness:CropScale",    2.7);
             var normalize  = AppSettings.GetString("Biometrics:Liveness:Normalize",    "0_1");
             var chanOrder  = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
+            normalize = CanonicalNormalize(normalize);
+            chanOrder = CanonicalChannelOrder(chanOrder);
+            normalize = CanonicalNormalize(normalize);
+            chanOrder = CanonicalChannelOrder(chanOrder);
             var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",   "logits");
             var decision   = AppSettings.GetString("Biometrics:Liveness:Decision",     "max");
 
@@ -516,6 +520,12 @@ namespace FaceAttend.Services.Biometrics
                             {
                                 c0 /= 255f; c1 /= 255f; c2 /= 255f;
                             }
+                            else if (normalize.Equals("minus1_1", StringComparison.OrdinalIgnoreCase))
+                            {
+                                c0 = c0 / 127.5f - 1f;
+                                c1 = c1 / 127.5f - 1f;
+                                c2 = c2 / 127.5f - 1f;
+                            }
                             else if (normalize.Equals("imagenet", StringComparison.OrdinalIgnoreCase))
                             {
                                 // ImageNet mean/std normalization
@@ -523,7 +533,11 @@ namespace FaceAttend.Services.Biometrics
                                 c1 = (c1 / 255f - 0.456f) / 0.224f;
                                 c2 = (c2 / 255f - 0.406f) / 0.225f;
                             }
-                            // else: raw (0-255) — hindi na-normalize
+                            else if (normalize.Equals("none", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Raw 0-255 talaga, walang gagawin.
+                            }
+                            // else: raw (0-255) — fallback para safe sa unknown values
 
                             tensor[0, 0, y, x] = c0;
                             tensor[0, 1, y, x] = c1;
@@ -556,6 +570,34 @@ namespace FaceAttend.Services.Biometrics
         // ─────────────────────────────────────────────────────────────────────
         // Utility helpers
         // ─────────────────────────────────────────────────────────────────────
+
+        private static string CanonicalNormalize(string value)
+        {
+            var v = (value ?? "").Trim().ToLowerInvariant();
+            switch (v)
+            {
+                case "0_1":
+                    return "0_1";
+                case "minus1_1":
+                case "-1_1":
+                case "minus1to1":
+                case "minus1-to-1":
+                    return "minus1_1";
+                case "imagenet":
+                    return "imagenet";
+                case "none":
+                case "raw":
+                    return "none";
+                default:
+                    return "0_1";
+            }
+        }
+
+        private static string CanonicalChannelOrder(string value)
+        {
+            var v = (value ?? "").Trim().ToUpperInvariant();
+            return (v == "BGR" || v == "BRG") ? "BGR" : "RGB";
+        }
 
         /// <summary>
         /// Nagko-convert ng raw logit scores papunta sa probabilities
