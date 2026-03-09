@@ -46,6 +46,35 @@ namespace FaceAttend.Controllers
                 !Regex.IsMatch(employeeId, pattern, RegexOptions.CultureInvariant))
                 return Json(new { ok = false, error = "EMPLOYEE_ID_INVALID_FORMAT" });
 
+            // FIX M-08: guard against accidental face overwrite.
+            using (var dbCheck = new FaceAttendDBEntities())
+            {
+                var existing = dbCheck.Employees
+                    .AsNoTracking()
+                    .FirstOrDefault(e => e.EmployeeId == employeeId && e.IsActive);
+
+                if (existing != null && !string.IsNullOrWhiteSpace(existing.FaceEncodingBase64))
+                {
+                    var force = (Request?.Form?["force"] ?? "")
+                        .Trim()
+                        .ToLowerInvariant();
+
+                    if (force != "true" && force != "1")
+                    {
+                        return Json(new
+                        {
+                            ok = false,
+                            error = "ALREADY_ENROLLED",
+                            employeeId,
+                            employeeName = existing.FullName,
+                            message = $"Si {existing.FullName} ay may existing face enrollment na. I-confirm ang re-enrollment."
+                        });
+                    }
+
+                    System.Diagnostics.Trace.TraceWarning(
+                        $"[Enroll] FORCE RE-ENROLL: {employeeId} ({existing.FullName}) from {Request?.UserHostAddress ?? "unknown"}");
+                }
+            }
             // Day 3: multi-encoding enrollment.
             // Allow multiple uploaded images under the same field name ("image").
             // Backward compatible: if only one image is posted, it still works.

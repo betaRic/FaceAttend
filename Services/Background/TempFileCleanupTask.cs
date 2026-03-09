@@ -180,6 +180,26 @@ namespace FaceAttend.Services.Background
             if (string.IsNullOrWhiteSpace(tmpDir) || !Directory.Exists(tmpDir))
                 return;
 
+            // FIX H-10: emergency size guard.
+            var emergencyMb = AppSettings.GetInt("TempFile:EmergencyThresholdMb", 500);
+            var emergencyBytes = (long)emergencyMb * 1024L * 1024L;
+            long currentBytes = 0;
+            try
+            {
+                foreach (var f in Directory.GetFiles(tmpDir))
+                {
+                    try { currentBytes += new FileInfo(f).Length; } catch { }
+                }
+            }
+            catch { }
+
+            var effectiveMaxAge = MaxAgeMinutes;
+            if (currentBytes > emergencyBytes)
+            {
+                effectiveMaxAge = AppSettings.GetInt("TempFile:EmergencyMaxAgeMinutes", 5);
+                System.Diagnostics.Trace.TraceWarning(
+                    $"[TempFileCleanup] EMERGENCY: tmp folder is {currentBytes / (1024 * 1024)} MB (>{emergencyMb} MB threshold). Using {effectiveMaxAge}-minute cutoff for this cycle.");
+            }
             var cutoff = DateTime.UtcNow.AddMinutes(-MaxAgeMinutes);
             int deleted = 0;
             int errors = 0;

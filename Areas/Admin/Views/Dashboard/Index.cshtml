@@ -111,6 +111,35 @@
     </div>
 
     @* ── Pending-review alert ─────────────────────────────────────────────────
+    @if (Model.SqlExpressCritical)
+    {
+        <div class="alert alert-danger d-flex align-items-start gap-2 mb-3" role="alert">
+            <i class="fa-solid fa-triangle-exclamation fa-lg flex-shrink-0 mt-1"></i>
+            <div>
+                <strong>KRITIKAL: SQL Express halos puno na!</strong>
+                <div class="mt-1" style="font-size:.9rem;">
+                    Database: <strong>@Model.SqlExpressSizeGb?.ToString("F2") GB</strong>
+                    (@Model.SqlExpressPercentUsed?.ToString("F0")% ng 10 GB limit).
+                    <br />Kapag naabot ang 10 GB, <strong>titigil ang attendance logging</strong>.
+                    Mag-plan agad ng migration o log archiving.
+                </div>
+            </div>
+        </div>
+    }
+    else if (Model.SqlExpressWarning)
+    {
+        <div class="alert alert-warning d-flex align-items-start gap-2 mb-3" role="alert">
+            <i class="fa-solid fa-database fa-lg flex-shrink-0 mt-1"></i>
+            <div>
+                <strong>Database Size Warning</strong>
+                <div class="mt-1" style="font-size:.9rem;">
+                    SQL Express: <strong>@Model.SqlExpressSizeGb?.ToString("F2") GB</strong>
+                    (@Model.SqlExpressPercentUsed?.ToString("F0")% ng 10 GB limit).
+                    Mag-plan ng migration o log archiving bago maabot ang limit.
+                </div>
+            </div>
+        </div>
+    }
        Shown only when attendance records are flagged NeedsReview = true.
        Count is rendered server-side on page load; AJAX does not refresh this
        banner — a manual page reload picks up changes after the admin reviews.
@@ -337,7 +366,25 @@
                                 </span>
                             </div>
                         }
-                    </div>
+                        @if (Model.SqlExpressSizeGb.HasValue)
+                        {
+                            var szClass = Model.SqlExpressCritical ? "fail"
+                                        : Model.SqlExpressWarning  ? "warn" : "ok";
+                            var szText  = Model.SqlExpressCritical ? "Critical"
+                                        : Model.SqlExpressWarning  ? "Warning" : "OK";
+                            var szTxt   = Model.SqlExpressCritical ? "text-danger"
+                                        : Model.SqlExpressWarning  ? "text-warning" : "text-success";
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="d-flex align-items-center gap-2 text-muted" style="font-size:.85rem;">
+                                    <i class="fa-solid fa-hard-drive fa-fw fa-sm"></i>
+                                    DB (@Model.SqlExpressSizeGb?.ToString("F1") GB / 10 GB)
+                                </span>
+                                <span class="d-flex align-items-center gap-1" style="font-size:.78rem;font-weight:600;">
+                                    <span class="ea-health-dot @szClass"></span>
+                                    <span class='@szTxt">@szText</span>
+                                </span>
+                            </div>
+                        }                    </div>
                 </div>
             </div>
 
@@ -380,7 +427,25 @@
                            href="@Url.Action("Index", "Settings", new { area = "Admin" })">
                             <i class="fa-solid fa-gear me-2 fa-fw" aria-hidden="true"></i>Settings
                         </a>
-                    </div>
+                        @if (Model.SqlExpressSizeGb.HasValue)
+                        {
+                            var szClass = Model.SqlExpressCritical ? "fail"
+                                        : Model.SqlExpressWarning  ? "warn" : "ok";
+                            var szText  = Model.SqlExpressCritical ? "Critical"
+                                        : Model.SqlExpressWarning  ? "Warning" : "OK";
+                            var szTxt   = Model.SqlExpressCritical ? "text-danger"
+                                        : Model.SqlExpressWarning  ? "text-warning" : "text-success";
+                            <div class="d-flex align-items-center justify-content-between">
+                                <span class="d-flex align-items-center gap-2 text-muted" style="font-size:.85rem;">
+                                    <i class="fa-solid fa-hard-drive fa-fw fa-sm"></i>
+                                    DB (@Model.SqlExpressSizeGb?.ToString("F1") GB / 10 GB)
+                                </span>
+                                <span class="d-flex align-items-center gap-1" style="font-size:.78rem;font-weight:600;">
+                                    <span class="ea-health-dot @szClass"></span>
+                                    <span class='@szTxt">@szText</span>
+                                </span>
+                            </div>
+                        }                    </div>
                 </div>
             </div>
 

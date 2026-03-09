@@ -102,7 +102,9 @@ namespace FaceAttend.Services.Biometrics
 
                 var poolSize   = AppSettings.GetInt("Biometrics:DlibPoolSize", 4);
                 if (poolSize < 1)  poolSize = 1;
-                if (poolSize > 16) poolSize = 16; // Safety cap — bawat instance ≈ 50 MB
+                // FIX C-08: reduced safety cap from 16 to 8.
+                // 16 x ~50 MB = ~800 MB RAM, masyadong mabigat sa shared server.
+                if (poolSize > 8) poolSize = 8;
 
                 var modelsRel  = AppSettings.GetString(
                     "Biometrics:DlibModelsDir",
@@ -387,7 +389,7 @@ namespace FaceAttend.Services.Biometrics
         /// <param name="imagePath">Absolute path ng image file</param>
         /// <param name="error">Error code kung null ang return value</param>
         /// <returns>128-dim face embedding, o null kung nabigo</returns>
-        public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
+        [Obsolete("Use TryDetectSingleFaceFromFile + TryEncodeFromFileWithLocation. All known callers migrated per FIX H-02. Remove in next major sprint.")]        public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
         {
             // Hakbang 1: I-detect ang iisang mukha at kumuha ng Location.
             FaceBox  faceBox;

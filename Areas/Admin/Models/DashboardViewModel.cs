@@ -34,6 +34,11 @@ namespace FaceAttend.Areas.Admin.Models
         // i-reset (tingnan ang Dashboard > Reset Circuit button).
         public bool LivenessCircuitOpen  { get; set; }
         public bool LivenessCircuitStuck { get; set; }
+        // C-04: SQL Express size tracking (10 GB hard cap)
+        public double? SqlExpressSizeGb      { get; set; }
+        public double? SqlExpressPercentUsed { get; set; }
+        public bool    SqlExpressWarning     { get; set; }
+        public bool    SqlExpressCritical    { get; set; }
 
         // ── Display helpers ──────────────────────────────────────────────────
         public string TodayDateDisplay => TimeZoneHelper.NowLocal().ToString("dddd, MMM dd, yyyy");

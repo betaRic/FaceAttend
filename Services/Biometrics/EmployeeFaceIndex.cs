@@ -140,7 +140,8 @@ namespace FaceAttend.Services.Biometrics
 
         private static void RebuildCore(FaceAttendDBEntities db)
         {
-            var list = new List<Entry>();
+            var list = new List<Entry>();            // FIX H-09: timing instrumentation for rebuild visibility.
+            var _rebuildSw = System.Diagnostics.Stopwatch.StartNew();
 
             // Day 3: multi-encoding support.
             // If Employees.FaceEncodingsJson exists, load multiple encodings per employee.
@@ -273,6 +274,14 @@ namespace FaceAttend.Services.Biometrics
             }
 
             _loaded = true;
+            _rebuildSw.Stop();
+            System.Diagnostics.Trace.TraceInformation(
+                $"[EmployeeFaceIndex] Rebuild complete: {list.Count} entries, BallTree={((_ballTree != null) ? "YES" : "NO")}, elapsed={_rebuildSw.ElapsedMilliseconds}ms.");
+            if (_rebuildSw.ElapsedMilliseconds > 300)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    $"[EmployeeFaceIndex] SLOW REBUILD: {_rebuildSw.ElapsedMilliseconds}ms. Consider outside-lock rebuild in a future sprint.");
+            }
         }
 
         private class EmployeeRow

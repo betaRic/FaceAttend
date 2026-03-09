@@ -98,6 +98,12 @@ namespace FaceAttend.Areas.Admin.Controllers
             var circuitState = OnnxLiveness.GetCircuitState();
             vm.LivenessCircuitOpen  = circuitState.IsOpen;
             vm.LivenessCircuitStuck = circuitState.IsStuck;
+            // C-04: Populate SQL Express size warning.
+            var (dbGb, dbPct, dbWarn, dbCrit) = CheckSqlExpressSize();
+            vm.SqlExpressSizeGb      = dbGb >= 0 ? (double?)dbGb  : null;
+            vm.SqlExpressPercentUsed = dbGb >= 0 ? (double?)dbPct : null;
+            vm.SqlExpressWarning     = dbWarn;
+            vm.SqlExpressCritical    = dbCrit;
 
             ViewBag.Title = "Dashboard";
             return View(vm);
@@ -189,6 +195,31 @@ namespace FaceAttend.Areas.Admin.Controllers
         // Private helpers
         // ────────────────────────────────────────────────────────────────────
 
+        private static (double gb, double pct, bool warn, bool crit) CheckSqlExpressSize()
+        {
+            const double cap = 10.0;
+            try
+            {
+                using (var db = new FaceAttendDBEntities())
+                {
+                    var gbRaw = db.Database.SqlQuery<decimal?>(@
+"SELECT CAST((SUM(CASE WHEN type_desc = 'ROWS' THEN size ELSE 0 END) * 8.0 / 1024.0 / 1024.0) AS decimal(18,2))
+FROM sys.database_files")
+                        .FirstOrDefault();
+
+                    if (!gbRaw.HasValue)
+                        return (-1, 0, false, false);
+
+                    var gb = (double)gbRaw.Value;
+                    var pct = gb / cap * 100.0;
+                    return (Math.Round(gb, 2), Math.Round(pct, 1), pct >= 70, pct >= 90);
+                }
+            }
+            catch
+            {
+                return (-1, 0, false, false);
+            }
+        }
         private static bool CheckFileExists(string virtualPath)
         {
             if (string.IsNullOrWhiteSpace(virtualPath)) return false;
