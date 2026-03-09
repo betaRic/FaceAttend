@@ -78,21 +78,21 @@
 
     // ---- wizard navigation ----
     function showWizard() {
-        if (wizard)     wizard.style.display     = '';
-        if (livePane)   livePane.style.display   = 'none';
-        if (uploadPane) uploadPane.style.display = 'none';
+        if (wizard)     { wizard.classList.remove('d-none');     wizard.style.display     = ''; }
+        if (livePane)   { livePane.classList.add('d-none');      livePane.style.display   = 'none'; }
+        if (uploadPane) { uploadPane.classList.add('d-none');    uploadPane.style.display = 'none'; }
     }
 
     function showLive() {
-        if (wizard)     wizard.style.display     = 'none';
-        if (livePane)   livePane.style.display   = '';
-        if (uploadPane) uploadPane.style.display = 'none';
+        if (wizard)     { wizard.classList.add('d-none');        wizard.style.display     = 'none'; }
+        if (livePane)   { livePane.classList.remove('d-none');   livePane.style.display   = 'block'; }
+        if (uploadPane) { uploadPane.classList.add('d-none');    uploadPane.style.display = 'none'; }
     }
 
     function showUpload() {
-        if (wizard)     wizard.style.display     = 'none';
-        if (livePane)   livePane.style.display   = 'none';
-        if (uploadPane) uploadPane.style.display = '';
+        if (wizard)     { wizard.classList.add('d-none');        wizard.style.display     = 'none'; }
+        if (livePane)   { livePane.classList.add('d-none');      livePane.style.display   = 'none'; }
+        if (uploadPane) { uploadPane.classList.remove('d-none'); uploadPane.style.display = 'block'; }
     }
 
     // ---- camera ----
