@@ -2,20 +2,10 @@
 @{
     ViewBag.Title = "Edit Office";
     Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
-
-    var hasLeafletCss = System.IO.File.Exists(Server.MapPath("~/Content/vendor/leaflet/leaflet.min.css"));
-    var hasLeafletJs  = System.IO.File.Exists(Server.MapPath("~/Scripts/vendor/leaflet/leaflet.min.js"));
 }
 
 @section styles {
-    @if (hasLeafletCss)
-    {
-        <link rel="stylesheet" href="~/Content/vendor/leaflet/leaflet.min.css" />
-    }
-    else
-    {
-        <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    }
+    <link rel="stylesheet" href="@Url.Content("~/Content/vendor/leaflet/leaflet.css")" />
 }
 
 <div class="ea-page">
@@ -62,13 +52,6 @@
 </div>
 
 @section scripts {
-    @if (hasLeafletJs)
-    {
-        <script src="~/Scripts/vendor/leaflet/leaflet.min.js"></script>
-    }
-    else
-    {
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    }
-    <script src="~/Scripts/admin-office-map.js"></script>
+    <script src="@Url.Content("~/Scripts/vendor/leaflet/leaflet.js")"></script>
+    <script src="@Url.Content("~/Scripts/admin-office-map.js")"></script>
 }

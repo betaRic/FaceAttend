@@ -405,6 +405,7 @@
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
       <LastGenOutput>FaceAttendDBEntities.cs</LastGenOutput>
     </Content>
+    <Content Include="favicon.ico" />
     <Content Include="Global.asax" />
     <Content Include="App_Data\models\dlib\dlib_face_recognition_resnet_model_v1.dat" />
     <Content Include="App_Data\models\dlib\mmod_human_face_detector.dat" />
