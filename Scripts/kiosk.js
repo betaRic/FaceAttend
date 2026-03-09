@@ -99,6 +99,52 @@
         },
     };
 
+    function validateConfig() {
+        var errors = [];
+
+        if (typeof CFG === 'undefined' || CFG === null) {
+            errors.push('CFG is not defined - kiosk configuration object is missing.');
+        } else {
+            if (!CFG.loopMs || CFG.loopMs <= 0)
+                errors.push('CFG.loopMs is missing or <= 0 (value: ' + CFG.loopMs + ')');
+            if (!CFG.server || !CFG.server.captureCooldownMs)
+                errors.push('CFG.server.captureCooldownMs is missing.');
+            if (!CFG.server || !CFG.server.resolveMs)
+                errors.push('CFG.server.resolveMs is missing.');
+            if (!CFG.mp || !CFG.mp.stableNeededMs)
+                errors.push('CFG.mp.stableNeededMs is missing.');
+        }
+
+        ['kioskVideo', 'overlayCanvas', 'kioskRoot', 'mainPrompt', 'subPrompt'].forEach(function (id) {
+            if (!document.getElementById(id))
+                errors.push('Required DOM element #' + id + ' is missing from the page.');
+        });
+
+        if (errors.length > 0) {
+            var root = document.getElementById('kioskRoot') || document.body;
+            var div = document.createElement('div');
+            div.style.cssText = [
+                'position:fixed',
+                'top:0',
+                'left:0',
+                'right:0',
+                'padding:1rem',
+                'background:#dc3545',
+                'color:#fff',
+                'font-family:monospace',
+                'font-size:.85rem',
+                'z-index:99999',
+                'white-space:pre-wrap'
+            ].join(';');
+            div.textContent = 'KIOSK CONFIG ERROR - scan loop will NOT start:\n\n' + errors.join('\n');
+            root.insertAdjacentElement('afterbegin', div);
+            console.error('[FaceAttend] Config validation failed:', errors);
+            return false;
+        }
+
+        return true;
+    }
+
     const log = (...args) => { if (CFG.debug) console.log('[FaceAttend]', ...args); };
 
     // =========
@@ -1190,7 +1236,9 @@
     // init
     // =========
     (async function init() {
-        startClock();
+        
+        if (!validateConfig()) return;
+startClock();
         startGpsIfAvailable();
         resolveOfficeDesktopOnce();
         wireUnlockUi();

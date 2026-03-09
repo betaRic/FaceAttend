@@ -81,7 +81,8 @@ namespace FaceAttend.Services.Biometrics
         // Sa 100 concurrent failures, i-log lang ang 1st at bawat 10th error.
         // Ginagamit ang Interlocked para thread-safe na increment nang walang lock.
         private static int _errorLogCounter = 0;
-        private const  int ErrorLogEvery    = 10;
+        private const int ErrorLogFirst = 5;
+        private const int ErrorLogEvery = 10;
 
         // ─────────────────────────────────────────────────────────────────────
         // Warm-up
@@ -267,10 +268,10 @@ namespace FaceAttend.Services.Biometrics
                 // Sa 100 concurrent failures, i-log lang ang 1st at bawat 10th
                 // para hindi mapuno ang log file at maging I/O bottleneck.
                 var errCount = System.Threading.Interlocked.Increment(ref _errorLogCounter);
-                if (errCount == 1 || errCount % ErrorLogEvery == 0)
+                if (errCount <= ErrorLogFirst || errCount % ErrorLogEvery == 0)
                 {
                     Trace.TraceError(
-                        $"[OnnxLiveness.ScoreFromFile] Error #{errCount}: {ex.Message}");
+                        $"[OnnxLiveness.ScoreFromFile] Error #{errCount}: {ex.ToString()}");
                 }
 
                 return Fail("ONNX_ERROR");
