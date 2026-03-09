@@ -96,6 +96,7 @@ namespace FaceAttend.Services.Biometrics
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Trace.TraceError("[ScanFramePipeline] Scan frame failed: " + ex);
                 // Huwag mag-leak ng raw exception details sa client.
                 var debug = AppSettings.GetBool("Biometrics:Debug", false);
                 return debug

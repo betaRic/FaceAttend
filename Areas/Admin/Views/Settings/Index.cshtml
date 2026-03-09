@@ -236,20 +236,7 @@
                                         })
                                         @Html.ValidationMessageFor(m => m.LivenessSlowMs, "", new { @class = "text-danger small" })
                                     </div>
-
-                                    <div class="col-12 col-md-4">
-                                        @Html.LabelFor(m => m.LivenessGateWaitMs, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessGateWaitMs, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "0",
-                                            max = "5000"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessGateWaitMs, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
+<div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessCircuitFailStreak, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessCircuitFailStreak, new
                                         {

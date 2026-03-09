@@ -272,6 +272,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Trace.TraceError("[Visitors.EnrollFace] Enrollment failed: " + ex);
                 var debug = AppSettings.GetBool("Biometrics:Debug", false);
                 if (debug)
                     return Json(new { ok = false, error = "ENROLL_ERROR", detail = ex.Message });

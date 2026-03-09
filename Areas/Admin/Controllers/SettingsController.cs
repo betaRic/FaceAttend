@@ -1,4 +1,4 @@
-using FaceAttend.Areas.Admin.Helpers;
+﻿using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
 using FaceAttend.Services;
@@ -399,14 +399,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                     "int",
                     "Milliseconds considered slow for liveness inference.",
                     by);
-
-                SystemConfigService.Upsert(
-                    db,
-                    "Biometrics:Liveness:GateWaitMs",
-                    vm.LivenessGateWaitMs.ToString(CultureInfo.InvariantCulture),
-                    "int",
-                    "Max wait time to enter the single-flight liveness gate.",
-                    by);
+                // Clean up removed / legacy keys while saving the current settings set.
+                SystemConfigService.Delete(db, "Biometrics:Liveness:GateWaitMs");
+                SystemConfigService.Delete(db, "Biometrics:FaceMatchTuner:Enabled");
 
                 SystemConfigService.Upsert(
                     db,
@@ -627,13 +622,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 db,
                 "Biometrics:Liveness:SlowMs",
                 AppSettings.GetInt("Biometrics:Liveness:SlowMs", 1200));
-
-            var gateWaitMs = SystemConfigService.GetInt(
-                db,
-                "Biometrics:Liveness:GateWaitMs",
-                AppSettings.GetInt("Biometrics:Liveness:GateWaitMs", 300));
-
-            var failStreak = SystemConfigService.GetInt(
+var failStreak = SystemConfigService.GetInt(
                 db,
                 "Biometrics:Liveness:CircuitFailStreak",
                 AppSettings.GetInt("Biometrics:Liveness:CircuitFailStreak", 3));
@@ -663,11 +652,15 @@ namespace FaceAttend.Areas.Admin.Controllers
                 db,
                 "Biometrics:PreprocessJpegQuality",
                 AppSettings.GetInt("Biometrics:PreprocessJpegQuality", 85));
-
-            var tunerEnabled = SystemConfigService.GetBool(
-                db,
-                "Biometrics:FaceMatchTunerEnabled",
-                AppSettings.GetBool("Biometrics:FaceMatchTunerEnabled", false));
+            var tunerEnabled = SystemConfigService.HasKey(db, "Biometrics:FaceMatchTunerEnabled")
+                ? SystemConfigService.GetBool(
+                    db,
+                    "Biometrics:FaceMatchTunerEnabled",
+                    AppSettings.GetBool("Biometrics:FaceMatchTunerEnabled", false))
+                : SystemConfigService.GetBool(
+                    db,
+                    "Biometrics:FaceMatchTuner:Enabled",
+                    AppSettings.GetBool("Biometrics:FaceMatchTunerEnabled", false));
 
             // Visitors
             var visMaxRec = SystemConfigService.GetInt(
@@ -697,7 +690,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 LivenessChannelOrder = NormalizeOrDefault(chanOrder, "RGB"),
                 LivenessRunTimeoutMs = timeoutMs,
                 LivenessSlowMs = slowMs,
-                LivenessGateWaitMs = gateWaitMs,
                 LivenessCircuitFailStreak = failStreak,
                 LivenessCircuitDisableSeconds = disableSec,
 
@@ -741,6 +733,21 @@ namespace FaceAttend.Areas.Admin.Controllers
                     "Legacy key DlibTolerance exists in SystemConfiguration. " +
                     "New key Biometrics:DlibTolerance is preferred. " +
                     "Save settings once to migrate.";
+            }
+
+            if (SystemConfigService.HasKey(db, "Biometrics:FaceMatchTuner:Enabled") &&
+                !SystemConfigService.HasKey(db, "Biometrics:FaceMatchTunerEnabled"))
+            {
+                vm.WarningMessage = string.IsNullOrWhiteSpace(vm.WarningMessage)
+                    ? "Legacy key Biometrics:FaceMatchTuner:Enabled exists in SystemConfiguration. Save settings once to migrate."
+                    : vm.WarningMessage + " Legacy key Biometrics:FaceMatchTuner:Enabled also exists. Save settings once to migrate.";
+            }
+
+            if (SystemConfigService.HasKey(db, "Biometrics:Liveness:GateWaitMs"))
+            {
+                vm.WarningMessage = string.IsNullOrWhiteSpace(vm.WarningMessage)
+                    ? "Removed key Biometrics:Liveness:GateWaitMs still exists in SystemConfiguration. Save settings once to clean it up."
+                    : vm.WarningMessage + " Removed key Biometrics:Liveness:GateWaitMs still exists. Save settings once to clean it up.";
             }
 
             return vm;
@@ -793,7 +800,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 LivenessRealIndex = AppSettings.GetInt("Biometrics:Liveness:RealIndex", 1),
                 LivenessRunTimeoutMs = AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1500),
                 LivenessSlowMs = AppSettings.GetInt("Biometrics:Liveness:SlowMs", 1200),
-                LivenessGateWaitMs = AppSettings.GetInt("Biometrics:Liveness:GateWaitMs", 300),
                 LivenessCircuitFailStreak = AppSettings.GetInt("Biometrics:Liveness:CircuitFailStreak", 3),
                 LivenessCircuitDisableSeconds = AppSettings.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30),
 

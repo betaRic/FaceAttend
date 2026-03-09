@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
     'use strict';
 
     // =========
@@ -10,35 +10,42 @@
     var canvas = el('overlayCanvas');
     var ctx    = canvas.getContext('2d');
 
-    var ui = {
-        officeLine:      el('officeLine'),
-        timeLine:        el('timeLine'),
-        dateLine:        el('dateLine'),
-        livenessLine:    el('livenessLine'),
-        scanEtaLine:     el('scanEtaLine'),
+            var ui = {
+        officeLine:        el('officeLine'),
+        timeLine:          el('timeLine'),
+        dateLine:          el('dateLine'),
+        livenessLine:      el('livenessLine'),
+        scanEtaLine:       el('scanEtaLine'),
 
-        unlockBackdrop:  el('unlockBackdrop'),
-        unlockPin:       el('unlockPin'),
-        unlockErr:       el('unlockErr'),
-        unlockCancel:    el('unlockCancel'),
-        unlockSubmit:    el('unlockSubmit'),
-        unlockClose:     el('unlockClose'),
+        unlockBackdrop:    el('unlockBackdrop'),
+        unlockPin:         el('unlockPin'),
+        unlockErr:         el('unlockErr'),
+        unlockCancel:      el('unlockCancel'),
+        unlockSubmit:      el('unlockSubmit'),
+        unlockClose:       el('unlockClose'),
 
-        visitorBackdrop: el('visitorBackdrop'),
-        visitorNameRow:  el('visitorNameRow'),
-        visitorName:     el('visitorName'),
-        visitorPurpose:  el('visitorPurpose'),
-        visitorErr:      el('visitorErr'),
-        visitorCancel:   el('visitorCancel'),
-        visitorSubmit:   el('visitorSubmit'),
-        visitorClose:    el('visitorClose'),
+        visitorBackdrop:   el('visitorBackdrop'),
+        visitorNameRow:    el('visitorNameRow'),
+        visitorName:       el('visitorName'),
+        visitorPurpose:    el('visitorPurpose'),
+        visitorErr:        el('visitorErr'),
+        visitorCancel:     el('visitorCancel'),
+        visitorSubmit:     el('visitorSubmit'),
+        visitorClose:      el('visitorClose'),
 
-        kioskRoot:       el('kioskRoot'),
-        idleOverlay:     el('idleOverlay'),
-        idleClock:       el('idleClock'),
-        idleDate:        el('idleDate'),
-        mainPrompt:      el('mainPrompt'),
-        subPrompt:       el('subPrompt'),
+        kioskRoot:         el('kioskRoot'),
+        idleOverlay:       el('idleOverlay'),
+        idleClock:         el('idleClock'),
+        idleDate:          el('idleDate'),
+        idleOrgName:       el('idleOrgName'),
+        idleStatusBadge:   el('idleStatusBadge'),
+        idleLocationTitle: el('idleLocationTitle'),
+        idleLocationSub:   el('idleLocationSub'),
+        centerBlock:       el('centerBlock'),
+        centerBlockTitle:  el('centerBlockTitle'),
+        centerBlockSub:    el('centerBlockSub'),
+        mainPrompt:        el('mainPrompt'),
+        subPrompt:         el('subPrompt'),
     };
 
     var token        = (document.querySelector('input[name="__RequestVerificationToken"]') || {}).value || '';
@@ -73,7 +80,7 @@
 
         server: {
             // OPT-05: 900ms resolve interval (was 1200)
-            resolveMs:         900,
+            resolveMs:         10000,
             // OPT-06: 2500ms cooldown (was 3000) -- kiosk ready 500ms sooner
             captureCooldownMs: 2500,
         },
@@ -162,7 +169,7 @@
     var ua       = navigator.userAgent || '';
     var isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
 
-    var state = {
+            var state = {
         unlockOpen:      false,
         wasIdle:         true,
         visitorOpen:     false,
@@ -170,7 +177,11 @@
         scanBlockUntil:  0,
 
         gps:             { lat: null, lon: null, accuracy: null },
-        allowedArea:     !isMobile,
+        allowedArea:     false,
+        locationState:   'pending',
+        locationBanner:  'Checking location...',
+        locationTitle:   'Preparing kiosk',
+        locationSub:     'Please wait while the kiosk verifies the current office location.',
         currentOffice:   { id: null, name: null },
         lastResolveAt:   0,
 
@@ -194,13 +205,11 @@
         frameDiffs:      [],
 
         liveInFlight:    false,
-        // OPT-09: AbortController -- cancels stale attendance request before new one fires
         attendAbortCtrl: null,
 
-        localSeenAt:   0,
-        localPresent:  false,
+        localSeenAt:     0,
+        localPresent:    false,
 
-        // canvas animation state
         scanLineProgress: 0,
     };
 
@@ -218,10 +227,142 @@
         if (ui.subPrompt)  ui.subPrompt.textContent  = b || '';
     }
 
-    function safeSetPrompt(a, b) {
+            function safeSetPrompt(a, b) {
         if (state.liveInFlight) return;
         if ((Date.now() - state.lastCaptureAt) < 800) return;
         setPrompt(a, b);
+    }
+
+    function setCenterBlock(title, sub, show) {
+        if (ui.centerBlock) ui.centerBlock.classList.toggle('hidden', !show);
+        if (ui.centerBlockTitle) ui.centerBlockTitle.textContent = title || '';
+        if (ui.centerBlockSub) ui.centerBlockSub.textContent = sub || '';
+    }
+
+    function humanizeResolveError(code, retryAfter, requiredAccuracy) {
+        var c = (code || '').toString().toUpperCase();
+
+        if (c === 'RATE_LIMIT_EXCEEDED') {
+            return {
+                title: 'Location check is busy',
+                sub: 'The kiosk is verifying too often. Please wait a moment and try again.',
+                banner: 'Checking location...'
+            };
+        }
+
+        if (c === 'GPS_REQUIRED') {
+            return {
+                title: 'Location is required',
+                sub: 'Enable location services so the kiosk can verify the assigned office.',
+                banner: 'Location required'
+            };
+        }
+
+        if (c === 'GPS_ACCURACY') {
+            return {
+                title: 'Location is not accurate enough',
+                sub: requiredAccuracy
+                    ? ('Move to an open area and wait until accuracy is within ' + requiredAccuracy + ' meters.')
+                    : 'Move to an open area and try again.',
+                banner: 'Accuracy too low'
+            };
+        }
+
+        if (c === 'NO_OFFICES') {
+            return {
+                title: 'No active office is configured',
+                sub: 'Please contact the system administrator.',
+                banner: 'Office not configured'
+            };
+        }
+
+        if (c === 'NO_OFFICE_NEARBY') {
+            return {
+                title: 'Outside allowed office area',
+                sub: 'Move inside the DILG Region XII office radius to continue.',
+                banner: 'Not in allowed area'
+            };
+        }
+
+        if (c === 'GPS_DENIED') {
+            return {
+                title: 'Location access denied',
+                sub: 'Allow location access to continue using the kiosk.',
+                banner: 'Location denied'
+            };
+        }
+
+        if (c === 'GPS_UNAVAILABLE') {
+            return {
+                title: 'Location unavailable',
+                sub: 'The device could not detect the current location. Move to an open area and try again.',
+                banner: 'Location unavailable'
+            };
+        }
+
+        if (c === 'GPS_TIMEOUT') {
+            return {
+                title: 'Location request timed out',
+                sub: 'Please wait a moment and try again.',
+                banner: 'Location timeout'
+            };
+        }
+
+        return {
+            title: 'Unable to verify location',
+            sub: 'Please wait a moment, then try again or contact the system administrator.',
+            banner: 'Location check failed'
+        };
+    }
+
+    
+
+    function setCenterBlock(title, sub, show) {
+        if (ui.centerBlock) ui.centerBlock.classList.toggle('hidden', !show);
+        if (ui.centerBlockTitle) ui.centerBlockTitle.textContent = title || '';
+        if (ui.centerBlockSub) ui.centerBlockSub.textContent = sub || '';
+    }
+
+    function applyLocationUi() {
+        var kind = state.locationState || 'pending';
+        var orgName = (document.body.getAttribute('data-org-name') || 'DILG Region XII');
+
+        if (ui.idleOrgName) ui.idleOrgName.textContent = orgName;
+        if (ui.kioskRoot) ui.kioskRoot.setAttribute('data-location-state', kind);
+        if (document.body) document.body.setAttribute('data-location-state', kind);
+
+        if (ui.officeLine) {
+            ui.officeLine.textContent = state.currentOffice.name || state.locationBanner || 'Checking location...';
+        }
+
+        if (ui.idleStatusBadge) {
+            ui.idleStatusBadge.classList.remove('is-pending', 'is-ready', 'is-blocked');
+            ui.idleStatusBadge.classList.add(
+                kind === 'allowed' ? 'is-ready' :
+                kind === 'blocked' ? 'is-blocked' :
+                'is-pending'
+            );
+
+            ui.idleStatusBadge.textContent =
+                kind === 'allowed' ? 'Location verified' :
+                kind === 'blocked' ? 'Location blocked' :
+                'Checking location';
+        }
+
+        if (ui.idleLocationTitle) ui.idleLocationTitle.textContent = state.locationTitle || 'Preparing kiosk';
+        if (ui.idleLocationSub) ui.idleLocationSub.textContent = state.locationSub || '';
+
+        var showCenter = (kind === 'blocked' && ui.idleOverlay && ui.idleOverlay.classList.contains('hidden'));
+        setCenterBlock(state.locationTitle, state.locationSub, showCenter);
+    }
+
+    function setLocationState(kind, title, sub, banner) {
+        state.locationState = kind || 'pending';
+        state.allowedArea = (state.locationState === 'allowed');
+        state.locationTitle = title || '';
+        state.locationSub = sub || '';
+        state.locationBanner = banner || '';
+        applyLocationUi();
     }
 
     // =========
@@ -816,16 +957,25 @@
     // =========
     // ETA update
     // =========
-    function updateEta(facePresent) {
-        if (!facePresent)                                      { setEta('ETA: idle');             return; }
-        if (!state.allowedArea)                                { setEta('ETA: blocked');          return; }
+            function updateEta(facePresent) {
+        if (!facePresent) {
+            if (state.locationState === 'pending') { setEta('ETA: locating'); return; }
+            if (state.locationState !== 'allowed') { setEta('ETA: blocked'); return; }
+            setEta('ETA: idle');
+            return;
+        }
+
+        if (state.locationState === 'pending')     { setEta('ETA: locating');         return; }
+        if (state.locationState !== 'allowed')     { setEta('ETA: blocked');          return; }
         if (!state.mpBoxCanvas || state.faceStatus === 'none') { setEta('ETA: waiting');          return; }
-        if (state.faceStatus === 'low')                        { setEta('ETA: improve lighting'); return; }
-        if (state.faceStatus === 'multi')                      { setEta('ETA: one face only');    return; }
-        if (state.mpReadyToFire)                               { setEta('ETA: scanning');         return; }
+        if (state.faceStatus === 'low')            { setEta('ETA: improve lighting'); return; }
+        if (state.faceStatus === 'multi')          { setEta('ETA: one face only');    return; }
+        if (state.mpReadyToFire)                   { setEta('ETA: scanning');         return; }
+
         var msLeft = state.mpStableStart > 0
             ? Math.max(0, CFG.mp.stableNeededMs - (Date.now() - state.mpStableStart))
             : CFG.mp.stableNeededMs;
+
         setEta('ETA: hold (' + (msLeft / 1000).toFixed(1) + 's)');
     }
 
@@ -929,56 +1079,125 @@
     // =========
     // GPS + office resolve
     // =========
-    function startGpsIfAvailable() {
+        function startGpsIfAvailable() {
+        setLocationState(
+            'pending',
+            'Preparing kiosk',
+            'Please wait while the kiosk verifies the current office location.',
+            'Checking location...'
+        );
+
         if (!('geolocation' in navigator)) {
-            state.allowedArea = false;
-            if (ui.officeLine) ui.officeLine.textContent = 'GPS not available';
-            if (!isMobile) resolveOfficeDesktopOnce();
+            if (!isMobile) {
+                resolveOfficeDesktopOnce();
+                return;
+            }
+
+            setLocationState(
+                'blocked',
+                'Location not available',
+                'Enable location services to use the DILG Region XII kiosk.',
+                'Location not available'
+            );
             return;
         }
+
         var isSecure = (location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1');
         if (!isSecure) {
-            state.allowedArea = false;
-            if (ui.officeLine) ui.officeLine.textContent = 'GPS needs HTTPS';
-            if (!isMobile) resolveOfficeDesktopOnce();
+            if (!isMobile) {
+                resolveOfficeDesktopOnce();
+                return;
+            }
+
+            setLocationState(
+                'blocked',
+                'Secure connection required',
+                'Use HTTPS so the kiosk can access location services.',
+                'HTTPS required'
+            );
             return;
         }
+
         navigator.geolocation.watchPosition(
             function (pos) {
-                state.gps.lat      = pos.coords.latitude;
-                state.gps.lon      = pos.coords.longitude;
+                state.gps.lat = pos.coords.latitude;
+                state.gps.lon = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
+
+                if (state.locationState !== 'allowed') {
+                    setLocationState(
+                        'pending',
+                        'Location captured',
+                        'Verifying the current office area.',
+                        'Verifying location...'
+                    );
+                }
+
+                resolveOfficeIfNeeded();
             },
             function (err) {
                 state.gps.lat = state.gps.lon = state.gps.accuracy = null;
-                var msg = 'GPS error';
-                if (err && err.code === 1) msg = 'GPS denied';
-                else if (err && err.code === 2) msg = 'GPS unavailable';
-                else if (err && err.code === 3) msg = 'GPS timeout';
-                state.allowedArea = false;
-                if (ui.officeLine) ui.officeLine.textContent = msg;
-                if (!isMobile) resolveOfficeDesktopOnce();
+
+                if (!isMobile) {
+                    setLocationState(
+                        'pending',
+                        'Checking kiosk office',
+                        'Looking for the registered office profile for this kiosk.',
+                        'Checking office...'
+                    );
+                    resolveOfficeDesktopOnce();
+                    return;
+                }
+
+                var title = 'Unable to get location';
+                var sub = 'Turn on location services and try again.';
+                var banner = 'Location unavailable';
+
+                if (err && err.code === 1) {
+                    title = 'Location access denied';
+                    sub = 'Allow location access to continue using the DILG Region XII kiosk.';
+                    banner = 'Location denied';
+                } else if (err && err.code === 2) {
+                    title = 'Location unavailable';
+                    sub = 'The device could not detect the current location. Move to an open area and try again.';
+                    banner = 'Location unavailable';
+                } else if (err && err.code === 3) {
+                    title = 'Location timed out';
+                    sub = 'The location request took too long. Please try again.';
+                    banner = 'Location timeout';
+                }
+
+                setLocationState('blocked', title, sub, banner);
             },
             { enableHighAccuracy: true, maximumAge: 500, timeout: 6000 }
         );
     }
 
-    function resolveOfficeIfNeeded() {
-        if (!state.localPresent) return Promise.resolve();
+        function resolveOfficeIfNeeded() {
         var t = Date.now();
         if (t - state.lastResolveAt < CFG.server.resolveMs) return Promise.resolve();
         state.lastResolveAt = t;
 
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
             if (!isMobile) {
-                return resolveOfficeDesktopOnce().then(function () {
-                    if (state.allowedArea !== false) state.allowedArea = true;
-                });
+                return resolveOfficeDesktopOnce();
             }
-            state.allowedArea = false;
-            if (ui.officeLine) ui.officeLine.textContent = 'Locating...';
+
+            setLocationState(
+                'pending',
+                'Checking location',
+                'Waiting for a GPS fix. Stay within the DILG Region XII office area.',
+                'Locating...'
+            );
             return Promise.resolve();
         }
+
+        setLocationState(
+            'pending',
+            'Checking location',
+            'Please wait while we verify the office radius.',
+            'Checking location...'
+        );
 
         var fd = new FormData();
         fd.append('__RequestVerificationToken', token);
@@ -991,42 +1210,93 @@
             .then(function (j) {
                 if (!j || j.ok !== true) {
                     resetScanState();
-                    setPrompt('Scan error.', (j && j.error) ? String(j.error) : 'Try again.');
+                    setLocationState(
+                        'blocked',
+                        'Unable to verify location',
+                        (j && j.error) ? String(j.error) : 'Please try again or contact the system administrator.',
+                        'Location check failed'
+                    );
                     return;
                 }
+
                 if (j.allowed === false) {
-                    state.allowedArea = false;
-                    if (ui.officeLine) ui.officeLine.textContent = 'Not in allowed area';
-                    setPrompt('Not in allowed area.', 'Move closer to a designated office.');
+                    state.currentOffice.id = null;
+                    state.currentOffice.name = null;
+                    setLocationState(
+                        'blocked',
+                        'Outside allowed office area',
+                        'Move inside the DILG Region XII office radius to continue.',
+                        'Not in allowed area'
+                    );
                     return;
                 }
-                state.allowedArea = !!j.allowed;
-                if (state.allowedArea) {
-                    state.currentOffice.id   = j.officeId;
-                    state.currentOffice.name = j.officeName;
-                    if (ui.officeLine) ui.officeLine.textContent = state.currentOffice.name || 'Office OK';
-                }
+
+                state.currentOffice.id = j.officeId;
+                state.currentOffice.name = j.officeName;
+
+                setLocationState(
+                    'allowed',
+                    'Location verified',
+                    'You may now look at the camera for attendance.',
+                    state.currentOffice.name || 'Office verified'
+                );
             })
-            .catch(function () {});
+            .catch(function () {
+                setLocationState(
+                    'blocked',
+                    'Location check failed',
+                    'The kiosk could not verify the office location. Please try again.',
+                    'Location check failed'
+                );
+            });
     }
 
-    function resolveOfficeDesktopOnce() {
+            function resolveOfficeDesktopOnce() {
         if (isMobile) return Promise.resolve();
-        if (state.currentOffice && state.currentOffice.name) return Promise.resolve();
+
+        if (state.currentOffice && state.currentOffice.name && state.locationState === 'allowed') {
+            return Promise.resolve();
+        }
+
+        setLocationState(
+            'pending',
+            'Checking kiosk office',
+            'Looking for the registered office profile for this kiosk.',
+            'Checking office...'
+        );
+
         var fd = new FormData();
         fd.append('__RequestVerificationToken', token);
+
         return fetch(EP.resolveOffice, { method: 'POST', body: fd })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (r.status === 429) {
+                    var retry = Number(r.headers.get('Retry-After') || 0);
+                    return { ok: false, error: 'RATE_LIMIT_EXCEEDED', retryAfter: retry };
+                }
+                return r.json();
+            })
             .then(function (j) {
                 if (j && j.ok === true && j.allowed !== false) {
-                    state.allowedArea        = true;
-                    state.currentOffice.id   = j.officeId;
+                    state.currentOffice.id = j.officeId;
                     state.currentOffice.name = j.officeName;
-                    if (ui.officeLine && state.currentOffice.name)
-                        ui.officeLine.textContent = state.currentOffice.name;
+
+                    setLocationState(
+                        'allowed',
+                        'Location verified',
+                        'You may now look at the camera for attendance.',
+                        state.currentOffice.name || 'Office verified'
+                    );
+                    return;
                 }
+
+                var mapped = humanizeResolveError(j && (j.reason || j.error), j && j.retryAfter, j && j.requiredAccuracy);
+                setLocationState('blocked', mapped.title, mapped.sub, mapped.banner);
             })
-            .catch(function () {});
+            .catch(function () {
+                var mapped = humanizeResolveError('UNKNOWN');
+                setLocationState('blocked', mapped.title, mapped.sub, mapped.banner);
+            });
     }
 
     // =========
@@ -1128,7 +1398,7 @@
     // =========
     // main loop
     // =========
-    function loop() {
+            function loop() {
         var doLoop = function () {
             try {
                 if (state.unlockOpen) return;
@@ -1142,14 +1412,36 @@
                     state.localPresent
                 );
 
-                if (!facePresent) {
+                var shouldIdle = (!facePresent || state.locationState !== 'allowed');
+
+                if (shouldIdle) {
                     if (!state.wasIdle) {
                         resetScanState();
-                        setPrompt('Idle.', 'Look at the camera.');
-                        setEta('ETA: idle');
                     }
+
                     state.wasIdle = true;
                     setIdleUi(true);
+
+                    if (!facePresent) {
+                        setPrompt(
+                            'Idle.',
+                            state.locationState === 'allowed'
+                                ? 'Look at the camera.'
+                                : (state.locationSub || 'Please wait while we verify your location.')
+                        );
+                        updateEta(false);
+                    } else if (state.locationState === 'pending') {
+                        safeSetPrompt('Checking location.', state.locationSub || 'Please wait while we verify your office area.');
+                        updateEta(true);
+                    } else {
+                        safeSetPrompt(
+                            state.locationTitle || 'Location required.',
+                            state.locationSub || 'Move into the allowed office area to continue.'
+                        );
+                        updateEta(true);
+                    }
+
+                    resolveOfficeIfNeeded();
                     return;
                 }
 
@@ -1157,22 +1449,28 @@
                     resetScanState();
                     setPrompt('Ready.', 'Look at the camera.');
                 }
+
                 state.wasIdle = false;
                 setIdleUi(false);
 
                 resolveOfficeIfNeeded().then(function () {
-                    if (!state.allowedArea) { updateEta(true); return; }
+                    if (state.locationState !== 'allowed') {
+                        setIdleUi(true);
+                        updateEta(facePresent);
+                        return;
+                    }
+
                     if (now < state.backoffUntil) { setPrompt('System busy.', 'Please wait.'); updateEta(true); return; }
-                    if (state.visitorOpen)         { updateEta(true); return; }
+                    if (state.visitorOpen) { updateEta(true); return; }
                     if (now < (state.scanBlockUntil || 0)) { safeSetPrompt('Please wait.', 'Next scan ready soon.'); updateEta(true); return; }
-                    if (state.mpMode !== 'tasks')  { safeSetPrompt('System not ready.', 'Face detection unavailable.'); updateEta(true); return; }
+                    if (state.mpMode !== 'tasks') { safeSetPrompt('System not ready.', 'Face detection unavailable.'); updateEta(true); return; }
 
                     if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
                         captureFrameBlob().then(function (blob) {
                             if (!blob) return;
-                            state.mpReadyToFire    = false;
-                            state.mpStableStart    = 0;
-                            state.liveInFlight     = true;
+                            state.mpReadyToFire = false;
+                            state.mpStableStart = 0;
+                            state.liveInFlight = true;
                             submitAttendance(blob).finally(function () {
                                 state.liveInFlight = false;
                             });
@@ -1196,35 +1494,44 @@
     // =========
     // init
     // =========
-    (function init() {
+            (function init() {
         if (!validateConfig()) return;
 
         startClock();
-        startGpsIfAvailable();
-        resolveOfficeDesktopOnce();
         wireUnlockUi();
         wireVisitorUi();
+
+        setIdleUi(true);
+        setPrompt('Preparing kiosk.', 'Please wait while the location is verified.');
+        setEta('ETA: locating');
+        setLiveness(null, null, 'live-unk');
+        applyLocationUi();
+
+        startGpsIfAvailable();
+        resolveOfficeDesktopOnce();
 
         startCamera()
             .then(function () { return mp.init(); })
             .then(function () {
                 setIdleUi(true);
-                setPrompt('Idle.', 'Look at the camera.');
-                setEta('ETA: idle');
+                setPrompt('Idle.', state.locationSub || 'Please wait while the location is verified.');
+                setEta(state.locationState === 'allowed' ? 'ETA: idle' : 'ETA: locating');
                 setLiveness(null, null, 'live-unk');
                 drawLoop();
                 localSenseLoop();
                 loop();
             })
             .catch(function (e) {
-                setIdleUi(false);
+                setIdleUi(true);
                 var msg = (e && e.message) ? String(e.message) : '';
+
                 if (msg === 'NEXTGEN_DISABLED' || msg === 'MP_ASSETS_MISSING') {
                     setPrompt('System not ready.', 'Face detection assets are missing.');
                 } else {
                     setPrompt('Camera blocked.', 'Allow camera permission and reload.');
                 }
-                setEta('ETA: --');
+
+                setEta('ETA: blocked');
             });
     })();
 

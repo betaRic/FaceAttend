@@ -1,10 +1,14 @@
-@model Visitor
+﻿@model Visitor
 @{
     ViewBag.Title = "Enroll Visitor Face";
 }
 @{
     // Client-side scan tuning (server still enforces liveness in Enroll)
     var perFrame = (ViewBag.PerFrame ?? "0.75").ToString();
+}
+
+@section head {
+    @Styles.Render("~/Content/enroll")
 }
 
 <div class="admin-card">
@@ -128,11 +132,5 @@
 </div>
 
 @section scripts{
-    <style>
-        .enroll-choice { cursor: pointer; }
-        .enroll-choice:hover { border-color: rgba(13,110,253,.5); }
-        .enroll-choice:focus { outline: 2px solid rgba(13,110,253,.4); outline-offset: 2px; }
-    </style>
-
-    <script src="~/Scripts/admin-enroll.js"></script>
+    @Scripts.Render("~/bundles/adminEnroll")
 }

@@ -1,4 +1,4 @@
-@{
+﻿@{
     Layout = null;
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
@@ -10,37 +10,32 @@
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
     <meta http-equiv="Pragma" content="no-cache" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>FaceAttend - Kiosk</title>
-    <link href="~/Content/kiosk.css?v=@DateTime.UtcNow.Ticks" rel="stylesheet" />
-    <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/toastify/toastify.min.css")" />
+    <title>DILG Region XII Face Attendance Kiosk</title>
+
+    @Styles.Render("~/Content/kiosk-base")
+    @Styles.Render("~/Content/kiosk-vendor")
+    @Styles.Render("~/Content/kiosk")
 </head>
 <body
+    class="kiosk-body"
     data-app-base="@Url.Content("~/")"
     data-nextgen="true"
     data-return-url="@ViewBag.ReturnUrl"
-    data-unlock-hint="@ViewBag.UnlockHint">
+    data-unlock-hint="@ViewBag.UnlockHint"
+    data-org-name="DILG Region XII"
+    data-org-subtitle="Face Attendance Kiosk">
 
     @Html.AntiForgeryToken()
 
-    <div id="kioskRoot">
+    <div id="kioskRoot" data-location-state="pending">
 
-        <!-- Camera feed - always running, visible through idle overlay -->
         <video id="kioskVideo" playsinline autoplay muted></video>
-
-        <!-- Face detection bounding box canvas -->
         <canvas id="overlayCanvas"></canvas>
 
-        <!-- ==============================================================
-             IDLE OVERLAY
-             Semi-transparent so the camera feed is visible underneath.
-             idleClock and idleDate are updated by kiosk.js every second.
-             ============================================================== -->
         <div id="idleOverlay" class="hidden" aria-hidden="true">
-
-            <!-- Moving scan line across the full screen -->
+            <div class="idle-backdrop-grid" aria-hidden="true"></div>
             <div class="idle-scanline" aria-hidden="true"></div>
 
-            <!-- Sonar / pulse rings radiating from center -->
             <div class="idle-sonar" aria-hidden="true">
                 <div class="idle-sonar-ring sr1"></div>
                 <div class="idle-sonar-ring sr2"></div>
@@ -48,101 +43,88 @@
                 <div class="idle-sonar-ring sr4"></div>
             </div>
 
-            <!-- Center card -->
-            <div class="idle-card">
+            <div class="idle-card container-fluid px-3 px-md-4">
+                <div class="idle-brand-stack">
+                    <div class="idle-brand-logo-wrap">
+                        <img class="idle-brand-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG Region XII" />
+                    </div>
 
-                <div class="idle-brand-label">FaceAttend</div>
-
-                <!-- Animated face scan ring SVG -->
-                <div class="idle-face-ring" aria-hidden="true">
-                    <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
-
-                        <!-- Outer slowly rotating dashed ring -->
-                        <circle class="ifr-spin"     cx="100" cy="100" r="94" stroke-width="1.0" fill="none"/>
-
-                        <!-- Counter-rotating inner ring -->
-                        <circle class="ifr-spin-ccw" cx="100" cy="100" r="78" stroke-width="0.8" fill="none"/>
-
-                        <!-- Glow ring -->
-                        <circle class="ifr-glow"     cx="100" cy="100" r="70" stroke-width="1.2" fill="none"/>
-
-                        <!-- Corner brackets: top-left -->
-                        <path class="ifr-bracket" stroke-width="2.5" d="M46 66 L46 46 L66 46"/>
-                        <!-- top-right -->
-                        <path class="ifr-bracket" stroke-width="2.5" d="M134 46 L154 46 L154 66"/>
-                        <!-- bottom-left -->
-                        <path class="ifr-bracket" stroke-width="2.5" d="M46 134 L46 154 L66 154"/>
-                        <!-- bottom-right -->
-                        <path class="ifr-bracket" stroke-width="2.5" d="M154 134 L154 154 L134 154"/>
-
-                        <!-- Stylised face: head oval -->
-                        <ellipse class="ifr-face" cx="100" cy="96" rx="24" ry="28" stroke-width="1.0" fill="none"/>
-                        <!-- eyes -->
-                        <circle class="ifr-eye" cx="91"  cy="90" r="2.5"/>
-                        <circle class="ifr-eye" cx="109" cy="90" r="2.5"/>
-                        <!-- mouth line -->
-                        <path class="ifr-face" d="M93 104 Q100 109 107 104" stroke-width="1.2" stroke-linecap="round" fill="none"/>
-
-                    </svg>
-                    <!-- Pulsing center dot -->
-                    <div class="idle-center-dot" aria-hidden="true"></div>
+                    <div class="idle-brand-copy">
+                        <div class="idle-brand-eyebrow">Department of the Interior and Local Government</div>
+                        <div id="idleOrgName" class="idle-brand-title">DILG Region XII</div>
+                        <div class="idle-brand-subtitle">Face attendance kiosk</div>
+                    </div>
                 </div>
 
-                <!-- Live clock synced by kiosk.js every second -->
-                <div id="idleClock" aria-live="off">--:--:--</div>
-                <div id="idleDate"  aria-live="off">---</div>
+                <div class="idle-card-shell">
+                    <div class="idle-face-ring" aria-hidden="true">
+                        <svg viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <circle class="ifr-spin" cx="100" cy="100" r="94" stroke-width="1.0" fill="none" />
+                            <circle class="ifr-spin-ccw" cx="100" cy="100" r="78" stroke-width="0.8" fill="none" />
+                            <circle class="ifr-glow" cx="100" cy="100" r="70" stroke-width="1.2" fill="none" />
+                            <path class="ifr-bracket" stroke-width="2.5" d="M46 66 L46 46 L66 46" />
+                            <path class="ifr-bracket" stroke-width="2.5" d="M134 46 L154 46 L154 66" />
+                            <path class="ifr-bracket" stroke-width="2.5" d="M46 134 L46 154 L66 154" />
+                            <path class="ifr-bracket" stroke-width="2.5" d="M154 134 L154 154 L134 154" />
+                            <ellipse class="ifr-face" cx="100" cy="96" rx="24" ry="28" stroke-width="1.0" fill="none" />
+                            <circle class="ifr-eye" cx="91" cy="90" r="2.5" />
+                            <circle class="ifr-eye" cx="109" cy="90" r="2.5" />
+                            <path class="ifr-face" d="M93 104 Q100 109 107 104" stroke-width="1.2" stroke-linecap="round" fill="none" />
+                        </svg>
+                        <div class="idle-center-dot" aria-hidden="true"></div>
+                    </div>
 
-                <!-- CTA -->
-                <div class="idle-cta-row">
-                    <div class="idle-cta-pip" aria-hidden="true"></div>
-                    <div class="idle-cta-text">Look at the camera to begin</div>
+                    <div id="idleStatusBadge" class="idle-status-badge is-pending">Checking location</div>
+
+                    <div class="idle-location-card">
+                        <div id="idleLocationTitle" class="idle-location-title">Preparing kiosk</div>
+                        <div id="idleLocationSub" class="idle-location-sub">Please wait while the kiosk verifies the current office location.</div>
+                    </div>
+
+                    <div id="idleClock" aria-live="off">--:--:--</div>
+                    <div id="idleDate" aria-live="off">---</div>
+
+                    <div class="idle-cta-row">
+                        <div class="idle-cta-pip" aria-hidden="true"></div>
+                        <div class="idle-cta-text">Look at the camera when location is verified</div>
+                    </div>
                 </div>
-
             </div>
-
         </div>
-        <!-- end #idleOverlay -->
 
-        <!-- ---- HUD: top left - brand and office ----------------------- -->
         <div id="topLeft">
-            <div class="brand">FaceAttend</div>
-            <div class="sub" id="officeLine">Locating...</div>
+            <div class="brand">DILG Region XII</div>
+            <div class="sub">Face attendance kiosk</div>
+            <div class="sub" id="officeLine">Checking location...</div>
         </div>
 
-        <!-- ---- HUD: top center - clock -------------------------------- -->
         <div id="topCenter">
             <div id="timeLine">--:--:--</div>
             <div id="dateLine">---</div>
         </div>
 
-        <!-- ---- HUD: top right - liveness and scan ETA ----------------- -->
         <div id="topRight">
             <div id="livenessLine" class="live-unk">Live: --</div>
             <div id="scanEtaLine">ETA: --</div>
         </div>
 
-        <!-- ---- Center block: out of allowed area ---------------------- -->
         <div id="centerBlock" class="hidden" aria-live="polite">
-            <div class="blockTitle">Not in allowed area.</div>
-            <div class="blockSub">Move closer to a designated office.</div>
+            <div class="blockTitle" id="centerBlockTitle">Location required.</div>
+            <div class="blockSub" id="centerBlockSub">Please wait while the kiosk verifies the assigned office.</div>
         </div>
 
-        <!-- ---- Bottom center - scan prompt ---------------------------- -->
         <div id="bottomCenter">
-            <div id="mainPrompt">Ready.</div>
-            <div id="subPrompt">Stand still. One face only.</div>
+            <div id="mainPrompt">Preparing kiosk.</div>
+            <div id="subPrompt">Please wait while the location is verified.</div>
         </div>
 
-        <!-- ==============================================================
-             ADMIN UNLOCK MODAL
-             ============================================================== -->
         <div id="unlockBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
             <div id="unlockModal" class="kiosk-modal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
                 <div class="modal-header">
                     <div id="unlockTitle" class="modal-title">Admin Unlock</div>
                     <button id="unlockClose" type="button" class="modal-close-btn" aria-label="Close">X</button>
                 </div>
-                <div class="modal-hint">Enter PIN -- press Enter to unlock or Esc to cancel</div>
+                <div class="modal-hint">Enter PIN. Press Enter to unlock or Esc to cancel.</div>
                 <input
                     id="unlockPin"
                     class="modal-input modal-input-mono"
@@ -158,16 +140,13 @@
             </div>
         </div>
 
-        <!-- ==============================================================
-             VISITOR MODAL
-             ============================================================== -->
         <div id="visitorBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
             <div id="visitorModal" class="kiosk-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
                 <div class="modal-header">
                     <div id="visitorTitle" class="modal-title">Visitor Sign-In</div>
                     <button id="visitorClose" type="button" class="modal-close-btn" aria-label="Close">X</button>
                 </div>
-                <div class="modal-hint">Fill in the details below -- press Enter to submit</div>
+                <div class="modal-hint">Fill in the details below. Press Enter to submit.</div>
 
                 <div id="visitorNameRow">
                     <input
@@ -193,13 +172,11 @@
                 </div>
             </div>
         </div>
+    </div>
 
-    </div><!-- end #kioskRoot -->
-
-    <script src="~/Scripts/jquery-3.7.1.min.js"></script>
+    @Scripts.Render("~/bundles/jquery")
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
-    <script src="@Url.Content("~/Scripts/vendor/toastify/toastify.min.js")"></script>
-    <script src="~/Scripts/kiosk.js?v=@DateTime.UtcNow.Ticks"></script>
-
+    @Scripts.Render("~/bundles/kiosk-vendor")
+    @Scripts.Render("~/bundles/kiosk")
 </body>
 </html>

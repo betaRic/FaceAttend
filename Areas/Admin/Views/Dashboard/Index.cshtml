@@ -1,4 +1,4 @@
-@* ============================================================================
+﻿@* ============================================================================
    Areas/Admin/Views/Dashboard/Index.cshtml
    
    Main admin dashboard view for FaceAttend.
@@ -328,7 +328,7 @@
                                 </span>
                                 <span class="d-flex align-items-center gap-1"
                                       style="font-size:.78rem;font-weight:600;"
-                                      @(string.IsNullOrEmpty(item.DomId) ? "" : $"id=\"{item.DomId}\"")
+                                      id="@(string.IsNullOrEmpty(item.DomId) ? null : item.DomId)"
                                       title="@(item.Ok ? item.Label + " OK" : item.Label + " Error")">
                                     <span class="ea-health-dot @(item.Ok ? "ok" : "fail")"></span>
                                     <span class="@(item.Ok ? "text-success" : "text-danger")">

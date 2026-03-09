@@ -495,6 +495,7 @@ namespace FaceAttend.Controllers
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Trace.TraceError("[Kiosk.Attend] ScanAttendanceCore failed: " + ex);
                 // Security hardening:
                 // generic lang sa client by default. Raw detail ay debug-only.
                 var debug = AppSettings.GetBool("Biometrics:Debug", false);

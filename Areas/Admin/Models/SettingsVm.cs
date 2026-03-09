@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
 
@@ -52,10 +52,6 @@ namespace FaceAttend.Areas.Admin.Models
         [Range(100, 10000)]
         [Display(Name = "Slow warning (ms)")]
         public int LivenessSlowMs { get; set; }
-
-        [Range(0, 5000)]
-        [Display(Name = "Gate wait (ms)")]
-        public int LivenessGateWaitMs { get; set; }
 
         [Range(1, 10)]
         [Display(Name = "Circuit fail streak")]

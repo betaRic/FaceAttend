@@ -1,4 +1,4 @@
-@model Employee
+﻿@model Employee
 @{
     ViewBag.Title = "Enroll Face";
 }
@@ -18,7 +18,7 @@
 }
 
 @section head {
-    <link href="@Url.Content("~/Content/enroll.css")" rel="stylesheet" />
+    @Styles.Render("~/Content/enroll")
 }
 
 <div class="fa-enroll-page">
@@ -652,5 +652,5 @@
 })();
 </script>
 
-<script src="~/Scripts/admin-enroll.js"></script>
+@Scripts.Render("~/bundles/adminEnroll")
 }
