@@ -27,11 +27,21 @@
     var pos = L.latLng(lat, lon);
 
     var map = L.map("map");
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
 
+    var tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors",
+      crossOrigin: "anonymous"
+    });
+
+    tiles.on("tileerror", function () {
+      if (!mapEl.dataset.tileWarned) {
+        mapEl.dataset.tileWarned = "1";
+        console.warn("Office map tiles were blocked by cross-origin policy. The form still works; you can enter coordinates manually.");
+      }
+    });
+
+    tiles.addTo(map);
     map.setView(pos, 16);
 
     var marker = L.marker(pos, { draggable: true }).addTo(map);
