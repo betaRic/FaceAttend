@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Web.Hosting;
 using System.Web.Optimization;
@@ -61,8 +61,13 @@ namespace FaceAttend
             bundles.Add(new ScriptBundle("~/bundles/admin")
                 .Include("~/Scripts/admin.js"));
 
-            bundles.Add(new ScriptBundle("~/bundles/adminEnroll")
-                .Include("~/Scripts/admin-enroll.js"));
+            var adminEnroll = new ScriptBundle("~/bundles/adminEnroll")
+                .Include("~/Scripts/admin-enroll.js");
+
+            var adminEnrollMinify = adminEnroll.Transforms.OfType<JsMinify>().FirstOrDefault();
+            if (adminEnrollMinify != null) adminEnroll.Transforms.Remove(adminEnrollMinify);
+
+            bundles.Add(adminEnroll);
 
             bundles.Add(new ScriptBundle("~/bundles/kiosk")
                 .Include("~/Scripts/kiosk.js"));
@@ -113,7 +118,7 @@ namespace FaceAttend
             bundles.Add(new StyleBundle("~/Content/enroll")
                 .Include("~/Content/enroll.css"));
 
-            BundleTable.EnableOptimizations = true;
+            BundleTable.EnableOptimizations = false;
         }
 
         private static bool FileExists(string virtualPath)

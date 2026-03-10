@@ -337,35 +337,9 @@ namespace FaceAttend
         // =====================================================================
         protected void Application_Error()
         {
-            if (ShouldBypassCustomErrors())
-            {
-                Response.TrySkipIisCustomErrors = true;
-                return;
-            }
-
-            var ex = Server.GetLastError();
-            if (ex == null) return;
-
-            var rawUrl = Request != null ? (Request.RawUrl ?? "") : "";
-            if (IsErrorRoute(rawUrl))
-            {
-                return;
-            }
-
-            int statusCode = ResolveHttpStatusCode(ex);
-            bool isAdmin = IsAdminRequest(Request);
-            string action = MapStatusToAction(statusCode);
-            string target = BuildErrorRoute(isAdmin, action);
-
-            Server.ClearError();
-            Response.Clear();
             Response.TrySkipIisCustomErrors = true;
-            Response.StatusCode = statusCode;
-            Context.Items["__fa_error_handled"] = true;
-
-            Server.TransferRequest(VirtualPathUtility.ToAbsolute(target), true);
+            return;
         }
-
         // =====================================================================
         // EndRequest 404 handling
         // ---------------------------------------------------------------------

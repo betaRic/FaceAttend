@@ -1,4 +1,4 @@
-﻿@model Employee
+@model Employee
 @{
     ViewBag.Title = "Enroll Face";
 }
@@ -100,7 +100,9 @@
              data-per-frame="@perFrame"
              data-scan-url="@Url.Content("~/Biometrics/ScanFrame")"
              data-enroll-url="@Url.Content("~/Biometrics/Enroll")"
-             data-redirect-url="@Url.Action("Index", "Employees", new { area = "Admin" })">
+             data-redirect-url="@Url.Action("Index", "Employees", new { area = "Admin" })"
+             data-min-good-frames="3"
+             data-max-keep-frames="5">
 
             @* ─────── Wizard: choose method ───────  *@
 
@@ -227,8 +229,8 @@
                             <div class="fa-side-card-title">
                                 <i class="fa-solid fa-waveform-lines fa-xs"></i>Liveness Score
                             </div>
-                            <div class="fa-live-score-num" id="sideScore">—</div>
-                            <div class="fa-live-score-label" id="sideScoreLabel">Waiting for scan…</div>
+                            <div class="fa-live-score-num" id="sideScore">0</div>
+                            <div class="fa-live-score-label" id="sideScoreLabel">Waiting for scan</div>
                             <div class="fa-pass-indicator mt-2" id="sidePassBadge" style="display:none;">
                                 <span>Result</span>
                                 <span class="badge-pass" id="sideBadgeText">PASS</span>
@@ -243,7 +245,7 @@
                                 <i class="fa-solid fa-images fa-xs"></i>Samples Collected
                             </div>
                             <div style="font-size:1.8rem;font-weight:800;line-height:1;" id="sideCaptures">0</div>
-                            <div style="font-size:.78rem;color:var(--ea-muted);margin-top:.15rem;">of 5 needed</div>
+                            <div style="font-size:.78rem;color:var(--ea-muted);margin-top:.15rem;">minimum 3, keeps up to 5</div>
                             <div class="progress mt-2" style="height:4px;border-radius:100px;">
                                 <div class="progress-bar bg-primary" id="capProgressBar" style="width:0%;transition:width .4s ease;"></div>
                             </div>
@@ -363,6 +365,10 @@
     var divider1     = el('divider1');
     var divider2     = el('divider2');
     var stepEls      = document.querySelectorAll('.fa-step');
+    var rootEl       = el('enrollRoot');
+
+    var CAPTURE_TARGET = parseInt((rootEl && rootEl.getAttribute('data-min-good-frames')) || '3', 10);
+    if (!isFinite(CAPTURE_TARGET) || CAPTURE_TARGET < 1) CAPTURE_TARGET = 3;
 
     /* ═══════════════════════════════════════════════════════════════
        STEP INDICATOR
@@ -405,14 +411,27 @@
        CAPTURE PROGRESS DOTS
        ═══════════════════════════════════════════════════════════════ */
     function setCaptures(n) {
-        n = Math.min(Math.max(0, n), 5);
+        n = Math.max(0, parseInt(n, 10) || 0);
+
+        var progressCount = Math.min(n, CAPTURE_TARGET);
+
         dots.forEach(function (d, i) {
             if (!d) return;
+
             d.classList.remove('filled', 'active');
-            if (i < n) d.classList.add('filled');
-            else if (i === n) d.classList.add('active');
+
+            if (i >= CAPTURE_TARGET) {
+                d.style.display = 'none';
+                return;
+            }
+
+            d.style.display = '';
+
+            if (i < progressCount) d.classList.add('filled');
+            else if (i === progressCount && progressCount < CAPTURE_TARGET) d.classList.add('active');
         });
-        if (capBar) capBar.style.width = (n / 5 * 100) + '%';
+
+        if (capBar) capBar.style.width = ((progressCount / CAPTURE_TARGET) * 100) + '%';
         if (sideCapCount) sideCapCount.textContent = n;
     }
 
@@ -451,14 +470,18 @@
             updateLiveness(Math.min(100, pct), lvKind);
         }
 
-        // Detect "collecting frames" or "saving enrollment (N frame"
+        // Detect new message style: "good frames: X/Y"
+        var good = text.match(/good frames:\s*(\d+)\s*\/\s*(\d+)/i);
+        if (good) setCaptures(parseInt(good[1], 10));
+
+        // Detect "saving enrollment (N frame"
         var coll = text.match(/saving enrollment\s*\((\d+)\s*frame/i);
         if (coll) setCaptures(parseInt(coll[1], 10));
 
         // Detect "enrollment saved" → step 3
         if (/enrollment saved/i.test(text)) {
             setStep(3);
-            setCaptures(5);
+            setCaptures(CAPTURE_TARGET);
             setVideoGlow('success');
             if (sideLabel) sideLabel.textContent = 'Enrollment complete!';
         }
@@ -572,8 +595,20 @@
         if (livePane) { livePane.classList.add('d-none'); livePane.classList.remove('active'); }
         if (upPane)   { upPane.classList.add('d-none'); upPane.classList.remove('active'); }
 
-        // Signal admin-enroll to stop camera (handled via custom event)
+        // Tell admin-enroll.js to stop the real camera loop
         document.dispatchEvent(new CustomEvent('fa:stopCam'));
+
+        // Hard-stop preview too, para walang naiwan na active track sa UI side
+        var camEl = el('cam');
+        if (camEl && camEl.srcObject) {
+            try { camEl.srcObject.getTracks().forEach(function (t) { t.stop(); }); } catch (_) { }
+            camEl.srcObject = null;
+        }
+
+        // Reset upload controls too
+        if (fileInput) fileInput.value = '';
+        if (fileStrip) _origSet.call(fileStrip, '');
+        if (upStatusEl) _origSet.call(upStatusEl, '');
 
         // Reset UI
         setStep(1);
