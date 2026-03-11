@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Diagnostics;
 using System.Runtime.Caching;
@@ -51,7 +51,7 @@ namespace FaceAttend.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        [RateLimit(Name = "KioskResolve", MaxRequests = 20, WindowSeconds = 60, Burst = 5)]
+        [RateLimit(Name = "KioskResolve", MaxRequests = 150, WindowSeconds = 60, Burst = 20)]
         public ActionResult ResolveOffice(double? lat, double? lon, double? accuracy)
         {
             using (var db = new FaceAttendDBEntities())
@@ -120,7 +120,9 @@ namespace FaceAttend.Controllers
         [RateLimit(Name = "KioskAttend", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
         public ActionResult Attend(double? lat, double? lon, double? accuracy, HttpPostedFileBase image)
         {
-            // Walang tunay na legacy fallback path sa codebase.
+            
+            var requestedAtUtc = DateTime.UtcNow; // capture attendance time at request entry
+// Walang tunay na legacy fallback path sa codebase.
             // Kapag pinatay ang kiosk endpoint sa config lang, lahat ng attendance ay
             // hihinto. Kung kailangan ng emergency rollback, i-stop ang IIS site o
             // i-block muna ang public access sa reverse proxy / firewall layer.
@@ -132,17 +134,25 @@ namespace FaceAttend.Controllers
                 if (activeScans > maxConcurrentScans)
                 {
                     Response.StatusCode = 503;
+                    Response.AddHeader("Retry-After", "2");
                     return Json(new
                     {
                         ok = false,
                         error = "SYSTEM_BUSY",
                         message = "System busy. Please try again in a few seconds.",
+                        retryAfter = 2,
                         activeScans = activeScans,
                         maxConcurrentScans = maxConcurrentScans
                     });
                 }
 
-                return ScanAttendanceCore(lat, lon, accuracy, image, includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
+                return ScanAttendanceCore(
+                    lat,
+                    lon,
+                    accuracy,
+                    image,
+                    requestedAtUtc,
+                    includePerfTimings: AppSettings.GetBool("Kiosk:EnablePerfTimings", false));
             }
             finally
             {
@@ -150,7 +160,7 @@ namespace FaceAttend.Controllers
             }
         }
 
-        private ActionResult ScanAttendanceCore(double? lat, double? lon, double? accuracy, HttpPostedFileBase image, bool includePerfTimings)
+        private ActionResult ScanAttendanceCore(double? lat, double? lon, double? accuracy, HttpPostedFileBase image, DateTime requestedAtUtc, bool includePerfTimings)
         {
             var sw = Stopwatch.StartNew();
             var timings = new System.Collections.Generic.Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
@@ -453,7 +463,7 @@ namespace FaceAttend.Controllers
 
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                    var rec = AttendanceService.Record(db, log);
+                    var rec = AttendanceService.Record(db, log, requestedAtUtc);
                     mark("db_ms");
 
                     if (!rec.Ok)
@@ -489,6 +499,7 @@ namespace FaceAttend.Controllers
                         officeName = office.Name,
                         liveness = p,
                         distance = bestDist,
+                        attemptedAtUtc = requestedAtUtc,
                         timings = includePerfTimings ? timings : null
                     });
                 }
@@ -655,7 +666,7 @@ namespace FaceAttend.Controllers
 
         private static int GetMaxConcurrentScans()
         {
-            var value = AppSettings.GetInt("Kiosk:MaxConcurrentScans", 20);
+            var value = AppSettings.GetInt("Kiosk:MaxConcurrentScans", 16);
             if (value < 1) value = 1;
             return value;
         }
@@ -675,11 +686,13 @@ namespace FaceAttend.Controllers
         private ActionResult RequestTimeoutResult(bool includePerfTimings, System.Collections.Generic.IDictionary<string, long> timings)
         {
             Response.StatusCode = 503;
+            Response.AddHeader("Retry-After", "2");
             return Json(new
             {
                 ok = false,
                 error = "REQUEST_TIMEOUT",
                 message = "Request timed out. Please try again.",
+                retryAfter = 2,
                 timings = includePerfTimings ? timings : null
             });
         }
@@ -706,7 +719,9 @@ namespace FaceAttend.Controllers
         private static double? TruncateGpsCoordinate(double? value)
         {
             if (!value.HasValue) return null;
-            return Math.Truncate(value.Value * 100d) / 100d;
+            // Mas safe para sa audit/reporting kaysa 2-decimal truncation.
+            // 4 decimals ~= around 11m precision.
+            return Math.Round(value.Value, 4, MidpointRounding.AwayFromZero);
         }
 
         private class OfficePick

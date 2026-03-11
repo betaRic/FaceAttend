@@ -182,11 +182,9 @@
         locationBanner:  'Checking location...',
         locationTitle:   'Preparing kiosk',
         locationSub:     'Please wait while the kiosk verifies the current office location.',
-        currentOffice:   { id: null, name: null },
-        lastResolveAt:   0,
-
-        backoffUntil:    0,
-        lastCaptureAt:   0,
+        currentOffice: { id: null, name: null }, lastResolveAt: 0,
+        officeVerifiedUntil: 0, officeResolveRetryUntil: 0,
+        backoffUntil: 0, lastCaptureAt: 0,
 
         mpMode:          'none',
         mpReadyToFire:   false,
@@ -1166,9 +1164,20 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
         navigator.geolocation.watchPosition(
             function (pos) {
+                var prevLat = state.gps.lat;
+                var prevLon = state.gps.lon;
+
                 state.gps.lat = pos.coords.latitude;
                 state.gps.lon = pos.coords.longitude;
                 state.gps.accuracy = pos.coords.accuracy;
+
+                if (prevLat != null && prevLon != null) {
+                    var movedLat = Math.abs(prevLat - state.gps.lat);
+                    var movedLon = Math.abs(prevLon - state.gps.lon);
+                    if (movedLat > 0.0002 || movedLon > 0.0002) {
+                        state.officeVerifiedUntil = 0;
+                    }
+                }
 
                 if (state.locationState !== 'allowed') {
                     setLocationState(
@@ -1221,7 +1230,22 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
         function resolveOfficeIfNeeded() {
         var t = Date.now();
-        if (t - state.lastResolveAt < CFG.server.resolveMs) return Promise.resolve();
+
+        if (state.locationState === 'allowed' &&
+            state.currentOffice &&
+            state.currentOffice.id &&
+            t < (state.officeVerifiedUntil || 0)) {
+            return Promise.resolve();
+        }
+
+        if (t < (state.officeResolveRetryUntil || 0)) {
+            return Promise.resolve();
+        }
+
+        if (t - state.lastResolveAt < CFG.server.resolveMs) {
+            return Promise.resolve();
+        }
+
         state.lastResolveAt = t;
 
         if (state.gps.lat == null || state.gps.lon == null || state.gps.accuracy == null) {
@@ -1252,9 +1276,26 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
         fd.append('accuracy', state.gps.accuracy);
 
         return fetch(EP.resolveOffice, { method: 'POST', body: fd })
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (r.status === 429) {
+                    return {
+                        ok: false,
+                        error: 'RATE_LIMIT_EXCEEDED',
+                        retryAfter: Number(r.headers.get('Retry-After') || 0)
+                    };
+                }
+                return r.json();
+            })
             .then(function (j) {
                 if (!j || j.ok !== true) {
+                    if (j && j.error === 'RATE_LIMIT_EXCEEDED') {
+                        var retryMs = Math.max(1000, Number(j.retryAfter || 0) * 1000);
+                        state.officeResolveRetryUntil = Date.now() + retryMs;
+                        var mappedBusy = humanizeResolveError(j.error, j.retryAfter, j.requiredAccuracy);
+                        setLocationState('pending', mappedBusy.title, mappedBusy.sub, mappedBusy.banner);
+                        return;
+                    }
+
                     resetScanState();
                     setLocationState(
                         'blocked',
@@ -1268,17 +1309,17 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 if (j.allowed === false) {
                     state.currentOffice.id = null;
                     state.currentOffice.name = null;
-                    setLocationState(
-                        'blocked',
-                        'Outside allowed office area',
-                        'Move inside the DILG Region XII office radius to continue.',
-                        'Not in allowed area'
-                    );
+                    state.officeVerifiedUntil = 0;
+
+                    var mappedBlocked = humanizeResolveError(j.reason || j.error, j.retryAfter, j.requiredAccuracy);
+                    setLocationState('blocked', mappedBlocked.title, mappedBlocked.sub, mappedBlocked.banner);
                     return;
                 }
 
                 state.currentOffice.id = j.officeId;
                 state.currentOffice.name = j.officeName;
+                state.officeVerifiedUntil = Date.now() + (isMobile ? 60 * 1000 : 5 * 60 * 1000);
+                state.officeResolveRetryUntil = 0;
 
                 setLocationState(
                     'allowed',
@@ -1297,10 +1338,19 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
             });
     }
 
-            function resolveOfficeDesktopOnce() {
+    function resolveOfficeDesktopOnce() {
+        var t = Date.now();
+
         if (isMobile) return Promise.resolve();
 
-        if (state.currentOffice && state.currentOffice.name && state.locationState === 'allowed') {
+        if (state.currentOffice &&
+            state.currentOffice.name &&
+            state.locationState === 'allowed' &&
+            t < (state.officeVerifiedUntil || 0)) {
+            return Promise.resolve();
+        }
+
+        if (t < (state.officeResolveRetryUntil || 0)) {
             return Promise.resolve();
         }
 
@@ -1326,6 +1376,8 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 if (j && j.ok === true && j.allowed !== false) {
                     state.currentOffice.id = j.officeId;
                     state.currentOffice.name = j.officeName;
+                    state.officeVerifiedUntil = Date.now() + (5 * 60 * 1000);
+                    state.officeResolveRetryUntil = 0;
 
                     setLocationState(
                         'allowed',
@@ -1335,6 +1387,9 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                     );
                     return;
                 }
+
+                var retryMs = Math.max(0, Number(j && j.retryAfter || 0) * 1000);
+                state.officeResolveRetryUntil = retryMs > 0 ? (Date.now() + retryMs) : 0;
 
                 var mapped = humanizeResolveError(j && (j.reason || j.error), j && j.retryAfter, j && j.requiredAccuracy);
                 setLocationState('blocked', mapped.title, mapped.sub, mapped.banner);
@@ -1350,15 +1405,15 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
     // OPT-09: AbortController cancels any stale in-flight request
     // =========
     function submitAttendance(blob) {
-        // Cancel previous stale request
         if (state.attendAbortCtrl) {
             try { state.attendAbortCtrl.abort(); } catch (e) {}
         }
+
         state.attendAbortCtrl = new AbortController();
         var signal = state.attendAbortCtrl.signal;
 
         state.lastCaptureAt = Date.now();
-        setPrompt('Scanning...', 'Hold still.');
+        setPrompt('Scanning.', 'Hold still.');
 
         var fd = new FormData();
         fd.append('__RequestVerificationToken', token);
@@ -1369,24 +1424,39 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
         return fetch(EP.attend, { method: 'POST', body: fd, credentials: 'same-origin', signal: signal })
             .then(function (r) {
-                if (r.status === 429) { setPrompt('System busy.', 'Please wait.'); return null; }
+                if (r.status === 429 || r.status === 503) {
+                    return {
+                        ok: false,
+                        error: r.status === 429 ? 'RATE_LIMIT_EXCEEDED' : 'SYSTEM_BUSY',
+                        retryAfter: Number(r.headers.get('Retry-After') || 0)
+                    };
+                }
                 return r.json();
             })
             .then(function (j) {
                 if (!j) return;
 
-                // update liveness display
                 if (typeof j.liveness === 'number') {
                     var p  = Number(j.liveness);
                     var th = (j.threshold != null) ? Number(j.threshold) : null;
                     var threshold = th !== null ? th : 0.75;
                     var cls;
-                    if (p >= threshold)              cls = 'live-pass';
-                    else if (p >= threshold * 0.80)  cls = 'live-near';
-                    else                             cls = 'live-fail';
+                    if (p >= threshold) cls = 'live-pass';
+                    else if (p >= threshold * 0.80) cls = 'live-near';
+                    else cls = 'live-fail';
+
                     setLiveness(p, th, cls);
-                    state.latestLiveness    = p;
+                    state.latestLiveness = p;
                     state.livenessThreshold = threshold;
+                }
+
+                var err = j.error || '';
+                var retryMs = Math.max(1500, Number(j.retryAfter || 0) * 1000);
+
+                if (err === 'RATE_LIMIT_EXCEEDED' || err === 'SYSTEM_BUSY' || err === 'REQUEST_TIMEOUT') {
+                    state.backoffUntil = Date.now() + retryMs;
+                } else if (j.ok === true) {
+                    state.backoffUntil = 0;
                 }
 
                 if (j.ok === true) {
@@ -1399,26 +1469,33 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                     } else {
                         openVisitorModal(j);
                     }
-                } else {
-                    var err = j.error || '';
-                    if (err === 'ALREADY_SCANNED') {
-                        toastError('Already scanned. Please wait.');
-                        armPostScanHold(CFG.postScan.holdMs);
-                    } else if (err === 'LIVENESS_FAIL') {
-                        toastError('Liveness check failed. Move naturally and try again.');
-                        armPostScanHold(1500);
-                    } else {
-                        toastError(j.message || err || 'Scan failed.');
-                        armPostScanHold(1500);
-                    }
-                    setPrompt('Ready.', 'Stand still. One face only.');
-                }
-            })
-            .catch(function (e) {
-                if (e && e.name === 'AbortError') {
-                    log('Attendance fetch aborted (stale request)');
                     return;
                 }
+
+                if (err === 'ALREADY_SCANNED' || err === 'TOO_SOON') {
+                    toastError(j.message || 'Already scanned. Please wait.');
+                    armPostScanHold(CFG.postScan.holdMs);
+                } else if (err === 'LIVENESS_FAIL') {
+                    toastError('Liveness check failed. Move naturally and try again.');
+                    armPostScanHold(1500);
+                } else if (err === 'RATE_LIMIT_EXCEEDED' || err === 'SYSTEM_BUSY') {
+                    toastError('System busy. Please wait a moment and try again.');
+                    setPrompt('System busy.', 'Please wait.');
+                    armPostScanHold(retryMs);
+                    return;
+                } else if (err === 'REQUEST_TIMEOUT') {
+                    toastError('Scan timed out. Please try again.');
+                    armPostScanHold(retryMs);
+                } else {
+                    toastError(j.message || err || 'Scan failed.');
+                    armPostScanHold(1500);
+                }
+
+                setPrompt('Ready.', 'Stand still. One face only.');
+            })
+            .catch(function (e) {
+                if (e && e.name === 'AbortError') return;
+                state.backoffUntil = Date.now() + 2000;
                 setPrompt('System error.', 'Reload the page or check the server.');
             });
     }

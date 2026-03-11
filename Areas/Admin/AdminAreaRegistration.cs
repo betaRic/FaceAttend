@@ -8,11 +8,14 @@ namespace FaceAttend.Areas.Admin
 
         public override void RegisterArea(AreaRegistrationContext context)
         {
-            context.MapRoute(
+            var route = context.MapRoute(
                 "Admin_default",
                 "Admin/{controller}/{action}/{id}",
-                new { controller = "Dashboard", action = "Index", id = UrlParameter.Optional }
+                new { controller = "Dashboard", action = "Index", id = UrlParameter.Optional },
+                namespaces: new[] { "FaceAttend.Areas.Admin.Controllers" }
             );
+
+            route.DataTokens["UseNamespaceFallback"] = false;
         }
     }
 }

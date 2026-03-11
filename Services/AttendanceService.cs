@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Data;
 using System.Linq;
 
@@ -31,17 +31,17 @@ namespace FaceAttend.Services
             public DateTime TimestampUtc { get; set; }
         }
 
-        public static RecordResult Record(FaceAttendDBEntities db, AttendanceLog log)
+        public static RecordResult Record(FaceAttendDBEntities db, AttendanceLog log, DateTime? attemptedAtUtc = null)
         {
             if (db == null) throw new ArgumentNullException(nameof(db));
             if (log == null) throw new ArgumentNullException(nameof(log));
 
-            var nowUtc = DateTime.UtcNow;
+            var nowUtc = attemptedAtUtc ?? DateTime.UtcNow;
 
             // Mahalagang aligned ang "attendance day" sa app timezone,
             // hindi sa timezone ng IIS / server OS.
-            var todayLocal = TimeZoneHelper.TodayLocalDate();
-            var todayRange = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
+            var attendanceLocalDate = TimeZoneHelper.UtcToLocal(nowUtc).Date;
+            var todayRange = TimeZoneHelper.LocalDateToUtcRange(attendanceLocalDate);
             var startUtc   = todayRange.fromUtc;
             var endUtc     = todayRange.toUtcExclusive;
 

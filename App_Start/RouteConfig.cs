@@ -13,7 +13,8 @@ namespace FaceAttend
             routes.MapRoute(
                 name: "Default",
                 url: "{controller}/{action}/{id}",
-                defaults: new { controller = "Kiosk", action = "Index", id = UrlParameter.Optional }
+                defaults: new { controller = "Kiosk", action = "Index", id = UrlParameter.Optional },
+                namespaces: new[] { "FaceAttend.Controllers" }
             );
         }
     }
