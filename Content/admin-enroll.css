@@ -1,0 +1,1131 @@
+/* ================================================================
+   FaceAttend - Enroll Page - Modern Redesign
+   Stack: Bootstrap 5, Font Awesome 6, custom CSS + JS
+   ================================================================ */
+
+/* -- Root tokens ----------------------------------------------- */
+:root {
+    --ea-primary:      #0d6efd;
+    --ea-primary-rgb:  13, 110, 253;
+    --ea-success:      #198754;
+    --ea-danger:       #dc3545;
+    --ea-warning:      #fd7e14;
+    --ea-info:         #0dcaf0;
+    --ea-surface:      #fff;
+    --ea-surface-2:    #f8f9fa;
+    --ea-border:       #dee2e6;
+    --ea-text:         #212529;
+    --ea-muted:        #6c757d;
+    --ea-radius-sm:    0.5rem;
+    --ea-radius:       0.75rem;
+    --ea-radius-lg:    1rem;
+    --ea-radius-xl:    1.25rem;
+    --ea-shadow-sm:    0 2px 8px rgba(0,0,0,.06);
+    --ea-shadow-md:    0 4px 20px rgba(0,0,0,.10);
+    --ea-shadow-lg:    0 8px 40px rgba(0,0,0,.14);
+    --ea-glow-primary: 0 0 0 4px rgba(13,110,253,.18);
+    --ea-glow-success: 0 0 0 4px rgba(25,135,84,.18);
+    --ea-glow-danger:  0 0 0 4px rgba(220,53,69,.18);
+    --ea-transition:   .22s cubic-bezier(.4,0,.2,1);
+}
+
+/* ------ Page scaffold --------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-enroll-page {
+    padding: 1.5rem 0 3rem;
+    min-height: calc(100vh - 56px);
+    background: var(--ea-surface-2);
+}
+
+/* ------ Employee hero card ------------------------------------------------------------------------------------------------------------------------ */
+.fa-hero {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-md);
+    padding: 1.5rem 1.75rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    animation: slideDown .35s ease both;
+}
+
+.fa-avatar {
+    width: 64px;
+    height: 64px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--ea-primary), #0b5ed7);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.fa-hero-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.fa-hero-name {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin: 0;
+    color: var(--ea-text);
+}
+
+.fa-hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-top: 0.35rem;
+    font-size: 0.875rem;
+    color: var(--ea-muted);
+    align-items: center;
+}
+
+.fa-hero-actions {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+}
+
+/* Status badge in hero */
+.fa-status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+}
+
+.fa-status-badge.enrolled {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.fa-status-badge.not-enrolled {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* ------ Step Breadcrumb --------------------------------------------------------- */
+.fa-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    margin-bottom: 1.5rem;
+    padding: 0 1rem;
+}
+
+.fa-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    border-radius: var(--ea-radius);
+    background: var(--ea-surface);
+    border: 2px solid var(--ea-border);
+    color: var(--ea-muted);
+    font-size: 0.875rem;
+    font-weight: 500;
+    transition: var(--ea-transition);
+}
+
+.fa-step.active {
+    border-color: var(--ea-primary);
+    color: var(--ea-primary);
+    background: rgba(13,110,253,0.05);
+}
+
+.fa-step.done {
+    border-color: var(--ea-success);
+    color: var(--ea-success);
+    background: rgba(25,135,84,0.05);
+}
+
+.fa-step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: currentColor;
+    color: var(--ea-surface);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
+.fa-step-divider {
+    width: 40px;
+    height: 2px;
+    background: var(--ea-border);
+    border-radius: 1px;
+    transition: var(--ea-transition);
+}
+
+.fa-step-divider.done {
+    background: var(--ea-success);
+}
+
+@media (max-width: 576px) {
+    .fa-steps {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+    .fa-step-divider {
+        width: 20px;
+    }
+    .fa-step span:not(.fa-step-num) {
+        display: none;
+    }
+    .fa-step {
+        padding: 0.5rem;
+    }
+}
+
+/* ------ Wizard (choose mode) --------------------------------------------------------------------------------------------------------------------- */
+#enrollWizard {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-md);
+    padding: 2rem;
+    animation: fadeIn .4s ease both;
+}
+
+#enrollWizard .text-center .fw-bold {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: 1.25rem;
+    text-align: center;
+}
+
+.fa-method-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 1.25rem;
+}
+
+.fa-method-card {
+    border: 2px solid var(--ea-border);
+    border-radius: var(--ea-radius-lg);
+    padding: 1.75rem 1.25rem;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--ea-transition);
+    background: var(--ea-surface);
+    position: relative;
+}
+
+.fa-method-card:hover,
+.fa-method-card:focus {
+    border-color: var(--ea-primary);
+    box-shadow: var(--ea-glow-primary);
+    transform: translateY(-3px);
+    outline: none;
+}
+
+.fa-method-card:active {
+    transform: translateY(-1px);
+}
+
+.fa-method-icon {
+    width: 64px;
+    height: 64px;
+    border-radius: var(--ea-radius);
+    background: rgba(13,110,253,0.1);
+    color: var(--ea-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1rem;
+    font-size: 1.75rem;
+    transition: var(--ea-transition);
+}
+
+.fa-method-card:hover .fa-method-icon {
+    background: var(--ea-primary);
+    color: #fff;
+    transform: scale(1.05);
+}
+
+.fa-method-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    color: var(--ea-text);
+}
+
+.fa-method-desc {
+    font-size: 0.875rem;
+    color: var(--ea-muted);
+    margin: 0;
+    line-height: 1.5;
+}
+
+.fa-method-rec {
+    position: absolute;
+    top: -10px;
+    right: 12px;
+    background: linear-gradient(135deg, #f59e0b, #d97706);
+    color: #fff;
+    padding: 0.25rem 0.75rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    box-shadow: 0 2px 8px rgba(245,158,11,0.3);
+}
+
+/* ------ Card base --------------------------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-card {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-md);
+    padding: 1.5rem;
+}
+
+/* ------ Pane base --------------------------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-pane {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-md);
+    padding: 1.5rem;
+    animation: fadeIn .35s ease both;
+    display: none;
+}
+
+.fa-pane.active {
+    display: block;
+}
+
+/* ------ Camera layout --------------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-cam-layout {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: 1.5rem;
+    align-items: start;
+}
+
+@media (max-width: 992px) {
+    .fa-cam-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ------ Video wrapper --------------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-video-wrap {
+    position: relative;
+    background: #000;
+    border-radius: var(--ea-radius-lg);
+    overflow: hidden;
+    aspect-ratio: 4/3;
+    box-shadow: var(--ea-shadow-md);
+}
+
+.fa-video-wrap video,
+.fa-video-wrap canvas,
+.fa-video-wrap .fa-cam-fallback {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.fa-video-wrap .fa-cam-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #1a1a2e, #16213e);
+    color: #fff;
+    font-size: 3rem;
+}
+
+/* Corner brackets */
+.fa-cam-corner {
+    position: absolute;
+    width: 24px;
+    height: 24px;
+    border-color: rgba(255,255,255,0.6);
+    border-style: solid;
+    border-width: 0;
+    pointer-events: none;
+    z-index: 5;
+}
+
+.fa-cam-corner.tl {
+    top: 16px;
+    left: 16px;
+    border-top-width: 3px;
+    border-left-width: 3px;
+}
+
+.fa-cam-corner.tr {
+    top: 16px;
+    right: 16px;
+    border-top-width: 3px;
+    border-right-width: 3px;
+}
+
+.fa-cam-corner.bl {
+    bottom: 16px;
+    left: 16px;
+    border-bottom-width: 3px;
+    border-left-width: 3px;
+}
+
+.fa-cam-corner.br {
+    bottom: 16px;
+    right: 16px;
+    border-bottom-width: 3px;
+    border-right-width: 3px;
+}
+
+/* Glow effects */
+.border-success-glow {
+    box-shadow: 0 0 0 4px rgba(25,135,84,0.4), 0 0 30px rgba(25,135,84,0.3);
+}
+
+.border-danger-glow {
+    box-shadow: 0 0 0 4px rgba(220,53,69,0.4), 0 0 30px rgba(220,53,69,0.3);
+}
+
+.pulse-border {
+    animation: pulseBorder 1.5s ease-in-out infinite;
+}
+
+@keyframes pulseBorder {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(13,110,253,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(13,110,253,0); }
+}
+
+/* Liveness bar */
+.fa-live-bar-wrap {
+    position: absolute;
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    z-index: 10;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(4px);
+    padding: 8px 12px;
+    border-radius: var(--ea-radius-sm);
+}
+
+.fa-live-bar-label {
+    display: flex;
+    justify-content: space-between;
+    color: #fff;
+    font-size: 0.75rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.fa-live-bar-track {
+    height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+    overflow: hidden;
+}
+
+.fa-live-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #dc3545, #fd7e14, #198754);
+    border-radius: 2px;
+    transition: width 0.3s ease;
+}
+
+.fa-live-bar-fill.live-pass {
+    background: #198754;
+}
+
+.fa-live-bar-fill.live-warn {
+    background: #fd7e14;
+}
+
+.fa-live-bar-fill.live-fail {
+    background: #dc3545;
+}
+
+/* Capture progress dots */
+.fa-progress-dots {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.5rem;
+    z-index: 10;
+}
+
+.fa-dot {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.3);
+    border: 2px solid rgba(255,255,255,0.5);
+    transition: var(--ea-transition);
+}
+
+.fa-dot.filled {
+    background: var(--ea-success);
+    border-color: var(--ea-success);
+    box-shadow: 0 0 10px rgba(25,135,84,0.6);
+}
+
+.fa-dot.active {
+    background: var(--ea-primary);
+    border-color: var(--ea-primary);
+    animation: pulseDot 1s ease infinite;
+}
+
+@keyframes pulseDot {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.2); }
+}
+
+/* Camera status overlay */
+#camStatus {
+    position: absolute;
+    bottom: 48px;
+    left: 12px;
+    right: 12px;
+    z-index: 10;
+}
+
+.fa-status-msg {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--ea-radius-sm);
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(4px);
+    color: #fff;
+    font-size: 0.8125rem;
+}
+
+.fa-status-msg.is-success {
+    background: rgba(25,135,84,0.9);
+}
+
+.fa-status-msg.is-danger {
+    background: rgba(220,53,69,0.9);
+}
+
+.fa-status-msg.is-warning {
+    background: rgba(253,126,20,0.9);
+}
+
+.fa-status-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255,255,255,0.3);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ------ Side panel ------------------------------------------------------------------------------------------------------------------------------------------ */
+.fa-side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.fa-side-card {
+    background: var(--ea-surface-2);
+    border-radius: var(--ea-radius);
+    padding: 1rem;
+    border: 1px solid var(--ea-border);
+}
+
+.fa-side-card-title {
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ea-muted);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.fa-live-score-num {
+    font-size: 2.5rem;
+    font-weight: 800;
+    line-height: 1;
+    color: var(--ea-text);
+}
+
+.fa-live-score-num.pass {
+    color: var(--ea-success);
+}
+
+.fa-live-score-num.fail {
+    color: var(--ea-danger);
+}
+
+.fa-live-score-label {
+    font-size: 0.8125rem;
+    color: var(--ea-muted);
+    margin-top: 0.25rem;
+}
+
+.fa-pass-indicator {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.75rem;
+    color: var(--ea-muted);
+}
+
+.badge-pass, .badge-fail {
+    padding: 0.2rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    text-transform: uppercase;
+}
+
+.badge-pass {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.badge-fail {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+/* Tips list */
+.fa-tips {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.fa-tips li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    color: var(--ea-text);
+    padding: 0.35rem 0;
+}
+
+.fa-tips li i {
+    color: var(--ea-primary);
+    width: 16px;
+    text-align: center;
+}
+
+/* ------ Upload pane --------------------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-dropzone {
+    border: 2px dashed var(--ea-border);
+    border-radius: var(--ea-radius-lg);
+    padding: 3rem 2rem;
+    text-align: center;
+    transition: var(--ea-transition);
+    cursor: pointer;
+    background: var(--ea-surface);
+    position: relative;
+}
+
+.fa-dropzone:hover,
+.fa-dropzone.drag-over,
+.fa-dropzone:focus {
+    border-color: var(--ea-primary);
+    background: rgba(13,110,253,0.03);
+    box-shadow: var(--ea-glow-primary);
+    outline: none;
+}
+
+.fa-dropzone input[type="file"] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.fa-dropzone-icon {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: rgba(13,110,253,0.1);
+    color: var(--ea-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.25rem;
+    font-size: 2rem;
+    transition: var(--ea-transition);
+}
+
+.fa-dropzone:hover .fa-dropzone-icon {
+    background: var(--ea-primary);
+    color: #fff;
+    transform: scale(1.05);
+}
+
+.fa-dropzone-title {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin: 0 0 0.5rem;
+    color: var(--ea-text);
+}
+
+.fa-dropzone-desc {
+    font-size: 0.875rem;
+    color: var(--ea-muted);
+    margin: 0 0 1.25rem;
+}
+
+.fa-dropzone-rules {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.75rem;
+}
+
+.fa-dropzone-rules span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.75rem;
+    color: var(--ea-muted);
+    padding: 0.35rem 0.75rem;
+    background: var(--ea-surface-2);
+    border-radius: 999px;
+}
+
+/* File strip */
+.fa-file-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 1rem;
+    min-height: 36px;
+}
+
+.fa-file-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.75rem;
+    background: var(--ea-surface-2);
+    border: 1px solid var(--ea-border);
+    border-radius: 999px;
+    font-size: 0.8125rem;
+    color: var(--ea-text);
+    animation: slideIn 0.2s ease;
+}
+
+.fa-file-chip i {
+    color: var(--ea-primary);
+}
+
+/* Upload status */
+.fa-upstatus-box {
+    margin-top: 1rem;
+    padding: 1rem;
+    border-radius: var(--ea-radius);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 0.9375rem;
+}
+
+.fa-upstatus-box.is-success {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.fa-upstatus-box.is-danger {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.fa-upstatus-box.is-warning {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.fa-upstatus-box.is-info {
+    background: #dbeafe;
+    color: #1e40af;
+}
+
+/* ------ Back button --------------------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-back-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.875rem;
+    border: 1px solid var(--ea-border);
+    border-radius: var(--ea-radius-sm);
+    background: var(--ea-surface);
+    font-size: 0.875rem;
+    color: var(--ea-text);
+    cursor: pointer;
+    transition: var(--ea-transition);
+}
+
+.fa-back-btn:hover {
+    background: var(--ea-surface-2);
+    border-color: var(--ea-muted);
+}
+
+/* ------ Success Overlay --------------------------------------------------------------------------------------------------------------------------------------- */
+.fa-success-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(10px);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    animation: fadeIn .3s ease;
+}
+
+.fa-success-content {
+    text-align: center;
+    padding: 2rem;
+    max-width: 420px;
+}
+
+.fa-success-icon {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    font-size: 3rem;
+    animation: scaleIn .4s ease both, successPulse 2s ease infinite;
+    box-shadow: 0 8px 30px rgba(34,197,94,0.4);
+}
+
+@keyframes successPulse {
+    0%, 100% { box-shadow: 0 8px 30px rgba(34,197,94,0.4); }
+    50% { box-shadow: 0 8px 40px rgba(34,197,94,0.6); }
+}
+
+.fa-success-title {
+    font-size: 1.75rem;
+    font-weight: 800;
+    margin-bottom: 0.75rem;
+    color: var(--ea-text);
+}
+
+.fa-success-message {
+    font-size: 1.05rem;
+    color: var(--ea-muted);
+    margin-bottom: 1.5rem;
+    line-height: 1.6;
+}
+
+.fa-success-details {
+    font-size: 0.9375rem;
+    color: var(--ea-muted);
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background: var(--ea-surface-2);
+    border-radius: var(--ea-radius);
+    border: 1px solid var(--ea-border);
+}
+
+.fa-success-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+/* ------ Processing Modal ------------------------------------------------------------------------------------------------------------------------------------ */
+.fa-processing-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(255,255,255,0.95);
+    backdrop-filter: blur(10px);
+    z-index: 999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fa-processing-content {
+    text-align: center;
+    padding: 2rem;
+    max-width: 340px;
+}
+
+.fa-processing-spinner {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--ea-primary), #0b5ed7);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto 1.5rem;
+    font-size: 2.5rem;
+    animation: spin 1s linear infinite;
+    box-shadow: 0 8px 30px rgba(13,110,253,0.3);
+}
+
+.fa-processing-title {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+}
+
+.fa-processing-status {
+    font-size: 0.9375rem;
+    color: var(--ea-muted);
+    margin-bottom: 1.5rem;
+    min-height: 1.5rem;
+}
+
+.fa-processing-progress {
+    width: 100%;
+    height: 10px;
+    background: var(--ea-border);
+    border-radius: 999px;
+    overflow: hidden;
+    margin-bottom: 0.75rem;
+}
+
+.fa-processing-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--ea-primary), #0b5ed7);
+    border-radius: 999px;
+    transition: width .4s ease;
+}
+
+.fa-processing-percent {
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--ea-primary);
+}
+
+/* ------ Preview Before Save Modal --------------------------------------------------------------------------------------------------------- */
+.fa-preview-modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    backdrop-filter: blur(5px);
+    z-index: 998;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+}
+
+.fa-preview-content {
+    background: var(--ea-surface);
+    border-radius: var(--ea-radius-xl);
+    box-shadow: var(--ea-shadow-lg);
+    max-width: 640px;
+    width: 100%;
+    max-height: 90vh;
+    overflow-y: auto;
+    animation: slideUp .3s ease;
+}
+
+.fa-preview-header {
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid var(--ea-border);
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    font-size: 1.15rem;
+    font-weight: 600;
+    background: var(--ea-surface-2);
+}
+
+.fa-preview-header i {
+    color: var(--ea-primary);
+}
+
+.fa-preview-images {
+    padding: 1.5rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 1rem;
+    background: var(--ea-surface-2);
+}
+
+.fa-preview-images img {
+    width: 100%;
+    aspect-ratio: 1;
+    object-fit: cover;
+    border-radius: var(--ea-radius);
+    border: 2px solid var(--ea-border);
+    transition: var(--ea-transition);
+}
+
+.fa-preview-images img:hover {
+    border-color: var(--ea-primary);
+    transform: scale(1.02);
+}
+
+.fa-preview-message {
+    padding: 1rem 1.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    font-size: 1rem;
+    background: rgba(25,135,84,0.08);
+    border-bottom: 1px solid var(--ea-border);
+}
+
+.fa-preview-message i {
+    font-size: 1.25rem;
+}
+
+.fa-preview-actions {
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    gap: 1rem;
+    justify-content: flex-end;
+}
+
+@media (max-width: 576px) {
+    .fa-preview-actions {
+        flex-direction: column-reverse;
+    }
+    .fa-preview-actions .btn {
+        width: 100%;
+    }
+}
+
+/* ------ Multi-face Warning ------------------------------------------------------------------------------------------------------------------------------ */
+.fa-multi-face-warning {
+    position: absolute;
+    top: 70px;
+    left: 12px;
+    right: 12px;
+    background: rgba(253,126,20,0.95);
+    color: #fff;
+    padding: 0.625rem 1rem;
+    border-radius: var(--ea-radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    z-index: 7;
+    animation: slideDown .3s ease;
+    backdrop-filter: blur(4px);
+}
+
+/* ------ Additional Animations --------------------------------------------------------------------------------------------------------------------- */
+@keyframes scaleIn {
+    from { opacity:0; transform:scale(0.5); }
+    to   { opacity:1; transform:scale(1); }
+}
+
+@keyframes slideIn {
+    from { opacity:0; transform:translateX(-10px); }
+    to   { opacity:1; transform:translateX(0); }
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .7; }
+}
+
+@keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ------ Reduced Motion --------------------------------------------------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* ------ Responsive Adjustments --------------------------------------------------------------------------------------------------------------------- */
+@media (max-width: 768px) {
+    .fa-enroll-page {
+        padding: 1rem 0 2rem;
+    }
+    
+    .fa-hero {
+        padding: 1.25rem;
+        flex-direction: column;
+        text-align: center;
+    }
+    
+    .fa-hero-info {
+        width: 100%;
+    }
+    
+    .fa-hero-meta {
+        justify-content: center;
+    }
+    
+    .fa-hero-actions {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    #enrollWizard {
+        padding: 1.5rem 1rem;
+    }
+    
+    .fa-method-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .fa-card, .fa-pane {
+        padding: 1rem;
+    }
+    
+    .fa-dropzone {
+        padding: 2rem 1rem;
+    }
+    
+    .fa-side-panel {
+        order: -1;
+    }
+}

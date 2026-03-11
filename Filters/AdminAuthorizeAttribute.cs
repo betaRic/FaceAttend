@@ -106,12 +106,6 @@ namespace FaceAttend.Filters
             session[SessionKeyAuthedUtc] = DateTime.UtcNow;
         }
 
-        public static void ClearAuthedMarker(HttpSessionStateBase session)
-        {
-            if (session == null) return;
-            session.Remove(SessionKeyAuthedUtc);
-        }
-
         public static void ClearAuthed(HttpSessionStateBase session)
         {
             if (session == null) return;

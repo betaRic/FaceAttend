@@ -161,8 +161,6 @@ namespace FaceAttend.Services.Biometrics
             var chanOrder  = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
             normalize = CanonicalNormalize(normalize);
             chanOrder = CanonicalChannelOrder(chanOrder);
-            normalize = CanonicalNormalize(normalize);
-            chanOrder = CanonicalChannelOrder(chanOrder);
             var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",   "logits");
             var decision   = AppSettings.GetString("Biometrics:Liveness:Decision",     "max");
 

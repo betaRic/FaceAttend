@@ -6,27 +6,34 @@
     var backUrl = Url.Action("Index", "Attendance", new { area = "Admin" });
 }
 
-<div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-3">
+<div class="ea-page">
+
+<div class="ea-page-header">
     <div>
-        <h4 class="mb-1">Attendance Details</h4>
-        <div class="text-muted small">ID: @Model.Id</div>
+        <h1 class="ea-page-title">
+            <i class="fa-solid fa-clock-rotate-left" aria-hidden="true"></i>
+            Attendance Details
+        </h1>
+        <div class="ea-page-subtitle">ID: @Model.Id</div>
     </div>
-    <div class="d-flex gap-2">
-        <a class="btn btn-outline-secondary" href="@backUrl">
-            <i class="fa-solid fa-arrow-left me-1"></i>Back
+    <div class="ea-page-actions">
+        <a class="btn btn-outline-secondary btn-sm" href="@backUrl">
+            <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
         </a>
 
         @if (Model.NeedsReview)
         {
-            <span class="badge bg-warning text-dark align-self-center">Needs review</span>
+            <span class="ea-badge review">
+                <i class="fa-solid fa-triangle-exclamation fa-xs"></i>Needs review
+            </span>
         }
     </div>
 </div>
 
 <div class="row g-3">
     <div class="col-12 col-lg-8">
-        <div class="admin-card">
-            <div class="card-body">
+        <div class="ea-card">
+            <div class="ea-card-body">
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
                         <div class="text-muted small">Time (local)</div>
@@ -96,9 +103,11 @@
     </div>
 
     <div class="col-12 col-lg-4">
-        <div class="admin-card">
-            <div class="card-body">
-                <h5 class="mb-2">Review</h5>
+        <div class="ea-card">
+            <div class="ea-card-body">
+                <div class="ea-form-section-title">
+                    <i class="fa-solid fa-flag fa-xs" aria-hidden="true"></i>Review
+                </div>
                 <div class="text-muted small mb-2">
                     Use this when a scan looks suspicious but you still want to keep the record.
                 </div>
@@ -131,13 +140,17 @@
             </div>
         </div>
 
-        <div class="admin-card mt-3">
-            <div class="card-body">
-                <h6 class="mb-2">Raw GPS</h6>
+        <div class="ea-card mt-3">
+            <div class="ea-card-body">
+                <div class="ea-form-section-title">
+                    <i class="fa-solid fa-location-dot fa-xs" aria-hidden="true"></i>Raw GPS
+                </div>
                 <div class="small">Lat: @(Model.GPSLatitude.HasValue ? Model.GPSLatitude.Value.ToString("0.000000") : "-")</div>
                 <div class="small">Lon: @(Model.GPSLongitude.HasValue ? Model.GPSLongitude.Value.ToString("0.000000") : "-")</div>
                 <div class="small text-muted">Error: @Model.LocationError</div>
             </div>
         </div>
     </div>
+</div>
+
 </div>

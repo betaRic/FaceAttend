@@ -50,30 +50,35 @@
 @* ======================================================================
    HEADER
    ====================================================================== *@
-<div class="d-flex flex-wrap align-items-start justify-content-between gap-3 mb-3">
+<div class="ea-page">
+
+<div class="ea-page-header">
     <div>
-        <h4 class="mb-1">Summary Report</h4>
-        <div class="text-muted small">
+        <h1 class="ea-page-title">
+            <i class="fa-solid fa-chart-column" aria-hidden="true"></i>
+            Summary Report
+        </h1>
+        <div class="ea-page-subtitle">
             @if (!string.IsNullOrWhiteSpace(Model.ActiveRangeLabel))
             {
-                @Model.ActiveRangeLabel
+                <span>@Model.ActiveRangeLabel</span>
             }
             @if (Model.OfficeId.HasValue && Model.OfficeId.Value > 0)
             {
-                <span class="ms-2 badge bg-light text-dark border">
-                    <i class="fa-solid fa-building me-1" aria-hidden="true"></i>Office filter
+                <span class="ms-2 ea-badge secondary">
+                    <i class="fa-solid fa-building fa-xs me-1" aria-hidden="true"></i>Office filter
                 </span>
             }
             @if (!string.IsNullOrWhiteSpace(Model.DepartmentFilter))
             {
-                <span class="ms-2 badge bg-light text-dark border">
-                    <i class="fa-solid fa-sitemap me-1" aria-hidden="true"></i>@Model.DepartmentFilter
+                <span class="ms-2 ea-badge secondary">
+                    <i class="fa-solid fa-sitemap fa-xs me-1" aria-hidden="true"></i>@Model.DepartmentFilter
                 </span>
             }
         </div>
     </div>
 
-    <div class="d-flex flex-wrap gap-2">
+    <div class="ea-page-actions">
         <a class="btn btn-outline-secondary btn-sm" href="@backUrl">
             <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
         </a>
@@ -89,40 +94,38 @@
 @* ======================================================================
    FILTER FORM
    ====================================================================== *@
-<div class="admin-card mb-3">
-    <div class="card-body">
-        <form method="get" action="@Url.Action("SummaryReport")" class="row g-2 align-items-end">
-            <div class="col-12 col-md-2">
-                <label class="form-label small mb-1">From</label>
-                <input class="form-control form-control-sm" type="date" name="from" value="@Model.From" />
-            </div>
-            <div class="col-12 col-md-2">
-                <label class="form-label small mb-1">To</label>
-                <input class="form-control form-control-sm" type="date" name="to" value="@Model.To" />
-            </div>
-            <div class="col-12 col-md-3">
-                <label class="form-label small mb-1">Office</label>
-                @Html.DropDownList("officeId", Model.OfficeOptions, new { @class = "form-select form-select-sm" })
-            </div>
-            <div class="col-12 col-md-3">
-                <label class="form-label small mb-1">Department</label>
-                <input class="form-control form-control-sm" name="department"
-                       value="@Model.DepartmentFilter" placeholder="Filter by department..." />
-            </div>
-            <div class="col-12 col-md-2 d-flex gap-2">
-                <button class="btn btn-primary btn-sm flex-fill" type="submit">
-                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
-                </button>
-                <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("SummaryReport")" title="Reset">
-                    <i class="fa-solid fa-rotate" aria-hidden="true"></i>
-                </a>
-            </div>
-        </form>
-    </div>
+<div class="ea-filter-card">
+    <form method="get" action="@Url.Action("SummaryReport")" class="row g-2 align-items-end">
+        <div class="col-12 col-md-2">
+            <label class="ea-filter-label">From</label>
+            <input class="form-control form-control-sm" type="date" name="from" value="@Model.From" />
+        </div>
+        <div class="col-12 col-md-2">
+            <label class="ea-filter-label">To</label>
+            <input class="form-control form-control-sm" type="date" name="to" value="@Model.To" />
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="ea-filter-label">Office</label>
+            @Html.DropDownList("officeId", Model.OfficeOptions, new { @class = "form-select form-select-sm" })
+        </div>
+        <div class="col-12 col-md-3">
+            <label class="ea-filter-label">Department</label>
+            <input class="form-control form-control-sm" name="department"
+                   value="@Model.DepartmentFilter" placeholder="Filter by department..." />
+        </div>
+        <div class="col-12 col-md-2 d-flex gap-2">
+            <button class="btn btn-primary btn-sm flex-fill" type="submit">
+                <i class="fa-solid fa-filter me-1" aria-hidden="true"></i>Apply
+            </button>
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("SummaryReport")" title="Reset">
+                <i class="fa-solid fa-rotate" aria-hidden="true"></i>
+            </a>
+        </div>
+    </form>
 </div>
 
 @* Info banner *@
-<div class="alert alert-info d-flex align-items-start gap-2 mb-3 py-2 px-3">
+<div class="ea-alert info">
     <i class="fa-solid fa-circle-info mt-1 flex-shrink-0" aria-hidden="true"></i>
     <div class="small">
         Hours = first IN to last OUT per day. Net hours may deduct lunch.
@@ -139,12 +142,10 @@
    ====================================================================== *@
 @if (!hasData)
 {
-    <div class="admin-card">
-        <div class="card-body text-center py-5 text-muted">
-            <i class="fa-solid fa-magnifying-glass fa-2x mb-2 d-block" aria-hidden="true"></i>
-            No attendance records for this range and filters.
-            Try broadening the date range or removing filters.
-        </div>
+    <div class="ea-empty">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
+        <div class="ea-empty-title">No records found</div>
+        <div class="ea-empty-desc">Try broadening the date range or removing filters.</div>
     </div>
 }
 
@@ -161,11 +162,10 @@
    ====================================================================== *@
 @if (hasData)
 {
-    <div class="admin-card">
-        <div class="card-body p-0">
+    <div class="ea-table-card">
 
             @* ---- Controls bar ---- *@
-            <div class="d-flex flex-wrap align-items-center gap-3 p-3 border-bottom">
+            <div class="ea-table-header">
 
                 @* Live search (runs in JS, no server round-trip) *@
                 <div class="flex-fill" style="min-width:200px; max-width:340px;">
@@ -380,20 +380,21 @@
             </div>
 
             @* ---- Pagination bar ---- *@
-            <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 p-3 border-top">
-                <div class="text-muted small" id="summaryInfo"></div>
+            <div class="ea-table-footer">
+                <div class="ea-table-info" id="summaryInfo"></div>
                 <nav aria-label="Summary pages">
                     <ul class="pagination pagination-sm mb-0" id="summaryPager"></ul>
                 </nav>
-                <div class="text-muted small">
+                <div class="ea-table-info">
                     <a href="@exportSummaryUrl" target="_blank">
                         <i class="fa-solid fa-file-export me-1" aria-hidden="true"></i>Export as CSV
                     </a>
                 </div>
             </div>
-        </div>
     </div>
+
 }
+</div>
 
 @section scripts {
 <script>

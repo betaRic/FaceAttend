@@ -8,6 +8,7 @@
     var title = (ViewBag.TitleText as string) ?? "Error";
     var msg = (ViewBag.MessageText as string) ?? "An unexpected error occurred.";
     var reqId = (ViewBag.RequestId as string) ?? "";
+    var isDeveloper = ViewBag.IsDeveloper as bool? ?? false;
 
     ViewBag.Title = $"{code} - {title}";
 }
@@ -63,6 +64,48 @@
                         <div class="mt-1" style="font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;">
                             @reqId
                         </div>
+                    </div>
+                }
+
+                @* DEVELOPER ONLY: Full error details *@
+                @if (isDeveloper)
+                {
+                    <div class="mt-4 p-3" style="background:#f8f9fa;border:1px solid #dee2e6;border-radius:.375rem;">
+                        <div class="d-flex align-items-center gap-2 mb-2">
+                            <span class="badge bg-warning text-dark">DEVELOPER MODE</span>
+                            <small class="text-muted">Only visible on local requests</small>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <strong>Exception:</strong>
+                            <div class="text-danger">@ViewBag.ExceptionType</div>
+                        </div>
+                        
+                        <div class="mb-2">
+                            <strong>Message:</strong>
+                            <div>@ViewBag.ExceptionMessage</div>
+                        </div>
+                        
+                        @if (!string.IsNullOrWhiteSpace(ViewBag.InnerException as string))
+                        {
+                            <div class="mb-2">
+                                <strong>Inner Exception:</strong>
+                                <div class="text-muted">@ViewBag.InnerException</div>
+                            </div>
+                        }
+                        
+                        <div class="mt-3">
+                            <strong>Stack Trace:</strong>
+                            <pre style="font-size:.75rem;background:#fff;padding:1rem;border-radius:.25rem;max-height:400px;overflow:auto;margin-top:.5rem;"><code>@ViewBag.StackTrace</code></pre>
+                        </div>
+                    </div>
+                }
+                else
+                {
+                    @* Non-developers see a tip about the Request ID *@
+                    <div class="mt-3 text-muted" style="font-size:.85rem;">
+                        <i class="fa-solid fa-circle-info me-1"></i>
+                        If you need help, provide this Request ID to your administrator.
                     </div>
                 }
             </div>

@@ -135,59 +135,51 @@
        in the @section scripts below.  If you rename an id here, update
        kpiMap in the script too.
     ─────────────────────────────────────────────────────────────────────────── *@
-    <div class="row g-3 mb-3">
+    <div class="ea-kpi-grid">
 
         @* Active Employees *@
-        <div class="col-6 col-xl-3">
-            <a class="ea-kpi" href="@Url.Action("Index", "Employees", new { area = "Admin" })">
-                <div class="ea-kpi-icon primary">
-                    <i class="fa-solid fa-users" aria-hidden="true"></i>
-                </div>
-                <div class="ea-kpi-body">
-                    <div class="ea-kpi-num" id="kpi-total-employees">@Model.TotalEmployees</div>
-                    <div class="ea-kpi-label">Active Employees</div>
-                </div>
-            </a>
-        </div>
+        <a class="ea-kpi" href="@Url.Action("Index", "Employees", new { area = "Admin" })">
+            <div class="ea-kpi-icon primary">
+                <i class="fa-solid fa-users" aria-hidden="true"></i>
+            </div>
+            <div class="ea-kpi-body">
+                <div class="ea-kpi-num" id="kpi-total-employees">@Model.TotalEmployees</div>
+                <div class="ea-kpi-label">Active Employees</div>
+            </div>
+        </a>
 
         @* Time-Ins Today *@
-        <div class="col-6 col-xl-3">
-            <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "IN" })">
-                <div class="ea-kpi-icon success">
-                    <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
-                </div>
-                <div class="ea-kpi-body">
-                    <div class="ea-kpi-num" id="kpi-today-ins">@Model.TodayTimeIns</div>
-                    <div class="ea-kpi-label">Time-Ins Today</div>
-                </div>
-            </a>
-        </div>
+        <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "IN" })">
+            <div class="ea-kpi-icon success">
+                <i class="fa-solid fa-arrow-right-to-bracket" aria-hidden="true"></i>
+            </div>
+            <div class="ea-kpi-body">
+                <div class="ea-kpi-num" id="kpi-today-ins">@Model.TodayTimeIns</div>
+                <div class="ea-kpi-label">Time-Ins Today</div>
+            </div>
+        </a>
 
         @* Time-Outs Today *@
-        <div class="col-6 col-xl-3">
-            <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "OUT" })">
-                <div class="ea-kpi-icon warning">
-                    <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
-                </div>
-                <div class="ea-kpi-body">
-                    <div class="ea-kpi-num" id="kpi-today-outs">@Model.TodayTimeOuts</div>
-                    <div class="ea-kpi-label">Time-Outs Today</div>
-                </div>
-            </a>
-        </div>
+        <a class="ea-kpi" href="@Url.Action("Index", "Attendance", new { area = "Admin", from = "today", eventType = "OUT" })">
+            <div class="ea-kpi-icon warning">
+                <i class="fa-solid fa-arrow-right-from-bracket" aria-hidden="true"></i>
+            </div>
+            <div class="ea-kpi-body">
+                <div class="ea-kpi-num" id="kpi-today-outs">@Model.TodayTimeOuts</div>
+                <div class="ea-kpi-label">Time-Outs Today</div>
+            </div>
+        </a>
 
         @* Known Visitors *@
-        <div class="col-6 col-xl-3">
-            <a class="ea-kpi" href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
-                <div class="ea-kpi-icon" style="background:rgba(111,66,193,.1);color:#6f42c1;">
-                    <i class="fa-solid fa-user-check" aria-hidden="true"></i>
-                </div>
-                <div class="ea-kpi-body">
-                    <div class="ea-kpi-num" id="kpi-total-visitors">@Model.TotalVisitors</div>
-                    <div class="ea-kpi-label">Known Visitors</div>
-                </div>
-            </a>
-        </div>
+        <a class="ea-kpi" href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
+            <div class="ea-kpi-icon" style="background:rgba(111,66,193,.1);color:#6f42c1;">
+                <i class="fa-solid fa-user-check" aria-hidden="true"></i>
+            </div>
+            <div class="ea-kpi-body">
+                <div class="ea-kpi-num" id="kpi-total-visitors">@Model.TotalVisitors</div>
+                <div class="ea-kpi-label">Known Visitors</div>
+            </div>
+        </a>
 
     </div>
 

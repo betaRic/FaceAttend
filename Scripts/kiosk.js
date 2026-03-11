@@ -70,6 +70,14 @@
             multiMinAreaRatio: 0.015,
         },
 
+        // ULTRA-FAST: Real-time preview via WebSocket
+        fastPreview: {
+            enabled: true,           // Enable real-time preview
+            previewIntervalMs: 800,  // Try to recognize every 800ms
+            confidenceThreshold: 0.85, // Show name when 85%+ confident
+            wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + appBase + 'FaceWebSocket/Recognize'
+        },
+
         idle: {
             // OPT-03: 200ms sense (was 250)
             senseMs:    200,
@@ -209,6 +217,12 @@
         localPresent:    false,
 
         scanLineProgress: 0,
+
+        // ULTRA-FAST PREVIEW state
+        fastWs:           null,           // WebSocket connection
+        fastPreviewLastAt: 0,             // Last preview attempt
+        fastPreviewResult: null,          // {name, confidence, employeeId}
+        fastPreviewScanning: false,       // Currently sending to WS
     };
 
     // =========
@@ -826,19 +840,41 @@
 
     // =========
     // camera capture
-    // OPT-10: quality 0.78 (was 0.85) -- ~18% smaller payload, faster upload
+    // OPT-SPEED-01: quality 0.65 (was 0.78), resolution 480x360 (was 640x480)
+    // ~40% smaller payload = faster upload + faster server processing
     // =========
     var captureCanvas = document.createElement('canvas');
     var captureCtx    = captureCanvas.getContext('2d');
 
+    // Target resolution for speed (480x360 is plenty for face recognition)
+    var CAPTURE_W = 480;
+    var CAPTURE_H = 360;
+
     function captureFrameBlob(quality) {
-        var q = (typeof quality === 'number') ? quality : 0.78;
-        captureCanvas.width  = 640;
-        captureCanvas.height = 480;
-        captureCtx.drawImage(video, 0, 0, 640, 480);
+        var q = (typeof quality === 'number') ? quality : 0.65;
+        captureCanvas.width  = CAPTURE_W;
+        captureCanvas.height = CAPTURE_H;
+        captureCtx.drawImage(video, 0, 0, CAPTURE_W, CAPTURE_H);
         return new Promise(function (resolve) {
             captureCanvas.toBlob(function (b) { resolve(b); }, 'image/jpeg', q);
         });
+    }
+
+    // Get current face bbox relative to capture canvas (for server-side optimization)
+    function getFaceBoxForServer() {
+        if (!state.mpBoxCanvas || !canvas.width || !canvas.height) return null;
+        
+        // Map from overlay canvas coordinates to capture canvas coordinates
+        var scaleX = CAPTURE_W / canvas.width;
+        var scaleY = CAPTURE_H / canvas.height;
+        
+        var box = state.mpBoxCanvas;
+        return {
+            x: Math.round(box.x * scaleX),
+            y: Math.round(box.y * scaleY),
+            w: Math.round(box.w * scaleX),
+            h: Math.round(box.h * scaleY)
+        };
     }
 
     // =========
@@ -1402,7 +1438,7 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
     // =========
     // attendance submit
-    // OPT-09: AbortController cancels any stale in-flight request
+    // OPT-SPEED-02: Send face bbox to server so it can skip detection (saves ~150ms)
     // =========
     function submitAttendance(blob) {
         if (state.attendAbortCtrl) {
@@ -1421,6 +1457,15 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
         if (state.gps.lat      != null) fd.append('lat',      state.gps.lat);
         if (state.gps.lon      != null) fd.append('lon',      state.gps.lon);
         if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
+        
+        // Send face bbox so server can skip detection (major speedup)
+        var faceBox = getFaceBoxForServer();
+        if (faceBox) {
+            fd.append('faceX', faceBox.x);
+            fd.append('faceY', faceBox.y);
+            fd.append('faceW', faceBox.w);
+            fd.append('faceH', faceBox.h);
+        }
 
         return fetch(EP.attend, { method: 'POST', body: fd, credentials: 'same-origin', signal: signal })
             .then(function (r) {
@@ -1501,15 +1546,123 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
     }
 
     // =========
+    // ULTRA-FAST: WebSocket real-time preview
+    // Shows who's detected BEFORE they scan!
+    // =========
+    function initFastPreview() {
+        if (!CFG.fastPreview.enabled) return;
+        if (!window.WebSocket) return;
+        if (state.fastWs && state.fastWs.readyState === WebSocket.OPEN) return;
+
+        try {
+            var ws = new WebSocket(CFG.fastPreview.wsUrl);
+            
+            ws.onopen = function() {
+                log('Fast preview WebSocket connected');
+                state.fastPreviewResult = null;
+            };
+            
+            ws.onmessage = function(e) {
+                try {
+                    var r = JSON.parse(e.data);
+                    state.fastPreviewScanning = false;
+                    
+                    if (r.recognized && r.confidence >= CFG.fastPreview.confidenceThreshold) {
+                        // HIGH CONFIDENCE: Show name immediately!
+                        state.fastPreviewResult = {
+                            name: r.employeeName,
+                            confidence: r.confidence,
+                            employeeId: r.employeeId
+                        };
+                        // Update UI with preview name
+                        if (!state.liveInFlight && state.faceStatus === 'good') {
+                            setPrompt('Hello ' + r.employeeName.split(',')[0] + '!', 'Tap to scan or just hold still.');
+                        }
+                    } else {
+                        state.fastPreviewResult = null;
+                    }
+                } catch (ex) {
+                    state.fastPreviewScanning = false;
+                }
+            };
+            
+            ws.onerror = function(e) {
+                log('Fast preview WebSocket error', e);
+                state.fastPreviewScanning = false;
+            };
+            
+            ws.onclose = function() {
+                log('Fast preview WebSocket closed');
+                state.fastWs = null;
+                state.fastPreviewResult = null;
+                // Reconnect after delay
+                setTimeout(initFastPreview, 5000);
+            };
+            
+            state.fastWs = ws;
+        } catch (e) {
+            log('Failed to init fast preview', e);
+        }
+    }
+
+    function doFastPreview() {
+        if (!CFG.fastPreview.enabled) return;
+        if (!state.fastWs || state.fastWs.readyState !== WebSocket.OPEN) {
+            initFastPreview();
+            return;
+        }
+        if (state.fastPreviewScanning) return;
+        if (!state.mpBoxCanvas || state.faceStatus !== 'good') return;
+        
+        var now = Date.now();
+        if (now - state.fastPreviewLastAt < CFG.fastPreview.previewIntervalMs) return;
+        state.fastPreviewLastAt = now;
+        
+        // Capture small image for preview
+        var faceBox = getFaceBoxForServer();
+        if (!faceBox) return;
+        
+        state.fastPreviewScanning = true;
+        
+        captureCanvas.toBlob(function(blob) {
+            if (!blob) {
+                state.fastPreviewScanning = false;
+                return;
+            }
+            
+            var reader = new FileReader();
+            reader.onloadend = function() {
+                var base64 = reader.result;
+                var msg = JSON.stringify({
+                    action: 'recognize',
+                    imageBase64: base64,
+                    faceX: faceBox.x,
+                    faceY: faceBox.y,
+                    faceW: faceBox.w,
+                    faceH: faceBox.h
+                });
+                
+                try {
+                    state.fastWs.send(msg);
+                } catch (e) {
+                    state.fastPreviewScanning = false;
+                }
+            };
+            reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.50); // Lower quality for preview (faster)
+    }
+
+    // =========
     // camera start
+    // OPT-SPEED-03: Lower camera resolution for faster processing
     // =========
     function startCamera() {
         return navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: 'user',
-                width:      { ideal: 640, max: 640 },
-                height:     { ideal: 480, max: 480 },
-                frameRate:  { ideal: 15, max: 15 },
+                width:      { ideal: 480, max: 640 },
+                height:     { ideal: 360, max: 480 },
+                frameRate:  { ideal: 15, max: 20 },
             },
             audio: false,
         }).then(function (stream) {
@@ -1588,6 +1741,9 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                     if (now < (state.scanBlockUntil || 0)) { safeSetPrompt('Please wait.', 'Next scan ready soon.'); updateEta(true); return; }
                     if (state.mpMode !== 'tasks') { safeSetPrompt('System not ready.', 'Face detection unavailable.'); updateEta(true); return; }
 
+                    // ULTRA-FAST PREVIEW: Try to recognize face in background
+                    doFastPreview();
+
                     if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
                         captureFrameBlob().then(function (blob) {
                             if (!blob) return;
@@ -1643,6 +1799,7 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 drawLoop();
                 localSenseLoop();
                 loop();
+                initFastPreview(); // Start ultra-fast preview
             })
             .catch(function (e) {
                 setIdleUi(true);

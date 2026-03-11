@@ -1,12 +1,11 @@
 ﻿using System;
-using System.IO;
 using System.Linq;
-using System.Web.Hosting;
 using System.Web.Mvc;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -77,11 +76,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                     vm.DatabaseHealthy = false;
                 }
 
-                vm.LivenessModelLoaded = CheckFileExists(
+                vm.LivenessModelLoaded = FileSystemHelper.FileExists(
                     AppSettings.GetString("Biometrics:LivenessModelPath",
                         "~/App_Data/models/liveness/minifasnet.onnx"));
 
-                vm.DlibModelsLoaded = CheckDlibModelsPresent(
+                vm.DlibModelsLoaded = FileSystemHelper.DlibModelsPresent(
                     AppSettings.GetString("Biometrics:DlibModelsDir",
                         "~/App_Data/models/dlib"));
 
@@ -172,29 +171,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
             return RedirectToAction("Index");
         }
-
-        private static bool CheckFileExists(string virtualPath)
-        {
-            if (string.IsNullOrWhiteSpace(virtualPath)) return false;
-            try
-            {
-                var abs = HostingEnvironment.MapPath(virtualPath);
-                return !string.IsNullOrEmpty(abs) && System.IO.File.Exists(abs);
-            }
-            catch { return false; }
-        }
-
-        private static bool CheckDlibModelsPresent(string virtualDir)
-        {
-            if (string.IsNullOrWhiteSpace(virtualDir)) return false;
-            try
-            {
-                var abs = HostingEnvironment.MapPath(virtualDir);
-                if (string.IsNullOrEmpty(abs) || !System.IO.Directory.Exists(abs)) return false;
-                var dat = System.IO.Directory.GetFiles(abs, "*.dat", System.IO.SearchOption.TopDirectoryOnly);
-                return dat.Length >= 2;
-            }
-            catch { return false; }
-        }
+        // FileSystemHelper now provides CheckFileExists and DlibModelsPresent
     }
 }

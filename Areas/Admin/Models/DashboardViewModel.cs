@@ -37,7 +37,6 @@ namespace FaceAttend.Areas.Admin.Models
 
         // ── Display helpers ──────────────────────────────────────────────────
         public string TodayDateDisplay => TimeZoneHelper.NowLocal().ToString("dddd, MMM dd, yyyy");
-        public int    TotalTodayScans  => TodayTimeIns + TodayTimeOuts;
     }
 
     /// <summary>
@@ -56,15 +55,5 @@ namespace FaceAttend.Areas.Admin.Models
         public string EventType        { get; set; }
         public string OfficeName       { get; set; }
         public bool   NeedsReview      { get; set; }
-
-        public string EventTypeBadgeClass
-        {
-            get
-            {
-                if (string.Equals(EventType, "IN",  StringComparison.OrdinalIgnoreCase)) return "bg-success";
-                if (string.Equals(EventType, "OUT", StringComparison.OrdinalIgnoreCase)) return "bg-warning";
-                return "bg-secondary";
-            }
-        }
     }
 }

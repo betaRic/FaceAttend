@@ -29,7 +29,6 @@ namespace FaceAttend
         private const int WarmUpStateComplete = 1;
         private const int WarmUpStateFailed = -1;
 
-        private const string WarmUpMessageNotStarted = "NOT_STARTED";
         private const string WarmUpMessageRunning = "RUNNING";
         private const string WarmUpMessageComplete = "COMPLETE";
         private const string WarmUpMessageTimeout = "TIMEOUT";
@@ -38,7 +37,7 @@ namespace FaceAttend
         private static readonly TimeSpan WarmUpTimeout = TimeSpan.FromMinutes(5);
 
         private static volatile int _warmUpState = WarmUpStateRunning;
-        private static string _warmUpMessage = WarmUpMessageNotStarted;
+        private static string _warmUpMessage = WarmUpMessageRunning;
 
         public static int WarmUpState
         {
@@ -288,6 +287,20 @@ namespace FaceAttend
                     "[Application_Start] Employee face index preload failed: " +
                     ex.Message + " | Fallback: rebuild on first employee scan.");
             }
+
+            // ULTRA-FAST: Pre-load all faces into RAM for instant recognition
+            try
+            {
+                FaceAttend.Services.Biometrics.FastFaceMatcher.Initialize();
+                System.Diagnostics.Trace.TraceInformation(
+                    "[Application_Start] ULTRA-FAST face matcher loaded. " +
+                    FaceAttend.Services.Biometrics.FastFaceMatcher.GetStats()?.ToString());
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "[Application_Start] Fast face matcher failed: " + ex.Message);
+            }
         }
 
         // =====================================================================
@@ -335,10 +348,84 @@ namespace FaceAttend
         //   - Iwasan ang infinite loop kapag error page mismo ang nag-error
         //   - Separate admin and non-admin error pages
         // =====================================================================
+        // =====================================================================
+        // Global error handler
+        // ---------------------------------------------------------------------
+        // Layunin: I-handle ang mga unhandled exceptions at i-log ang mga ito
+        // para madaling i-debug kapag may problema.
+        // 
+        // GINAGAWA:
+        //   1. Kunin ang last error mula sa Server
+        //   2. I-log ang error sa Trace (makikita sa logs)
+        //   3. Kung local debugging, hayaan ang Yellow Screen of Death
+        //   4. Kung production at hindi Admin area, redirect sa error page
+        // 
+        // TANDAAN: Admin area may sariling error handler (HandleAdminErrorAttribute)
+        // para hindi maapektuhan ang buong admin kapag may error sa isang page.
+        // =====================================================================
         protected void Application_Error()
         {
+            var ex = Server.GetLastError();
+            var httpEx = ex as HttpException;
+            var statusCode = httpEx?.GetHttpCode() ?? 500;
+            
+            // I-log ang error para makita sa server logs
+            System.Diagnostics.Trace.TraceError($"[Application_Error] {statusCode}: {ex?.Message}");
+            
+            // Kung local debugging at enabled ang debug mode, 
+            // hayaan ang default ASP.NET error page (Yellow Screen of Death)
+            // para makita ng developer ang full error details
+            if (HttpContext.Current?.IsDebuggingEnabled == true && 
+                Request.IsLocal)
+            {
+                return; // Hayaan ang default error handling
+            }
+
+            // CHECK: Kung Admin area, hayaan ang HandleAdminErrorAttribute ang bahala
+            // para per-page lang ang error handling, hindi buong admin
+            var routeData = HttpContext.Current?.Request?.RequestContext?.RouteData;
+            var area = routeData?.DataTokens["area"] as string;
+            if (!string.IsNullOrEmpty(area) && area.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                // Admin area has its own error handling via HandleAdminErrorAttribute
+                // Let it handle the exception instead of redirecting
+                return;
+            }
+            
+            // Clear the error para hindi na mag-propagate pa
+            Server.ClearError();
             Response.TrySkipIisCustomErrors = true;
-            return;
+            
+            // I-redirect sa tamang error page base sa status code
+            string action;
+            switch (statusCode)
+            {
+                case 404:
+                    action = "NotFound";
+                    break;
+                case 403:
+                    action = "Forbidden";
+                    break;
+                case 429:
+                    action = "TooManyRequests";
+                    break;
+                case 400:
+                    action = "BadRequest";
+                    break;
+                default:
+                    action = "Index";
+                    break;
+            }
+            
+            try
+            {
+                Response.Redirect($"~/Error/{action}");
+            }
+            catch
+            {
+                // Kung nag-fail ang redirect, hayaan na lang
+                // hindi na natin pwedeng i-redirect ulit dito
+            }
         }
         // =====================================================================
         // EndRequest 404 handling
@@ -364,10 +451,7 @@ namespace FaceAttend
                 return;
             }
 
-            bool isAdmin = IsAdminRequest(Request);
-            string target = isAdmin
-                ? "~/Admin/Error/NotFound"
-                : "~/Error/NotFound";
+            string target = "~/Error/NotFound";
 
             Response.TrySkipIisCustomErrors = true;
             Context.Items["__fa_error_handled"] = true;
@@ -489,50 +573,6 @@ namespace FaceAttend
                    rawUrl.StartsWith(
                        VirtualPathUtility.ToAbsolute("~/Admin/Error"),
                        StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static int ResolveHttpStatusCode(Exception ex)
-        {
-            if (ex == null) return 500;
-
-            var httpEx = ex as HttpException;
-            if (httpEx != null)
-            {
-                return httpEx.GetHttpCode();
-            }
-
-            return 500;
-        }
-
-        private static string BuildErrorRoute(bool isAdmin, string action)
-        {
-            return isAdmin
-                ? string.Format("~/Admin/Error/{0}", action)
-                : string.Format("~/Error/{0}", action);
-        }
-
-        private static bool IsAdminRequest(HttpRequest request)
-        {
-            if (request == null) return false;
-
-            var adminRoot = VirtualPathUtility.ToAbsolute("~/Admin");
-            var path = request.Path ?? string.Empty;
-
-            return path.StartsWith(adminRoot, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private static string MapStatusToAction(int statusCode)
-        {
-            switch (statusCode)
-            {
-                case 400: return "BadRequest";
-                case 401: return "Forbidden";
-                case 403: return "Forbidden";
-                case 404: return "NotFound";
-                case 429: return "TooManyRequests";
-                case 503: return "Unavailable";
-                default: return "Index";
-            }
         }
     }
 }

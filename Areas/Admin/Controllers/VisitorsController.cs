@@ -12,6 +12,7 @@ using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Helpers;
 using FaceAttend.Services.Security;
 
 namespace FaceAttend.Areas.Admin.Controllers
@@ -152,13 +153,23 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var v = db.Visitors.FirstOrDefault(x => x.Id == id);
                 if (v == null) return HttpNotFound();
 
-                v.IsActive = false;
+                var visitorName = v.Name;
+
+                // PERMANENT DELETION: Delete all visitor logs first
+                var visitorLogs = db.VisitorLogs.Where(vl => vl.VisitorId == id).ToList();
+                foreach (var log in visitorLogs)
+                {
+                    db.VisitorLogs.Remove(log);
+                }
+
+                // Delete visitor record permanently
+                db.Visitors.Remove(v);
                 db.SaveChanges();
 
                 VisitorFaceIndex.Invalidate();
             }
 
-            TempData["msg"] = "Visitor deactivated.";
+            TempData["msg"] = "Visitor permanently deleted.";
             TempData["msgKind"] = "success";
             return RedirectToAction("Index");
         }
@@ -540,14 +551,14 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 foreach (var r in rows)
                 {
-                    sb.AppendLine(string.Join(",", new[]
+                    sb.AppendLine(CsvHelper.JoinCsv(new[]
                     {
-                        EscapeCsv(TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss")),
-                        EscapeCsv(SafeCell(r.VisitorName ?? "")),
-                        EscapeCsv(r.VisitorId.HasValue ? "YES" : "NO"),
-                        EscapeCsv(SafeCell(r.OfficeName ?? "")),
-                        EscapeCsv(SafeCell(r.Purpose ?? "")),
-                        EscapeCsv(SafeCell(r.Source ?? ""))
+                        TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss"),
+                        CsvHelper.SanitizeAndEscape(r.VisitorName ?? ""),
+                        r.VisitorId.HasValue ? "YES" : "NO",
+                        CsvHelper.SanitizeAndEscape(r.OfficeName ?? ""),
+                        CsvHelper.SanitizeAndEscape(r.Purpose ?? ""),
+                        CsvHelper.SanitizeAndEscape(r.Source ?? "")
                     }));
                 }
 
@@ -573,23 +584,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             return RedirectToAction("Logs");
         }
 
-        // Helpers
-
-        private static string SafeCell(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var t = s.Trim();
-            if (t.StartsWith("=") || t.StartsWith("+") || t.StartsWith("-") || t.StartsWith("@"))
-                return "'" + t;
-            return t;
-        }
-
-        private static string EscapeCsv(string s)
-        {
-            if (s == null) s = "";
-            var needs = s.Contains(",") || s.Contains("\"") || s.Contains("\n") || s.Contains("\r");
-            s = s.Replace("\"", "\"\"");
-            return needs ? "\"" + s + "\"" : s;
-        }
+        // CSV helpers moved to FaceAttend.Services.Helpers.CsvHelper
     }
 }

@@ -164,31 +164,5 @@ namespace FaceAttend.Services
             return s.Length <= maxLen ? s : s.Substring(0, maxLen);
         }
 
-        /// <summary>
-        /// Prevents CSV formula injection in visitor names by prepending a single
-        /// quote to values that start with a formula trigger character.
-        /// </summary>
-        private static string SanitiseName(string s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return s;
-            s = s.Trim();
-            if (s.Length > 0 &&
-                (s[0] == '=' || s[0] == '+' || s[0] == '-' || s[0] == '@'))
-                s = "'" + s;
-            return s;
-        }
-
-        /// <summary>
-        /// Strips and sanitises the purpose field.
-        /// </summary>
-        private static string SanitisePurpose(string s)
-        {
-            if (string.IsNullOrWhiteSpace(s)) return (s ?? "").Trim();
-            s = s.Trim();
-            if (s.Length > 0 &&
-                (s[0] == '=' || s[0] == '+' || s[0] == '-' || s[0] == '@'))
-                s = "'" + s;
-            return s;
-        }
     }
 }

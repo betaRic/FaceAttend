@@ -191,22 +191,20 @@
                                            title="Edit">
                                             <i class="fa-solid fa-pen" aria-hidden="true"></i>
                                         </a>
-                                        @if (v.IsActive)
+                                        @using (Html.BeginForm("Deactivate", "Visitors", FormMethod.Post, new { area = "Admin", @class = "d-inline" }))
                                         {
-                                            using (Html.BeginForm("Deactivate", "Visitors", FormMethod.Post, new { area = "Admin", @class = "d-inline" }))
-                                            {
-                                                @Html.AntiForgeryToken()
-                                                <input type="hidden" name="id" value="@v.Id" />
-                                                <button class="btn btn-sm btn-outline-danger"
-                                                        type="submit"
-                                                        data-confirm="Deactivate this visitor?"
-                                                        data-confirm-icon="warning"
-                                                        title="Deactivate">
-                                                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                                                </button>
-                                            }
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@v.Id" />
+                                            <button class="btn btn-sm btn-outline-danger"
+                                                    type="submit"
+                                                    data-confirm="PERMANENTLY DELETE this visitor?"
+                                                    data-confirm-text="WARNING: This will permanently delete the visitor and all their visit records. This action cannot be undone."
+                                                    data-confirm-icon="error"
+                                                    title="Delete Permanently">
+                                                <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                            </button>
                                         }
-</div>
+                                    </div>
                                 </td>
                             </tr>
                         }

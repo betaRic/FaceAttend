@@ -30,7 +30,9 @@ namespace FaceAttend.Filters
             var csp = AppSettings.GetString(
                 "Security:Csp",
                 "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data:; " +
-                "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self'");
+                "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+                "font-src 'self' https://fonts.gstatic.com; " +
+                "script-src 'self' 'unsafe-inline'; connect-src 'self'");
 
             var cspReportOnly = AppSettings.GetBool("Security:CspReportOnly", true);
             h[cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy"] = csp;

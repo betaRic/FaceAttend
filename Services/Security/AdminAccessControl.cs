@@ -47,9 +47,6 @@ namespace FaceAttend.Services.Security
         public static bool IsAllowed(string clientIp)
         {
             // Emergency bypass ay palaging disabled — tingnan ang CheckEmergencyBypass().
-            if (CheckEmergencyBypass())
-                return true;
-
             // Config allowlist — kung walang nilista, pinapayagan ang lahat.
             var allowedRanges = GetAllowedRanges();
             if (string.IsNullOrEmpty(allowedRanges))
@@ -79,34 +76,6 @@ namespace FaceAttend.Services.Security
                 return env.Trim();
 
             return (AppSettings.GetString("Admin:AllowedIpRanges", "") ?? "").Trim();
-        }
-
-        /// <summary>
-        /// SEC-03 FIX: Emergency bypass ay PERMANENTENG DISABLED.
-        ///
-        /// Ang dati ay nagche-check ng ~/App_Data/emergency_bypass.txt file —
-        /// kung nandoon ang file at may valid na expiry date, lahat ng
-        /// IP restrictions ay nabe-bypass.
-        ///
-        /// BAKIT PINABABA:
-        ///   Sinumang may write access sa App_Data (IIS worker process,
-        ///   compromised file upload, atbp.) ay pwedeng gumawa ng file na ito
-        ///   at makakuha ng admin access mula sa kahit saan sa internet.
-        ///   Hindi ito acceptable para sa isang government system na nag-iingat
-        ///   ng biometric at attendance data ng mga empleyado.
-        ///
-        /// ALTERNATIBO SA EMERGENCY:
-        ///   Kapag hindi ma-access ang admin (IP restriction):
-        ///   1. I-update ang Admin:AllowedIpRanges sa Web.config
-        ///      mula sa server mismo (RDP/direct server access)
-        ///   2. O mag-restart ng IIS app pool pagkatapos baguhin ang config
-        ///
-        /// HUWAG I-UNCOMMENT / I-RESTORE ANG LUMANG CODE.
-        /// </summary>
-        private static bool CheckEmergencyBypass()
-        {
-            // Palaging false — walang bypass ang allowed sa production.
-            return false;
         }
 
         /// <summary>

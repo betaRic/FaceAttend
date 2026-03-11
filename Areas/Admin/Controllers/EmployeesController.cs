@@ -7,7 +7,6 @@ using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using System.Globalization;
-using Newtonsoft.Json;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -276,40 +275,34 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var emp = db.Employees.FirstOrDefault(e => e.Id == id);
                 if (emp == null) return HttpNotFound();
 
-                var oldValues = new
+                var employeeId = emp.EmployeeId;
+                var employeeName = emp.FirstName + " " + emp.LastName;
+
+                // PERMANENT DELETION: Delete all attendance logs first
+                var attendanceLogs = db.AttendanceLogs.Where(a => a.EmployeeId == id).ToList();
+                foreach (var log in attendanceLogs)
                 {
-                    emp.EmployeeId,
-                    emp.FirstName,
-                    emp.MiddleName,
-                    emp.LastName,
-                    emp.Position,
-                    emp.Department,
-                    emp.OfficeId,
-                    emp.IsFlexi,
-                    emp.IsActive
-                };
+                    db.AttendanceLogs.Remove(log);
+                }
 
-                emp.IsActive = false;
-                emp.LastModifiedDate = DateTime.UtcNow;
-                emp.ModifiedBy = AuditHelper.GetActorIp(Request);
-
+                // Delete employee record permanently
+                db.Employees.Remove(emp);
                 db.SaveChanges();
 
+                // Log the permanent deletion
                 AuditHelper.Log(
                     db,
                     Request,
-                    AuditHelper.ActionEmployeeDeactivate,
+                    "EMPLOYEE_DELETE_PERMANENT",
                     "Employee",
-                    emp.EmployeeId,
-                    "Nag-deactivate ng employee record.",
-                    oldValues,
-                    new
-                    {
-                        emp.EmployeeId,
-                        emp.IsActive
-                    });
+                    employeeId,
+                    "Permanently deleted employee: " + employeeName,
+                    null,
+                    null);
 
+                // Invalidate caches
                 EmployeeFaceIndex.Invalidate();
+                FastFaceMatcher.ReloadFromDatabase();
 
                 return RedirectToAction("Index");
             }

@@ -59,6 +59,12 @@ namespace FaceAttend.Services.Biometrics
             public int Top    { get; set; }
             public int Width  { get; set; }
             public int Height { get; set; }
+            
+            /// <summary>
+            /// Calculated area of the face box (Width * Height).
+            /// Used for selecting the largest face when multiple faces are detected.
+            /// </summary>
+            public int Area => Width * Height;
         }
 
         // ─── Pool state ───────────────────────────────────────────────────────────
@@ -355,55 +361,6 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        /// <summary>
-        /// COMPATIBILITY SHIM — para sa mga lumang caller na gumagamit ng
-        /// GetSingleFaceEncodingFromFile().
-        ///
-        /// BAKIT KAILANGAN ITO:
-        ///   Nang na-refactor ang DlibBiometrics sa pool pattern (Phase 2),
-        ///   ang lumang one-shot GetSingleFaceEncodingFromFile() ay pinalitan ng
-        ///   dalawang hakbang: TryDetectSingleFaceFromFile + TryEncodeFromFileWithLocation.
-        ///   Gayunman, tatlong caller ang hindi pa na-update:
-        ///     - BiometricsController.cs (line 124)
-        ///     - VisitorsController.cs (line 227)
-        ///     - VisitorsController.cs (line 375)
-        ///
-        ///   Imbes na baguhin ang tatlong controller nang sabay, mas ligtas na
-        ///   magdagdag ng shim dito para mapanatiling consistent ang behavior.
-        ///
-        /// PAANO GUMAGANA:
-        ///   1. Mag-detect ng isang mukha (TryDetectSingleFaceFromFile)
-        ///   2. I-encode ang detected face (TryEncodeFromFileWithLocation)
-        ///   3. Ibalik ang 128-dim embedding, o null kung may error
-        ///
-        /// BABALA:
-        ///   Gumagamit ito ng DALAWANG pool slots nang sunud-sunod (hindi sabay).
-        ///   Sa mataas na concurrent load, mas magandang gamitin ang
-        ///   TryDetectSingleFaceFromFile + TryEncodeFromFileWithLocation directly
-        ///   para mas mababa ang pool pressure.
-        ///
-        /// TODO: I-migrate ang tatlong caller papunta sa bagong API sa susunod na sprint.
-        /// </summary>
-        /// <param name="imagePath">Absolute path ng image file</param>
-        /// <param name="error">Error code kung null ang return value</param>
-        /// <returns>128-dim face embedding, o null kung nabigo</returns>
-        public double[] GetSingleFaceEncodingFromFile(string imagePath, out string error)
-        {
-            // Hakbang 1: I-detect ang iisang mukha at kumuha ng Location.
-            FaceBox  faceBox;
-            Location faceLocation;
-
-            if (!TryDetectSingleFaceFromFile(imagePath, out faceBox, out faceLocation, out error))
-                return null; // error ay na-set na ng TryDetectSingleFaceFromFile
-
-            // Hakbang 2: I-encode ang detected face gamit ang kilalang Location.
-            double[] embedding;
-            if (!TryEncodeFromFileWithLocation(imagePath, faceLocation, out embedding, out error))
-                return null; // error ay na-set na ng TryEncodeFromFileWithLocation
-
-            return embedding;
-        }
-
         // ─── Disposal ─────────────────────────────────────────────────────────────
 
         /// <summary>
@@ -431,6 +388,20 @@ namespace FaceAttend.Services.Biometrics
                 try { _semaphore?.Dispose(); } catch { /* best effort */ }
                 _semaphore = null;
             }
+        }
+
+        /// <summary>
+        /// Returns current pool status for diagnostics.
+        /// </summary>
+        public static object GetPoolStatus()
+        {
+            return new
+            {
+                poolReady = _poolReady,
+                modelsDir = _absModelsDir,
+                currentCount = _pool?.Count ?? 0,
+                detectorModel = _model.ToString()
+            };
         }
 
         // ─── Static helpers ───────────────────────────────────────────────────────

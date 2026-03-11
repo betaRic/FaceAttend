@@ -6,11 +6,32 @@ using FaceAttend.Services.Biometrics;
 namespace FaceAttend.Services
 {
     /// <summary>
-    /// Mabilis na health/readiness probe para sa IIS, reverse proxy, at WAF origin checks.
-    /// Iwas tayo sa sobrang bigat na checks dito. Ang goal ay:
-    /// - mabilis
-    /// - deterministic
-    /// - hindi nagwo-warm ng models kada tawag
+    /// SAGUPA: Mabilis na health/readiness probe para sa IIS at load balancers.
+    /// 
+    /// PAGLALARAWAN (Description):
+    ///   Nagche-check ng system health nang mabilis para malaman ng:
+    ///   - IIS kung ready bang tanggapin ang requests
+    ///   - Load balancers kung i-reroute pa ba ang traffic
+    ///   - Monitoring systems kung may problema
+    /// 
+    /// GINAGAMIT SA:
+    ///   - HealthController.Index() - /health endpoint
+    ///   - Application startup validation
+    /// 
+    /// PRINCIPLES:
+    ///   1. MABILIS - hindi dapat tumagal ng higit sa 500ms
+    ///   2. LIGHTWEIGHT - hindi naglo-load ng ML models
+    ///   3. DETERMINISTIC - consistent ang resulta
+    /// 
+    /// CHECKED COMPONENTS:
+    ///   ✓ Database connectivity
+    ///   ✓ Dlib models presence (shape_predictor_68_face_landmarks.dat, etc.)
+    ///   ✓ Liveness model presence (minifasnet.onnx)
+    ///   ✓ Warm-up state completion
+    ///   ✓ Circuit breaker state
+    /// 
+    /// ILOKANO: "Ti HealthProbe ket kasla 'thermometer' ti sistema - 
+    ///           makitana no adda nagas-ang wenno nasayaat ti sistema"
     /// </summary>
     public static class HealthProbe
     {

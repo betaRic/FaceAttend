@@ -1,4 +1,4 @@
-@model Employee
+﻿@model Employee
 @{
     ViewBag.Title = "Enroll Face";
 }
@@ -18,14 +18,15 @@
 }
 
 @section head {
-    @Styles.Render("~/Content/enroll")
+    @Styles.Render("~/Content/admin-enroll")
+    <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/sweetalert2/sweetalert2.min.css")" />
 }
 
 <div class="fa-enroll-page">
 <div class="container-xl" style="max-width:1100px;">
 
     
-@* ───────────────────────── Hero Card ─────────────────────────  *@
+@* --------------------------------------------------------------------------- Hero Card ---------------------------------------------------------------------------  *@
 
     <div class="fa-hero">
         <div class="fa-avatar" aria-hidden="true">@initials</div>
@@ -63,7 +64,7 @@
     </div>
 
     
-@* ───────────────────────── Step Breadcrumb ───────────────────  *@
+@* --------------------------------------------------------------------------- Step Breadcrumb ---------------------------------------------------------  *@
 
     <div class="fa-steps" id="faSteps">
         <div class="fa-step active" data-step="1">
@@ -85,7 +86,7 @@
     </div>
 
     
-@* ───────────────────────── Main Card ─────────────────────────  *@
+@* --------------------------------------------------------------------------- Main Card ---------------------------------------------------------------------------  *@
 
     <div class="fa-card">
 
@@ -104,7 +105,7 @@
              data-min-good-frames="3"
              data-max-keep-frames="5">
 
-            @* ─────── Wizard: choose method ───────  *@
+            @* --------------------- Wizard: choose method ---------------------  *@
 
             <div id="enrollWizard">
                 <div class="text-center mb-4">
@@ -148,14 +149,81 @@
                         </div>
                         <div class="fa-method-title">Upload Photos</div>
                         <div class="fa-method-desc">
-                            Choose 1–5 clear existing photos. Auto-verified and enrolled.
+                            Choose 1-5 clear existing photos. Auto-verified and enrolled.
                         </div>
                     </div>
                 </div>
             </div>
 
 
-            @* ─────── Live camera pane ───────  *@
+            @* --------------------- Success Overlay (hidden by default) ---------------------  *@
+
+            <div id="successOverlay" class="fa-success-overlay d-none">
+                <div class="fa-success-content">
+                    <div class="fa-success-icon">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <div class="fa-success-title">Enrollment Complete!</div>
+                    <div class="fa-success-message">
+                        Face biometric successfully enrolled for<br/>
+                        <strong>@fullName</strong>
+                    </div>
+                    <div class="fa-success-details" id="successDetails"></div>
+                    <div class="fa-success-actions">
+                        <a href="@Url.Action("Index", "Employees", new { area = "Admin" })" class="btn btn-primary">
+                            <i class="fa-solid fa-arrow-left me-2"></i>Back to Employee List
+                        </a>
+                        <a href="@Url.Action("Edit", "Employees", new { area = "Admin", id = Model.Id })" class="btn btn-outline-secondary">
+                            <i class="fa-solid fa-pen me-2"></i>Edit Employee
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+
+            @* --------------------- Processing Progress Modal ---------------------  *@
+
+            <div id="processingModal" class="fa-processing-modal d-none">
+                <div class="fa-processing-content">
+                    <div class="fa-processing-spinner">
+                        <i class="fa-solid fa-circle-notch fa-spin"></i>
+                    </div>
+                    <div class="fa-processing-title">Processing Enrollment...</div>
+                    <div class="fa-processing-status" id="processingStatus">Uploading images...</div>
+                    <div class="fa-processing-progress">
+                        <div class="fa-processing-bar" id="processingBar"></div>
+                    </div>
+                    <div class="fa-processing-percent" id="processingPercent">0%</div>
+                </div>
+            </div>
+
+
+            @* --------------------- Preview Before Save Modal ---------------------  *@
+
+            <div id="previewModal" class="fa-preview-modal d-none">
+                <div class="fa-preview-content">
+                    <div class="fa-preview-header">
+                        <i class="fa-solid fa-camera"></i>
+                        <span>Confirm Enrollment</span>
+                    </div>
+                    <div class="fa-preview-images" id="previewImages"></div>
+                    <div class="fa-preview-message">
+                        <i class="fa-solid fa-circle-check text-success"></i>
+                        <span><strong id="previewFaceCount">0</strong> good face(s) detected</span>
+                    </div>
+                    <div class="fa-preview-actions">
+                        <button type="button" class="btn btn-outline-secondary" id="previewRetakeBtn">
+                            <i class="fa-solid fa-rotate-left me-2"></i>Retake
+                        </button>
+                        <button type="button" class="btn btn-primary" id="previewConfirmBtn">
+                            <i class="fa-solid fa-check me-2"></i>Enroll Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+
+            @* --------------------- Live camera pane ---------------------  *@
 
             <div id="livePane" class="fa-pane">
 
@@ -175,7 +243,7 @@
                         <div class="fa-live-bar-wrap">
                             <div class="fa-live-bar-label">
                                 <span><i class="fa-solid fa-shield-halved fa-xs me-1"></i>Liveness</span>
-                                <span id="liveBarPct">—</span>
+                                <span id="liveBarPct">---</span>
                             </div>
                             <div class="fa-live-bar-track">
                                 <div class="fa-live-bar-fill" id="liveBarFill"></div>
@@ -245,7 +313,7 @@
                                 <i class="fa-solid fa-images fa-xs"></i>Samples Collected
                             </div>
                             <div style="font-size:1.8rem;font-weight:800;line-height:1;" id="sideCaptures">0</div>
-                            <div style="font-size:.78rem;color:var(--ea-muted);margin-top:.15rem;">minimum 3, keeps up to 5</div>
+                            <div style="font-size:.78rem;color:var(--ea-muted);margin-top:.15rem;">minimum 5, keeps up to 5</div>
                             <div class="progress mt-2" style="height:4px;border-radius:100px;">
                                 <div class="progress-bar bg-primary" id="capProgressBar" style="width:0%;transition:width .4s ease;"></div>
                             </div>
@@ -260,7 +328,7 @@
                             </div>
                             <ul class="fa-tips">
                                 <li><i class="fa-solid fa-sun fa-xs"></i>Good, even lighting</li>
-                                <li><i class="fa-solid fa-user fa-xs"></i>One face in frame only</li>
+                                <li><i class="fa-solid fa-user fa-xs"></i>Main face closest to camera</li>
                                 <li><i class="fa-solid fa-glasses fa-xs"></i>Remove sunglasses</li>
                                 <li><i class="fa-solid fa-arrows-to-dot fa-xs"></i>Face centered, fill frame</li>
                                 <li><i class="fa-solid fa-person-half-dress fa-xs"></i>Look directly at camera</li>
@@ -272,7 +340,7 @@
             </div>
 
 
-            @* ─────── Upload pane ───────  *@
+            @* --------------------- Upload pane ---------------------  *@
 
             <div id="uploadPane" class="fa-pane">
 
@@ -298,7 +366,7 @@
                             Select 1 to 5 clear, well-lit face photos.
                         </div>
                         <div class="fa-dropzone-rules">
-                            <span><i class="fa-solid fa-user-check"></i>One face per photo</span>
+                            <span><i class="fa-solid fa-user-check"></i>Main face in photo</span>
                             <span><i class="fa-solid fa-images"></i>Up to 5 files</span>
                             <span><i class="fa-brands fa-jpg"></i>JPG / PNG</span>
                         </div>
@@ -330,23 +398,23 @@
 @section scripts{
 
 <script>
-/* ════════════════════════════════════════════════════════════════════
-   FaceAttend — Enroll UI Enhancer
+/* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
+   FaceAttend --- Enroll UI Enhancer
    Works alongside admin-enroll.js (no modifications needed to it).
    Techniques used:
-     • innerHTML property monkey-patch → intercepts admin-enroll status writes
-     • Text parsing of status messages  → drives liveness bar & side panel
-     • MutationObserver on pane classes → drives step breadcrumb
-     • Custom drag-and-drop zone
-     • Back button wiring (replicates admin-enroll showWizard/showPane)
-   ════════════════════════════════════════════════════════════════════ */
+     --- innerHTML property monkey-patch --- intercepts admin-enroll status writes
+     --- Text parsing of status messages  --- drives liveness bar & side panel
+     --- MutationObserver on pane classes --- drives step breadcrumb
+     --- Custom drag-and-drop zone
+     --- Back button wiring (replicates admin-enroll showWizard/showPane)
+   -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
 (function () {
     'use strict';
 
-    /* ── DOM helpers ─────────────────────────────────────────────── */
+    /* ------ DOM helpers --------------------------------------------------------------------------------------------------------------------------------------------- */
     function el(id) { return document.getElementById(id); }
 
-    /* ── Cache DOM refs ──────────────────────────────────────────── */
+    /* ------ Cache DOM refs ------------------------------------------------------------------------------------------------------------------------------------ */
     var liveBarFill  = el('liveBarFill');
     var liveBarPct   = el('liveBarPct');
     var sideScore    = el('sideScore');
@@ -370,9 +438,9 @@
     var CAPTURE_TARGET = parseInt((rootEl && rootEl.getAttribute('data-min-good-frames')) || '3', 10);
     if (!isFinite(CAPTURE_TARGET) || CAPTURE_TARGET < 1) CAPTURE_TARGET = 3;
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        STEP INDICATOR
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     function setStep(n) {
         stepEls.forEach(function (s) {
             var sn = parseInt(s.getAttribute('data-step'), 10);
@@ -384,9 +452,9 @@
         if (divider2) divider2.classList.toggle('done', n > 2);
     }
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        LIVENESS BAR + SIDE PANEL
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     function updateLiveness(pct, kind) {
         // kind: 'pass' | 'warn' | 'fail' | null
         if (liveBarFill) {
@@ -407,9 +475,9 @@
         }
     }
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        CAPTURE PROGRESS DOTS
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     function setCaptures(n) {
         n = Math.max(0, parseInt(n, 10) || 0);
 
@@ -435,9 +503,9 @@
         if (sideCapCount) sideCapCount.textContent = n;
     }
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        VIDEO WRAP GLOW
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     function setVideoGlow(kind) {
         if (!videoWrap) return;
         videoWrap.classList.remove('border-success-glow', 'border-danger-glow', 'pulse-border');
@@ -446,9 +514,9 @@
         else if (kind === 'scan') videoWrap.classList.add('pulse-border');
     }
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        STATUS RENDERERS
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     function iconFor(k) {
         if (k === 'success') return '<i class="fa-solid fa-circle-check" aria-hidden="true"></i>';
         if (k === 'danger')  return '<i class="fa-solid fa-circle-xmark" aria-hidden="true"></i>';
@@ -457,14 +525,14 @@
     }
 
     /* Parse admin-enroll's liveness messages like:
-       "face ok — liveness: 0.87, hold still (1 more)."
-       "face ok — liveness: 0.52, improve lighting."        */
+       "face ok --- liveness: 0.87, hold still (1 more)."
+       "face ok --- liveness: 0.52, improve lighting."        */
     function parseLivenessFromText(text, kind) {
         // Extract raw float value from "liveness: X.XX"
         var m = text.match(/liveness[:\s]+([0-9]+\.?[0-9]*)/i);
         if (m) {
             var val = parseFloat(m[1]);
-            // If the value looks like it's already 0–1 range, convert to pct
+            // If the value looks like it's already 0-1 range, convert to pct
             var pct = val <= 1 ? Math.round(val * 100) : Math.round(val);
             var lvKind = kind === 'success' ? 'pass' : kind === 'warning' ? 'warn' : 'fail';
             updateLiveness(Math.min(100, pct), lvKind);
@@ -478,7 +546,7 @@
         var coll = text.match(/saving enrollment\s*\((\d+)\s*frame/i);
         if (coll) setCaptures(parseInt(coll[1], 10));
 
-        // Detect "enrollment saved" → step 3
+        // Detect "enrollment saved" --- step 3
         if (/enrollment saved/i.test(text)) {
             setStep(3);
             setCaptures(CAPTURE_TARGET);
@@ -523,11 +591,11 @@
         }
     }
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        MONKEY-PATCH innerHTML ON STATUS ELEMENTS
        Intercepts admin-enroll.js writes (alert-* divs) and
        re-routes them through our modern renderers.
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     var _proto = Element.prototype;
     var _origDescriptor = Object.getOwnPropertyDescriptor(_proto, 'innerHTML');
     var _origSet = _origDescriptor.set;
@@ -543,7 +611,7 @@
                     var kind = m[1] === 'primary' ? 'info' : m[1];
                     renderFn(m[2], kind);
                 } else {
-                    // Non-admin-enroll write — pass through
+                    // Non-admin-enroll write --- pass through
                     _origSet.call(this, html || '');
                 }
             },
@@ -554,10 +622,10 @@
     patchStatusEl(camStatusEl, renderCamStatus);
     patchStatusEl(upStatusEl,  renderUpStatus);
 
-    /* ═══════════════════════════════════════════════════════════════
-       PANE OBSERVER → STEP TRACKER
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
+       PANE OBSERVER --- STEP TRACKER
        admin-enroll toggles .d-none on livePane / uploadPane / wizard
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     var wizardEl = el('enrollWizard');
     var livePane = el('livePane');
     var upPane   = el('uploadPane');
@@ -575,7 +643,7 @@
         if (n) paneObs.observe(n, { attributes: true, attributeFilter: ['class', 'style'] });
     });
 
-    /* ── Bridge d-none ↔ fa-pane.active for CSS ──────────────────── */
+    /* ------ Bridge d-none --- fa-pane.active for CSS ------------------------------------------------------------ */
     function bridgeClass(pane) {
         if (!pane) return;
         new MutationObserver(function () {
@@ -585,10 +653,10 @@
     bridgeClass(livePane);
     bridgeClass(upPane);
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        BACK BUTTONS
        Replicate admin-enroll's showWizard(true) / showPane(x, false)
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     function goBack() {
         // Restore wizard
         if (wizardEl) { wizardEl.classList.remove('d-none'); wizardEl.style.display = ''; }
@@ -615,9 +683,9 @@
         setCaptures(0);
         setVideoGlow(null);
         if (liveBarFill) { liveBarFill.style.width = '0'; liveBarFill.className = 'fa-live-bar-fill'; }
-        if (liveBarPct)  liveBarPct.textContent = '—';
-        if (sideScore)   { sideScore.textContent = '—'; sideScore.className = 'fa-live-score-num'; }
-        if (sideLabel)   sideLabel.textContent = 'Waiting for scan…';
+        if (liveBarPct)  liveBarPct.textContent = '---';
+        if (sideScore)   { sideScore.textContent = '---'; sideScore.className = 'fa-live-score-num'; }
+        if (sideLabel)   sideLabel.textContent = 'Waiting for scan---';
         if (sideBadge)   sideBadge.style.display = 'none';
         if (camStatusEl) _origSet.call(camStatusEl, '');
     }
@@ -627,18 +695,18 @@
     if (backL) backL.addEventListener('click', goBack);
     if (backU) backU.addEventListener('click', goBack);
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        METHOD CARD KEYBOARD SUPPORT
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     document.querySelectorAll('.fa-method-card').forEach(function (card) {
         card.addEventListener('keydown', function (e) {
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click(); }
         });
     });
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        DRAG-AND-DROP DROPZONE
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     if (dropzone && fileInput) {
         dropzone.addEventListener('dragover', function (e) {
             e.preventDefault();
@@ -656,13 +724,13 @@
                     var dt = new DataTransfer();
                     Array.prototype.forEach.call(e.dataTransfer.files, function (f) { dt.items.add(f); });
                     fileInput.files = dt.files;
-                } catch (_) { /* older browsers — gracefully skip */ }
+                } catch (_) { /* older browsers --- gracefully skip */ }
                 fileInput.dispatchEvent(new Event('change', { bubbles: true }));
             }
         });
     }
 
-    /* ── File chip preview ───────────────────────────────────────── */
+    /* ------ File chip preview --------------------------------------------------------------------------------------------------------------------------- */
     if (fileInput && fileStrip) {
         fileInput.addEventListener('change', function () {
             _origSet.call(fileStrip, '');
@@ -672,15 +740,127 @@
                 var chip = document.createElement('div');
                 chip.className = 'fa-file-chip';
                 chip.innerHTML = '<i class="fa-solid ' + icon + '" aria-hidden="true"></i>' +
-                    '<span>' + f.name.replace(/(.{20})..+/, '$1…') + '</span>';
+                    '<span>' + f.name.replace(/(.{20})..+/, '$1---') + '</span>';
                 fileStrip.appendChild(chip);
             });
         });
     }
 
-    /* ═══════════════════════════════════════════════════════════════
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
+       SUCCESS OVERLAY & PROCESSING MODAL
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
+    var successOverlay   = el('successOverlay');
+    var processingModal  = el('processingModal');
+    var processingBar    = el('processingBar');
+    var processingStatus = el('processingStatus');
+    var processingPercent= el('processingPercent');
+    var successDetails   = el('successDetails');
+
+    function showProcessingModal(show) {
+        if (!processingModal) return;
+        processingModal.classList.toggle('d-none', !show);
+        if (show) {
+            // Reset progress
+            updateProcessingProgress(0, 'Initializing...');
+        }
+    }
+
+    function updateProcessingProgress(percent, status) {
+        if (processingBar) processingBar.style.width = percent + '%';
+        if (processingPercent) processingPercent.textContent = percent + '%';
+        if (processingStatus && status) processingStatus.textContent = status;
+    }
+
+    function showSuccessOverlay(details) {
+        if (!successOverlay) return;
+        if (successDetails && details) {
+            successDetails.innerHTML = details;
+        }
+        successOverlay.classList.remove('d-none');
+        // Stop camera
+        document.dispatchEvent(new CustomEvent('fa:stopCam'));
+        var camEl = el('cam');
+        if (camEl && camEl.srcObject) {
+            try { camEl.srcObject.getTracks().forEach(function (t) { t.stop(); }); } catch (_) { }
+            camEl.srcObject = null;
+        }
+    }
+
+    // Hook into status messages to detect enrollment phases
+    var _origRenderCamStatus = renderCamStatus;
+    renderCamStatus = function(text, kind) {
+        _origRenderCamStatus(text, kind);
+        
+        // Detect "uploading" - show processing modal
+        if (/uploading/i.test(text)) {
+            showProcessingModal(true);
+            updateProcessingProgress(25, 'Uploading images...');
+        }
+        
+        // Detect "saving enrollment" - update progress
+        if (/saving enrollment/i.test(text)) {
+            showProcessingModal(true);
+            updateProcessingProgress(75, 'Processing faces...');
+        }
+        
+        // Detect "enrollment saved" - show success
+        if (/enrollment saved/i.test(text)) {
+            updateProcessingProgress(100, 'Complete!');
+            setTimeout(function() {
+                showProcessingModal(false);
+                var match = text.match(/\[(\d+)\s*vector/i);
+                var vecInfo = match ? match[1] + ' face sample(s) saved' : '';
+                showSuccessOverlay(vecInfo);
+            }, 500);
+        }
+    };
+
+    // Also hook upload status
+    var _origRenderUpStatus = renderUpStatus;
+    renderUpStatus = function(text, kind) {
+        _origRenderUpStatus(text, kind);
+        
+        if (/uploading|processing/i.test(text)) {
+            showProcessingModal(true);
+            updateProcessingProgress(30, 'Uploading images...');
+        }
+        
+        if (/saved successfully/i.test(text)) {
+            updateProcessingProgress(100, 'Complete!');
+            setTimeout(function() {
+                showProcessingModal(false);
+                var match = text.match(/\[(\d+)\s*vector/i);
+                var vecInfo = match ? match[1] + ' face sample(s) saved' : '';
+                showSuccessOverlay(vecInfo);
+            }, 500);
+        }
+    };
+
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
+       MULTI-FACE WARNING
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
+    function showMultiFaceWarning(show) {
+        var existing = document.querySelector('.fa-multi-face-warning');
+        if (!show) {
+            if (existing) existing.remove();
+            return;
+        }
+        if (existing) return; // Already showing
+        
+        var warn = document.createElement('div');
+        warn.className = 'fa-multi-face-warning';
+        warn.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Multiple faces detected - using nearest person';
+        if (videoWrap) videoWrap.appendChild(warn);
+    }
+
+    // Listen for multi-face events from admin-enroll.js
+    document.addEventListener('fa:multiFaceWarning', function(e) {
+        showMultiFaceWarning(e.detail && e.detail.count > 1);
+    });
+
+    /* -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*-
        INITIAL STATE
-       ═══════════════════════════════════════════════════════════════ */
+       -*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*--*- */
     setStep(1);
     setCaptures(0);
 
@@ -689,3 +869,5 @@
 
 @Scripts.Render("~/bundles/adminEnroll")
 }
+
+

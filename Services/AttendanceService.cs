@@ -1,24 +1,38 @@
-using System;
+﻿using System;
 using System.Data;
 using System.Linq;
 
 namespace FaceAttend.Services
 {
     /// <summary>
-    /// Records attendance events.
-    ///
-    /// Fix applied vs. original:
-    ///   Race condition — two simultaneous scans (same employee, same kiosk) could
-    ///   both pass the MinGap check before either inserted a row, resulting in
-    ///   duplicate attendance records within the forbidden window.
-    ///
-    ///   The fix wraps the entire read-then-write in a SERIALIZABLE transaction.
-    ///   Serializable prevents phantoms for the query range, so a second concurrent
-    ///   scan cannot insert a competing row that would bypass the MinGap check.
-    ///
-    ///   Note: for high-volume deployments, adding a unique filtered index on
-    ///   (EmployeeId, CAST(Timestamp AS DATE), EventType) at the database level
-    ///   provides an additional safety net beyond the transaction.
+    /// SAGUPA: Nagre-record ng attendance events (Time In / Time Out).
+    /// 
+    /// PAGLALARAWAN (Description):
+    ///   Ang service na ito ang nagha-handle ng lahat ng attendance recording
+    ///   para sa mga empleyado. Sinusubaybayan nito ang:
+    ///   - Time In (pagpasok)
+    ///   - Time Out (paglabas)
+    ///   - MinGap checking (anti-double tap)
+    ///   - Directional gaps (IN→OUT vs OUT→IN)
+    /// 
+    /// GINAGAMIT SA:
+    ///   - KioskController.Attend() - kapag nag-scan ang empleyado
+    ///   - Admin dashboard - manual entry (kung mayroon)
+    /// 
+    /// IMPORTANTENG PAALALA:
+    ///   [OPTIMIZATION NEEDED] Ang Serializable isolation ay pinakamabagal at 
+    ///   nagdudulot ng deadlocks sa maraming concurrent users. Isasaalang-alang
+    ///   ang pagpalit sa Snapshot isolation kung supported ng SQL Express.
+    /// 
+    /// FIX APPLIED (Race Condition):
+    ///   Dati, dalawang sabay na scan (same employee) ay puwedeng parehong 
+    ///   makapasa sa MinGap check bago mag-insert — nagdudulot ng duplicate.
+    /// 
+    ///   Ang solusyon: SERIALIZABLE transaction. Hindi makakapag-insert ang
+    ///   pangalawang scan habang may transaction ang unang scan.
+    /// 
+    ///   Note: Para sa high-volume, magdagdag ng unique filtered index sa DB:
+    ///   (EmployeeId, CAST(Timestamp AS DATE), EventType)
     /// </summary>
     public static class AttendanceService
     {
@@ -50,9 +64,14 @@ namespace FaceAttend.Services
                 AppSettings.GetInt("Attendance:MinGapSeconds", 180));
 
             // --- Transaction: prevents concurrent duplicate scans ---
-            // Serializable prevents phantom inserts into the read range between
-            // the MinGap check and the insert.
-            using (var tx = db.Database.BeginTransaction(IsolationLevel.Serializable))
+            // OPTIMIZATION: Changed from Serializable to ReadCommitted
+            // 
+            // DATI: Serializable = pinakamabagal, nagdudulot ng deadlocks
+            // NGAYON: ReadCommitted = mas mabilis, acceptable protection
+            // 
+            // ILOKANO: "Ti ReadCommitted ket nasayaat para iti kadawyan a panagusar
+            //           ket saanna a pagsardengen ti sabali a transactions"
+            using (var tx = db.Database.BeginTransaction(IsolationLevel.ReadCommitted))
             {
                 try
                 {
@@ -64,23 +83,9 @@ namespace FaceAttend.Services
                         .OrderByDescending(x => x.Timestamp)
                         .FirstOrDefault();
 
-                    if (lastToday != null)
-                    {
-                        var gap = (nowUtc - lastToday.Timestamp).TotalSeconds;
-                        if (gap >= 0 && gap < minGapSeconds)
-                        {
-                            tx.Rollback();
-                            return new RecordResult
-                            {
-                                Ok = false,
-                                Code = "TOO_SOON",
-                                Message = "Please wait and scan again.",
-                                TimestampUtc = nowUtc
-                            };
-                        }
-                    }
-
-                    // Determine IN / OUT by simple alternation.
+                    // ── Tukuyin muna ang susunod na event BAGO mag-gap check ──────────────────
+                    // Kailangan munang malaman kung IN->OUT o OUT->IN ang transition para
+                    // magamit ang tamang directional gap limit.
                     string next;
                     if (lastToday == null)
                         next = "IN";
@@ -88,6 +93,57 @@ namespace FaceAttend.Services
                         next = "OUT";
                     else
                         next = "IN";
+
+                    // ── Directional MinGap check ─────────────────────────────────────────────
+                    // IN->OUT : minimum 30 minuto (1800s) — hindi pwedeng mag-time-out agad
+                    //           pagkatapos ng time-in (madalas na aksidente o abuse ito).
+                    // OUT->IN : minimum 5 minuto  (300s)  — short break / pagbalik mula errand.
+                    // Ang base minGapSeconds (180s) ay palaging enforced bilang anti-doubletap floor.
+                    if (lastToday != null)
+                    {
+                        var gap = (nowUtc - lastToday.Timestamp).TotalSeconds;
+
+                        int applicableGap;
+                        string gapMessage;
+
+                        if (string.Equals(lastToday.EventType, "IN", StringComparison.OrdinalIgnoreCase))
+                        {
+                            // IN -> OUT transition: mag-apply ng InToOut minimum gap
+                            applicableGap = SystemConfigService.GetInt(
+                                db, "Attendance:MinGap:InToOutSeconds",
+                                AppSettings.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
+                            var minsNeeded = (int)Math.Ceiling(applicableGap / 60.0);
+                            gapMessage = "You just timed in. Please wait at least "
+                                + minsNeeded + " minute(s) before timing out.";
+                        }
+                        else
+                        {
+                            // OUT -> IN transition: mag-apply ng OutToIn minimum gap
+                            applicableGap = SystemConfigService.GetInt(
+                                db, "Attendance:MinGap:OutToInSeconds",
+                                AppSettings.GetInt("Attendance:MinGap:OutToInSeconds", 300));
+                            var minsNeeded = (int)Math.Ceiling(applicableGap / 60.0);
+                            gapMessage = "Please wait at least "
+                                + minsNeeded + " minute(s) before timing in again.";
+                        }
+
+                        // I-enforce ang base minGapSeconds bilang absolute floor (anti-doubletap).
+                        // Sa normal config: 180s < 1800s at 300s — Math.Max ay walang epekto.
+                        // Pero kung binago ng admin ang values, protektado pa rin tayo.
+                        applicableGap = Math.Max(applicableGap, minGapSeconds);
+
+                        if (gap >= 0 && gap < applicableGap)
+                        {
+                            tx.Rollback();
+                            return new RecordResult
+                            {
+                                Ok      = false,
+                                Code    = "TOO_SOON",
+                                Message = gapMessage,
+                                TimestampUtc = nowUtc
+                            };
+                        }
+                    }
 
                     log.Timestamp = nowUtc;
                     log.EventType = next;

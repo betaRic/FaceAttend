@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = null;
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
@@ -9,7 +9,7 @@
     <meta charset="utf-8" />
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
     <meta http-equiv="Pragma" content="no-cache" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>DILG Region XII Face Attendance Kiosk</title>
 
     @Styles.Render("~/Content/kiosk-base")
@@ -29,108 +29,141 @@
 
     <div id="kioskRoot" data-location-state="pending">
 
+        <!-- Video Background -->
         <video id="kioskVideo" playsinline autoplay muted></video>
         <canvas id="overlayCanvas"></canvas>
 
-                <div id="idleOverlay" class="hidden" aria-hidden="true">
-            <div class="idle-min-shell">
-                <div class="idle-min-header">
-                    <div class="idle-min-brand">
-                        <div class="idle-min-logo-wrap">
-                            <img class="idle-min-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG Region XII" />
-                        </div>
+        <!-- Idle Overlay -->
+        <div id="idleOverlay" class="hidden" aria-hidden="true">
+            <div class="idle-wrapper">
+                <!-- Brand Header -->
+                <div class="idle-brand">
+                    <div class="idle-logo-wrap">
+                        <img class="idle-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG" />
+                    </div>
+                    <div class="idle-brand-text">
+                        <div class="idle-eyebrow">Department of the Interior and Local Government</div>
+                        <div id="idleOrgName" class="idle-title">DILG Region XII</div>
+                        <div class="idle-subtitle">Face Attendance Kiosk</div>
+                    </div>
+                </div>
 
-                        <div class="idle-min-brand-copy">
-                            <div class="idle-min-eyebrow">Department of the Interior and Local Government</div>
-                            <div id="idleOrgName" class="idle-min-title">DILG Region XII</div>
-                            <div class="idle-min-subtitle">Face attendance kiosk</div>
+                <!-- Main Content: Status + Map -->
+                <div class="idle-content">
+                    <!-- Status Card -->
+                    <div class="idle-status-card">
+                        <div class="status-header">
+                            <span id="idlePulse" class="status-pulse" aria-hidden="true"></span>
+                            <span id="idleStatusBadge" class="status-badge pending">Checking location</span>
+                        </div>
+                        <div id="idleLocationTitle" class="status-title">Preparing kiosk</div>
+                        <div id="idleLocationSub" class="status-desc">Please wait while we verify your location</div>
+                    </div>
+
+                    <!-- Map Container (shown when location invalid) -->
+                    <div id="idleMapContainer" class="idle-map-container hidden">
+                        <div class="map-header">
+                            <i class="fa-solid fa-location-dot"></i>
+                            <span>Nearby Offices</span>
+                        </div>
+                        <div id="idleMap" class="idle-map"></div>
+                        <div class="map-legend">
+                            <div class="legend-item">
+                                <span class="legend-dot you"></span>
+                                <span>You are here</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot office"></span>
+                                <span>Allowed offices</span>
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <div class="idle-min-panel">
-                    <div class="idle-min-status-row">
-                        <span class="idle-min-pulse" aria-hidden="true"></span>
-                        <div id="idleStatusBadge" class="idle-status-badge is-pending">Checking location</div>
-                    </div>
-
-                    <div id="idleLocationTitle" class="idle-location-title">Preparing kiosk</div>
-                    <div id="idleLocationSub" class="idle-location-sub">Please wait while the kiosk verifies the current office location.</div>
-
-                    <div class="idle-min-clock-wrap">
-                        <div id="idleClock" aria-live="off">--:--:--</div>
-                        <div id="idleDate" aria-live="off">---</div>
-                    </div>
-
-                    <div class="idle-min-help">Look at the camera when location is verified.</div>
+                <!-- Clock Footer -->
+                <div class="idle-footer">
+                    <div id="idleClock" class="idle-clock" aria-live="off">--:--:--</div>
+                    <div id="idleDate" class="idle-date" aria-live="off">---</div>
+                    <div id="idleHint" class="idle-hint">Look at the camera to scan</div>
                 </div>
             </div>
         </div>
 
-        <div id="topLeft">
-            <div class="brand">DILG Region XII</div>
-            <div class="sub">Face attendance kiosk</div>
-            <div class="sub" id="officeLine">Checking location...</div>
+        <!-- HUD: Top Left -->
+        <div id="topLeft" class="hud-panel">
+            <div class="brand">FaceAttend</div>
+            <div class="sub">DILG Region XII</div>
+            <div id="officeLine">Checking location...</div>
         </div>
 
-        <div id="topCenter">
+        <!-- HUD: Top Center -->
+        <div id="topCenter" class="hud-panel">
             <div id="timeLine">--:--:--</div>
             <div id="dateLine">---</div>
         </div>
 
-        <div id="topRight">
-            <div id="livenessLine" class="live-unk">Live: --</div>
-            <div id="scanEtaLine">ETA: --</div>
+        <!-- HUD: Top Right -->
+        <div id="topRight" class="hud-panel">
+            <div id="livenessLine" class="live-unk">Waiting</div>
+            <div id="livenessBar" style="width:100%;height:3px;margin-top:8px;border-radius:2px;background:#6b7280;transition:all 0.2s"></div>
         </div>
 
-        <div id="centerBlock" class="hidden" aria-live="polite">
-            <div class="blockTitle" id="centerBlockTitle">Location required.</div>
-            <div class="blockSub" id="centerBlockSub">Please wait while the kiosk verifies the assigned office.</div>
+        <!-- Center: Status Messages -->
+        <div id="center">
+            <div id="centerBlock" class="hidden" aria-live="polite">
+                <div class="blockTitle" id="centerBlockTitle">Location required</div>
+                <div class="blockSub" id="centerBlockSub">Please wait while the kiosk verifies the assigned office.</div>
+            </div>
         </div>
 
-        <div id="bottomCenter">
-            <div id="mainPrompt">Preparing kiosk.</div>
-            <div id="subPrompt">Please wait while the location is verified.</div>
+        <!-- Bottom: Main Prompt -->
+        <div id="bottom">
+            <div id="bottomCenter" class="hud-panel">
+                <div id="mainPrompt">Preparing kiosk</div>
+                <div id="subPrompt">Please wait while the location is verified</div>
+            </div>
         </div>
 
+        <!-- Unlock Modal -->
         <div id="unlockBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
-            <div id="unlockModal" class="kiosk-modal" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
-                <div class="modal-header">
-                    <div id="unlockTitle" class="modal-title">Admin Unlock</div>
-                    <button id="unlockClose" type="button" class="modal-close-btn" aria-label="Close">X</button>
+            <div id="unlockModal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
+                <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <span id="unlockTitle">Admin Unlock</span>
+                    <button id="unlockClose" type="button" style="background:none;border:none;color:var(--text-muted);font-size:1.5rem;cursor:pointer;" aria-label="Close">&times;</button>
                 </div>
-                <div class="modal-hint">Enter PIN. Press Enter to unlock or Esc to cancel.</div>
+                <div style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">Enter your PIN to access admin functions</div>
                 <input
                     id="unlockPin"
-                    class="modal-input modal-input-mono"
+                    class="modal-input"
                     type="password"
                     inputmode="numeric"
                     autocomplete="one-time-code"
-                    placeholder="PIN" />
-                <div id="unlockErr" class="modal-err" role="alert"></div>
-                <div class="modal-actions">
-                    <button id="unlockCancel" type="button" class="btn-ghost">Cancel</button>
-                    <button id="unlockSubmit" type="button" class="btn-primary">Unlock</button>
+                    placeholder="Enter PIN..."
+                    style="text-align:center;letter-spacing:0.5rem;font-size:1.5rem;" />
+                <div id="unlockErr" class="modal-error" role="alert"></div>
+                <div class="modal-actions" style="margin-top:1.5rem;">
+                    <button id="unlockCancel" type="button" class="modal-btn secondary">Cancel</button>
+                    <button id="unlockSubmit" type="button" class="modal-btn primary">Unlock</button>
                 </div>
             </div>
         </div>
 
+        <!-- Visitor Modal -->
         <div id="visitorBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
-            <div id="visitorModal" class="kiosk-modal" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
-                <div class="modal-header">
-                    <div id="visitorTitle" class="modal-title">Visitor Sign-In</div>
-                    <button id="visitorClose" type="button" class="modal-close-btn" aria-label="Close">X</button>
+            <div id="visitorModal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
+                <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <span id="visitorTitle">Visitor Sign-In</span>
+                    <button id="visitorClose" type="button" style="background:none;border:none;color:var(--text-muted);font-size:1.5rem;cursor:pointer;" aria-label="Close">&times;</button>
                 </div>
-                <div class="modal-hint">Fill in the details below. Press Enter to submit.</div>
+                <div style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1rem;">Enter your details to sign in as a visitor</div>
 
-                <div id="visitorNameRow">
-                    <input
-                        id="visitorName"
-                        class="modal-input"
-                        type="text"
-                        autocomplete="name"
-                        placeholder="Full name" />
-                </div>
+                <input
+                    id="visitorName"
+                    class="modal-input"
+                    type="text"
+                    autocomplete="name"
+                    placeholder="Full name"
+                    style="margin-bottom:0.75rem;" />
 
                 <input
                     id="visitorPurpose"
@@ -139,14 +172,15 @@
                     autocomplete="off"
                     placeholder="Reason for visit" />
 
-                <div id="visitorErr" class="modal-err" role="alert"></div>
+                <div id="visitorErr" class="modal-error" role="alert"></div>
 
-                <div class="modal-actions">
-                    <button id="visitorCancel" type="button" class="btn-ghost">Cancel</button>
-                    <button id="visitorSubmit" type="button" class="btn-primary">Submit</button>
+                <div class="modal-actions" style="margin-top:1.5rem;">
+                    <button id="visitorCancel" type="button" class="modal-btn secondary">Cancel</button>
+                    <button id="visitorSubmit" type="button" class="modal-btn primary">Submit</button>
                 </div>
             </div>
         </div>
+
     </div>
 
     @Scripts.Render("~/bundles/jquery")

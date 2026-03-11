@@ -8,6 +8,7 @@ using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Filters;
 using FaceAttend.Services;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -549,18 +550,18 @@ namespace FaceAttend.Areas.Admin.Controllers
                         byDay.TryGetValue(dayLocal, out var events);
                         var row = BuildDailyRow(dayLocal, events, policy);
 
-                        sb.Append(JoinCsv(new[]
+                        sb.Append(CsvHelper.JoinCsv(new[]
                         {
-                            SafeCell(eg.Key.EmpId),
-                            SafeCell(eg.Key.FullName),
-                            SafeCell(eg.Key.Dept),
+                            CsvHelper.SafeCell(eg.Key.EmpId),
+                            CsvHelper.SafeCell(eg.Key.FullName),
+                            CsvHelper.SafeCell(eg.Key.Dept),
                             row.DateLabel,
                             row.FirstInUtc.HasValue ? TimeZoneHelper.UtcToLocal(row.FirstInUtc.Value).ToString("HH:mm") : "",
                             row.LastOutUtc.HasValue ? TimeZoneHelper.UtcToLocal(row.LastOutUtc.Value).ToString("HH:mm") : "",
                             (row.HoursNet ?? row.HoursRaw).HasValue
                                 ? (row.HoursNet ?? row.HoursRaw).Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                                 : "",
-                            SafeCell(row.StatusLabel),
+                            CsvHelper.SafeCell(row.StatusLabel),
                             row.LateMinutes.HasValue ? row.LateMinutes.Value.ToString() : "",
                             row.UndertimeMinutes.HasValue ? row.UndertimeMinutes.Value.ToString() : ""
                         }));
@@ -784,14 +785,14 @@ namespace FaceAttend.Areas.Admin.Controllers
                 // Gamitin ang TimeZoneHelper para laging Philippines time (Asia/Manila),
                 // hindi yung server timezone ng IIS.
                 var local = TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss");
-                sb.Append(JoinCsv(new[]
+                sb.Append(CsvHelper.JoinCsv(new[]
                 {
                     local,
-                    SafeCell(r.EmpId),
-                    SafeCell(r.EmployeeFullName),
-                    SafeCell(r.Department),
-                    SafeCell(r.OfficeName),
-                    SafeCell(r.EventType),
+                    CsvHelper.SafeCell(r.EmpId),
+                    CsvHelper.SafeCell(r.EmployeeFullName),
+                    CsvHelper.SafeCell(r.Department),
+                    CsvHelper.SafeCell(r.OfficeName),
+                    CsvHelper.SafeCell(r.EventType),
                     r.LivenessScore.HasValue
                         ? r.LivenessScore.Value.ToString("0.000",
                             System.Globalization.CultureInfo.InvariantCulture) : "",
@@ -803,8 +804,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                         ? r.GPSAccuracy.Value.ToString("0.0",
                             System.Globalization.CultureInfo.InvariantCulture) : "",
                     r.NeedsReview ? "YES" : "NO",
-                    SafeCell(r.WiFiSSID),
-                    SafeCell(r.Notes)
+                    CsvHelper.SafeCell(r.WiFiSSID),
+                    CsvHelper.SafeCell(r.Notes)
                 }));
                 sb.AppendLine();
             }
@@ -812,26 +813,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             return sb.ToString();
         }
 
-        private static string JoinCsv(IEnumerable<string> cells)
-            => string.Join(",", cells.Select(EscapeCsv));
-
-        private static string EscapeCsv(string s)
-        {
-            if (s == null) s = "";
-            var needsQuote = s.Contains(",") || s.Contains("\"") ||
-                             s.Contains("\n") || s.Contains("\r");
-            s = s.Replace("\"", "\"\"");
-            return needsQuote ? "\"" + s + "\"" : s;
-        }
-
-        private static string SafeCell(string s)
-        {
-            if (string.IsNullOrEmpty(s)) return "";
-            var t = s.Trim();
-            if (t.StartsWith("=") || t.StartsWith("+") ||
-                t.StartsWith("-") || t.StartsWith("@"))
-                return "'" + t;
-            return t;
-        }
+        // CSV helpers moved to FaceAttend.Services.Helpers.CsvHelper
     }
 }

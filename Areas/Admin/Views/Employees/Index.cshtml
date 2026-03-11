@@ -209,11 +209,11 @@
                                             <input type="hidden" name="id" value="@e.Id" />
                                             <button class="btn btn-sm btn-outline-danger"
                                                     type="submit"
-                                                    data-confirm="Deactivate this employee?"
-                                                    data-confirm-text="This will disable kiosk logins for this record."
-                                                    data-confirm-icon="warning"
-                                                    title="Deactivate">
-                                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                                    data-confirm="PERMANENTLY DELETE this employee?"
+                                                    data-confirm-text="WARNING: This will permanently delete the employee and all their attendance records. This action cannot be undone."
+                                                    data-confirm-icon="error"
+                                                    title="Delete Permanently">
+                                                <i class="fa-solid fa-trash" aria-hidden="true"></i>
                                             </button>
                                         }
                                     </div>

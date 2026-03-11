@@ -62,20 +62,30 @@ namespace FaceAttend.Services.Biometrics
                     };
                 }
 
-                if (count != 1)
+                // =========================================================================
+                // MULTI-FACE HANDLING: Use the LARGEST face (nearest to camera)
+                // -------------------------------------------------------------------------
+                // DATI: Reject kapag may multiple faces (masyadong strict)
+                // NGAYON: Gamitin ang pinakamalaking face (nearest person)
+                // =========================================================================
+                if (count == 0)
                 {
                     return new
                     {
                         ok = true,
-                        count,
+                        count = 0,
                         faceBox,
                         liveness = (float?)null,
-                        livenessOk = false
+                        livenessOk = false,
+                        message = "no face detected"
                     };
                 }
 
+                // Find the largest face (assumed to be the main subject/nearest person)
+                var mainFace = faces.OrderByDescending(f => (long)f.Width * f.Height).First();
+
                 var live = new OnnxLiveness();
-                var scored = live.ScoreFromFile(processedPath, faces[0]);
+                var scored = live.ScoreFromFile(processedPath, mainFace);
                 if (!scored.Ok)
                     return new { ok = false, error = scored.Error, count = 1, faceBox };
 
@@ -88,10 +98,13 @@ namespace FaceAttend.Services.Biometrics
                 return new
                 {
                     ok = true,
-                    count = 1,
+                    count = count,              // Actual face count
+                    mainFaceIndex = count > 1 ? Array.IndexOf(faces, mainFace) : 0,
+                    multiFaceWarning = count > 1,
                     faceBox,
                     liveness = p,
-                    livenessOk = p >= th
+                    livenessOk = p >= th,
+                    message = count > 1 ? "using nearest face" : null
                 };
             }
             catch (Exception ex)
