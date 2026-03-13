@@ -3,14 +3,13 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
-using FaceAttend.Services.Security;   // SecureFileUpload (P2-F2)
+using FaceAttend.Services.Security;   // FileSecurityService (merged)
 
 namespace FaceAttend.Controllers
 {
@@ -43,11 +42,15 @@ namespace FaceAttend.Controllers
         public ActionResult ScanFrame(HttpPostedFileBase image)
         {
             if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
+                return JsonResponseBuilder.Error("NO_IMAGE");
 
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var max = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
             if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
+                return JsonResponseBuilder.Error("TOO_LARGE");
+
+            // SECURITY: Validate file content is actually an image
+            if (!FileSecurityService.IsValidImage(image.InputStream, new[] { ".jpg", ".jpeg", ".png" }))
+                return JsonResponseBuilder.Error("INVALID_IMAGE_FORMAT");
 
             string path = null;
             string processedPath = null;
@@ -56,7 +59,7 @@ namespace FaceAttend.Controllers
             try
             {
                 // Dito muna dadaan lahat ng upload para iwas kalat / unsafe temp files.
-                path = SecureFileUpload.SaveTemp(image, "u_", max);
+                path = FileSecurityService.SaveTemp(image, "u_", max);
 
                 // Resize lang if needed para hindi mabigat ang detection.
                 processedPath = ImagePreprocessor.PreprocessForDetection(path, "u_", out isProcessed);
@@ -76,9 +79,8 @@ namespace FaceAttend.Controllers
                 // =========================================================================
                 if (count == 0)
                 {
-                    return Json(new
+                    return JsonResponseBuilder.Success(new
                     {
-                        ok = true,
                         count = 0,
                         liveness = (float?)null,
                         livenessOk = false,
@@ -96,14 +98,13 @@ namespace FaceAttend.Controllers
                 var live = new OnnxLiveness();
                 var scored = live.ScoreFromFile(processedPath, mainFace);
                 if (!scored.Ok)
-                    return Json(new { ok = false, error = scored.Error, count = 1 });
+                    return JsonResponseBuilder.Error(scored.Error);
 
-                var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                var th = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
                 var p = scored.Probability ?? 0f;
 
-                return Json(new
+                return JsonResponseBuilder.Success(new
                 {
-                    ok = true,
                     count = count,          // Actual face count (for UI info)
                     mainFaceIndex = count > 1 ? Array.IndexOf(faces, mainFace) : 0,
                     multiFaceWarning = count > 1,  // Warn if multiple faces
@@ -114,12 +115,12 @@ namespace FaceAttend.Controllers
             }
             catch (Exception ex)
             {
-                return Json(new { ok = false, error = "SCAN_ERROR: " + ex.Message });
+                return JsonResponseBuilder.Error("SCAN_ERROR", ex.Message);
             }
             finally
             {
                 ImagePreprocessor.Cleanup(processedPath, path);
-                SecureFileUpload.TryDelete(path);
+                FileSecurityService.TryDelete(path);
             }
         }
 
@@ -144,17 +145,17 @@ namespace FaceAttend.Controllers
             // STEP 1: Validate (Fast checks first)
             // -----------------------------------------------------------------
             if (string.IsNullOrWhiteSpace(employeeId))
-                return Json(new { ok = false, error = "NO_EMPLOYEE_ID", step = "validation" });
+                return JsonResponseBuilder.Error("NO_EMPLOYEE_ID", details: new { step = "validation" });
 
-            var maxLen = AppSettings.GetInt("Biometrics:EmployeeIdMaxLen", 20);
+            var maxLen = ConfigurationService.GetInt("Biometrics:EmployeeIdMaxLen", 20);
             if (employeeId.Length > maxLen)
-                return Json(new { ok = false, error = "EMPLOYEE_ID_TOO_LONG", step = "validation" });
+                return JsonResponseBuilder.Error("EMPLOYEE_ID_TOO_LONG", details: new { step = "validation" });
 
             // -----------------------------------------------------------------
             // STEP 2: Collect Images
             // -----------------------------------------------------------------
-            var maxBytes = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            var maxImages = AppSettings.GetInt("Biometrics:Enroll:MaxImages", 5);
+            var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
             var files = new List<HttpPostedFileBase>();
 
             try
@@ -169,13 +170,16 @@ namespace FaceAttend.Controllers
                     }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceWarning("[Biometrics] File enumeration failed: " + ex.Message);
+            }
 
             if (files.Count == 0 && image?.ContentLength > 0 && image.ContentLength <= maxBytes)
                 files.Add(image);
 
             if (files.Count == 0)
-                return Json(new { ok = false, error = "NO_IMAGE", step = "validation" });
+                return JsonResponseBuilder.Error("NO_IMAGE", details: new { step = "validation" });
 
             // -----------------------------------------------------------------
             // STEP 3: Check Employee & ULTRA-FAST Duplicate Check (RAM cache)
@@ -186,18 +190,18 @@ namespace FaceAttend.Controllers
             {
                 emp = db.Employees.FirstOrDefault(e => e.EmployeeId == employeeId);
                 if (emp == null)
-                    return Json(new { ok = false, error = "EMPLOYEE_NOT_FOUND", step = "employee_lookup" });
+                    return JsonResponseBuilder.Error("EMPLOYEE_NOT_FOUND", details: new { step = "employee_lookup" });
             }
 
             // Ensure FastFaceMatcher is initialized for instant duplicate checking
-            if (!FastFaceMatcher.GetStats().ToString().Contains("True"))
+            if (!FastFaceMatcher.IsInitialized)
                 FastFaceMatcher.Initialize();
 
             // -----------------------------------------------------------------
             // STEP 4: Process Images IN PARALLEL with Pooled Dlib
             // -----------------------------------------------------------------
-            var th = (float)AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75);
-            var tol = AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60);
+            var th = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            var tol = ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60);
             var strictTol = Math.Max(0.35, tol - 0.10);
 
             var candidates = new ConcurrentBag<EnrollCandidate>();
@@ -206,7 +210,7 @@ namespace FaceAttend.Controllers
             var lockObj = new object();
 
             // OPTIMIZED: Use Dlib pool efficiently
-            var parallelism = Math.Min(files.Count, AppSettings.GetInt("Biometrics:Enroll:Parallelism", 4));
+            var parallelism = Math.Min(files.Count, ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
             
             Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = parallelism }, (f, state) =>
             {
@@ -217,7 +221,7 @@ namespace FaceAttend.Controllers
 
                 try
                 {
-                    path = SecureFileUpload.SaveTemp(f, "u_", maxBytes);
+                    path = FileSecurityService.SaveTemp(f, "u_", maxBytes);
                     bool isProcessed;
                     processedPath = ImagePreprocessor.PreprocessForDetection(path, "u_", out isProcessed);
 
@@ -242,17 +246,22 @@ namespace FaceAttend.Controllers
                     if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr))
                         return;
 
-                    // ULTRA-FAST: Check duplicate using RAM cache (10x faster than DB)
+                    // CRITICAL FIX: Check duplicate directly from database to avoid cache staleness
+                    // This prevents Employee B being incorrectly flagged as Employee A
                     lock (lockObj)
                     {
                         processedCount++;
-                        if (!duplicateFound && candidates.Count >= 0)
+                        if (!duplicateFound)
                         {
-                            var fastMatch = FastFaceMatcher.FindBestMatch(vec, strictTol);
-                            if (fastMatch.IsMatch && fastMatch.Employee?.EmployeeId != employeeId)
+                            // Use database query instead of cache for enrollment duplicate check
+                            using (var checkDb = new FaceAttendDBEntities())
                             {
-                                duplicateFound = true;
-                                state.Stop();
+                                var dupEmployeeId = FindDuplicateEmployeeInDatabase(checkDb, vec, employeeId, strictTol);
+                                if (!string.IsNullOrEmpty(dupEmployeeId))
+                                {
+                                    duplicateFound = true;
+                                    state.Stop();
+                                }
                             }
                         }
                     }
@@ -268,28 +277,26 @@ namespace FaceAttend.Controllers
                         });
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceWarning("[Biometrics] Parallel enrollment processing error: " + ex.Message);
+                }
                 finally
                 {
                     ImagePreprocessor.Cleanup(processedPath, path);
-                    SecureFileUpload.TryDelete(path);
+                    FileSecurityService.TryDelete(path);
                 }
             });
 
             if (duplicateFound)
             {
-                return Json(new
-                {
-                    ok = false,
-                    error = "FACE_ALREADY_ENROLLED",
-                    step = "duplicate_check",
-                    processed = processedCount,
-                    timeMs = sw.ElapsedMilliseconds
-                });
+                return JsonResponseBuilder.Error("FACE_ALREADY_ENROLLED", 
+                    details: new { step = "duplicate_check", processed = processedCount, timeMs = sw.ElapsedMilliseconds });
             }
 
             if (candidates.IsEmpty)
-                return Json(new { ok = false, error = "NO_GOOD_FRAME", step = "processing", processed = processedCount });
+                return JsonResponseBuilder.Error("NO_GOOD_FRAME", 
+                    details: new { step = "processing", processed = processedCount });
 
             // Sort by quality
             var sortedCandidates = candidates
@@ -324,17 +331,21 @@ namespace FaceAttend.Controllers
                         "UPDATE Employees SET FaceEncodingsJson = @p0 WHERE EmployeeId = @p1",
                         encJson, employeeId);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceWarning("[Biometrics] Failed to save additional encodings: " + ex.Message);
+                }
 
                 db.SaveChanges();
 
-                // Update caches
+                // Update caches - FIX: Full reload to ensure consistency
                 EmployeeFaceIndex.Invalidate();
-                FastFaceMatcher.UpdateEmployee(employeeId);
+                FastFaceMatcher.ReloadFromDatabase();
+                if (!FastFaceMatcher.IsInitialized)
+                    FastFaceMatcher.Initialize();
 
-                return Json(new
+                return JsonResponseBuilder.Success(new
                 {
-                    ok = true,
                     liveness = sortedCandidates[0].Liveness,
                     savedVectors = encList.Count,
                     processed = processedCount,
@@ -342,39 +353,6 @@ namespace FaceAttend.Controllers
                     step = "saved"
                 });
             }
-        }
-
-        // =================================================================
-        // EARLY DUPLICATE CHECK - Quick check with single frame
-        // =================================================================
-        private static DuplicateMatch CheckEarlyDuplicate(
-            List<EmployeeFaceIndex.Entry> entries,
-            double[] vec,
-            double tolerance,
-            string currentEmployeeId)
-        {
-            if (entries == null || vec == null) return null;
-
-            foreach (var entry in entries)
-            {
-                if (entry?.Vec == null) continue;
-                if (string.Equals(entry.EmployeeId, currentEmployeeId, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                var dist = DlibBiometrics.Distance(vec, entry.Vec);
-                if (dist <= tolerance)
-                {
-                    return new DuplicateMatch
-                    {
-                        EmployeeId = entry.EmployeeId,
-                        Distance = dist,
-                        MatchCount = 1,
-                        HitsRequired = 1,
-                        UsedTolerance = tolerance
-                    };
-                }
-            }
-            return null;
         }
 
         private static DuplicateMatch FindDuplicateMatch(
@@ -498,7 +476,47 @@ namespace FaceAttend.Controllers
             public double UsedTolerance { get; set; }
         }
 
-        // All file handling goes through SecureFileUpload (P2-F2).
+        /// <summary>
+        /// CRITICAL FIX: Checks for duplicate faces directly in database.
+        /// Bypasses FastFaceMatcher cache to avoid stale data issues.
+        /// </summary>
+        private string FindDuplicateEmployeeInDatabase(FaceAttendDBEntities db, double[] faceVector, string excludeEmployeeId, double tolerance)
+        {
+            if (faceVector == null || faceVector.Length != 128)
+                return null;
+
+            // Query active employees excluding the current one
+            var employees = db.Employees
+                .Where(e => e.Status == "ACTIVE" && 
+                           e.EmployeeId != excludeEmployeeId &&
+                           (e.FaceEncodingBase64 != null || e.FaceEncodingsJson != null))
+                .Select(e => new { e.EmployeeId, e.FaceEncodingBase64, e.FaceEncodingsJson })
+                .ToList();
+
+            foreach (var emp in employees)
+            {
+                var existingVectors = FaceEncodingHelper.LoadEmployeeVectors(
+                    emp.FaceEncodingBase64,
+                    emp.FaceEncodingsJson,
+                    5); // max 5 vectors per employee
+
+                foreach (var existingVec in existingVectors)
+                {
+                    if (existingVec != null && existingVec.Length == 128)
+                    {
+                        var distance = DlibBiometrics.Distance(faceVector, existingVec);
+                        if (distance <= tolerance)
+                        {
+                            return emp.EmployeeId; // Found duplicate
+                        }
+                    }
+                }
+            }
+
+            return null; // No duplicate found
+        }
+
+        // All file handling goes through FileSecurityService.
         // ImagePreprocessor handles resize cleanup (P3-F2).
     }
 }

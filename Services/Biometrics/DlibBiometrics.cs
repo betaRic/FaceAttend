@@ -61,6 +61,16 @@ namespace FaceAttend.Services.Biometrics
             public int Height { get; set; }
             
             /// <summary>
+            /// Right edge coordinate (Left + Width).
+            /// </summary>
+            public int Right => Left + Width;
+            
+            /// <summary>
+            /// Bottom edge coordinate (Top + Height).
+            /// </summary>
+            public int Bottom => Top + Height;
+            
+            /// <summary>
             /// Calculated area of the face box (Width * Height).
             /// Used for selecting the largest face when multiple faces are detected.
             /// </summary>
@@ -106,11 +116,11 @@ namespace FaceAttend.Services.Biometrics
             {
                 if (_poolReady) return;
 
-                var poolSize   = AppSettings.GetInt("Biometrics:DlibPoolSize", 4);
+                var poolSize   = ConfigurationService.GetInt("Biometrics:DlibPoolSize", 4);
                 if (poolSize < 1)  poolSize = 1;
                 if (poolSize > 16) poolSize = 16; // Safety cap — bawat instance ≈ 50 MB
 
-                var modelsRel  = AppSettings.GetString(
+                var modelsRel  = ConfigurationService.GetString(
                     "Biometrics:DlibModelsDir",
                     "~/App_Data/models/dlib");
                 _absModelsDir  = HostingEnvironment.MapPath(modelsRel);
@@ -119,7 +129,7 @@ namespace FaceAttend.Services.Biometrics
                     throw new InvalidOperationException(
                         "Hindi mahanap ang Dlib models directory: " + modelsRel);
 
-                var detectorStr = AppSettings.GetString("Biometrics:DlibDetector", "hog");
+                var detectorStr = ConfigurationService.GetString("Biometrics:DlibDetector", "hog");
                 _model = detectorStr.Equals("cnn", StringComparison.OrdinalIgnoreCase)
                     ? Model.Cnn
                     : Model.Hog;
@@ -178,7 +188,7 @@ namespace FaceAttend.Services.Biometrics
         {
             EnsurePoolReady();
 
-            var timeoutMs = AppSettings.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
+            var timeoutMs = ConfigurationService.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
 
             // Hintayin ang available na slot sa pool.
             // Kapag nag-timeout, ibabalik ang null.
@@ -266,6 +276,54 @@ namespace FaceAttend.Services.Biometrics
             out Location faceLocation,
             out string   error)
         {
+            return TryDetectFaceFromFile(
+                imagePath,
+                out faceBox,
+                out faceLocation,
+                out error,
+                allowLargestFace: false,
+                primaryUpsample: 0,
+                retryUpsampleOnNoFace: false);
+        }
+
+        /// <summary>
+        /// Detects a face with kiosk-friendly fallbacks.
+        ///
+        /// Differences from TryDetectSingleFaceFromFile:
+        ///   - Can choose the largest face instead of failing on MULTI_FACE.
+        ///   - Can retry once with 1 upsample when the first pass finds no face.
+        ///
+        /// This is useful for mobile kiosk bursts where the face may be slightly
+        /// smaller or softer than admin enrollment images.
+        /// </summary>
+        public bool TryDetectBestFaceFromFile(
+            string       imagePath,
+            out FaceBox  faceBox,
+            out Location faceLocation,
+            out string   error,
+            bool         allowLargestFace = true,
+            int          primaryUpsample = 0,
+            bool         retryUpsampleOnNoFace = true)
+        {
+            return TryDetectFaceFromFile(
+                imagePath,
+                out faceBox,
+                out faceLocation,
+                out error,
+                allowLargestFace,
+                primaryUpsample,
+                retryUpsampleOnNoFace);
+        }
+
+        private bool TryDetectFaceFromFile(
+            string       imagePath,
+            out FaceBox  faceBox,
+            out Location faceLocation,
+            out string   error,
+            bool         allowLargestFace,
+            int          primaryUpsample,
+            bool         retryUpsampleOnNoFace)
+        {
             faceBox      = null;
             faceLocation = default(Location);
             error        = null;
@@ -275,6 +333,9 @@ namespace FaceAttend.Services.Biometrics
                 error = "BAD_IMAGE_PATH";
                 return false;
             }
+
+            if (primaryUpsample < 0)
+                primaryUpsample = 0;
 
             var fr = RentInstance();
             if (fr == null)
@@ -289,13 +350,40 @@ namespace FaceAttend.Services.Biometrics
                 {
                     var locs = fr.FaceLocations(
                         img,
-                        numberOfTimesToUpsample: 0,
+                        numberOfTimesToUpsample: primaryUpsample,
                         model: _model).ToArray();
 
-                    if (locs.Length == 0) { error = "NO_FACE";    return false; }
-                    if (locs.Length > 1)  { error = "MULTI_FACE"; return false; }
+                    if (locs.Length == 0 && retryUpsampleOnNoFace)
+                    {
+                        locs = fr.FaceLocations(
+                            img,
+                            numberOfTimesToUpsample: Math.Max(1, primaryUpsample + 1),
+                            model: _model).ToArray();
+                    }
 
-                    var loc      = locs[0];
+                    if (locs.Length == 0)
+                    {
+                        error = "NO_FACE";
+                        return false;
+                    }
+
+                    Location loc;
+                    if (locs.Length == 1)
+                    {
+                        loc = locs[0];
+                    }
+                    else if (allowLargestFace)
+                    {
+                        loc = locs
+                            .OrderByDescending(l => Math.Max(0, l.Right - l.Left) * Math.Max(0, l.Bottom - l.Top))
+                            .First();
+                    }
+                    else
+                    {
+                        error = "MULTI_FACE";
+                        return false;
+                    }
+
                     faceLocation = loc;
                     faceBox      = new FaceBox
                     {

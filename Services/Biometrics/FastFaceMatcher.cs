@@ -13,6 +13,9 @@ namespace FaceAttend.Services.Biometrics
     /// 
     /// Traditional approach: DB query every scan (~100-200ms)
     /// FastFaceMatcher: RAM lookup (~5-20ms) = 10x faster!
+    /// 
+    /// REFACTORED: Now uses FaceEncodingHelper for consistent decoding
+    /// with EmployeeFaceIndex, eliminating code duplication.
     /// </summary>
     public static class FastFaceMatcher
     {
@@ -71,46 +74,8 @@ namespace FaceAttend.Services.Biometrics
         }
 
         /// <summary>
-        /// Decode face vectors from Base64 string.
-        /// </summary>
-        private static double[] DecodeVector(string base64)
-        {
-            if (string.IsNullOrEmpty(base64)) return null;
-            try
-            {
-                var bytes = Convert.FromBase64String(base64);
-                return DlibBiometrics.DecodeFromBytes(bytes);
-            }
-            catch { return null; }
-        }
-
-        /// <summary>
-        /// Decode multiple face vectors from JSON array.
-        /// </summary>
-        private static List<double[]> DecodeVectorsFromJson(string json)
-        {
-            var result = new List<double[]>();
-            if (string.IsNullOrEmpty(json)) return result;
-            
-            try
-            {
-                var base64List = Newtonsoft.Json.JsonConvert.DeserializeObject<List<string>>(json);
-                if (base64List != null)
-                {
-                    foreach (var b64 in base64List)
-                    {
-                        var vec = DecodeVector(b64);
-                        if (vec != null) result.Add(vec);
-                    }
-                }
-            }
-            catch { }
-            
-            return result;
-        }
-
-        /// <summary>
         /// Reload all faces from database. Call when new employee added or faces updated.
+        /// Uses FaceEncodingHelper for consistent decoding with EmployeeFaceIndex.
         /// </summary>
         public static void ReloadFromDatabase()
         {
@@ -119,41 +84,15 @@ namespace FaceAttend.Services.Biometrics
 
             using (var db = new FaceAttendDBEntities())
             {
-                // Load all active employees with their face encodings
-                var employees = db.Employees
-                    .Where(e => e.IsActive)
-                    .Select(e => new
-                    {
-                        e.Id,
-                        e.EmployeeId,
-                        e.FirstName,
-                        e.LastName,
-                        e.MiddleName,
-                        e.Department,
-                        e.IsActive,
-                        e.FaceEncodingBase64,
-                        e.FaceEncodingsJson
-                    })
-                    .ToList();
+                // Use shared helper for loading (eliminates duplication with EmployeeFaceIndex)
+                var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+                var employees = FaceEncodingHelper.LoadAllEmployeeFaces(db, maxPerEmployee);
 
                 foreach (var emp in employees)
                 {
-                    var vectors = new List<double[]>();
-                    
-                    // Decode primary face encoding
-                    if (!string.IsNullOrEmpty(emp.FaceEncodingBase64))
+                    if (emp.FaceVectors.Count > 0)
                     {
-                        var vec = DecodeVector(emp.FaceEncodingBase64);
-                        if (vec != null) vectors.Add(vec);
-                    }
-                    
-                    // Decode additional face encodings from JSON
-                    var additionalVectors = DecodeVectorsFromJson(emp.FaceEncodingsJson);
-                    vectors.AddRange(additionalVectors);
-
-                    if (vectors.Count > 0)
-                    {
-                        newEmployeeFaces[emp.EmployeeId] = vectors;
+                        newEmployeeFaces[emp.EmployeeId] = emp.FaceVectors;
                         newEmployeeInfo[emp.EmployeeId] = new EmployeeInfo
                         {
                             Id = emp.Id,
@@ -198,7 +137,8 @@ namespace FaceAttend.Services.Biometrics
                     for (int i = 0; i < vectors.Count; i++)
                     {
                         double dist = DlibBiometrics.Distance(faceVector, vectors[i]);
-                        if (dist < tolerance && dist < bestDistance)
+                        // Use <= for consistency - borderline matches should succeed
+                        if (dist <= tolerance && dist < bestDistance)
                         {
                             bestDistance = dist;
                             bestEmployeeId = empId;
@@ -233,6 +173,11 @@ namespace FaceAttend.Services.Biometrics
         }
 
         /// <summary>
+        /// Returns true if the matcher has been initialized.
+        /// </summary>
+        public static bool IsInitialized => _isInitialized;
+
+        /// <summary>
         /// Get stats about the cache.
         /// </summary>
         public static object GetStats()
@@ -249,6 +194,7 @@ namespace FaceAttend.Services.Biometrics
 
         /// <summary>
         /// Add or update an employee in the cache (call after enrollment).
+        /// Uses FaceEncodingHelper for consistent decoding.
         /// </summary>
         public static void UpdateEmployee(string employeeId)
         {
@@ -257,21 +203,8 @@ namespace FaceAttend.Services.Biometrics
             {
                 using (var db = new FaceAttendDBEntities())
                 {
-                    var emp = db.Employees
-                        .Where(e => e.EmployeeId == employeeId)
-                        .Select(e => new
-                        {
-                            e.Id,
-                            e.EmployeeId,
-                            e.FirstName,
-                            e.LastName,
-                            e.MiddleName,
-                            e.Department,
-                            e.IsActive,
-                            e.FaceEncodingBase64,
-                            e.FaceEncodingsJson
-                        })
-                        .FirstOrDefault();
+                    var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+                    var emp = FaceEncodingHelper.LoadEmployeeById(db, employeeId, maxPerEmployee);
 
                     if (emp == null || !emp.IsActive)
                     {
@@ -281,31 +214,17 @@ namespace FaceAttend.Services.Biometrics
                         return;
                     }
 
-                    var vectors = new List<double[]>();
-                    
-                    if (!string.IsNullOrEmpty(emp.FaceEncodingBase64))
+                    _employeeFaces[emp.EmployeeId] = emp.FaceVectors;
+                    _employeeInfo[emp.EmployeeId] = new EmployeeInfo
                     {
-                        var vec = DecodeVector(emp.FaceEncodingBase64);
-                        if (vec != null) vectors.Add(vec);
-                    }
-                    
-                    var additionalVectors = DecodeVectorsFromJson(emp.FaceEncodingsJson);
-                    vectors.AddRange(additionalVectors);
-
-                    if (vectors.Count > 0)
-                    {
-                        _employeeFaces[emp.EmployeeId] = vectors;
-                        _employeeInfo[emp.EmployeeId] = new EmployeeInfo
-                        {
-                            Id = emp.Id,
-                            EmployeeId = emp.EmployeeId,
-                            FirstName = emp.FirstName,
-                            LastName = emp.LastName,
-                            MiddleName = emp.MiddleName,
-                            Department = emp.Department,
-                            IsActive = emp.IsActive
-                        };
-                    }
+                        Id = emp.Id,
+                        EmployeeId = emp.EmployeeId,
+                        FirstName = emp.FirstName,
+                        LastName = emp.LastName,
+                        MiddleName = emp.MiddleName,
+                        Department = emp.Department,
+                        IsActive = emp.IsActive
+                    };
                 }
             }
             finally

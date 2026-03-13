@@ -23,6 +23,9 @@
         unlockCancel:      el('unlockCancel'),
         unlockSubmit:      el('unlockSubmit'),
         unlockClose:       el('unlockClose'),
+        unlockSuccessBackdrop: el('unlockSuccessBackdrop'),
+        unlockGoAdmin:     el('unlockGoAdmin'),
+        unlockStayKiosk:   el('unlockStayKiosk'),
 
         visitorBackdrop:   el('visitorBackdrop'),
         visitorNameRow:    el('visitorNameRow'),
@@ -52,6 +55,14 @@
     var appBase      = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
     var nextGenEnabled = (document.body.getAttribute('data-nextgen') || 'false').toLowerCase() === 'true';
 
+    // Handle ?reset=1 parameter - clears device mode selection
+    if (location.search.includes('reset=1')) {
+        localStorage.removeItem('FaceAttend_DeviceMode');
+        document.cookie = 'ForceKioskMode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+        // Remove the parameter from URL
+        history.replaceState(null, '', location.pathname + location.hash);
+    }
+
     // =========
     // config  -- all timings optimised vs original
     // =========
@@ -65,17 +76,9 @@
             detectMinConf:     0.30,
             acceptMinScore:    0.60,
             stableFramesMin:   2,
-            // OPT-02: 150ms stable hold (was 250) -- fires 100ms sooner
-            stableNeededMs:    100,
+            // OPT-02: 50ms stable hold (was 100) -- fires faster after idle
+            stableNeededMs:    50,
             multiMinAreaRatio: 0.015,
-        },
-
-        // ULTRA-FAST: Real-time preview via WebSocket
-        fastPreview: {
-            enabled: true,           // Enable real-time preview
-            previewIntervalMs: 800,  // Try to recognize every 800ms
-            confidenceThreshold: 0.85, // Show name when 85%+ confident
-            wsUrl: (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + appBase + 'FaceWebSocket/Recognize'
         },
 
         idle: {
@@ -102,7 +105,7 @@
         gating: {
             // OPT-08: 3 stable frames required (was 4)
             stableFramesRequired: 3,
-            stableMaxMovePx:      30,
+            stableMaxMovePx:      60,  // Increased from 30 - allows more movement while still "stable"
             minFaceAreaRatio:     0.03,
             safeEdgeMarginRatio:  0.02,
             centerMin:            0.12,
@@ -119,6 +122,13 @@
         tasksVision: {
             wasmBase:  appBase + 'Scripts/vendor/mediapipe/tasks-vision/wasm',
             modelPath: appBase + 'Scripts/vendor/mediapipe/tasks-vision/models/blaze_face_short_range.tflite',
+        },
+
+        fastPreview: {
+            enabled: false,              // WebSocket fast preview (set to true to enable)
+            wsUrl: 'ws://localhost:8080/preview',  // WebSocket endpoint
+            previewIntervalMs: 200,      // Min interval between preview requests
+            confidenceThreshold: 0.70,   // Min confidence to show preview name
         },
     };
 
@@ -147,7 +157,7 @@
             div.style.cssText = 'position:fixed;top:0;left:0;right:0;padding:1rem;background:#c0392b;color:#fff;font-family:monospace;font-size:.85rem;z-index:99999;white-space:pre-wrap';
             div.textContent = 'KIOSK CONFIG ERROR -- scan loop will NOT start:\n\n' + errors.join('\n');
             root.insertAdjacentElement('afterbegin', div);
-            console.error('[FaceAttend] Config validation failed:', errors);
+            // Config validation failed - silent
             return false;
         }
         return true;
@@ -157,7 +167,7 @@
         if (CFG.debug) {
             var args = Array.prototype.slice.call(arguments);
             args.unshift('[FaceAttend]');
-            console.log.apply(console, args);
+            // Debug log suppressed
         }
     }
 
@@ -169,6 +179,7 @@
         resolveOffice: appBase + 'Kiosk/ResolveOffice',
         attend:        appBase + 'Kiosk/Attend',
         submitVisitor: appBase + 'Kiosk/SubmitVisitor',
+        deviceState:   appBase + 'Kiosk/GetCurrentMobileDeviceState'
     };
 
     // =========
@@ -176,13 +187,20 @@
     // =========
     var ua       = navigator.userAgent || '';
     var isMobile = /Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua);
+    var isPersonalMobile = /iPhone|iPod|Windows Phone|IEMobile|BlackBerry|Android.+Mobile/i.test(ua);
+    var allowUnlock = (document.body.getAttribute('data-allow-unlock') || 'false') === 'true';
+    var pageLoadTime = Date.now();  // Track when page loaded to prevent immediate scan
 
             var state = {
         unlockOpen:      false,
+        adminModalOpen:  false,         // Block scanning when admin success modal is shown
         wasIdle:         true,
         visitorOpen:     false,
         pendingVisitor:  null,
         scanBlockUntil:  0,
+        submitInProgress: false,
+        deviceStatus:    'unknown',
+        deviceChecked:   false,
 
         gps:             { lat: null, lon: null, accuracy: null },
         allowedArea:     false,
@@ -205,7 +223,7 @@
         mpPrevCenter:    null,
 
         latestLiveness:    null,
-        livenessThreshold: 0.75,
+        livenessThreshold: 0.60,  // UPDATED: More forgiving threshold
 
         motionDiffNow:   null,
         frameDiffs:      [],
@@ -223,6 +241,7 @@
         fastPreviewLastAt: 0,             // Last preview attempt
         fastPreviewResult: null,          // {name, confidence, employeeId}
         fastPreviewScanning: false,       // Currently sending to WS
+        fastPreviewFailCount: 0,          // Connection failure count
     };
 
     // =========
@@ -329,11 +348,8 @@
 
     
 
-    function setCenterBlock(title, sub, show) {
-        if (ui.centerBlock) ui.centerBlock.classList.toggle('hidden', !show);
-        if (ui.centerBlockTitle) ui.centerBlockTitle.textContent = title || '';
-        if (ui.centerBlockSub) ui.centerBlockSub.textContent = sub || '';
-    }
+    // REMOVED DUPLICATE: setCenterBlock function already defined at line 259
+    // See original definition above
 
     function applyLocationUi() {
         var kind = state.locationState || 'pending';
@@ -383,7 +399,35 @@
     function toast(type, text) {
         var msg = (text || '').toString().trim();
         if (!msg) return;
-        if (window.Toastify) {
+        
+        // Use SweetAlert2 for better visibility with auto-close
+        if (window.Swal) {
+            var isSuccess = type === 'success';
+            var isError = type === 'error';
+            var icon = isSuccess ? 'success' : (isError ? 'error' : 'info');
+            var title = isSuccess ? 'Success' : (isError ? 'Error' : 'Info');
+            
+            Swal.fire({
+                title: title,
+                text: msg,
+                icon: icon,
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: isSuccess ? 3000 : 4000,  // Auto-close faster for success
+                timerProgressBar: true,
+                background: isSuccess ? '#f0fdf4' : (isError ? '#fef2f2' : '#eff6ff'),
+                color: isSuccess ? '#166534' : (isError ? '#991b1b' : '#1e40af'),
+                customClass: {
+                    popup: 'kiosk-toast-popup'
+                },
+                didOpen: function(popup) {
+                    // Add custom styling
+                    popup.style.borderRadius = '12px';
+                    popup.style.boxShadow = '0 10px 40px rgba(0,0,0,0.2)';
+                }
+            });
+        } else if (window.Toastify) {
             var bg = type === 'success' ? '#1a6b3a' : (type === 'info' ? '#1a3a6b' : '#6b1a1a');
             Toastify({
                 text:        msg,
@@ -395,7 +439,7 @@
                 style:       { background: bg },
             }).showToast();
         } else {
-            console.log('[toast]', type, msg);
+
         }
     }
 
@@ -456,6 +500,222 @@
         }
         armPostScanHold(1500);
         setPrompt('Ready.', 'Stand still. One face only.');
+    }
+
+    // =========
+    // Device registration
+    // =========
+    function registerDevice(employeeId, employeeName) {
+        // Use SweetAlert2 if available, fallback to native prompt
+        if (window.Swal && window.Swal.fire) {
+            Swal.fire({
+                title: 'Register Device',
+                text: employeeName ? 'Register device for ' + employeeName : 'Enter a name for this device',
+                input: 'text',
+                inputPlaceholder: 'e.g., My iPhone, Galaxy S24',
+                inputAttributes: {
+                    autocapitalize: 'off',
+                    autocomplete: 'off'
+                },
+                showCancelButton: true,
+                confirmButtonText: 'Register',
+                cancelButtonText: 'Cancel',
+                confirmButtonColor: '#3b82f6',
+                cancelButtonColor: '#64748b',
+                background: '#0f172a',
+                color: '#f8fafc',
+                customClass: {
+                    popup: 'kiosk-swal-popup',
+                    title: 'kiosk-swal-title',
+                    htmlContainer: 'kiosk-swal-text',
+                    input: 'kiosk-swal-input',
+                    confirmButton: 'kiosk-swal-confirm',
+                    cancelButton: 'kiosk-swal-cancel'
+                },
+                preConfirm: function(deviceName) {
+                    if (!deviceName || !deviceName.trim()) {
+                        Swal.showValidationMessage('Please enter a device name');
+                    }
+                    return deviceName ? deviceName.trim() : null;
+                }
+            }).then(function(result) {
+                if (result.isConfirmed && result.value) {
+                    doRegisterDevice(employeeId, result.value);
+                } else {
+                    setPrompt('Device registration cancelled.', '');
+                }
+            });
+        } else {
+            // Fallback to native prompt
+            var deviceName = prompt('Enter a name for this device (e.g., "My iPhone"):', '');
+            if (!deviceName) {
+                setPrompt('Device registration cancelled.', '');
+                return;
+            }
+            doRegisterDevice(employeeId, deviceName);
+        }
+    }
+
+
+    function getCookieValue(name) {
+        var match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\[\]\/+^]/g, '\\$&') + '=([^;]*)'));
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function isForcedKioskMode() {
+        return getCookieValue('ForceKioskMode') === 'true';
+    }
+
+    function getMobileRegisterBtn() {
+        return document.getElementById('mobileRegisterBtn');
+    }
+
+    function setMobileRegisterVisible(show) {
+        var mobileRegisterBtn = getMobileRegisterBtn();
+        if (!mobileRegisterBtn) return;
+        mobileRegisterBtn.style.display = show ? 'block' : 'none';
+    }
+
+    function checkCurrentMobileDeviceState() {
+        if (!isPersonalMobile || isForcedKioskMode()) {
+            state.deviceChecked = true;
+            state.deviceStatus = 'active';
+            setMobileRegisterVisible(false);
+            return Promise.resolve();
+        }
+
+        state.deviceChecked = false;
+        state.deviceStatus = 'unknown';
+        setMobileRegisterVisible(false);
+
+        return fetch(EP.deviceState, {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                state.deviceChecked = true;
+                if (!j || !j.ok) {
+                    state.deviceStatus = 'unknown';
+                    return;
+                }
+
+                state.deviceStatus = String(j.deviceStatus || 'unknown').toLowerCase();
+
+                if (state.deviceStatus === 'not_registered') {
+                    setMobileRegisterVisible(true);
+                } else {
+                    setMobileRegisterVisible(false);
+                }
+            })
+            .catch(function () {
+                state.deviceChecked = true;
+                state.deviceStatus = 'unknown';
+                setMobileRegisterVisible(false);
+            });
+    }
+
+    // =========
+    // Device Token Management (Persistent Device Identification)
+    // =========
+    var DEVICE_TOKEN_KEY = 'FaceAttend_DeviceToken';
+    var DEVICE_TOKEN_COOKIE = 'FaceAttend_DeviceToken';
+    
+    function getDeviceToken() {
+        // Try localStorage first
+        var token = null;
+        try {
+            token = localStorage.getItem(DEVICE_TOKEN_KEY);
+
+        } catch (e) {
+
+        }
+        
+        // Fallback to cookie
+        if (!token) {
+            var match = document.cookie.match(new RegExp('(^| )' + DEVICE_TOKEN_COOKIE + '=([^;]+)'));
+            if (match) {
+                token = match[2];
+
+            }
+        }
+        
+
+        return token;
+    }
+    
+    function setDeviceToken(token) {
+        if (!token) return;
+        
+        // DEBUG
+
+        
+        // Save to localStorage (primary - survives longer)
+        try {
+            localStorage.setItem(DEVICE_TOKEN_KEY, token);
+
+        } catch (e) {
+
+        }
+        
+        // Also set cookie (1 year expiry) - don't use Secure on HTTP
+        var expiry = new Date();
+        expiry.setFullYear(expiry.getFullYear() + 1);
+        var isHttps = window.location.protocol === 'https:';
+        var secureFlag = isHttps ? '; Secure' : '';
+        document.cookie = DEVICE_TOKEN_COOKIE + '=' + token + '; expires=' + expiry.toUTCString() + '; path=/; SameSite=Lax' + secureFlag;
+
+    }
+    
+    function clearDeviceToken() {
+        try {
+            localStorage.removeItem(DEVICE_TOKEN_KEY);
+        } catch (e) {}
+        
+        // Clear cookie
+        document.cookie = DEVICE_TOKEN_COOKIE + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/;';
+    }
+
+    function doRegisterDevice(employeeId, deviceName) {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('employeeId', employeeId);
+        fd.append('deviceName', deviceName);
+        
+        // Include existing device token if available
+        var existingToken = getDeviceToken();
+        if (existingToken) {
+            fd.append('deviceToken', existingToken);
+        }
+
+        setPrompt('Registering device...', 'Please wait.');
+
+        fetch(appBase + 'MobileRegistration/RegisterDevice', { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j.ok) {
+                    // Save device token for persistent identification
+                    if (j.deviceToken || (j.data && j.data.deviceToken)) {
+                        setDeviceToken(j.deviceToken || j.data.deviceToken);
+                    }
+                    state.deviceChecked = true;
+                    state.deviceStatus = 'pending';
+                    setMobileRegisterVisible(false);
+                    setIdleUi(true);
+                    toastSuccess('Device registered! Waiting for admin approval.');
+                    setPrompt('Device registered.', 'Admin approval required.');
+                } else {
+                    toastError(j.message || 'Registration failed.');
+                    setPrompt('Registration failed.', j.message || 'Please try again.');
+                }
+                armPostScanHold(3000);
+            })
+            .catch(function () {
+                toastError('Network error. Please try again.');
+                setPrompt('Registration failed.', 'Network error.');
+                armPostScanHold(3000);
+            });
     }
 
     function submitVisitorForm() {
@@ -579,9 +839,22 @@
         if (!ui.livenessLine) return;
         var hasP  = (typeof p  === 'number') && isFinite(p);
         var hasTh = (typeof th === 'number') && isFinite(th);
-        ui.livenessLine.textContent = hasP
-            ? 'Live: ' + p.toFixed(2) + (hasTh ? ' / ' + th.toFixed(2) : '')
-            : 'Live: --';
+        
+        // User-friendly text based on liveness state
+        var statusText = 'Live: --';
+        if (hasP) {
+            if (cls === 'live-pass') {
+                statusText = 'Live: PASS (' + p.toFixed(2) + ')';
+            } else if (cls === 'live-near') {
+                statusText = 'Live: CHECKING... (' + p.toFixed(2) + ')';
+            } else if (cls === 'live-fail') {
+                statusText = 'Live: FAILED - Move naturally (' + p.toFixed(2) + ')';
+            } else {
+                statusText = 'Live: ' + p.toFixed(2) + (hasTh ? ' / ' + th.toFixed(2) : '');
+            }
+        }
+        
+        ui.livenessLine.textContent = statusText;
         ui.livenessLine.classList.remove('live-pass','live-near','live-fail','live-unk');
         ui.livenessLine.classList.add(cls || 'live-unk');
     }
@@ -622,21 +895,28 @@
             bb.originX <= 1.5 &&
             bb.originY <= 1.5;
 
+        var x, y, w, h;
         if (looksNormalized) {
-            return {
-                x: bb.originX * video.videoWidth,
-                y: bb.originY * video.videoHeight,
-                w: bb.width   * video.videoWidth,
-                h: bb.height  * video.videoHeight
-            };
+            x = bb.originX * video.videoWidth;
+            y = bb.originY * video.videoHeight;
+            w = bb.width   * video.videoWidth;
+            h = bb.height  * video.videoHeight;
+        } else {
+            x = bb.originX;
+            y = bb.originY;
+            w = bb.width;
+            h = bb.height;
         }
-
-        return {
-            x: bb.originX,
-            y: bb.originY,
-            w: bb.width,
-            h: bb.height
-        };
+        
+        // CENTER FACE: MediaPipe box includes too much neck, not enough forehead
+        // Shift up by 20% of height and expand height by 8% to capture full face
+        var shiftUp = h * 0.20;
+        var expandH = h * 0.08;
+        
+        y = y - shiftUp;
+        h = h + expandH;
+        
+        return { x: x, y: y, w: w, h: h };
     }
 
     function boxFullyVisibleCanvas(box) {
@@ -729,10 +1009,6 @@
         ctx.restore();
     }
 
-    function drawFaceGlow(bx, by, bw, bh, color) {
-        return;
-    }
-
     function drawLoop() {
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -741,9 +1017,23 @@
             var scanning = state.liveInFlight;
             var good     = state.faceStatus === 'good';
 
-            // color based on state
+            // color based on liveness status (priority over scanning/good states)
             var mainColor, glowColor;
-            if (scanning) {
+            var livenessCls = ui.livenessLine.className || '';
+            
+            if (livenessCls.includes('live-fail')) {
+                // Liveness failed - red box
+                mainColor = '#ef4444';
+                glowColor = 'rgba(239,68,68,0.60)';
+            } else if (livenessCls.includes('live-near')) {
+                // Liveness near threshold - yellow/orange box
+                mainColor = '#f59e0b';
+                glowColor = 'rgba(245,158,11,0.60)';
+            } else if (livenessCls.includes('live-pass')) {
+                // Liveness passed - green box
+                mainColor = '#22c55e';
+                glowColor = 'rgba(34,197,94,0.60)';
+            } else if (scanning) {
                 mainColor = '#4f9cf9';
                 glowColor = 'rgba(79,156,249,0.70)';
             } else if (good) {
@@ -755,9 +1045,6 @@
             }
 
             var b = state.mpBoxCanvas;
-
-            // subtle glow fill behind face
-            drawFaceGlow(b.x, b.y, b.w, b.h, mainColor);
 
             // animated scan line while in flight
             if (scanning) {
@@ -796,8 +1083,29 @@
         state.frameDiffs       = [];
         state.latestLiveness   = null;
         state.scanLineProgress = 0;
+        // CRITICAL: Reset submission flags when resetting scan state
+        // This prevents getting stuck in "Capturing..." state
+        state.submitInProgress = false;
+        state.liveInFlight     = false;
         setLiveness(null, null, 'live-unk');
         setEta('ETA: --');
+    }
+    
+    // Safety timeout: If capture takes too long, reset flags
+    var captureSafetyTimeout = null;
+    function startCaptureSafetyTimeout() {
+        clearTimeout(captureSafetyTimeout);
+        captureSafetyTimeout = setTimeout(function() {
+            if (state.submitInProgress || state.liveInFlight) {
+
+                state.submitInProgress = false;
+                state.liveInFlight = false;
+                setPrompt('Capture timeout.', 'Please try again.');
+            }
+        }, 15000); // 15 second max capture time
+    }
+    function clearCaptureSafetyTimeout() {
+        clearTimeout(captureSafetyTimeout);
     }
 
     // =========
@@ -847,11 +1155,13 @@
     var captureCtx    = captureCanvas.getContext('2d');
 
     // Target resolution for speed (480x360 is plenty for face recognition)
-    var CAPTURE_W = 480;
-    var CAPTURE_H = 360;
+    // Capture at higher resolution to match enrollment quality
+    var CAPTURE_W = 1280;
+    var CAPTURE_H = 720;
 
     function captureFrameBlob(quality) {
-        var q = (typeof quality === 'number') ? quality : 0.65;
+        // Higher JPEG quality for better face recognition accuracy
+        var q = (typeof quality === 'number') ? quality : 0.90;
         captureCanvas.width  = CAPTURE_W;
         captureCanvas.height = CAPTURE_H;
         captureCtx.drawImage(video, 0, 0, CAPTURE_W, CAPTURE_H);
@@ -939,40 +1249,30 @@
                 var result = this.detector.detectForVideo(video, now);
                 var dets   = (result && result.detections) ? result.detections : [];
 
+                // Filter by confidence only (no size filtering)
                 var valid = dets.filter(function (d) {
                     return ((d.categories && d.categories[0] && d.categories[0].score) || 0) >= CFG.mp.acceptMinScore;
                 });
 
-                var sized = valid.filter(function (d) {
-                    return !isTooSmallFaceNorm(d.boundingBox);
-                });
-
-                var multi = sized.filter(function (d) {
-                    var b = d.boundingBox;
-                    return b && b.width * b.height >= CFG.mp.multiMinAreaRatio;
-                });
-
-                if (multi.length > 1) {
-                    state.faceStatus    = 'multi';
-                    state.mpBoxCanvas   = null;
-                    state.mpPrevCenter  = null;
-                    state.mpReadyToFire = false;
-                    state.mpStableStart = 0;
-                    safeSetPrompt('One face only.', '');
-                    return;
-                }
-
-                if (sized.length === 0) {
+                // No faces detected
+                if (valid.length === 0) {
                     state.faceStatus  = 'none';
                     state.mpBoxCanvas = null;
                     return;
                 }
 
-                var best = sized.reduce(function (a, b) {
+                // Always pick the LARGEST face (closest to camera)
+                // This handles both single face and multiple faces cases
+                var best = valid.reduce(function (a, b) {
                     var aA = (a.boundingBox ? a.boundingBox.width * a.boundingBox.height : 0);
                     var bA = (b.boundingBox ? b.boundingBox.width * b.boundingBox.height : 0);
                     return aA >= bA ? a : b;
                 });
+
+                // Warn if multiple faces detected (but still process the largest)
+                if (valid.length > 1) {
+                    safeSetPrompt('Multiple faces detected.', 'Scanning the closest person.');
+                }
 
                 var bb  = best.boundingBox;
                 var box = mapVideoBoxToCanvas(toVideoBox(bb));
@@ -984,7 +1284,7 @@
                     videoHeight: video.videoHeight
                 };
                 // bbox debug log disabled
-state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
+state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELAXED: just check minimum dimensions
                 state.mpBoxCanvas  = box;
                 state.mpFaceSeenAt = Date.now();
                 this.failStreak    = 0;
@@ -993,7 +1293,7 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                     state.mpReadyToFire = false;
                     state.mpStableStart = 0;
                     state.mpPrevCenter  = null;
-                    safeSetPrompt('Center your face.', 'Move slightly back and keep your full face inside the frame.');
+                    safeSetPrompt('Move closer.', 'Please approach the camera.');
                     return;
                 }
 
@@ -1002,10 +1302,10 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
             } catch (e) {
                 this.failStreak++;
                 // Always surface the real error so admins can diagnose in DevTools
-                console.error('[FaceAttend] detectForVideo error #' + this.failStreak + ':', (e && e.message) ? e.message : e);
+
                 if (this.failStreak > 30) {
                     state.mpMode = 'none';
-                    console.error('[FaceAttend] MediaPipe disabled after 30 errors. Open DevTools Console to see the errors above.');
+
                     log('MediaPipe recurring error, disabling', e);
                 }
             }
@@ -1063,6 +1363,8 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
     // unlock UI
     // =========
     function isUnlockAvailable() {
+        // SECURITY: Admin unlock disabled on mobile devices
+        if (!allowUnlock) return false;
         return !!(ui.unlockBackdrop && ui.unlockPin && ui.unlockSubmit && ui.unlockCancel && ui.unlockErr);
     }
 
@@ -1088,6 +1390,8 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
         ui.unlockPin.value = '';
     }
 
+    var pendingReturnUrl = ''; // Store return URL for after confirmation
+
     function submitUnlock() {
         if (!isUnlockAvailable()) return;
         var pin = (ui.unlockPin.value || '').trim();
@@ -1103,15 +1407,56 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
         ui.unlockErr.textContent = '';
 
         fetch(EP.unlockPin, { method: 'POST', body: fd })
-            .then(function (r) { return r.json(); })
-            .then(function (j) {
-                if (j && j.ok === true) {
-                    var ru = (j.returnUrl || '').trim();
+            .then(function (r) {
+                // Check for mobile device block (403)
+                if (r.status === 403) {
                     closeUnlock();
-                    if (ru) window.location.href = ru;
+                    if (window.Swal) {
+                        Swal.fire({
+                            title: 'Admin Access Unavailable',
+                            text: 'Admin unlock is disabled on mobile devices for security. Please use a desktop computer or laptop to access the admin panel.',
+                            icon: 'info',
+                            confirmButtonText: 'Got it',
+                            confirmButtonColor: '#3b82f6',
+                            background: '#0f172a',
+                            color: '#f8fafc'
+                        });
+                    } else {
+                        alert('Admin unlock is disabled on mobile devices. Please use a desktop computer.');
+                    }
+                    // Return a dummy object to stop further processing
+                    return { handled: true };
+                }
+                return r.json();
+            })
+            .then(function (j) {
+                // If already handled (403), skip
+                if (j && j.handled) return;
+                if (j && j.ok === true) {
+                    pendingReturnUrl = (j.returnUrl || '').trim();
+                    closeUnlock();
+                    showUnlockSuccess(); // Show confirmation modal instead of immediate redirect
                 } else {
-                    ui.unlockErr.textContent = 'Invalid PIN.';
-                    if (ui.unlockPin) ui.unlockPin.focus();
+                    // Check if mobile device blocked (403)
+                    if (j && j.error === 'UNLOCK_DISABLED_ON_MOBILE') {
+                        closeUnlock();
+                        if (window.Swal) {
+                            Swal.fire({
+                                title: 'Admin Access Unavailable',
+                                text: 'Admin unlock is disabled on mobile devices for security. Please use a desktop computer or laptop to access the admin panel.',
+                                icon: 'info',
+                                confirmButtonText: 'Got it',
+                                confirmButtonColor: '#3b82f6',
+                                background: '#0f172a',
+                                color: '#f8fafc'
+                            });
+                        } else {
+                            alert('Admin unlock is disabled on mobile devices. Please use a desktop computer.');
+                        }
+                    } else {
+                        ui.unlockErr.textContent = 'Invalid PIN.';
+                        if (ui.unlockPin) ui.unlockPin.focus();
+                    }
                 }
             })
             .catch(function () {
@@ -1121,6 +1466,35 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 ui.unlockSubmit.disabled = false;
                 ui.unlockCancel.disabled = false;
             });
+    }
+
+    function showUnlockSuccess() {
+        if (!ui.unlockSuccessBackdrop) return;
+        // Pause scanning while admin modal is open
+        state.adminModalOpen = true;
+        ui.unlockSuccessBackdrop.classList.remove('hidden');
+        ui.unlockSuccessBackdrop.setAttribute('aria-hidden', 'false');
+        setPrompt('Admin access granted.', 'Choose where to go.');
+    }
+
+    function closeUnlockSuccess() {
+        if (!ui.unlockSuccessBackdrop) return;
+        ui.unlockSuccessBackdrop.classList.add('hidden');
+        ui.unlockSuccessBackdrop.setAttribute('aria-hidden', 'true');
+        state.adminModalOpen = false;
+        pendingReturnUrl = '';
+        setPrompt('Ready.', 'Look at the camera.');
+    }
+
+    function goToAdmin() {
+        var targetUrl = pendingReturnUrl || (appBase + 'Admin/Index');
+
+        window.location.href = targetUrl;
+    }
+
+    function stayInKiosk() {
+        closeUnlockSuccess();
+        // User stays in kiosk, can continue scanning
     }
 
     function wireUnlockUi() {
@@ -1138,6 +1512,15 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
             if (e.key === 'Enter')  { e.preventDefault(); submitUnlock(); }
             if (e.key === 'Escape') { e.preventDefault(); closeUnlock(); }
         });
+
+        // Wire up success modal buttons
+        if (ui.unlockGoAdmin) ui.unlockGoAdmin.addEventListener('click', goToAdmin);
+        if (ui.unlockStayKiosk) ui.unlockStayKiosk.addEventListener('click', stayInKiosk);
+        if (ui.unlockSuccessBackdrop) {
+            ui.unlockSuccessBackdrop.addEventListener('click', function (e) {
+                if (e.target === ui.unlockSuccessBackdrop) stayInKiosk();
+            });
+        }
 
         // Ctrl+Shift+Space triggers admin unlock from anywhere on page
         document.addEventListener('keydown', function (e) {
@@ -1437,14 +1820,83 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
     }
 
     // =========
+    // burst capture for robust identification
+    // Captures multiple frames for consensus voting (mobile + enhanced kiosk)
+    // =========
+    function captureBurstFrames(count, intervalMs) {
+        return new Promise(function(resolve, reject) {
+            // Wait for video to be ready
+            if (!video.videoWidth || !video.videoHeight) {
+
+                reject(new Error('Video not ready'));
+                return;
+            }
+            
+            var frames = [];
+            var canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            var ctx = canvas.getContext('2d');
+            var attempts = 0;
+            var maxAttempts = count * 2; // Allow some retries
+            
+            function captureFrame(index) {
+                if (frames.length >= count) {
+
+                    resolve(frames);
+                    return;
+                }
+                
+                if (attempts >= maxAttempts) {
+
+                    resolve(frames);
+                    return;
+                }
+                
+                attempts++;
+                
+                try {
+                    ctx.drawImage(video, 0, 0);
+                    canvas.toBlob(function(blob) {
+                        if (blob && blob.size > 1000) { // Ensure blob is valid and not empty
+                            frames.push(blob);
+
+                        } else {
+
+                        }
+                        
+                        if (frames.length < count && attempts < maxAttempts) {
+                            setTimeout(function() { captureFrame(index + 1); }, intervalMs);
+                        } else {
+                            resolve(frames);
+                        }
+                    }, 'image/jpeg', 0.90);  // Higher quality for better recognition
+                } catch (e) {
+
+                    resolve(frames);
+                }
+            }
+            
+            captureFrame(0);
+        });
+    }
+
+    // =========
     // attendance submit
     // OPT-SPEED-02: Send face bbox to server so it can skip detection (saves ~150ms)
+    // BURST MODE: For mobile and enhanced kiosk, captures 10 frames for consensus
     // =========
     function submitAttendance(blob) {
+        // Prevent double-fire: if already submitting, skip
+        if (state.submitInProgress) {
+            return Promise.resolve({ ok: false, error: 'ALREADY_SUBMITTING' });
+        }
+        
         if (state.attendAbortCtrl) {
             try { state.attendAbortCtrl.abort(); } catch (e) {}
         }
 
+        state.submitInProgress = true;
         state.attendAbortCtrl = new AbortController();
         var signal = state.attendAbortCtrl.signal;
 
@@ -1457,6 +1909,10 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
         if (state.gps.lat      != null) fd.append('lat',      state.gps.lat);
         if (state.gps.lon      != null) fd.append('lon',      state.gps.lon);
         if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
+        
+        // Include device token for persistent device identification
+        var deviceToken = getDeviceToken();
+        if (deviceToken) fd.append('deviceToken', deviceToken);
         
         // Send face bbox so server can skip detection (major speedup)
         var faceBox = getFaceBoxForServer();
@@ -1479,70 +1935,375 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 return r.json();
             })
             .then(function (j) {
-                if (!j) return;
 
-                if (typeof j.liveness === 'number') {
-                    var p  = Number(j.liveness);
-                    var th = (j.threshold != null) ? Number(j.threshold) : null;
-                    var threshold = th !== null ? th : 0.75;
-                    var cls;
-                    if (p >= threshold) cls = 'live-pass';
-                    else if (p >= threshold * 0.80) cls = 'live-near';
-                    else cls = 'live-fail';
-
-                    setLiveness(p, th, cls);
-                    state.latestLiveness = p;
-                    state.livenessThreshold = threshold;
-                }
-
-                var err = j.error || '';
-                var retryMs = Math.max(1500, Number(j.retryAfter || 0) * 1000);
-
-                if (err === 'RATE_LIMIT_EXCEEDED' || err === 'SYSTEM_BUSY' || err === 'REQUEST_TIMEOUT') {
-                    state.backoffUntil = Date.now() + retryMs;
-                } else if (j.ok === true) {
-                    state.backoffUntil = 0;
-                }
-
-                if (j.ok === true) {
-                    if (j.mode !== 'VISITOR') {
-                        var evt  = (j.eventType || '').toUpperCase();
-                        var name = j.displayName || j.name || 'Employee';
-                        toastSuccess((evt === 'IN' ? 'Time In' : 'Time Out') + ' -- ' + name);
-                        setPrompt(evt === 'IN' ? 'Time In recorded.' : 'Time Out recorded.', name);
-                        armPostScanHold(CFG.postScan.holdMs);
-                    } else {
-                        openVisitorModal(j);
-                    }
-                    return;
-                }
-
-                if (err === 'ALREADY_SCANNED' || err === 'TOO_SOON') {
-                    toastError(j.message || 'Already scanned. Please wait.');
-                    armPostScanHold(CFG.postScan.holdMs);
-                } else if (err === 'LIVENESS_FAIL') {
-                    toastError('Liveness check failed. Move naturally and try again.');
-                    armPostScanHold(1500);
-                } else if (err === 'RATE_LIMIT_EXCEEDED' || err === 'SYSTEM_BUSY') {
-                    toastError('System busy. Please wait a moment and try again.');
-                    setPrompt('System busy.', 'Please wait.');
-                    armPostScanHold(retryMs);
-                    return;
-                } else if (err === 'REQUEST_TIMEOUT') {
-                    toastError('Scan timed out. Please try again.');
-                    armPostScanHold(retryMs);
-                } else {
-                    toastError(j.message || err || 'Scan failed.');
-                    armPostScanHold(1500);
-                }
-
-                setPrompt('Ready.', 'Stand still. One face only.');
+                handleAttendanceResponse(j);
             })
             .catch(function (e) {
                 if (e && e.name === 'AbortError') return;
                 state.backoffUntil = Date.now() + 2000;
                 setPrompt('System error.', 'Reload the page or check the server.');
+            })
+            .finally(function () {
+                state.submitInProgress = false;
             });
+    }
+
+    // =========
+    // BURST attendance submit for mobile
+    // Sends 3 frames for consensus voting - optimized for speed
+    // =========
+    function submitBurstAttendance(blobs, onSwalShownCallback) {
+        if (state.submitInProgress) {
+
+            return Promise.resolve({ ok: false, error: 'ALREADY_SUBMITTING' });
+        }
+
+        state.submitInProgress = true;
+
+        if (state.attendAbortCtrl) {
+            try { state.attendAbortCtrl.abort(); } catch (e) { }
+        }
+
+        state.attendAbortCtrl = new AbortController();
+        var signal = state.attendAbortCtrl.signal;
+
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', token);
+        fd.append('frameCount', blobs.length);
+        
+        blobs.forEach(function(blob, index) {
+            fd.append('frame_' + index, blob, 'frame_' + index + '.jpg');
+        });
+        
+        if (state.gps.lat      != null) fd.append('lat',      state.gps.lat);
+        if (state.gps.lon      != null) fd.append('lon',      state.gps.lon);
+        if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
+        
+        // CRITICAL FIX: Send face bbox so server can skip detection (saves ~150ms per frame!)
+        var faceBox = getFaceBoxForServer();
+        if (faceBox) {
+            fd.append('faceX', faceBox.x);
+            fd.append('faceY', faceBox.y);
+            fd.append('faceW', faceBox.w);
+            fd.append('faceH', faceBox.h);
+        }
+        
+        // Include device token for persistent device identification
+        var deviceToken = getDeviceToken();
+        if (deviceToken) fd.append('deviceToken', deviceToken);
+
+        return fetch(appBase + 'Kiosk/AttendBurst', { 
+            method: 'POST', 
+            body: fd, 
+            credentials: 'same-origin', 
+            signal: signal 
+        })
+            .then(function (r) {
+                if (r.status === 429 || r.status === 503) {
+                    return {
+                        ok: false,
+                        error: r.status === 429 ? 'RATE_LIMIT_EXCEEDED' : 'SYSTEM_BUSY',
+                        retryAfter: Number(r.headers.get('Retry-After') || 0)
+                    };
+                }
+                return r.json();
+            })
+            .then(function (j) {
+                // Handle the same as regular submitAttendance
+                handleAttendanceResponse(j, onSwalShownCallback);
+            })
+            .catch(function (e) {
+                if (e && e.name === 'AbortError') return;
+                state.backoffUntil = Date.now() + 2000;
+                setPrompt('System error.', 'Reload the page or check the server.');
+            })
+            .finally(function () {
+                state.submitInProgress = false;
+            });
+    }
+    
+    // Shared attendance response handler
+    function handleAttendanceResponse(j, onSwalShownCallback) {
+
+        if (!j) {
+            // No response data - silent fail
+            return;
+        }
+
+        if (typeof j.liveness === 'number') {
+            var p  = Number(j.liveness);
+            var th = (j.threshold != null) ? Number(j.threshold) : null;
+            var threshold = th !== null ? th : 0.75;
+            var cls;
+            if (p >= threshold) cls = 'live-pass';
+            else if (p >= threshold * 0.80) cls = 'live-near';
+            else cls = 'live-fail';
+
+            setLiveness(p, th, cls);
+            state.latestLiveness = p;
+            state.livenessThreshold = threshold;
+        }
+
+        var err = j.error || '';
+        var retryMs = Math.max(1500, Number(j.retryAfter || 0) * 1000);
+
+        if (err === 'RATE_LIMIT_EXCEEDED' || err === 'SYSTEM_BUSY' || err === 'REQUEST_TIMEOUT') {
+            state.backoffUntil = Date.now() + retryMs;
+        } else if (j.ok === true) {
+            state.backoffUntil = 0;
+        }
+
+        if (j.ok === true) {
+            // DEBUG: Log device token - check both direct and nested locations
+            var deviceToken = j.deviceToken || (j.data && j.data.deviceToken);
+            if (deviceToken) {
+
+                setDeviceToken(deviceToken);
+            } else {
+
+            }
+            
+            // Reset consecutive failure counter on success
+            state.consecutiveFailures = 0;
+            
+            if (j.mode !== 'VISITOR') {
+                var evt  = (j.eventType || '').toUpperCase();
+                var name = j.displayName || j.name || 'Employee';
+                var isTimeIn = evt === 'IN';
+                
+                // Play success sound
+                if (window.FaceAttendAudio) {
+                    FaceAttendAudio.playSuccess();
+                }
+                
+                // MOBILE: Redirect to employee page after success
+                var shouldRedirectMobile = isMobile && !document.body.getAttribute('data-force-kiosk');
+                
+                // DEBUG: Log redirect decision
+
+
+                
+                if (shouldRedirectMobile) {
+
+                    if (window.Swal) {
+                        Swal.fire({
+                            title: '<i class="fa-solid fa-circle-check" style="color: #22c55e; font-size: 3rem; margin-bottom: 0.5rem;"></i>',
+                            html: '<div style="font-size: 1.25rem; font-weight: 700; color: #1f2937; margin-bottom: 0.25rem;">' + (isTimeIn ? 'Time In' : 'Time Out') + '</div>' +
+                                  '<div style="font-size: 1.5rem; font-weight: 600; color: #059669;">' + name + '</div>',
+                            icon: null,
+                            toast: false,
+                            position: 'center',
+                            showConfirmButton: false,
+                            timer: 1500,
+                            background: '#f0fdf4',
+                            backdrop: 'rgba(0,0,0,0.3)',
+                            didOpen: function() {
+                                // TIMING: Swal is now visible - call the callback
+                                if (typeof onSwalShownCallback === 'function') {
+                                    onSwalShownCallback();
+                                }
+                            }
+                        }).then(function() {
+                            window.location.href = appBase + 'MobileRegistration/Employee';
+                        });
+                    } else {
+                        setTimeout(function() {
+                            window.location.href = appBase + 'MobileRegistration/Employee';
+                        }, 1500);
+                    }
+                } else {
+                    if (window.Swal) {
+                        var iconClass = isTimeIn ? 'fa-circle-check' : 'fa-circle-arrow-right';
+                        var iconColor = isTimeIn ? '#22c55e' : '#3b82f6';
+                        Swal.fire({
+                            title: '<i class="fa-solid ' + iconClass + '" style="color: ' + iconColor + '; font-size: 3rem; margin-bottom: 0.5rem;"></i>',
+                            html: '<div style="font-size: 1.25rem; font-weight: 700; color: #1f2937; margin-bottom: 0.25rem;">' + (isTimeIn ? 'Time In' : 'Time Out') + '</div>' +
+                                  '<div style="font-size: 1.5rem; font-weight: 600; color: #059669;">' + name + '</div>' +
+                                  '<div style="font-size: 0.875rem; color: #6b7280; margin-top: 8px;">' + (j.message || 'Attendance recorded') + '</div>',
+                            icon: null,
+                            toast: false,
+                            position: 'center',
+                            showConfirmButton: false,
+                            timer: 2500,
+                            timerProgressBar: true,
+                            background: isTimeIn ? '#f0fdf4' : '#eff6ff',
+                            backdrop: 'rgba(0,0,0,0.3)',
+                            width: '400px',
+                            customClass: {
+                                popup: 'attendance-success-popup',
+                                title: 'attendance-success-title'
+                            },
+                            didOpen: function(popup) {
+                                popup.style.borderRadius = '16px';
+                                popup.style.boxShadow = '0 20px 60px rgba(0,0,0,0.3)';
+                            }
+                        });
+                    } else {
+                        toastSuccess((isTimeIn ? 'Time In' : 'Time Out') + ' -- ' + name);
+                    }
+                    
+                    setPrompt(isTimeIn ? 'Time In recorded.' : 'Time Out recorded.', name);
+                    armPostScanHold(CFG.postScan.holdMs);
+                }
+            } else {
+                // Track consecutive visitor/failure attempts
+                state.consecutiveFailures = (state.consecutiveFailures || 0) + 1;
+                
+                // Provide helpful feedback after multiple failed attempts
+                if (state.consecutiveFailures >= 3) {
+                    if (window.Swal) {
+                        Swal.fire({
+                            title: 'Having trouble?',
+                            text: 'Make sure you are enrolled in the system. Try moving closer to the camera, look straight ahead, and ensure good lighting.',
+                            icon: 'info',
+                            confirmButtonText: 'Got it',
+                            confirmButtonColor: '#3b82f6',
+                            background: '#0f172a',
+                            color: '#f8fafc',
+                            timer: 5000,
+                            timerProgressBar: true
+                        });
+                    }
+                    // Reset counter after showing tip
+                    state.consecutiveFailures = 0;
+                }
+                
+                openVisitorModal(j);
+            }
+            return;
+        }
+
+        // DEVICE FLOW: Handle new action responses
+        var action = j.action || '';
+        
+        if (action === 'REGISTER_DEVICE') {
+            if (isPersonalMobile && !isForcedKioskMode()) {
+                state.deviceChecked = true;
+                state.deviceStatus = 'not_registered';
+                setIdleUi(true);
+                setPrompt('Device not registered.', 'Tap "Register This Device" below.');
+                setMobileRegisterVisible(true);
+                armPostScanHold(5000);
+            } else {
+                if (confirm('This device is not registered. Register "' + (j.employeeName || 'your device') + '" now?')) {
+                    registerDevice(j.employeeId, j.employeeName);
+                } else {
+                    setPrompt('Device not registered.', 'Please contact administrator.');
+                    armPostScanHold(3000);
+                }
+            }
+            return;
+        }
+        
+        if (action === 'DEVICE_PENDING') {
+            state.deviceChecked = true;
+            state.deviceStatus = 'pending';
+            setIdleUi(true);
+            setMobileRegisterVisible(false);
+            toastError('Your device registration is pending admin approval.');
+            setPrompt('Device pending approval.', 'Please wait for admin to approve.');
+            armPostScanHold(3000);
+            return;
+        }
+        
+        if (action === 'DEVICE_BLOCKED') {
+            state.deviceChecked = true;
+            state.deviceStatus = 'blocked';
+            setIdleUi(true);
+            setMobileRegisterVisible(false);
+            toastError('This device has been blocked.');
+            setPrompt('Device blocked.', 'Please contact administrator.');
+            armPostScanHold(3000);
+            return;
+        }
+        
+        if (action === 'SELF_ENROLL') {
+            // MOBILE: Check if face matched a different employee
+            var matchedEmployee = j.matchedEmployee || j.matchedEmployeeId || j.employeeName;
+            
+            if (isPersonalMobile && !isForcedKioskMode()) {
+                if (matchedEmployee && matchedEmployee !== 'Unknown') {
+                    // Face matched a DIFFERENT employee - show warning
+                    toastError('This device belongs to ' + matchedEmployee + '. Please use your own device.');
+                    Swal.fire({
+                        title: 'Wrong Device',
+                        html: '<div style="font-size: 1.1rem;">This device belongs to <strong>' + matchedEmployee + '</strong>.<br>Please use your own registered device.</div>',
+                        icon: 'warning',
+                        confirmButtonText: 'Understood',
+                        confirmButtonColor: '#f59e0b',
+                        background: '#0f172a',
+                        color: '#f8fafc'
+                    });
+                    setPrompt('Wrong employee detected.', 'Use your own device.');
+                } else {
+                    // Face not recognized - silently retry for mobile
+                    // Don't show enrollment UI, just retry
+                    setPrompt('Not recognized.', 'Retrying...');
+                    setTimeout(function() {
+                        // Reset and allow immediate retry
+                        state.submitInProgress = false;
+                        state.liveInFlight = false;
+                        state.mpReadyToFire = true;
+                    }, 1000);
+                }
+                armPostScanHold(3000);
+            } else {
+                // Kiosk mode - show normal enrollment prompt
+                setPrompt('Enrollment required.', 'Please register to use the system.');
+                armPostScanHold(5000);
+            }
+            return;
+        }
+
+        if (err === 'ALREADY_SCANNED' || err === 'TOO_SOON') {
+            toastError(j.message || 'Already scanned. Please wait.');
+            // MOBILE: Redirect to employee page after showing message
+            var isPersonalMobile = /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
+            var isForcedKiosk = document.body.getAttribute('data-force-kiosk') === 'true';
+            if (isPersonalMobile && !isForcedKiosk) {
+                setTimeout(function() {
+                    window.location.href = (window.appBase || '/') + 'MobileRegistration/Employee';
+                }, 2000);
+            }
+            armPostScanHold(CFG.postScan.holdMs);
+        } else if (err === 'LIVENESS_FAIL') {
+            // Visual feedback only - bounding box color + status bar shows liveness state
+            // No toast - user sees red bounding box and "Liveness failed" on status bar
+            armPostScanHold(1500);
+        } else if (err === 'NOT_RECOGNIZED') {
+            // Face not recognized - give helpful feedback
+            toastError('Face not recognized. Try moving closer or adjusting angle.');
+            setPrompt('Face not recognized.', 'Try moving closer or adjusting angle.');
+            armPostScanHold(1500);
+        } else if (err === 'WRONG_DEVICE') {
+            // Mobile: Device belongs to different employee
+            var matchedEmployee = (j.details && j.details.matchedEmployee) || j.matchedEmployee || 'another employee';
+            toastError('This device is registered to ' + matchedEmployee + '. Please use your own device.');
+            Swal.fire({
+                title: 'Wrong Device',
+                html: '<div style="font-size: 1.1rem;">This device is registered to <strong>' + matchedEmployee + '</strong>.<br>Please use your own registered device.</div>',
+                icon: 'warning',
+                confirmButtonText: 'Understood',
+                confirmButtonColor: '#f59e0b',
+                background: '#0f172a',
+                color: '#f8fafc'
+            });
+            setPrompt('Wrong employee detected.', 'Use your own device.');
+            armPostScanHold(5000);
+        } else if (err === 'RATE_LIMIT_EXCEEDED' || err === 'SYSTEM_BUSY') {
+            toastError('System busy. Please wait a moment and try again.');
+            setPrompt('System busy.', 'Please wait.');
+            armPostScanHold(retryMs);
+            return;
+        } else if (err === 'REQUEST_TIMEOUT') {
+            toastError('Scan timed out. Please try again.');
+            armPostScanHold(retryMs);
+        } else {
+            toastError(j.message || err || 'Scan failed.');
+            armPostScanHold(1500);
+        }
+
+        setPrompt('Ready.', 'Stand still. One face only.');
     }
 
     // =========
@@ -1560,6 +2321,7 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
             ws.onopen = function() {
                 log('Fast preview WebSocket connected');
                 state.fastPreviewResult = null;
+                state.fastPreviewFailCount = 0;
             };
             
             ws.onmessage = function(e) {
@@ -1595,8 +2357,16 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 log('Fast preview WebSocket closed');
                 state.fastWs = null;
                 state.fastPreviewResult = null;
-                // Reconnect after delay
-                setTimeout(initFastPreview, 5000);
+                // Reconnect after delay (with exponential backoff)
+                if (!state.fastPreviewFailCount) state.fastPreviewFailCount = 0;
+                state.fastPreviewFailCount++;
+                if (state.fastPreviewFailCount <= 3) {
+                    var delay = Math.min(30000, 5000 * state.fastPreviewFailCount);
+                    setTimeout(initFastPreview, delay);
+                } else {
+                    log('Fast preview disabled after multiple failures');
+                    CFG.fastPreview.enabled = false;
+                }
             };
             
             state.fastWs = ws;
@@ -1608,7 +2378,10 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
     function doFastPreview() {
         if (!CFG.fastPreview.enabled) return;
         if (!state.fastWs || state.fastWs.readyState !== WebSocket.OPEN) {
-            initFastPreview();
+            // Only try to reconnect if we haven't failed too many times
+            if ((state.fastPreviewFailCount || 0) < 3) {
+                initFastPreview();
+            }
             return;
         }
         if (state.fastPreviewScanning) return;
@@ -1654,15 +2427,15 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
     // =========
     // camera start
-    // OPT-SPEED-03: Lower camera resolution for faster processing
-    // =========
+    // Camera: Use higher resolution for better face recognition
+    // Enrollment uses high quality, so kiosk must match for accurate matching
     function startCamera() {
         return navigator.mediaDevices.getUserMedia({
             video: {
                 facingMode: 'user',
-                width:      { ideal: 480, max: 640 },
-                height:     { ideal: 360, max: 480 },
-                frameRate:  { ideal: 15, max: 20 },
+                width:      { ideal: 1280, max: 1920 },
+                height:     { ideal: 720, max: 1080 },
+                frameRate:  { ideal: 30, max: 30 },
             },
             audio: false,
         }).then(function (stream) {
@@ -1688,7 +2461,15 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                     state.localPresent
                 );
 
-                var shouldIdle = (!facePresent || state.locationState !== 'allowed');
+                // Personal mobile phones stay in idle until the current device is active.
+                var mobileDeviceGateActive = (
+                    isPersonalMobile &&
+                    !isForcedKioskMode() &&
+                    state.deviceChecked &&
+                    state.deviceStatus !== 'active'
+                );
+
+                var shouldIdle = (!facePresent || state.locationState !== 'allowed' || mobileDeviceGateActive);
 
                 if (shouldIdle) {
                     if (!state.wasIdle) {
@@ -1698,23 +2479,43 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                     state.wasIdle = true;
                     setIdleUi(true);
 
-                    if (!facePresent) {
-                        setPrompt(
-                            'Idle.',
-                            state.locationState === 'allowed'
-                                ? 'Look at the camera.'
-                                : (state.locationSub || 'Please wait while we verify your location.')
-                        );
-                        updateEta(false);
-                    } else if (state.locationState === 'pending') {
+                    if (state.locationState === 'pending') {
                         safeSetPrompt('Checking location.', state.locationSub || 'Please wait while we verify your office area.');
+                        setMobileRegisterVisible(false);
                         updateEta(true);
-                    } else {
+                    } else if (state.locationState !== 'allowed') {
                         safeSetPrompt(
                             state.locationTitle || 'Location required.',
                             state.locationSub || 'Move into the allowed office area to continue.'
                         );
+                        setMobileRegisterVisible(false);
                         updateEta(true);
+                    } else if (mobileDeviceGateActive) {
+                        if (state.deviceStatus === 'not_registered') {
+                            setPrompt('Device not registered.', 'Tap "Register This Device" below.');
+                            setMobileRegisterVisible(true);
+                        } else if (state.deviceStatus === 'pending') {
+                            setPrompt('Device pending approval.', 'Please wait for admin approval.');
+                            setMobileRegisterVisible(false);
+                        } else if (state.deviceStatus === 'blocked') {
+                            setPrompt('Device blocked.', 'Please contact administrator.');
+                            setMobileRegisterVisible(false);
+                        } else {
+                            setPrompt('Checking device.', 'Please wait.');
+                            setMobileRegisterVisible(false);
+                        }
+                        updateEta(true);
+                    } else if (!facePresent) {
+                        setPrompt(
+                            'Idle.',
+                            'Look at the camera.'
+                        );
+                        if (isPersonalMobile && state.deviceStatus === 'not_registered') {
+                            setMobileRegisterVisible(true);
+                        } else {
+                            setMobileRegisterVisible(false);
+                        }
+                        updateEta(false);
                     }
 
                     resolveOfficeIfNeeded();
@@ -1738,29 +2539,101 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
                     if (now < state.backoffUntil) { setPrompt('System busy.', 'Please wait.'); updateEta(true); return; }
                     if (state.visitorOpen) { updateEta(true); return; }
+                    if (state.unlockOpen) { updateEta(true); return; }  // Block scan when PIN modal open
+                    if (state.adminModalOpen) { updateEta(true); return; }  // Block scan when admin success modal open
                     if (now < (state.scanBlockUntil || 0)) { safeSetPrompt('Please wait.', 'Next scan ready soon.'); updateEta(true); return; }
                     if (state.mpMode !== 'tasks') { safeSetPrompt('System not ready.', 'Face detection unavailable.'); updateEta(true); return; }
+                    
+                    // PREVENT IMMEDIATE SCAN: Must wait at least 2 seconds after page load
+                    // This prevents liveness from firing immediately when webpage loads
+                    var timeSincePageLoad = now - pageLoadTime;
+                    if (timeSincePageLoad < 2000) { 
+                        safeSetPrompt('Initializing...', 'Please wait a moment.'); 
+                        updateEta(true); 
+                        return; 
+                    }
 
                     // ULTRA-FAST PREVIEW: Try to recognize face in background
                     doFastPreview();
 
                     if (state.mpReadyToFire && (now - state.lastCaptureAt) > CFG.server.captureCooldownMs) {
-                        captureFrameBlob().then(function (blob) {
-                            if (!blob) return;
+                        // CRITICAL: Check if already submitting to prevent duplicate scans
+                        if (state.submitInProgress || state.liveInFlight) {
+                            updateEta(true);
+                            return;
+                        }
+                        
+                        // OPTIMIZED: Mobile uses 5-frame burst for faster response
+                        // Reduced from 10 to 5 frames, 30ms interval for speed
+                        var useBurst = isMobile && !document.body.getAttribute('data-force-kiosk');
+                        
+                        if (useBurst) {
+                            // Mobile burst capture - OPTIMIZED for speed
                             state.mpReadyToFire = false;
                             state.mpStableStart = 0;
                             state.liveInFlight = true;
-                            submitAttendance(blob).finally(function () {
+                            setPrompt('Capturing...', 'Hold still');
+                            
+                            // TIMING: Start tracking performance
+                            var timingStart = performance.now();
+                            var timingMarkers = {};
+
+                            
+                            // Start safety timeout
+                            startCaptureSafetyTimeout();
+                            
+                            captureBurstFrames(3, 30).then(function(blobs) {
+                                timingMarkers.captureComplete = performance.now();
+
+                                
+                                clearCaptureSafetyTimeout();
+                                // Allow submission with at least 1 frame (server will handle fallback)
+                                if (blobs.length < 1) {
+                                    state.liveInFlight = false;
+                                    state.submitInProgress = false;
+                                    setPrompt('Capture failed.', 'Please try again.');
+                                    return;
+                                }
+
+                                timingMarkers.submissionStart = performance.now();
+                                
+                                submitBurstAttendance(blobs, function onSwalShown() {
+                                    // TIMING: Swal is now visible
+                                    var timingEnd = performance.now();
+                                    timingMarkers.swalShown = timingEnd;
+                                    
+
+                                }).finally(function () {
+                                    clearCaptureSafetyTimeout();
+                                    state.liveInFlight = false;
+                                });
+                            }).catch(function(err) {
+                                clearCaptureSafetyTimeout();
+                                // Handle any capture errors
                                 state.liveInFlight = false;
+                                state.submitInProgress = false;
+
+                                setPrompt('Capture error.', 'Please try again.');
                             });
-                        });
+                        } else {
+                            // Desktop/Kiosk single frame
+                            captureFrameBlob().then(function (blob) {
+                                if (!blob) return;
+                                state.mpReadyToFire = false;
+                                state.mpStableStart = 0;
+                                state.liveInFlight = true;
+                                submitAttendance(blob).finally(function () {
+                                    state.liveInFlight = false;
+                                });
+                            });
+                        }
                     }
 
                     updateEta(true);
                 });
 
             } catch (e) {
-                if (CFG.debug) console.warn('[FaceAttend] loop error', e);
+                // Loop error - silent
                 setPrompt('System error.', 'Reload the page or check the server.');
                 setEta('ETA: --');
             } finally {
@@ -1791,9 +2664,24 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
 
         startCamera()
             .then(function () { return mp.init(); })
+            .then(function () { return checkCurrentMobileDeviceState(); })
             .then(function () {
                 setIdleUi(true);
-                setPrompt('Idle.', state.locationSub || 'Please wait while the location is verified.');
+
+                if (isPersonalMobile && !isForcedKioskMode() && state.deviceStatus === 'not_registered') {
+                    setPrompt('Device not registered.', 'Tap "Register This Device" below.');
+                    setMobileRegisterVisible(true);
+                } else if (isPersonalMobile && !isForcedKioskMode() && state.deviceStatus === 'pending') {
+                    setPrompt('Device pending approval.', 'Please wait for admin approval.');
+                    setMobileRegisterVisible(false);
+                } else if (isPersonalMobile && !isForcedKioskMode() && state.deviceStatus === 'blocked') {
+                    setPrompt('Device blocked.', 'Please contact administrator.');
+                    setMobileRegisterVisible(false);
+                } else {
+                    setPrompt('Idle.', state.locationSub || 'Please wait while the location is verified.');
+                    setMobileRegisterVisible(false);
+                }
+
                 setEta(state.locationState === 'allowed' ? 'ETA: idle' : 'ETA: locating');
                 setLiveness(null, null, 'live-unk');
                 drawLoop();
@@ -1814,6 +2702,78 @@ state.faceStatus   = boxFullyVisibleCanvas(box) ? 'good' : 'low';
                 setEta('ETA: blocked');
             });
     })();
+    
+    // =========================================================================
+    // FULLSCREEN MODE for Mobile/Kiosk
+    // =========================================================================
+    function enterFullscreen() {
+        var elem = document.documentElement;
+        if (elem.requestFullscreen) {
+            return elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) {
+            return elem.webkitRequestFullscreen();
+        } else if (elem.msRequestFullscreen) {
+            return elem.msRequestFullscreen();
+        }
+        return Promise.reject('Fullscreen not supported');
+    }
+    
+    function exitFullscreen() {
+        if (document.exitFullscreen) {
+            return document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            return document.webkitExitFullscreen();
+        } else if (document.msExitFullscreen) {
+            return document.msExitFullscreen();
+        }
+        return Promise.reject('Fullscreen not supported');
+    }
+    
+    function isFullscreen() {
+        return !!(document.fullscreenElement || 
+                  document.webkitFullscreenElement || 
+                  document.msFullscreenElement);
+    }
+    
+    // AUTO FULLSCREEN: Enter fullscreen automatically on page load for both mobile and kiosk
+    function initAutoFullscreen() {
+        // Try to enter fullscreen immediately
+        var tryFullscreen = function() {
+            if (!isFullscreen()) {
+                enterFullscreen().catch(function() {
+                    // If immediate fails (common on mobile), wait for user interaction
+                });
+            }
+        };
+        
+        // Attempt immediately
+        tryFullscreen();
+        
+        // Also attempt on first user interaction (required by some mobile browsers)
+        var onFirstInteraction = function() {
+            if (!isFullscreen()) {
+                enterFullscreen().catch(function() {});
+            }
+            // Remove listeners after first interaction
+            document.removeEventListener('click', onFirstInteraction);
+            document.removeEventListener('touchstart', onFirstInteraction);
+        };
+        
+        document.addEventListener('click', onFirstInteraction);
+        document.addEventListener('touchstart', onFirstInteraction);
+        
+        // Re-enter fullscreen if user exits (for kiosk mode)
+        document.addEventListener('fullscreenchange', function() {
+            // Optional: auto-reenter after delay if in kiosk mode
+            // Disabled to allow admin escape - uncomment if strict kiosk needed
+            // if (!isFullscreen() && isForcedKiosk) {
+            //     setTimeout(tryFullscreen, 500);
+            // }
+        });
+    }
+    
+    // Initialize auto fullscreen on load
+    initAutoFullscreen();
 
 })();
 

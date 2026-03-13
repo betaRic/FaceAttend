@@ -3,6 +3,7 @@ using System.Linq;
 using System.Net;
 using System.Runtime.Caching;
 using System.Web.Mvc;
+using FaceAttend.Services;
 
 namespace FaceAttend.Filters
 {
@@ -22,16 +23,7 @@ namespace FaceAttend.Filters
         private const string CachePrefix        = "RATELIMIT_TB::";
         private const string CachePrefixHardCap = "RATELIMIT_HC::";
 
-        private static int GetXffHardCapPerMinute()
-        {
-            var v = System.Configuration.ConfigurationManager.AppSettings["RateLimit:XffHardCapPerMinute"];
-            return int.TryParse(v, out var n) && n > 0 ? n : 60;
-        }
-
-        private static string GetTrustedProxyCidrsRaw()
-        {
-            return (System.Configuration.ConfigurationManager.AppSettings["RateLimit:TrustedProxyCidrs"] ?? "").Trim();
-        }
+        // Using AppSettings from FaceAttend.Services for configuration access
 
         public string Name          { get; set; } = "default";
         public int    MaxRequests   { get; set; } = 10;
@@ -52,7 +44,10 @@ namespace FaceAttend.Filters
             var usingXff = !string.Equals(directIp, clientIp, StringComparison.OrdinalIgnoreCase);
 
             var fairnessKey = clientIp;
-            if (string.Equals(Name, "KioskAttend", StringComparison.OrdinalIgnoreCase))
+            // FIX: Apply same fairness logic to both KioskAttend and KioskAttendBurst
+            // This prevents shared office NAT from rate-limiting legitimate concurrent users
+            if (string.Equals(Name, "KioskAttend", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(Name, "KioskAttendBurst", StringComparison.OrdinalIgnoreCase))
             {
                 var sessionId = filterContext.HttpContext?.Session?.SessionID;
                 if (!string.IsNullOrWhiteSpace(sessionId))
@@ -78,7 +73,7 @@ namespace FaceAttend.Filters
 
             if (usingXff)
             {
-                var hardCap = GetXffHardCapPerMinute();
+                var hardCap = ConfigurationService.GetInt("RateLimit:XffHardCapPerMinute", 60);
                 var cacheKey2 = $"{CachePrefixHardCap}{directIp}";
                 var bucket2 = GetOrCreateBucket(cacheKey2, hardCap, 0);
 
@@ -198,7 +193,7 @@ namespace FaceAttend.Filters
             if (string.IsNullOrWhiteSpace(ip)) return false;
             if (ip == "127.0.0.1" || ip == "::1" || ip == "localhost") return true;
 
-            var raw = GetTrustedProxyCidrsRaw();
+            var raw = ConfigurationService.GetString("RateLimit:TrustedProxyCidrs", "");
             if (string.IsNullOrWhiteSpace(raw)) return false;
 
             var items = raw.Split(',')

@@ -75,7 +75,7 @@ namespace FaceAttend.Services.Security
             if (!string.IsNullOrWhiteSpace(env))
                 return env.Trim();
 
-            return (AppSettings.GetString("Admin:AllowedIpRanges", "") ?? "").Trim();
+            return (ConfigurationService.GetString("Admin:AllowedIpRanges", "") ?? "").Trim();
         }
 
         /// <summary>

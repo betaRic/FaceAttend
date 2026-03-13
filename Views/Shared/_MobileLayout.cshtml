@@ -1,0 +1,303 @@
+@{
+    Layout = null;
+}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="HandheldFriendly" content="true">
+    <meta name="MobileOptimized" content="width">
+    <meta http-equiv="ScreenOrientation" content="autoRotate:disabled">
+    <meta name="theme-color" content="#020617">
+    <title>@ViewBag.Title - FaceAttend</title>
+    
+    <!-- Bootstrap CSS -->
+    @Styles.Render("~/Content/kiosk-base")
+    
+    <!-- Mobile Kiosk Shared Styles -->
+    <link rel="stylesheet" href="@Url.Content("~/Content/mobile-kiosk.css")" />
+    
+    <!-- Local Font Awesome -->
+    <link rel="stylesheet" href="@Url.Content("~/Content/vendor/fontawesome/css/all.min.css")" />
+    
+    <!-- Page-specific styles -->
+    @RenderSection("styles", required: false)
+    
+    <style>
+        /* Mobile Swal Theme */
+        .mobile-swal-popup {
+            width: min(92vw, 26rem) !important;
+            border-radius: 1rem !important;
+            border: 1px solid rgba(255,255,255,.08) !important;
+            padding: 1.1rem !important;
+            box-shadow: 0 20px 50px rgba(0,0,0,.35) !important;
+            background: #0f172a !important;
+            color: #f8fafc !important;
+        }
+        
+        .mobile-swal-title {
+            font-size: 1.1rem !important;
+            font-weight: 700 !important;
+            color: #f8fafc !important;
+        }
+        
+        .mobile-swal-text {
+            color: #cbd5e1 !important;
+            font-size: .95rem !important;
+            line-height: 1.55 !important;
+        }
+        
+        .mobile-swal-confirm {
+            min-width: 110px;
+            border-radius: .8rem !important;
+            font-weight: 600 !important;
+            padding: .75rem 1rem !important;
+            background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+            color: white !important;
+            border: none !important;
+        }
+        
+        .mobile-swal-cancel {
+            min-width: 110px;
+            border-radius: .8rem !important;
+            font-weight: 600 !important;
+            padding: .75rem 1rem !important;
+            background: rgba(255,255,255,0.1) !important;
+            color: #f8fafc !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+        }
+        
+        .mobile-swal-toast {
+            border-radius: .85rem !important;
+            border: 1px solid rgba(255,255,255,.08) !important;
+            background: #0f172a !important;
+            color: #f8fafc !important;
+        }
+    </style>
+</head>
+<body class="mobile-app">
+    <div class="container-fluid px-3 px-sm-4 py-3">
+        <div class="row justify-content-center">
+            <div class="col-12 col-sm-11 col-md-8 col-lg-6">
+                <main class="mobile-shell">
+                    @RenderBody()
+                </main>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Scripts -->
+    @Scripts.Render("~/bundles/jquery")
+    <script src="@Url.Content("~/Scripts/vendor/sweetalert2/sweetalert2.all.min.js")"></script>
+    
+    <!-- Unified Mobile Swal Helper -->
+    <script>
+        window.MobileSwal = {
+            base: {
+                background: '#0f172a',
+                color: '#f8fafc',
+                backdrop: 'rgba(2, 6, 23, 0.72)',
+                heightAuto: false,
+                allowOutsideClick: function () { return !Swal.isLoading(); },
+                allowEscapeKey: true,
+                buttonsStyling: false,
+                customClass: {
+                    popup: 'mobile-swal-popup',
+                    title: 'mobile-swal-title',
+                    htmlContainer: 'mobile-swal-text',
+                    confirmButton: 'mobile-swal-confirm',
+                    cancelButton: 'mobile-swal-cancel'
+                }
+            },
+
+            fire: function (options) {
+                return Swal.fire(Object.assign({}, this.base, options));
+            },
+
+            success: function (title, text) {
+                return this.fire({
+                    icon: 'success',
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                });
+            },
+
+            error: function (title, text) {
+                return this.fire({
+                    icon: 'error',
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                });
+            },
+
+            warning: function (title, text) {
+                return this.fire({
+                    icon: 'warning',
+                    title: title,
+                    text: text,
+                    confirmButtonText: 'OK'
+                });
+            },
+
+            confirm: function (title, text, confirmText, cancelText) {
+                return this.fire({
+                    icon: 'question',
+                    title: title,
+                    text: text,
+                    showCancelButton: true,
+                    reverseButtons: true,
+                    focusCancel: true,
+                    confirmButtonText: confirmText || 'Continue',
+                    cancelButtonText: cancelText || 'Cancel'
+                });
+            },
+
+            loading: function (title, text) {
+                return this.fire({
+                    title: title || 'Please wait',
+                    text: text || '',
+                    allowOutsideClick: false,
+                    allowEscapeKey: false,
+                    showConfirmButton: false,
+                    didOpen: function () {
+                        Swal.showLoading();
+                    }
+                });
+            },
+
+            toast: function (icon, title) {
+                return Swal.fire({
+                    toast: true,
+                    position: 'top',
+                    icon: icon,
+                    title: title,
+                    showConfirmButton: false,
+                    timer: 2400,
+                    timerProgressBar: true,
+                    background: '#0f172a',
+                    color: '#f8fafc',
+                    customClass: {
+                        popup: 'mobile-swal-toast'
+                    }
+                });
+            }
+        };
+    </script>
+    
+    <!-- Audio Manager -->
+    @FaceAttend.Services.AudioManager.GetAudioManagerScript(Context)
+    
+    <!-- Mobile/Desktop Mode Detection & Enforcement -->
+    <script>
+        (function() {
+            var ua = navigator.userAgent.toLowerCase();
+            var isPhone = /iphone|android.*mobile|windows phone|iemobile|blackberry/.test(ua);
+            var isTablet = /ipad|android(?!.*mobile)|tablet/.test(ua);
+            
+            // Personal phone = mobile mode, so clear kiosk override
+            if (isPhone) {
+                document.cookie = 'ForceKioskMode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+            }
+            
+            // STRICT MOBILE CHECK: Detect desktop mode on phones
+            // We can't truly disable desktop site, but we can detect and block it
+            function detectDesktopModeOnPhone() {
+                // Phone indicators
+                var isMobileUA = /iphone|android.*mobile|windows phone|iemobile|blackberry/.test(ua);
+                var isCoarsePointer = window.matchMedia('(pointer: coarse)').matches;
+                var maxTouchPoints = navigator.maxTouchPoints || 0;
+                var screenWidth = window.screen.width;
+                var screenHeight = window.screen.height;
+                var pixelRatio = window.devicePixelRatio || 1;
+                
+                // Desktop mode indicators on phones
+                // 1. User agent says phone but viewport is wide
+                // 2. Touch is available but screen dimensions don't match phone expectations
+                // 3. CSS pixel width > 500 (phones are typically 320-414 CSS pixels wide)
+                var viewportWidth = window.innerWidth || document.documentElement.clientWidth;
+                
+                if (isMobileUA && !isTablet) {
+                    // This is definitely a phone by UA
+                    if (viewportWidth > 600) {
+                        // Desktop mode likely enabled
+                        return {
+                            isDesktopMode: true,
+                            reason: 'Viewport too wide for phone (' + viewportWidth + 'px)',
+                            viewportWidth: viewportWidth
+                        };
+                    }
+                    
+                    // Additional check: physical screen size
+                    var physicalWidth = screenWidth * pixelRatio;
+                    var physicalHeight = screenHeight * pixelRatio;
+                    
+                    // Most phones have physical width < 1500px
+                    // Desktop mode often reports wrong dimensions
+                    if (physicalWidth > 2000 && physicalHeight > 1500) {
+                        return {
+                            isDesktopMode: true,
+                            reason: 'Screen dimensions suggest desktop',
+                            physicalWidth: physicalWidth,
+                            physicalHeight: physicalHeight
+                        };
+                    }
+                }
+                
+                return { isDesktopMode: false };
+            }
+            
+            // Check and enforce mobile mode
+            function enforceMobileMode() {
+                var check = detectDesktopModeOnPhone();
+                
+                if (check.isDesktopMode) {
+                    // Show blocking message
+                    var blockDiv = document.createElement('div');
+                    blockDiv.id = 'desktopModeBlocker';
+                    blockDiv.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#0f172a;z-index:999999;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:20px;text-align:center;color:#f8fafc;';
+                    blockDiv.innerHTML = 
+                        '<div style="font-size:3rem;margin-bottom:1rem;"><i class="fa-solid fa-mobile-screen"></i></div>' +
+                        '<h2 style="font-size:1.5rem;margin-bottom:1rem;font-weight:700;">Mobile View Required</h2>' +
+                        '<p style="font-size:1rem;line-height:1.6;max-width:400px;margin-bottom:1.5rem;color:#cbd5e1;">' +
+                        'This page is designed for mobile devices. Please disable "Desktop site" mode in your browser settings.' +
+                        '</p>' +
+                        '<div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:12px;padding:16px;margin-bottom:1.5rem;max-width:400px;">' +
+                        '<p style="margin:0 0 8px 0;font-size:0.9rem;color:#94a3b8;"><strong>How to fix:</strong></p>' +
+                        '<ol style="text-align:left;margin:0;padding-left:20px;font-size:0.9rem;color:#cbd5e1;">' +
+                        '<li>Tap the <strong>3 dots menu</strong> (Chrome) or <strong>AA icon</strong> (Safari)</li>' +
+                        '<li>Uncheck <strong>"Desktop site"</strong></li>' +
+                        '<li>Refresh the page</li>' +
+                        '</ol>' +
+                        '</div>' +
+                        '<button onclick="location.reload()" style="background:#3b82f6;color:white;border:none;padding:12px 24px;border-radius:8px;font-size:1rem;cursor:pointer;font-weight:600;">' +
+                        '<i class="fa-solid fa-rotate-right"></i> Refresh Page' +
+                        '</button>';
+                    
+                    document.body.appendChild(blockDiv);
+                    
+                    // Log for debugging
+                    console.warn('[MobileLayout] Desktop mode detected:', check.reason);
+                    
+                    return true; // Blocked
+                }
+                
+                return false; // Not blocked
+            }
+            
+            // Run check immediately and on resize
+            var wasBlocked = enforceMobileMode();
+            
+            if (!wasBlocked) {
+                window.addEventListener('resize', function() {
+                    enforceMobileMode();
+                });
+            }
+        })();
+    </script>
+    
+    @RenderSection("scripts", required: false)
+</body>
+</html>

@@ -229,6 +229,7 @@
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
     <Compile Include="App_Start\BundleConfig.cs" />
+    <Compile Include="App_Start\NonMinifiedScriptBundle.cs" />
     <Compile Include="App_Start\FilterConfig.cs" />
     <Compile Include="App_Start\RouteConfig.cs" />
     <Compile Include="Areas\Admin\AdminAreaRegistration.cs" />
@@ -241,6 +242,9 @@
     <Compile Include="Areas\Admin\Controllers\SettingsController.cs" />
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
     <Compile Include="Areas\Admin\Helpers\AdminQueryHelper.cs" />
+    <Compile Include="Areas\Admin\Helpers\SettingsViewModelBuilder.cs" />
+    <Compile Include="Areas\Admin\Helpers\SettingsValidator.cs" />
+    <Compile Include="Areas\Admin\Helpers\SettingsSaver.cs" />
     <Compile Include="Areas\Admin\Models\AttendanceDetailsVm.cs" />
     <Compile Include="Areas\Admin\Models\AttendanceIndexVm.cs" />
     <Compile Include="Areas\Admin\Models\DashboardViewModel.cs" />
@@ -253,9 +257,13 @@
     </Compile>
     <Compile Include="Controllers\BiometricsController.cs" />
     <Compile Include="Controllers\ErrorController.cs" />
-    <Compile Include="Controllers\FaceWebSocketController.cs" />
     <Compile Include="Controllers\HealthController.cs" />
     <Compile Include="Controllers\KioskController.cs" />
+    <Compile Include="Controllers\KioskController.Device.cs" />
+    <Compile Include="Controllers\MobileRegistrationController.cs" />
+    <Compile Include="Device.cs">
+      <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
+    </Compile>
     <Compile Include="Employee.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
@@ -284,28 +292,42 @@
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Services\AppSettings.cs" />
-    <Compile Include="Services\AuditHelper.cs" />
+    <Compile Include="Services\ApiResponse.cs" />
+    <!-- NOTE: AppConfig.cs and AppSettings.cs removed - use ConfigurationService instead -->
     <Compile Include="Services\AttendanceService.cs" />
-    <Compile Include="Services\Biometrics\FastFaceMatcher.cs" />
-    <Compile Include="Services\HealthProbe.cs" />
+    <Compile Include="Services\AudioManager.cs" />
+    <Compile Include="Services\AuditHelper.cs" />
     <Compile Include="Services\Background\TempFileCleanupTask.cs" />
     <Compile Include="Services\Biometrics\BallTreeIndex.cs" />
     <Compile Include="Services\Biometrics\BiometricCrypto.cs" />
     <Compile Include="Services\Biometrics\DlibBiometrics.cs" />
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
-    <Compile Include="Services\Biometrics\FaceMatchTuner.cs" />
+    <Compile Include="Services\Biometrics\FaceEncodingHelper.cs" />
+    <Compile Include="Services\Biometrics\FaceIndexBase.cs" />
+
+    <Compile Include="Services\Biometrics\FastFaceMatcher.cs" />
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
     <Compile Include="Services\Biometrics\ScanFramePipeline.cs" />
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
-    <Compile Include="Services\GeoUtil.cs" />
+
+    <Compile Include="Services\Biometrics\FastScanPipeline.cs" />
+    <Compile Include="Services\ConfigurationService.cs" />
+    <Compile Include="Services\DeviceService.cs" />
+    <Compile Include="Services\OperationResult.cs" />
+    <Compile Include="Services\JsonResponseBuilder.cs" />
+    <!-- NOTE: GeoUtil.cs merged into OfficeLocationService -->
+    <Compile Include="Services\HealthProbe.cs" />
     <Compile Include="Services\Helpers\CsvHelper.cs" />
     <Compile Include="Services\Helpers\FileSystemHelper.cs" />
+    <Compile Include="Services\Helpers\StringHelper.cs" />
+    <Compile Include="Services\Helpers\ValidationHelper.cs" />
+    <!-- NOTE: KioskSessionService.cs merged into DeviceService -->
+    <Compile Include="Services\OfficeLocationService.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
+    <Compile Include="Services\Security\FileSecurityService.cs" />
     <Compile Include="Services\Security\LocationAntiSpoof.cs" />
-    <Compile Include="Services\Security\SecureFileUpload.cs" />
-    <Compile Include="Services\SystemConfigService.cs" />
+    <!-- NOTE: SystemConfigService.cs removed - use ConfigurationService instead -->
     <Compile Include="Services\TimeZoneHelper.cs" />
     <Compile Include="Services\VisitorService.cs" />
     <Compile Include="SystemConfiguration.cs">
@@ -333,11 +355,12 @@
     <Content Include="Areas\Admin\Views\_ViewStart.cshtml" />
     <Content Include="Content\admin.css" />
     <Content Include="Content\admin-enroll.css" />
+    <Content Include="Content\audio\notif.mp3" />
+    <Content Include="Content\audio\success.mp3" />
     <Content Include="Content\bootstrap-grid.css" />
     <Content Include="Content\bootstrap-grid.css.map" />
     <Content Include="Content\bootstrap-grid.min.css" />
     <Content Include="Content\bootstrap-grid.min.css.map" />
-    <Content Include="Content\bootstrap-grid.rtl.css" />
     <Content Include="Content\bootstrap-grid.rtl.css.map" />
     <Content Include="Content\bootstrap-grid.rtl.min.css" />
     <Content Include="Content\bootstrap-grid.rtl.min.css.map" />
@@ -345,7 +368,6 @@
     <Content Include="Content\bootstrap-reboot.css.map" />
     <Content Include="Content\bootstrap-reboot.min.css" />
     <Content Include="Content\bootstrap-reboot.min.css.map" />
-    <Content Include="Content\bootstrap-reboot.rtl.css" />
     <Content Include="Content\bootstrap-reboot.rtl.css.map" />
     <Content Include="Content\bootstrap-reboot.rtl.min.css" />
     <Content Include="Content\bootstrap-reboot.rtl.min.css.map" />
@@ -353,7 +375,6 @@
     <Content Include="Content\bootstrap-utilities.css.map" />
     <Content Include="Content\bootstrap-utilities.min.css" />
     <Content Include="Content\bootstrap-utilities.min.css.map" />
-    <Content Include="Content\bootstrap-utilities.rtl.css" />
     <Content Include="Content\bootstrap-utilities.rtl.css.map" />
     <Content Include="Content\bootstrap-utilities.rtl.min.css" />
     <Content Include="Content\bootstrap-utilities.rtl.min.css.map" />
@@ -361,16 +382,17 @@
     <Content Include="Content\bootstrap.css.map" />
     <Content Include="Content\bootstrap.min.css" />
     <Content Include="Content\bootstrap.min.css.map" />
-    <Content Include="Content\bootstrap.rtl.css" />
     <Content Include="Content\bootstrap.rtl.css.map" />
     <Content Include="Content\bootstrap.rtl.min.css" />
     <Content Include="Content\bootstrap.rtl.min.css.map" />
     <Content Include="Content\error.css" />
     <Content Include="Content\favicon.ico" />
     <Content Include="Content\images\dilg-logo.svg" />
+    <Content Include="Content\kiosk-responsive-fixes.css" />
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\error.css" />
     <Content Include="Content\kiosk.css" />
+    <Content Include="Content\mobile-kiosk.css" />
     <Content Include="Content\toastr.css" />
     <Content Include="Content\toastr.less" />
     <Content Include="Content\toastr.min.css" />
@@ -401,6 +423,8 @@
     <Content Include="Content\vendor\leaflet\images\marker-icon.png" />
     <Content Include="Content\vendor\leaflet\images\marker-shadow.png" />
     <Content Include="Content\vendor\leaflet\leaflet.css" />
+    <Content Include="Content\_animations.css" />
+    <Content Include="Content\_variables.css" />
     <Content Include="FaceAttendDBEntities.Context.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
@@ -439,6 +463,7 @@
     <Content Include="Scripts\bootstrap.js.map" />
     <Content Include="Scripts\bootstrap.min.js" />
     <Content Include="Scripts\bootstrap.min.js.map" />
+    <Content Include="Scripts\enroll-wizard.js" />
     <Content Include="Scripts\jquery-3.7.1.js" />
     <Content Include="Scripts\jquery-3.7.1.min.js" />
     <Content Include="Scripts\jquery-3.7.1.min.map" />
@@ -451,6 +476,7 @@
     <Content Include="Scripts\jquery.validate.unobtrusive.min.js" />
     <Content Include="Scripts\kiosk.js" />
     <Content Include="Scripts\modernizr-2.8.3.js" />
+    <Content Include="Scripts\modules\enrollment-core.js" />
     <Content Include="Scripts\toastr.js" />
     <Content Include="Scripts\toastr.min.js" />
     <Content Include="Scripts\vendor\datatables\buttons.bootstrap5.min.css" />
@@ -473,6 +499,11 @@
     <Content Include="Scripts\vendor\toastify\toastify.min.css" />
     <Content Include="Scripts\vendor\toastify\toastify.min.js" />
     <Content Include="Views\Kiosk\Index.cshtml" />
+    <Content Include="Views\MobileRegistration\Device.cshtml" />
+    <Content Include="Views\MobileRegistration\Enroll.cshtml" />
+    <Content Include="Views\MobileRegistration\Identify.cshtml" />
+    <Content Include="Views\MobileRegistration\Index.cshtml" />
+    <Content Include="Views\MobileRegistration\Success.cshtml" />
     <Content Include="Views\Web.config" />
     <Content Include="Views\_ViewStart.cshtml" />
     <Content Include="Web.config" />
@@ -507,6 +538,8 @@
     <Content Include="Content\vendor\fontawesome\webfonts\fa-v4compatibility.woff2" />
     <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\PendingDevices.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\Devices.cshtml" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
@@ -515,6 +548,10 @@
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
     <Content Include="Views\Shared\ErrorPage.cshtml" />
+    <Content Include="Views\Shared\_MobileLayout.cshtml" />
+    <Content Include="Views\Error\ErrorPage.cshtml" />
+    <Content Include="Views\MobileRegistration\Employee.cshtml" />
+    <Content Include="Views\MobileRegistration\DeviceNotRecognized.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{4A0DDDB5-7A95-4FBF-97CC-616D07737A77}" />

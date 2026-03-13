@@ -1,0 +1,585 @@
+@{
+    Layout = "~/Views/Shared/_MobileLayout.cshtml";
+    ViewBag.Title = "Identify Yourself";
+}
+
+@section styles {
+    <style>
+        .identify-camera {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            max-width: 480px;
+            margin: 0 auto;
+            border-radius: var(--mobile-radius);
+            overflow: hidden;
+            background: #000;
+            border: 3px solid var(--mobile-border);
+            transition: border-color 0.3s ease;
+        }
+        
+        .identify-camera video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+        
+        /* Face bounding box overlay */
+        .face-overlay {
+            position: absolute;
+            border: 3px solid #3b82f6;
+            border-radius: 8px;
+            box-shadow: 0 0 20px rgba(59, 130, 246, 0.5), inset 0 0 20px rgba(59, 130, 246, 0.2);
+            transition: all 0.1s ease;
+            pointer-events: none;
+            display: none;
+        }
+        
+        .face-overlay.active {
+            display: block;
+            animation: pulse-border 1.5s ease-in-out infinite;
+        }
+        
+        .face-overlay.scanning {
+            border-color: #f59e0b;
+            box-shadow: 0 0 20px rgba(245, 158, 11, 0.5), inset 0 0 20px rgba(245, 158, 11, 0.2);
+        }
+        
+        .face-overlay.success {
+            border-color: #22c55e;
+            box-shadow: 0 0 20px rgba(34, 197, 94, 0.5), inset 0 0 20px rgba(34, 197, 94, 0.2);
+        }
+        
+        @@keyframes pulse-border {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.8; transform: scale(1.02); }
+        }
+        
+        .identify-camera.scanning {
+            border-color: var(--mobile-accent);
+        }
+        
+        .identify-camera.success {
+            border-color: var(--mobile-accent-success);
+        }
+        
+        .identify-camera.error {
+            border-color: var(--mobile-accent-error);
+            animation: shake 0.5s ease-in-out;
+        }
+        
+        @@keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        
+        .camera-status {
+            position: absolute;
+            top: 12px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 8px 16px;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            background: rgba(0,0,0,0.7);
+            color: white;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+            z-index: 10;
+        }
+        
+        .camera-status.ready { background: rgba(34, 197, 94, 0.9); }
+        .camera-status.scanning { background: rgba(59, 130, 246, 0.9); }
+        .camera-status.identified { background: rgba(34, 197, 94, 0.9); }
+        .camera-status.error { background: rgba(239, 68, 68, 0.9); }
+        .camera-status.retrying { background: rgba(245, 158, 11, 0.9); }
+        
+        .scan-overlay {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0,0,0,0.5);
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 5;
+        }
+        
+        .scan-overlay.active {
+            opacity: 1;
+        }
+        
+        .scan-spinner {
+            width: 48px;
+            height: 48px;
+            border: 4px solid rgba(255,255,255,0.2);
+            border-top-color: var(--mobile-accent);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @@keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .corner-markers {
+            position: absolute;
+            inset: 20px;
+            pointer-events: none;
+            z-index: 2;
+        }
+        
+        .corner {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-color: rgba(255,255,255,0.5);
+            border-style: solid;
+            border-width: 0;
+        }
+        
+        .corner.top-left { top: 0; left: 0; border-top-width: 3px; border-left-width: 3px; }
+        .corner.top-right { top: 0; right: 0; border-top-width: 3px; border-right-width: 3px; }
+        .corner.bottom-left { bottom: 0; left: 0; border-bottom-width: 3px; border-left-width: 3px; }
+        .corner.bottom-right { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; }
+        
+        .result-section {
+            margin-top: var(--mobile-space-5);
+            animation: slideUp 0.3s ease;
+        }
+        
+        @@keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .employee-details-list {
+            margin-top: var(--mobile-space-3);
+            display: flex;
+            flex-direction: column;
+            gap: var(--mobile-space-2);
+        }
+
+        .retry-counter {
+            position: absolute;
+            bottom: 12px;
+            right: 12px;
+            background: rgba(0,0,0,0.6);
+            color: white;
+            padding: 4px 10px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            z-index: 10;
+        }
+    </style>
+}
+
+<div class="text-center mb-4">
+    <h1 class="mobile-title"><i class="fa-solid fa-fingerprint me-2"></i>Face Identification</h1>
+    <p class="mobile-subtitle">Position your face within the frame</p>
+</div>
+
+@Html.AntiForgeryToken()
+
+<!-- Camera Section -->
+<div class="identify-camera" id="cameraContainer">
+    <video id="cameraVideo" autoplay playsinline muted></video>
+    
+    <!-- Face bounding box overlay -->
+    <div class="face-overlay" id="faceOverlay"></div>
+    
+    <!-- Corner markers -->
+    <div class="corner-markers">
+        <div class="corner top-left"></div>
+        <div class="corner top-right"></div>
+        <div class="corner bottom-left"></div>
+        <div class="corner bottom-right"></div>
+    </div>
+    
+    <div class="camera-status" id="cameraStatus">Initializing...</div>
+    <div class="retry-counter" id="retryCounter" style="display: none;"></div>
+    
+    <div class="scan-overlay" id="scanOverlay">
+        <div class="scan-spinner"></div>
+    </div>
+</div>
+
+<!-- Result Section -->
+<div class="result-section" id="resultSection" style="display: none;">
+    <div class="mobile-card">
+        <div class="card-body">
+            <div class="mobile-employee-info">
+                <div class="mobile-employee-avatar">
+                    <i class="fa-solid fa-user"></i>
+                </div>
+                <div class="mobile-employee-name" id="employeeName"></div>
+                <div class="employee-details-list" id="employeeDetails"></div>
+            </div>
+            
+            <!-- Device Warning -->
+            <div class="mobile-alert mobile-alert-warning mt-3" id="deviceWarning" style="display: none;">
+                <i class="fa-solid fa-triangle-exclamation me-2"></i>
+                You already have a registered device: <span id="existingDeviceName"></span>. 
+                Registering this device will replace it.
+            </div>
+            
+            <!-- Actions -->
+            <div class="d-grid gap-2 mt-4">
+                <button type="button" class="mobile-btn mobile-btn-success" id="continueBtn">
+                    <i class="fa-solid fa-arrow-right"></i> Continue to Device Registration
+                </button>
+                <button type="button" class="mobile-btn mobile-btn-secondary" id="retryBtn" style="display: none;">
+                    <i class="fa-solid fa-rotate-right"></i> Try Again
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Back Link -->
+<div class="text-center mt-4">
+    <a href="/MobileRegistration" class="mobile-back-link">
+        <i class="fa-solid fa-arrow-left"></i> Back
+    </a>
+</div>
+
+@section scripts {
+    <!-- MediaPipe Face Detection -->
+    <script src="https://cdn.jsdelivr.net/npm/@Html.Raw("@")mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@Html.Raw("@")mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    
+    <script>
+        (function() {
+            const video = document.getElementById('cameraVideo');
+            const cameraContainer = document.getElementById('cameraContainer');
+            const cameraStatus = document.getElementById('cameraStatus');
+            const scanOverlay = document.getElementById('scanOverlay');
+            const faceOverlay = document.getElementById('faceOverlay');
+            const retryCounter = document.getElementById('retryCounter');
+            const resultSection = document.getElementById('resultSection');
+            const continueBtn = document.getElementById('continueBtn');
+            const retryBtn = document.getElementById('retryBtn');
+            
+            let identifiedEmployeeId = null;
+            let scanAttempts = 0;
+            const maxAttempts = 5;
+            let isScanning = false;
+            let faceDetector = null;
+            let lastFaceBox = null;
+            let detectionInterval = null;
+            
+            // Initialize MediaPipe face detection
+            async function initFaceDetector() {
+                try {
+                    const { FaceDetection } = window;
+                    faceDetector = new FaceDetection({
+                        locateFile: (file) => {
+                            return `https://cdn.jsdelivr.net/npm/@@mediapipe/face_detection/${file}`;
+                        }
+                    });
+                    
+                    faceDetector.setOptions({
+                        model: 'short',
+                        minDetectionConfidence: 0.5
+                    });
+                    
+                    faceDetector.onResults(onFaceDetected);
+                    return true;
+                } catch (err) {
+                    console.error('Face detector init error:', err);
+                    return false;
+                }
+            }
+            
+            // Handle face detection results
+            function onFaceDetected(results) {
+                if (isScanning) return; // Don't update UI while scanning
+                
+                if (results.detections && results.detections.length > 0) {
+                    const detection = results.detections[0];
+                    const box = detection.boundingBox;
+                    
+                    // Convert normalized coordinates to pixels
+                    const videoWidth = video.videoWidth || 640;
+                    const videoHeight = video.videoHeight || 480;
+                    
+                    const x = box.xMin * videoWidth;
+                    const y = box.yMin * videoHeight;
+                    const w = box.width * videoWidth;
+                    const h = box.height * videoHeight;
+                    
+                    // Mirror x coordinate for mirrored video
+                    const mirroredX = videoWidth - (x + w);
+                    
+                    // Update overlay
+                    faceOverlay.style.display = 'block';
+                    faceOverlay.style.left = (mirroredX / videoWidth * 100) + '%';
+                    faceOverlay.style.top = (y / videoHeight * 100) + '%';
+                    faceOverlay.style.width = (w / videoWidth * 100) + '%';
+                    faceOverlay.style.height = (h / videoHeight * 100) + '%';
+                    faceOverlay.classList.add('active');
+                    
+                    // Store for submission
+                    lastFaceBox = {
+                        x: Math.round(x),
+                        y: Math.round(y),
+                        w: Math.round(w),
+                        h: Math.round(h)
+                    };
+                    
+                    setStatus('ready', 'Face detected');
+                } else {
+                    faceOverlay.classList.remove('active');
+                    lastFaceBox = null;
+                    setStatus('ready', 'Look at camera');
+                }
+            }
+            
+            // Run detection loop
+            async function runDetection() {
+                if (!faceDetector || video.paused || video.ended) return;
+                await faceDetector.send({ image: video });
+                requestAnimationFrame(runDetection);
+            }
+            
+            function setStatus(status, text) {
+                cameraStatus.className = 'camera-status ' + status;
+                cameraStatus.textContent = text;
+            }
+            
+            function updateRetryCounter() {
+                if (scanAttempts > 0) {
+                    retryCounter.textContent = `Attempt ${scanAttempts}/${maxAttempts}`;
+                    retryCounter.style.display = 'block';
+                } else {
+                    retryCounter.style.display = 'none';
+                }
+            }
+            
+            // Render employee details
+            function renderEmployeeDetails(data) {
+                const container = document.getElementById('employeeDetails');
+                container.innerHTML = '';
+                
+                const items = [
+                    { icon: 'fa-briefcase', text: data.position },
+                    { icon: 'fa-building', text: data.department },
+                    { icon: 'fa-location-dot', text: data.office }
+                ].filter(item => item.text && String(item.text).trim());
+                
+                items.forEach(item => {
+                    const row = document.createElement('div');
+                    row.className = 'mobile-meta-row';
+                    row.innerHTML = `<i class="fa-solid ${item.icon}"></i><span>${item.text}</span>`;
+                    container.appendChild(row);
+                });
+            }
+            
+            async function initCamera() {
+                try {
+                    // Initialize face detector first
+                    const detectorReady = await initFaceDetector();
+                    
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'user',
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        }
+                    });
+                    
+                    video.srcObject = stream;
+                    
+                    video.onloadedmetadata = () => {
+                        setStatus('ready', 'Look at camera');
+                        if (detectorReady) {
+                            runDetection();
+                        }
+                        // Start scanning after short delay
+                        setTimeout(startIdentification, 1000);
+                    };
+                    
+                } catch (err) {
+                    console.error('Camera error:', err);
+                    MobileSwal.error('Camera Access Required', 'Please allow camera access to identify yourself.');
+                }
+            }
+            
+            // Capture single frame
+            async function captureFrame() {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth || 640;
+                canvas.height = video.videoHeight || 480;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0);
+                
+                return new Promise(resolve => {
+                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
+                });
+            }
+            
+            // Capture burst frames
+            async function captureBurstFrames(count, intervalMs) {
+                const frames = [];
+                for (let i = 0; i < count; i++) {
+                    const blob = await captureFrame();
+                    frames.push(blob);
+                    if (i < count - 1) {
+                        await new Promise(r => setTimeout(r, intervalMs));
+                    }
+                }
+                return frames;
+            }
+            
+            async function startIdentification() {
+                if (isScanning) return;
+                
+                // Check max attempts
+                if (scanAttempts >= maxAttempts) {
+                    setStatus('error', 'Max attempts reached');
+                    cameraContainer.classList.add('error');
+                    
+                    const result = await MobileSwal.confirm(
+                        'Not Recognized',
+                        'Could not identify after ' + maxAttempts + ' attempts. Try again?',
+                        'Try Again',
+                        'Back'
+                    );
+                    
+                    if (result.isConfirmed) {
+                        resetAndRetry();
+                    } else {
+                        retryBtn.style.display = 'block';
+                    }
+                    return;
+                }
+                
+                isScanning = true;
+                scanAttempts++;
+                updateRetryCounter();
+                
+                cameraContainer.classList.add('scanning');
+                faceOverlay.classList.add('scanning');
+                scanOverlay.classList.add('active');
+                setStatus('scanning', 'Scanning...');
+                
+                try {
+                    // Capture 3 frames burst
+                    const burstFrames = await captureBurstFrames(3, 50);
+                    
+                    const formData = new FormData();
+                    burstFrames.forEach((blob, index) => {
+                        formData.append('image_' + index, blob, 'frame_' + index + '.jpg');
+                    });
+                    formData.append('frameCount', burstFrames.length);
+                    
+                    // Send face box if available (saves server detection time)
+                    if (lastFaceBox) {
+                        formData.append('faceX', lastFaceBox.x);
+                        formData.append('faceY', lastFaceBox.y);
+                        formData.append('faceW', lastFaceBox.w);
+                        formData.append('faceH', lastFaceBox.h);
+                    }
+                    
+                    formData.append('__RequestVerificationToken', 
+                        document.querySelector('input[name="__RequestVerificationToken"]').value);
+                    
+                    const response = await fetch('/MobileRegistration/IdentifyEmployeeBurst', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    const raw = await response.json();
+                    const data = raw && raw.ok && raw.data ? 
+                        Object.assign({ ok: raw.ok, message: raw.message || null }, raw.data) : raw;
+                    
+                    cameraContainer.classList.remove('scanning');
+                    faceOverlay.classList.remove('scanning');
+                    scanOverlay.classList.remove('active');
+                    
+                    if (data.ok) {
+                        onIdentificationSuccess(data);
+                    } else {
+                        onIdentificationError(data);
+                    }
+                } catch (err) {
+                    console.error('Scan error:', err);
+                    onIdentificationError({ error: 'NETWORK_ERROR' });
+                } finally {
+                    isScanning = false;
+                }
+            }
+            
+            function onIdentificationSuccess(data) {
+                identifiedEmployeeId = data.employeeId;
+                cameraContainer.classList.add('success');
+                faceOverlay.classList.add('success');
+                setStatus('identified', 'Identified!');
+                
+                document.getElementById('employeeName').textContent = data.fullName;
+                renderEmployeeDetails(data);
+                
+                if (data.hasExistingDevice) {
+                    document.getElementById('deviceWarning').style.display = 'block';
+                    document.getElementById('existingDeviceName').textContent = data.existingDeviceName;
+                }
+                
+                resultSection.style.display = 'block';
+                resultSection.scrollIntoView({ behavior: 'smooth' });
+                
+                MobileSwal.success('Identified!', 'Welcome, ' + data.fullName);
+            }
+            
+            function onIdentificationError(data) {
+                cameraContainer.classList.remove('scanning');
+                faceOverlay.classList.remove('scanning');
+                scanOverlay.classList.remove('active');
+                
+                if (data.error === 'NOT_RECOGNIZED' || data.error === 'NO_FACE') {
+                    // Silent retry - show brief error then auto-retry
+                    cameraContainer.classList.add('error');
+                    faceOverlay.classList.remove('active');
+                    setStatus('retrying', 'Retrying...');
+                    
+                    setTimeout(() => {
+                        cameraContainer.classList.remove('error');
+                        startIdentification(); // Auto-retry
+                    }, 800);
+                } else {
+                    // Other errors - show message but allow retry
+                    MobileSwal.error('Identification Failed', 
+                        data.message || 'Please try again.');
+                    retryBtn.style.display = 'block';
+                }
+            }
+            
+            function resetAndRetry() {
+                scanAttempts = 0;
+                updateRetryCounter();
+                retryBtn.style.display = 'none';
+                cameraContainer.classList.remove('success', 'error');
+                faceOverlay.classList.remove('success');
+                resultSection.style.display = 'none';
+                setStatus('ready', 'Look at camera');
+                startIdentification();
+            }
+            
+            retryBtn.addEventListener('click', resetAndRetry);
+            
+            continueBtn.addEventListener('click', () => {
+                if (identifiedEmployeeId) {
+                    window.location.href = '/MobileRegistration/Device?employeeId=' + 
+                        encodeURIComponent(identifiedEmployeeId);
+                }
+            });
+            
+            // Initialize
+            initCamera();
+        })();
+    </script>
+}

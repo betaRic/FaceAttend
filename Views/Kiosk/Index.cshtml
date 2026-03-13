@@ -15,6 +15,7 @@
     @Styles.Render("~/Content/kiosk-base")
     @Styles.Render("~/Content/kiosk-vendor")
     @Styles.Render("~/Content/kiosk")
+    <link rel="stylesheet" href="@Url.Content("~/Content/kiosk-responsive-fixes.css")" />
 </head>
 <body
     class="kiosk-body"
@@ -22,12 +23,13 @@
     data-nextgen="true"
     data-return-url="@ViewBag.ReturnUrl"
     data-unlock-hint="@ViewBag.UnlockHint"
+    data-allow-unlock="@(((bool?)ViewBag.AllowUnlock ?? false) ? "true" : "false")"
     data-org-name="DILG Region XII"
     data-org-subtitle="Face Attendance Kiosk">
 
     @Html.AntiForgeryToken()
 
-    <div id="kioskRoot" data-location-state="pending">
+    <div id="kioskRoot" data-location-state="pending" style="display: none;">
 
         <!-- Video Background -->
         <video id="kioskVideo" playsinline autoplay muted></video>
@@ -85,6 +87,15 @@
                     <div id="idleClock" class="idle-clock" aria-live="off">--:--:--</div>
                     <div id="idleDate" class="idle-date" aria-live="off">---</div>
                     <div id="idleHint" class="idle-hint">Look at the camera to scan</div>
+                    
+                    <!-- MOBILE REGISTRATION BUTTON - Only shown on mobile devices -->
+                    <div id="mobileRegisterBtn" class="mobile-register-container" style="display: none; margin-top: 20px;">
+                        <a href="/MobileRegistration" class="mobile-register-btn">
+                            <i class="fa-solid fa-mobile-screen"></i>
+                            Register This Device
+                        </a>
+                        <div class="mobile-register-hint">New employee? First time on this phone?</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -124,8 +135,10 @@
             </div>
         </div>
 
-        <!-- Unlock Modal -->
-        <div id="unlockBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
+        @if (ViewBag.AllowUnlock == true)
+        {
+        <!-- Unlock Modal - Only rendered on non-mobile devices -->
+        <div id="unlockBackdrop" class="kiosk-backdrop hidden" aria-hidden="true" style="z-index: 2000;">
             <div id="unlockModal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="unlockTitle">
                 <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
                     <span id="unlockTitle">Admin Unlock</span>
@@ -137,7 +150,7 @@
                     class="modal-input"
                     type="password"
                     inputmode="numeric"
-                    autocomplete="one-time-code"
+                    autocomplete="off"
                     placeholder="Enter PIN..."
                     style="text-align:center;letter-spacing:0.5rem;font-size:1.5rem;" />
                 <div id="unlockErr" class="modal-error" role="alert"></div>
@@ -148,8 +161,33 @@
             </div>
         </div>
 
+        <!-- Unlock Success Confirmation Modal -->
+        <div id="unlockSuccessBackdrop" class="kiosk-backdrop hidden" aria-hidden="true" style="z-index: 3000;">
+            <div id="unlockSuccessModal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="unlockSuccessTitle">
+                <div class="modal-title" style="text-align:center;margin-bottom:1rem;">
+                    <div style="font-size:3rem;color:var(--success-500);margin-bottom:0.5rem;">
+                        <i class="fa-solid fa-circle-check"></i>
+                    </div>
+                    <span id="unlockSuccessTitle" style="font-size:1.25rem;">Unlock Successful</span>
+                </div>
+                <div style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1.5rem;text-align:center;">
+                    You have successfully unlocked admin access.<br>
+                    What would you like to do?
+                </div>
+                <div class="modal-actions" style="margin-top:1rem;flex-direction:column;gap:0.75rem;">
+                    <button id="unlockGoAdmin" type="button" class="modal-btn primary" style="width:100%;">
+                        <i class="fa-solid fa-arrow-right me-2"></i>Go to Admin Panel
+                    </button>
+                    <button id="unlockStayKiosk" type="button" class="modal-btn secondary" style="width:100%;">
+                        <i class="fa-solid fa-desktop me-2"></i>Stay in Kiosk
+                    </button>
+                </div>
+            </div>
+        </div>
+        }
+
         <!-- Visitor Modal -->
-        <div id="visitorBackdrop" class="kiosk-backdrop hidden" aria-hidden="true">
+        <div id="visitorBackdrop" class="kiosk-backdrop hidden" aria-hidden="true" style="z-index: 2000;">
             <div id="visitorModal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="visitorTitle">
                 <div class="modal-title" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
                     <span id="visitorTitle">Visitor Sign-In</span>
@@ -187,5 +225,54 @@
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
     @Scripts.Render("~/bundles/kiosk-vendor")
     @Scripts.Render("~/bundles/kiosk")
+    
+    <!-- Audio Manager for Success Sounds -->
+    @FaceAttend.Services.AudioManager.GetAudioManagerScript(Context)
+    
+    <style>
+        /* Mobile Registration Button Styles */
+        .mobile-register-container { animation: fadeInUp 0.5s ease; }
+        .mobile-register-btn {
+            display: inline-flex; align-items: center; gap: 10px;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #3b82f6, #2563eb);
+            color: white; border-radius: 30px; text-decoration: none;
+            font-weight: 600; font-size: 16px;
+            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
+            transition: all 0.3s ease;
+        }
+        .mobile-register-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5); }
+        .mobile-register-hint { margin-top: 10px; font-size: 13px; color: #94a3b8; }
+        @@keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+    
+    <script>
+        // Device detection and setup
+        (function() {
+            var kioskRoot = document.getElementById('kioskRoot');
+            var mobileRegisterBtn = document.getElementById('mobileRegisterBtn');
+            
+            // Show kiosk UI
+            if (kioskRoot) kioskRoot.style.display = '';
+            
+            var ua = navigator.userAgent.toLowerCase();
+            var isPhone = /iphone|android.*mobile|windows phone|iemobile|blackberry/.test(ua);
+            
+            // Personal phone = mobile mode, so clear kiosk override
+            if (isPhone) {
+                document.cookie = 'ForceKioskMode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+
+                if (mobileRegisterBtn) {
+                    mobileRegisterBtn.style.display = 'none';
+                }
+            } else {
+                // Desktop / real kiosk
+                document.cookie = 'ForceKioskMode=true; path=/';
+            }
+        })();
+    </script>
 </body>
 </html>

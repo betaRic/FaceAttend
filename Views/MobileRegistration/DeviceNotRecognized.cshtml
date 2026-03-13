@@ -1,0 +1,197 @@
+@{
+    Layout = "~/Views/Shared/_MobileLayout.cshtml";
+    ViewBag.Title = "Device Not Recognized";
+}
+
+@section styles {
+    <style>
+        .error-container {
+            text-align: center;
+            padding: 2rem 1rem;
+            animation: slideUp 0.4s ease;
+        }
+        
+        .error-icon {
+            width: 100px;
+            height: 100px;
+            margin: 0 auto 1.5rem;
+            background: rgba(239, 68, 68, 0.1);
+            border: 2px solid rgba(239, 68, 68, 0.3);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: var(--mobile-accent-error);
+            animation: pulse 2s infinite;
+        }
+        
+        .error-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--mobile-text-primary);
+            margin-bottom: 0.75rem;
+        }
+        
+        .error-message {
+            color: var(--mobile-text-secondary);
+            font-size: 1rem;
+            line-height: 1.6;
+            margin-bottom: 2rem;
+            max-width: 320px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .debug-info {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-bottom: 2rem;
+            font-family: monospace;
+            font-size: 0.75rem;
+            color: var(--mobile-text-muted);
+            text-align: left;
+            word-break: break-all;
+        }
+        
+        .action-buttons {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        
+        .btn-modern {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.625rem;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            text-decoration: none;
+        }
+        
+        .btn-modern.primary {
+            background: linear-gradient(135deg, var(--mobile-accent) 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-modern.secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--mobile-text-secondary);
+        }
+        
+        .help-text {
+            margin-top: 2rem;
+            padding-top: 2rem;
+            border-top: 1px solid rgba(255, 255, 255, 0.08);
+            color: var(--mobile-text-muted);
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        
+        .help-text h4 {
+            color: var(--mobile-text-secondary);
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        
+        .help-text ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        
+        .help-text li {
+            padding: 0.25rem 0;
+            padding-left: 1.25rem;
+            position: relative;
+        }
+        
+        .help-text li::before {
+            content: '•';
+            position: absolute;
+            left: 0.5rem;
+            color: var(--mobile-accent);
+        }
+        
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            50% { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0); }
+        }
+    </style>
+}
+
+<div class="error-container">
+    <div class="error-icon">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+    </div>
+    
+    <h1 class="error-title">Device Not Recognized</h1>
+    
+    <p class="error-message">
+        @ViewBag.ErrorMessage
+    </p>
+    
+    @if (!string.IsNullOrEmpty(ViewBag.Fingerprint))
+    {
+        <div class="debug-info">
+            <strong>Debug Info:</strong><br>
+            FP: @ViewBag.Fingerprint.Substring(0, Math.Min(16, ViewBag.Fingerprint.Length))...
+        </div>
+    }
+    
+    <div class="action-buttons">
+        <a href="/MobileRegistration/Identify" class="btn-modern primary">
+            <i class="fa-solid fa-fingerprint"></i>
+            Identify Yourself
+        </a>
+        
+        <a href="/" class="btn-modern secondary">
+            <i class="fa-solid fa-arrow-left"></i>
+            Back to Kiosk
+        </a>
+    </div>
+    
+    <div class="help-text">
+        <h4>Why am I seeing this?</h4>
+        <ul>
+            <li>This device may not be registered to your account</li>
+            <li>Your device registration may be pending approval</li>
+            <li>You may need to register this device first</li>
+        </ul>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        // Log debug info
+        console.log('[DeviceNotRecognized] Page loaded');
+        
+        // Check for device token
+        var token = null;
+        try {
+            token = localStorage.getItem('FaceAttend_DeviceToken');
+        } catch (e) {}
+        
+        if (!token) {
+            var match = document.cookie.match(new RegExp('(^| )FaceAttend_DeviceToken=([^;]+)'));
+            if (match) token = match[2];
+        }
+        
+        console.log('[DeviceNotRecognized] Device token found:', token ? 'YES (' + token.substring(0, 8) + '...)' : 'NO');
+    </script>
+}

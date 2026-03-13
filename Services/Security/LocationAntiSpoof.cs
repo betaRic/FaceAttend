@@ -65,29 +65,7 @@ namespace FaceAttend.Services.Security
             return result;
         }
 
-        /// <summary>
-        /// Calculate distance between two GPS coordinates using Haversine formula.
-        /// </summary>
-        private static double CalculateDistanceMeters(double lat1, double lon1, double lat2, double lon2)
-        {
-            const double EarthRadiusMeters = 6371000; // Earth's radius in meters
-            
-            double dLat = ToRadians(lat2 - lat1);
-            double dLon = ToRadians(lon2 - lon1);
-            
-            double a = Math.Sin(dLat / 2) * Math.Sin(dLat / 2) +
-                       Math.Cos(ToRadians(lat1)) * Math.Cos(ToRadians(lat2)) *
-                       Math.Sin(dLon / 2) * Math.Sin(dLon / 2);
-            
-            double c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-            
-            return EarthRadiusMeters * c;
-        }
-        
-        private static double ToRadians(double degrees)
-        {
-            return degrees * Math.PI / 180.0;
-        }
+        // Note: Distance calculation now uses OfficeLocationService.CalculateDistanceMeters for consistency
 
         /// <summary>
         /// Quick check for office radius (GPS required).
@@ -97,7 +75,7 @@ namespace FaceAttend.Services.Security
             if (office == null)
                 return false;
 
-            double distanceMeters = CalculateDistanceMeters(
+            double distanceMeters = OfficeLocationService.CalculateDistanceMeters(
                 office.Latitude, office.Longitude,
                 lat, lon);
             double radiusMeters = office.RadiusMeters > 0 ? office.RadiusMeters : 100;
@@ -153,7 +131,7 @@ namespace FaceAttend.Services.Security
             // Office proximity
             if (office != null)
             {
-                double dist = CalculateDistanceMeters(
+                double dist = OfficeLocationService.CalculateDistanceMeters(
                     office.Latitude, office.Longitude,
                     lat, lon);
                 double radius = office.RadiusMeters > 0 ? office.RadiusMeters : 100;

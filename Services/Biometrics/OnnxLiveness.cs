@@ -151,20 +151,20 @@ namespace FaceAttend.Services.Biometrics
             // ── Hakbang 2: Basahin ang configuration ──────────────────────────
             // Binabasa ito sa labas ng lock — ang config values ay effectively
             // read-only pagkatapos ng startup, kaya ligtas ito.
-            var inputSize  = AppSettings.GetInt("Biometrics:LivenessInputSize",     128);
-            var timeoutMs  = AppSettings.GetInt("Biometrics:Liveness:RunTimeoutMs", 1_500);
-            var slowMs     = AppSettings.GetInt("Biometrics:Liveness:SlowMs",       1_200);
-            var realIndex  = AppSettings.GetInt("Biometrics:Liveness:RealIndex",    1);
+            var inputSize  = ConfigurationService.GetInt("Biometrics:LivenessInputSize",     128);
+            var timeoutMs  = ConfigurationService.GetInt("Biometrics:Liveness:RunTimeoutMs", 1_500);
+            var slowMs     = ConfigurationService.GetInt("Biometrics:Liveness:SlowMs",       1_200);
+            var realIndex  = ConfigurationService.GetInt("Biometrics:Liveness:RealIndex",    1);
 
-            var cropScale  = AppSettings.GetDouble("Biometrics:Liveness:CropScale",    2.7);
-            var normalize  = AppSettings.GetString("Biometrics:Liveness:Normalize",    "0_1");
-            var chanOrder  = AppSettings.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
+            var cropScale  = ConfigurationService.GetDouble("Biometrics:Liveness:CropScale",    2.7);
+            var normalize  = ConfigurationService.GetString("Biometrics:Liveness:Normalize",    "0_1");
+            var chanOrder  = ConfigurationService.GetString("Biometrics:Liveness:ChannelOrder", "RGB");
             normalize = CanonicalNormalize(normalize);
             chanOrder = CanonicalChannelOrder(chanOrder);
-            var outputType = AppSettings.GetString("Biometrics:Liveness:OutputType",   "logits");
-            var decision   = AppSettings.GetString("Biometrics:Liveness:Decision",     "max");
+            var outputType = ConfigurationService.GetString("Biometrics:Liveness:OutputType",   "logits");
+            var decision   = ConfigurationService.GetString("Biometrics:Liveness:Decision",     "max");
 
-            var multiScalesStr = AppSettings.GetString("Biometrics:Liveness:MultiCropScales", "");
+            var multiScalesStr = ConfigurationService.GetString("Biometrics:Liveness:MultiCropScales", "");
             var scales         = ParseScales(multiScalesStr, cropScale);
 
             // ── Hakbang 3: I-snapshot ang session reference ───────────────────
@@ -288,8 +288,8 @@ namespace FaceAttend.Services.Biometrics
         {
             lock (_lock)
             {
-                var failStreak  = AppSettings.GetInt("Biometrics:Liveness:CircuitFailStreak",      3);
-                var disableSecs = AppSettings.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30);
+                var failStreak  = ConfigurationService.GetInt("Biometrics:Liveness:CircuitFailStreak",      3);
+                var disableSecs = ConfigurationService.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30);
 
                 _failStreak++;
                 if (_failStreak >= failStreak)
@@ -375,7 +375,7 @@ namespace FaceAttend.Services.Biometrics
             // Ang _session ay volatile kaya safe ang read na ito.
             if (_session != null) return;
 
-            var modelRel  = AppSettings.GetString(
+            var modelRel  = ConfigurationService.GetString(
                 "Biometrics:LivenessModelPath",
                 "~/App_Data/models/liveness/minifasnet.onnx");
             var modelPath = HostingEnvironment.MapPath(modelRel);

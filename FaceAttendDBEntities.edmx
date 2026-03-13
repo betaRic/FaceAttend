@@ -53,6 +53,27 @@
           <Property Name="ProvinceName" Type="nvarchar" MaxLength="100" />
           <Property Name="HUCName" Type="nvarchar" MaxLength="100" />
           <Property Name="IsAutoRecorded" Type="bit" Nullable="false" />
+          <Property Name="AttendanceDate" Type="date" StoreGeneratedPattern="Computed" />
+          <Property Name="AttemptedAtUtc" Type="datetime2" Precision="7" />
+        </EntityType>
+        <EntityType Name="Devices">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="int" StoreGeneratedPattern="Identity" Nullable="false" />
+          <Property Name="EmployeeId" Type="int" Nullable="false" />
+          <Property Name="Fingerprint" Type="nvarchar" MaxLength="64" Nullable="false" />
+          <Property Name="DeviceName" Type="nvarchar" MaxLength="100" Nullable="false" />
+          <Property Name="DeviceType" Type="nvarchar" MaxLength="20" />
+          <Property Name="Status" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="RegisteredAt" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="RegisteredFromIp" Type="nvarchar" MaxLength="45" />
+          <Property Name="ApprovedAt" Type="datetime2" Precision="7" />
+          <Property Name="ApprovedBy" Type="int" />
+          <Property Name="LastUsedAt" Type="datetime2" Precision="7" />
+          <Property Name="UseCount" Type="int" Nullable="false" />
+          <Property Name="DeviceToken" Type="nvarchar" MaxLength="64" />
+          <Property Name="TokenExpiresAt" Type="datetime" />
         </EntityType>
         <EntityType Name="Employees">
           <Key>
@@ -74,6 +95,10 @@
           <Property Name="Position" Type="nvarchar" MaxLength="150" Nullable="false" />
           <Property Name="FaceEncodingsJson" Type="nvarchar(max)" />
           <Property Name="CreatedDate" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="Status" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="DeviceFingerprint" Type="nvarchar" MaxLength="64" />
+          <Property Name="DeviceName" Type="nvarchar" MaxLength="100" />
+          <Property Name="RegisteredFromIp" Type="nvarchar" MaxLength="45" />
         </EntityType>
         <EntityType Name="Offices">
           <Key>
@@ -154,6 +179,20 @@
             </Dependent>
           </ReferentialConstraint>
         </Association>
+        <Association Name="FK_Devices_Employees">
+          <End Role="Employees" Type="Self.Employees" Multiplicity="1">
+            <OnDelete Action="Cascade" />
+          </End>
+          <End Role="Devices" Type="Self.Devices" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Employees">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="Devices">
+              <PropertyRef Name="EmployeeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
         <Association Name="FK_Employees_Offices">
           <End Role="Offices" Type="Self.Offices" Multiplicity="1" />
           <End Role="Employees" Type="Self.Employees" Multiplicity="*" />
@@ -193,6 +232,7 @@
         <EntityContainer Name="FaceAttendDBModelStoreContainer">
           <EntitySet Name="AdminAuditLogs" EntityType="Self.AdminAuditLogs" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLogs" Schema="dbo" store:Type="Tables" />
+          <EntitySet Name="Devices" EntityType="Self.Devices" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="Employees" EntityType="Self.Employees" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="Offices" EntityType="Self.Offices" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="SystemConfigurations" EntityType="Self.SystemConfigurations" Schema="dbo" store:Type="Tables" />
@@ -205,6 +245,10 @@
           <AssociationSet Name="FK_AttendanceLogs_Offices" Association="Self.FK_AttendanceLogs_Offices">
             <End Role="Offices" EntitySet="Offices" />
             <End Role="AttendanceLogs" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_Devices_Employees" Association="Self.FK_Devices_Employees">
+            <End Role="Employees" EntitySet="Employees" />
+            <End Role="Devices" EntitySet="Devices" />
           </AssociationSet>
           <AssociationSet Name="FK_Employees_Offices" Association="Self.FK_Employees_Offices">
             <End Role="Offices" EntitySet="Offices" />
@@ -226,6 +270,7 @@
         <EntityContainer Name="FaceAttendDBEntities" annotation:LazyLoadingEnabled="true">
           <EntitySet Name="AdminAuditLogs" EntityType="FaceAttendDBModel.AdminAuditLog" />
           <EntitySet Name="AttendanceLogs" EntityType="FaceAttendDBModel.AttendanceLog" />
+          <EntitySet Name="Devices" EntityType="FaceAttendDBModel.Device" />
           <EntitySet Name="Employees" EntityType="FaceAttendDBModel.Employee" />
           <EntitySet Name="Offices" EntityType="FaceAttendDBModel.Office" />
           <EntitySet Name="SystemConfigurations" EntityType="FaceAttendDBModel.SystemConfiguration" />
@@ -238,6 +283,10 @@
           <AssociationSet Name="FK_AttendanceLogs_Offices" Association="FaceAttendDBModel.FK_AttendanceLogs_Offices">
             <End Role="Office" EntitySet="Offices" />
             <End Role="AttendanceLog" EntitySet="AttendanceLogs" />
+          </AssociationSet>
+          <AssociationSet Name="FK_Devices_Employees" Association="FaceAttendDBModel.FK_Devices_Employees">
+            <End Role="Employee" EntitySet="Employees" />
+            <End Role="Device" EntitySet="Devices" />
           </AssociationSet>
           <AssociationSet Name="FK_Employees_Offices" Association="FaceAttendDBModel.FK_Employees_Offices">
             <End Role="Office" EntitySet="Offices" />
@@ -300,8 +349,30 @@
           <Property Name="ProvinceName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="HUCName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="IsAutoRecorded" Type="Boolean" Nullable="false" />
+          <Property Name="AttendanceDate" Type="DateTime" annotation:StoreGeneratedPattern="Computed" Precision="0" />
+          <Property Name="AttemptedAtUtc" Type="DateTime" Precision="7" />
           <NavigationProperty Name="Employee" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="AttendanceLog" ToRole="Employee" />
           <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="AttendanceLog" ToRole="Office" />
+        </EntityType>
+        <EntityType Name="Device">
+          <Key>
+            <PropertyRef Name="Id" />
+          </Key>
+          <Property Name="Id" Type="Int32" Nullable="false" annotation:StoreGeneratedPattern="Identity" />
+          <Property Name="EmployeeId" Type="Int32" Nullable="false" />
+          <Property Name="Fingerprint" Type="String" Nullable="false" MaxLength="64" FixedLength="false" Unicode="true" />
+          <Property Name="DeviceName" Type="String" Nullable="false" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="DeviceType" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="Status" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="RegisteredAt" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="RegisteredFromIp" Type="String" MaxLength="45" FixedLength="false" Unicode="true" />
+          <Property Name="ApprovedAt" Type="DateTime" Precision="7" />
+          <Property Name="ApprovedBy" Type="Int32" />
+          <Property Name="LastUsedAt" Type="DateTime" Precision="7" />
+          <Property Name="UseCount" Type="Int32" Nullable="false" />
+          <Property Name="DeviceToken" Type="String" MaxLength="64" FixedLength="false" Unicode="true" />
+          <Property Name="TokenExpiresAt" Type="DateTime" Precision="3" />
+          <NavigationProperty Name="Employee" Relationship="FaceAttendDBModel.FK_Devices_Employees" FromRole="Device" ToRole="Employee" />
         </EntityType>
         <EntityType Name="Employee">
           <Key>
@@ -323,7 +394,12 @@
           <Property Name="Position" Type="String" Nullable="false" MaxLength="150" FixedLength="false" Unicode="true" />
           <Property Name="FaceEncodingsJson" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
           <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="Status" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="DeviceFingerprint" Type="String" MaxLength="64" FixedLength="false" Unicode="true" />
+          <Property Name="DeviceName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="RegisteredFromIp" Type="String" MaxLength="45" FixedLength="false" Unicode="true" />
           <NavigationProperty Name="AttendanceLogs" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="Employee" ToRole="AttendanceLog" />
+          <NavigationProperty Name="Devices" Relationship="FaceAttendDBModel.FK_Devices_Employees" FromRole="Employee" ToRole="Device" />
           <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_Employees_Offices" FromRole="Employee" ToRole="Office" />
         </EntityType>
         <EntityType Name="Office">
@@ -411,6 +487,20 @@
             </Dependent>
           </ReferentialConstraint>
         </Association>
+        <Association Name="FK_Devices_Employees">
+          <End Type="FaceAttendDBModel.Employee" Role="Employee" Multiplicity="1">
+            <OnDelete Action="Cascade" />
+          </End>
+          <End Type="FaceAttendDBModel.Device" Role="Device" Multiplicity="*" />
+          <ReferentialConstraint>
+            <Principal Role="Employee">
+              <PropertyRef Name="Id" />
+            </Principal>
+            <Dependent Role="Device">
+              <PropertyRef Name="EmployeeId" />
+            </Dependent>
+          </ReferentialConstraint>
+        </Association>
         <Association Name="FK_Employees_Offices">
           <End Type="FaceAttendDBModel.Office" Role="Office" Multiplicity="1" />
           <End Type="FaceAttendDBModel.Employee" Role="Employee" Multiplicity="*" />
@@ -471,6 +561,8 @@
           <EntitySetMapping Name="AttendanceLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
               <MappingFragment StoreEntitySet="AttendanceLogs">
+                <ScalarProperty Name="AttemptedAtUtc" ColumnName="AttemptedAtUtc" />
+                <ScalarProperty Name="AttendanceDate" ColumnName="AttendanceDate" />
                 <ScalarProperty Name="IsAutoRecorded" ColumnName="IsAutoRecorded" />
                 <ScalarProperty Name="HUCName" ColumnName="HUCName" />
                 <ScalarProperty Name="ProvinceName" ColumnName="ProvinceName" />
@@ -504,9 +596,33 @@
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
+          <EntitySetMapping Name="Devices">
+            <EntityTypeMapping TypeName="FaceAttendDBModel.Device">
+              <MappingFragment StoreEntitySet="Devices">
+                <ScalarProperty Name="TokenExpiresAt" ColumnName="TokenExpiresAt" />
+                <ScalarProperty Name="DeviceToken" ColumnName="DeviceToken" />
+                <ScalarProperty Name="UseCount" ColumnName="UseCount" />
+                <ScalarProperty Name="LastUsedAt" ColumnName="LastUsedAt" />
+                <ScalarProperty Name="ApprovedBy" ColumnName="ApprovedBy" />
+                <ScalarProperty Name="ApprovedAt" ColumnName="ApprovedAt" />
+                <ScalarProperty Name="RegisteredFromIp" ColumnName="RegisteredFromIp" />
+                <ScalarProperty Name="RegisteredAt" ColumnName="RegisteredAt" />
+                <ScalarProperty Name="Status" ColumnName="Status" />
+                <ScalarProperty Name="DeviceType" ColumnName="DeviceType" />
+                <ScalarProperty Name="DeviceName" ColumnName="DeviceName" />
+                <ScalarProperty Name="Fingerprint" ColumnName="Fingerprint" />
+                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
+                <ScalarProperty Name="Id" ColumnName="Id" />
+              </MappingFragment>
+            </EntityTypeMapping>
+          </EntitySetMapping>
           <EntitySetMapping Name="Employees">
             <EntityTypeMapping TypeName="FaceAttendDBModel.Employee">
               <MappingFragment StoreEntitySet="Employees">
+                <ScalarProperty Name="RegisteredFromIp" ColumnName="RegisteredFromIp" />
+                <ScalarProperty Name="DeviceName" ColumnName="DeviceName" />
+                <ScalarProperty Name="DeviceFingerprint" ColumnName="DeviceFingerprint" />
+                <ScalarProperty Name="Status" ColumnName="Status" />
                 <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
                 <ScalarProperty Name="FaceEncodingsJson" ColumnName="FaceEncodingsJson" />
                 <ScalarProperty Name="Position" ColumnName="Position" />

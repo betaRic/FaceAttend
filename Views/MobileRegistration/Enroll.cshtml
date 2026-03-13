@@ -1,0 +1,1287 @@
+@{
+    Layout = "~/Views/Shared/_MobileLayout.cshtml";
+    ViewBag.Title = "Face Enrollment";
+}
+
+@section styles {
+    <style>
+        .wizard-steps {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .wizard-step {
+            flex: 1;
+            text-align: center;
+            padding: 10px 8px;
+            border-radius: 12px;
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04);
+            color: var(--text-muted);
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .wizard-step.active {
+            background: rgba(59,130,246,0.16);
+            border-color: rgba(59,130,246,0.45);
+            color: #fff;
+        }
+
+        .wizard-step.done {
+            background: rgba(34,197,94,0.14);
+            border-color: rgba(34,197,94,0.4);
+            color: #dcfce7;
+        }
+
+        .wizard-pane { display: none; }
+        .wizard-pane.active { display: block; }
+
+        .wizard-actions {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin-top: 14px;
+        }
+
+        .hint-box {
+            background: rgba(59,130,246,0.08);
+            border: 1px solid rgba(59,130,246,0.2);
+            color: var(--text-secondary);
+            border-radius: 12px;
+            padding: 12px 14px;
+            margin-bottom: 16px;
+            font-size: 14px;
+        }
+
+        .hint-box.security {
+            background: rgba(34,197,94,0.08);
+            border: 1px solid rgba(34,197,94,0.2);
+        }
+
+        .camera-section {
+            background: rgba(255,255,255,0.05);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 0;
+        }
+
+        .camera-container {
+            position: relative;
+            width: 100%;
+            aspect-ratio: 4/3;
+            border-radius: 12px;
+            overflow: hidden;
+            background: #000;
+        }
+
+        #cameraVideo { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
+        #cameraCanvas { display: none; }
+
+        .camera-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+        }
+
+        /* Face bounding box overlay - similar to kiosk */
+        .face-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .face-guide {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 200px;
+            height: 200px;
+            border: 2px dashed rgba(255,255,255,0.3);
+            transition: border-color 0.3s ease;
+        }
+
+        .face-guide.active {
+            border-color: var(--accent-success);
+            border-style: solid;
+        }
+
+        .face-guide.waiting {
+            border-color: rgba(251, 191, 36, 0.7);
+        }
+
+        .face-guide.error {
+            border-color: var(--accent-error);
+        }
+
+        .capture-progress {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 8px;
+        }
+
+        .capture-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+        }
+
+        .capture-dot.captured { background: var(--accent-success); }
+
+        .liveness-indicator {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .liveness-indicator.real {
+            background: rgba(34, 197, 94, 0.2);
+            color: var(--accent-success);
+        }
+
+        .liveness-indicator.fake {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--accent-error);
+        }
+
+        .liveness-indicator.checking {
+            background: rgba(59, 130, 246, 0.2);
+            color: var(--accent-primary);
+        }
+
+        .preview-strip {
+            display: flex;
+            gap: 8px;
+            margin-top: 12px;
+            overflow-x: auto;
+        }
+
+        .preview-thumb {
+            width: 60px;
+            height: 60px;
+            border-radius: 8px;
+            object-fit: cover;
+            border: 2px solid transparent;
+        }
+
+        .preview-thumb.captured { border-color: var(--accent-success); }
+
+        .review-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+        }
+
+        .review-item {
+            padding: 12px 14px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.08);
+        }
+
+        .review-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-bottom: 4px;
+            text-transform: uppercase;
+            letter-spacing: .4px;
+        }
+
+        .review-value {
+            font-size: 15px;
+            color: var(--text-primary);
+            word-break: break-word;
+        }
+
+        /* Input validation styles */
+        .form-group input.uppercase {
+            text-transform: uppercase;
+        }
+
+        .form-group input.uppercase::placeholder {
+            text-transform: none;
+        }
+
+        .form-group input.valid {
+            border-color: var(--accent-success);
+        }
+
+        .form-group input.invalid {
+            border-color: var(--accent-error);
+            background: rgba(239, 68, 68, 0.05);
+        }
+
+        .form-group .validation-message {
+            font-size: 12px;
+            margin-top: 6px;
+            min-height: 16px;
+        }
+
+        .form-group .validation-message.error {
+            color: var(--accent-error);
+        }
+
+        .form-group .validation-message.success {
+            color: var(--accent-success);
+        }
+
+        .form-group label .required {
+            color: var(--accent-error);
+        }
+
+        .form-group label .hint {
+            color: var(--text-muted);
+            font-size: 11px;
+            font-weight: normal;
+            text-transform: none;
+            letter-spacing: 0;
+            margin-left: 4px;
+        }
+
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--accent-success);
+            margin-top: 8px;
+        }
+    </style>
+}
+
+<div class="header">
+    <h1><i class="fa-solid fa-camera"></i> Face Enrollment</h1>
+    <p>Complete your details, capture your face, then submit for approval</p>
+</div>
+
+@Html.AntiForgeryToken()
+<input type="hidden" id="successUrl" value="/MobileRegistration/Success" />
+
+<div class="wizard-steps" id="wizardSteps">
+    <div class="wizard-step active" data-step="1">1. Details</div>
+    <div class="wizard-step" data-step="2">2. Capture</div>
+    <div class="wizard-step" data-step="3">3. Review</div>
+</div>
+
+<div class="wizard-pane active" id="step1">
+    <div class="form-section">
+        <div class="form-group">
+            <label>Employee ID <span class="required">*</span> <span class="hint">(Format: DILG-YYYY-###)</span></label>
+            <input type="text" id="employeeId" class="uppercase" placeholder="e.g., DILG-2024-001" required 
+                   maxlength="20" autocomplete="off" />
+            <div class="validation-message" id="employeeIdValidation"></div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>First Name <span class="required">*</span> <span class="hint">(Letters only)</span></label>
+                <input type="text" id="firstName" class="uppercase" required 
+                       maxlength="50" autocomplete="given-name" />
+                <div class="validation-message" id="firstNameValidation"></div>
+            </div>
+            <div class="form-group">
+                <label>Last Name <span class="required">*</span> <span class="hint">(Letters only)</span></label>
+                <input type="text" id="lastName" class="uppercase" required 
+                       maxlength="50" autocomplete="family-name" />
+                <div class="validation-message" id="lastNameValidation"></div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Middle Name <span class="hint">(Optional, letters only)</span></label>
+            <input type="text" id="middleName" class="uppercase" placeholder="Optional" 
+                   maxlength="50" autocomplete="additional-name" />
+            <div class="validation-message" id="middleNameValidation"></div>
+        </div>
+
+        <div class="form-row">
+            <div class="form-group">
+                <label>Position <span class="required">*</span></label>
+                <input type="text" id="position" class="uppercase" required 
+                       maxlength="100" autocomplete="organization-title" />
+                <div class="validation-message" id="positionValidation"></div>
+            </div>
+            <div class="form-group">
+                <label>Department <span class="required">*</span></label>
+                <input type="text" id="department" class="uppercase" required 
+                       maxlength="100" autocomplete="organization" />
+                <div class="validation-message" id="departmentValidation"></div>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label>Office <span class="required">*</span></label>
+            <select id="officeId" required>
+                <option value="">Select Office</option>
+                @foreach (var office in ViewBag.Offices)
+                {
+                    <option value="@office.Id">@office.Name</option>
+                }
+            </select>
+            <div class="validation-message" id="officeIdValidation"></div>
+        </div>
+
+        <div class="form-group">
+            <label>Device Name <span class="required">*</span> <span class="hint">(e.g., MY IPHONE 15)</span></label>
+            <input type="text" id="deviceName" class="uppercase" value="MY PHONE" required 
+                   maxlength="50" autocomplete="off" />
+            <div class="validation-message" id="deviceNameValidation"></div>
+        </div>
+
+        <div class="security-badge">
+            <i class="fa-solid fa-lock"></i> 
+            <span>Form protected by anti-XSS validation</span>
+        </div>
+    </div>
+
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" id="btnToCapture" disabled>
+            <i class="fa-solid fa-arrow-right"></i> Continue to Face Capture
+        </button>
+        <a href="/MobileRegistration" class="btn btn-secondary">
+            <i class="fa-solid fa-arrow-left"></i> Back
+        </a>
+    </div>
+</div>
+
+<div class="wizard-pane" id="step2">
+    <div class="hint-box">
+        <i class="fa-solid fa-circle-info"></i> 
+        <strong>10 Face Samples Required.</strong> Follow the angle prompts for best coverage: center, left, right, up, and back to center.
+    </div>
+
+    <div class="camera-section">
+        <div class="camera-container">
+            <video id="cameraVideo" autoplay playsinline muted></video>
+            <canvas id="cameraCanvas"></canvas>
+
+            <div class="camera-overlay">
+                <canvas id="faceOverlay" class="face-overlay"></canvas>
+                <div class="face-guide" id="faceGuide" style="display: none;"></div>
+
+                <div class="capture-progress" id="captureProgress">
+                    @for (int i = 0; i < 10; i++)
+                    {
+                        <div class="capture-dot" data-index="@i"></div>
+                    }
+                </div>
+
+                <div class="liveness-indicator checking" id="livenessIndicator">Starting...</div>
+            </div>
+        </div>
+
+        <div class="status-bar waiting" id="statusBar">Starting camera...</div>
+        <div class="preview-strip" id="previewStrip"></div>
+    </div>
+
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" id="btnToReview" disabled>
+            <i class="fa-solid fa-arrow-right"></i> Review and Submit
+        </button>
+        <button type="button" class="btn btn-secondary" id="btnBackToDetails">
+            <i class="fa-solid fa-arrow-left"></i> Back to Details
+        </button>
+    </div>
+</div>
+
+<div class="wizard-pane" id="step3">
+    <div class="hint-box">
+        Review your details before sending the enrollment request.
+    </div>
+
+    <div class="form-section">
+        <div class="review-grid">
+            <div class="review-item">
+                <div class="review-label">Employee ID</div>
+                <div class="review-value" id="reviewEmployeeId">-</div>
+            </div>
+
+            <div class="review-item">
+                <div class="review-label">Full Name</div>
+                <div class="review-value" id="reviewFullName">-</div>
+            </div>
+
+            <div class="review-item">
+                <div class="review-label">Position / Department</div>
+                <div class="review-value" id="reviewPositionDepartment">-</div>
+            </div>
+
+            <div class="review-item">
+                <div class="review-label">Office</div>
+                <div class="review-value" id="reviewOffice">-</div>
+            </div>
+
+            <div class="review-item">
+                <div class="review-label">Device Name</div>
+                <div class="review-value" id="reviewDeviceName">-</div>
+            </div>
+
+            <div class="review-item">
+                <div class="review-label">Face Samples</div>
+                <div class="review-value" id="reviewSampleCount">0 / 10</div>
+            </div>
+        </div>
+
+        <div class="status-bar success" id="reviewStatus">Ready to submit</div>
+    </div>
+
+    <div class="wizard-actions">
+        <button type="button" class="btn btn-primary" id="submitBtn">
+            <i class="fa-solid fa-paper-plane"></i> Submit Enrollment
+        </button>
+        <button type="button" class="btn btn-secondary" id="btnBackToCapture">
+            <i class="fa-solid fa-arrow-left"></i> Back to Capture
+        </button>
+    </div>
+</div>
+
+@section scripts {
+    <script>
+        (function () {
+            'use strict';
+
+            var MAX_FRAMES = 10;
+
+            // Security and validation configuration
+            var ValidationRules = {
+                employeeId: {
+                    pattern: /^[A-Z0-9 .\-]+$/,
+                    minLength: 2,
+                    maxLength: 50,
+                    message: 'Employee ID contains invalid characters'
+                },
+                name: {
+                    pattern: /^[A-Z .\-',]+$/,
+                    minLength: 1,
+                    maxLength: 100,
+                    message: 'Name contains invalid characters (letters, spaces, periods, hyphens only)'
+                },
+                middleName: {
+                    pattern: /^[A-Z .\-',]*$/,
+                    maxLength: 100,
+                    message: 'Middle name contains invalid characters (letters, spaces, periods, hyphens only)'
+                },
+                position: {
+                    pattern: /^[A-Z0-9 .\-/(),&#]+$/,
+                    minLength: 1,
+                    maxLength: 150,
+                    message: 'Position contains invalid characters'
+                },
+                department: {
+                    pattern: /^[A-Z0-9 .\-/(),&]+$/,
+                    minLength: 1,
+                    maxLength: 150,
+                    message: 'Department contains invalid characters'
+                },
+                deviceName: {
+                    pattern: /^[A-Z0-9 .@_-]+$/,
+                    minLength: 2,
+                    maxLength: 100,
+                    message: 'Device name contains invalid characters'
+                }
+            };
+
+            // XSS Sanitization utility
+            var SecurityUtils = {
+                // Escape HTML to prevent XSS
+                escapeHtml: function(text) {
+                    if (!text) return '';
+                    var div = document.createElement('div');
+                    div.textContent = text;
+                    return div.innerHTML;
+                },
+
+                // Sanitize input by removing dangerous characters
+                sanitizeInput: function(value) {
+                    if (!value) return '';
+                    // Remove script tags and event handlers
+                    return value
+                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                        .replace(/<[^>]+>/g, '')
+                        .replace(/javascript:/gi, '')
+                        .replace(/on\w+\s*=/gi, '')
+                        .trim();
+                },
+
+                // Convert to uppercase safely
+                toUpperCase: function(value) {
+                    if (!value) return '';
+                    return value.toUpperCase().trim();
+                }
+            };
+
+            var els = {
+                video: document.getElementById('cameraVideo'),
+                canvas: document.getElementById('cameraCanvas'),
+                faceOverlay: document.getElementById('faceOverlay'),
+                statusBar: document.getElementById('statusBar'),
+                livenessIndicator: document.getElementById('livenessIndicator'),
+                faceGuide: document.getElementById('faceGuide'),
+                previewStrip: document.getElementById('previewStrip'),
+
+                btnToCapture: document.getElementById('btnToCapture'),
+                btnToReview: document.getElementById('btnToReview'),
+                btnBackToDetails: document.getElementById('btnBackToDetails'),
+                btnBackToCapture: document.getElementById('btnBackToCapture'),
+                submitBtn: document.getElementById('submitBtn'),
+
+                employeeId: document.getElementById('employeeId'),
+                firstName: document.getElementById('firstName'),
+                middleName: document.getElementById('middleName'),
+                lastName: document.getElementById('lastName'),
+                position: document.getElementById('position'),
+                department: document.getElementById('department'),
+                officeId: document.getElementById('officeId'),
+                deviceName: document.getElementById('deviceName'),
+
+                reviewEmployeeId: document.getElementById('reviewEmployeeId'),
+                reviewFullName: document.getElementById('reviewFullName'),
+                reviewPositionDepartment: document.getElementById('reviewPositionDepartment'),
+                reviewOffice: document.getElementById('reviewOffice'),
+                reviewDeviceName: document.getElementById('reviewDeviceName'),
+                reviewSampleCount: document.getElementById('reviewSampleCount'),
+                reviewStatus: document.getElementById('reviewStatus'),
+
+                scanUrl: '/MobileRegistration/ScanFrame',
+                submitUrl: '/MobileRegistration/SubmitEnrollment',
+                successUrl: document.getElementById('successUrl').value
+            };
+
+            var state = {
+                step: 1,
+                stream: null,
+                timer: null,
+                isCapturing: false,
+                capturedFrames: [],
+                bestEncoding: null,
+                captureCompleteNotified: false,
+                validationState: {
+                    employeeId: false,
+                    firstName: false,
+                    lastName: false,
+                    middleName: true, // Optional
+                    position: false,
+                    department: false,
+                    officeId: false,
+                    deviceName: false
+                },
+                // Face overlay state
+                faceStatus: 'waiting', // waiting, scanning, good
+                scanLineProgress: 0,
+                overlayCtx: null
+            };
+
+            // ========== Face Bounding Box Overlay (like Kiosk) ==========
+            function initFaceOverlay() {
+                if (!els.faceOverlay) return;
+                state.overlayCtx = els.faceOverlay.getContext('2d');
+                resizeFaceOverlay();
+                requestAnimationFrame(drawFaceOverlayLoop);
+            }
+
+            function resizeFaceOverlay() {
+                if (!els.faceOverlay || !els.video) return;
+                var container = els.faceOverlay.parentElement;
+                if (container) {
+                    els.faceOverlay.width = container.clientWidth;
+                    els.faceOverlay.height = container.clientHeight;
+                }
+            }
+
+            function drawCornerBrackets(ctx, bx, by, bw, bh, color, glowColor, lineWidth) {
+                var L = Math.min(bw, bh) * 0.15; // Corner length
+                
+                ctx.save();
+                ctx.strokeStyle = color;
+                ctx.lineWidth = lineWidth;
+                ctx.lineCap = 'round';
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 10;
+
+                // top-left
+                ctx.beginPath();
+                ctx.moveTo(bx, by + L);
+                ctx.lineTo(bx, by);
+                ctx.lineTo(bx + L, by);
+                ctx.stroke();
+
+                // top-right
+                ctx.beginPath();
+                ctx.moveTo(bx + bw - L, by);
+                ctx.lineTo(bx + bw, by);
+                ctx.lineTo(bx + bw, by + L);
+                ctx.stroke();
+
+                // bottom-left
+                ctx.beginPath();
+                ctx.moveTo(bx, by + bh - L);
+                ctx.lineTo(bx, by + bh);
+                ctx.lineTo(bx + L, by + bh);
+                ctx.stroke();
+
+                // bottom-right
+                ctx.beginPath();
+                ctx.moveTo(bx + bw - L, by + bh);
+                ctx.lineTo(bx + bw, by + bh);
+                ctx.lineTo(bx + bw, by + bh - L);
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            function drawScanLine(ctx, bx, by, bw, bh, progress, color) {
+                if (progress <= 0) return;
+                var scanY = by + bh * progress;
+                var grad = ctx.createLinearGradient(bx, scanY, bx + bw, scanY);
+                grad.addColorStop(0, 'rgba(0,0,0,0)');
+                grad.addColorStop(0.25, color);
+                grad.addColorStop(0.5, color);
+                grad.addColorStop(0.75, color);
+                grad.addColorStop(1, 'rgba(0,0,0,0)');
+
+                ctx.save();
+                ctx.globalAlpha = 0.55;
+                ctx.strokeStyle = grad;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = color;
+                ctx.shadowBlur = 8;
+                ctx.beginPath();
+                ctx.moveTo(bx, scanY);
+                ctx.lineTo(bx + bw, scanY);
+                ctx.stroke();
+                ctx.restore();
+            }
+
+            function drawFaceOverlayLoop() {
+                if (!state.overlayCtx || !els.faceOverlay) {
+                    requestAnimationFrame(drawFaceOverlayLoop);
+                    return;
+                }
+
+                var ctx = state.overlayCtx;
+                var w = els.faceOverlay.width;
+                var h = els.faceOverlay.height;
+
+                ctx.clearRect(0, 0, w, h);
+
+                // Define face box (centered, similar to original circle)
+                var boxSize = Math.min(w, h) * 0.5;
+                var bx = (w - boxSize) / 2;
+                var by = (h - boxSize) / 2;
+
+                // Colors based on state
+                var mainColor, glowColor;
+                if (state.faceStatus === 'scanning') {
+                    mainColor = '#4f9cf9'; // Blue
+                    glowColor = 'rgba(79,156,249,0.70)';
+                } else if (state.faceStatus === 'good') {
+                    mainColor = '#34d399'; // Green
+                    glowColor = 'rgba(52,211,153,0.60)';
+                } else if (state.faceStatus === 'error') {
+                    mainColor = '#ef4444'; // Red
+                    glowColor = 'rgba(239,68,68,0.60)';
+                } else {
+                    mainColor = '#fbbf24'; // Yellow/Waiting
+                    glowColor = 'rgba(251,191,36,0.50)';
+                }
+
+                // Animated scan line when scanning
+                if (state.faceStatus === 'scanning') {
+                    state.scanLineProgress = (state.scanLineProgress + 0.02) % 1.0;
+                    drawScanLine(ctx, bx, by, boxSize, boxSize, state.scanLineProgress, mainColor);
+                } else {
+                    state.scanLineProgress = 0;
+                }
+
+                // Corner brackets
+                var lw = (state.faceStatus === 'scanning') ? 3.5 : 2.5;
+                drawCornerBrackets(ctx, bx, by, boxSize, boxSize, mainColor, glowColor, lw);
+
+                // Rectangle border
+                ctx.save();
+                ctx.strokeStyle = mainColor;
+                ctx.globalAlpha = 0.95;
+                ctx.lineWidth = (state.faceStatus === 'scanning') ? 2.5 : 2.0;
+                ctx.strokeRect(bx, by, boxSize, boxSize);
+                ctx.restore();
+
+                requestAnimationFrame(drawFaceOverlayLoop);
+            }
+
+            function setFaceStatus(status) {
+                state.faceStatus = status;
+                // Also update the old face-guide element for backward compatibility
+                if (els.faceGuide) {
+                    els.faceGuide.className = 'face-guide ' + status;
+                }
+            }
+
+            function getToken() {
+                var token = document.querySelector('input[name="__RequestVerificationToken"]');
+                return token ? token.value : '';
+            }
+
+            function normalizeResult(result) {
+                if (result && result.ok === true && result.data && typeof result.data === 'object') {
+                    var merged = { ok: true, message: result.message || null };
+                    Object.keys(result.data).forEach(function (key) {
+                        merged[key] = result.data[key];
+                    });
+                    return merged;
+                }
+                return result || {};
+            }
+
+            // Validation functions
+            function validateField(element, rule, validationId) {
+                var value = SecurityUtils.toUpperCase(element.value);
+                var validationEl = document.getElementById(validationId);
+                
+                // Auto-convert to uppercase
+                if (element.value !== value) {
+                    element.value = value;
+                }
+
+                // Check if empty
+                if (!value || value.length === 0) {
+                    element.classList.remove('valid', 'invalid');
+                    if (validationEl) validationEl.textContent = '';
+                    return rule !== ValidationRules.middleName; // Middle name is optional
+                }
+
+                // Check min length
+                if (rule.minLength && value.length < rule.minLength) {
+                    element.classList.add('invalid');
+                    element.classList.remove('valid');
+                    if (validationEl) validationEl.textContent = 'Too short (min ' + rule.minLength + ' chars)';
+                    if (validationEl) validationEl.className = 'validation-message error';
+                    return false;
+                }
+
+                // Check max length
+                if (rule.maxLength && value.length > rule.maxLength) {
+                    element.value = value.substring(0, rule.maxLength);
+                    value = element.value;
+                }
+
+                // Check pattern
+                if (rule.pattern && !rule.pattern.test(value)) {
+                    element.classList.add('invalid');
+                    element.classList.remove('valid');
+                    if (validationEl) validationEl.textContent = rule.message || 'Invalid format';
+                    if (validationEl) validationEl.className = 'validation-message error';
+                    return false;
+                }
+
+                // Valid - only show green border, no text message
+                element.classList.add('valid');
+                element.classList.remove('invalid');
+                if (validationEl) validationEl.textContent = '';
+                if (validationEl) validationEl.className = 'validation-message';
+                return true;
+            }
+
+            function validateEmployeeId() {
+                state.validationState.employeeId = validateField(els.employeeId, ValidationRules.employeeId, 'employeeIdValidation');
+            }
+
+            function validateFirstName() {
+                state.validationState.firstName = validateField(els.firstName, ValidationRules.name, 'firstNameValidation');
+            }
+
+            function validateLastName() {
+                state.validationState.lastName = validateField(els.lastName, ValidationRules.name, 'lastNameValidation');
+            }
+
+            function validateMiddleName() {
+                var value = SecurityUtils.toUpperCase(els.middleName.value);
+                els.middleName.value = value;
+                
+                if (!value || value.length === 0) {
+                    els.middleName.classList.remove('valid', 'invalid');
+                    document.getElementById('middleNameValidation').textContent = '';
+                    state.validationState.middleName = true;
+                    return;
+                }
+                state.validationState.middleName = validateField(els.middleName, ValidationRules.middleName, 'middleNameValidation');
+            }
+
+            function validatePosition() {
+                state.validationState.position = validateField(els.position, ValidationRules.position, 'positionValidation');
+            }
+
+            function validateDepartment() {
+                state.validationState.department = validateField(els.department, ValidationRules.department, 'departmentValidation');
+            }
+
+            function validateOfficeId() {
+                var value = els.officeId.value;
+                var validationEl = document.getElementById('officeIdValidation');
+                state.validationState.officeId = !!value;
+                
+                if (value) {
+                    els.officeId.classList.add('valid');
+                    els.officeId.classList.remove('invalid');
+                } else {
+                    els.officeId.classList.remove('valid', 'invalid');
+                }
+                if (validationEl) validationEl.textContent = '';
+            }
+
+            function validateDeviceName() {
+                state.validationState.deviceName = validateField(els.deviceName, ValidationRules.deviceName, 'deviceNameValidation');
+            }
+
+            function allFieldsValid() {
+                return state.validationState.employeeId &&
+                       state.validationState.firstName &&
+                       state.validationState.lastName &&
+                       state.validationState.middleName &&
+                       state.validationState.position &&
+                       state.validationState.department &&
+                       state.validationState.officeId &&
+                       state.validationState.deviceName;
+            }
+
+            function updateContinueButton() {
+                els.btnToCapture.disabled = !allFieldsValid();
+            }
+
+            function setStep(step) {
+                state.step = step;
+
+                [1, 2, 3].forEach(function (n) {
+                    var pane = document.getElementById('step' + n);
+                    var stepEl = document.querySelector('.wizard-step[data-step="' + n + '"]');
+
+                    if (pane) pane.classList.toggle('active', n === step);
+                    if (stepEl) {
+                        stepEl.classList.remove('active', 'done');
+                        if (n === step) stepEl.classList.add('active');
+                        if (n < step) stepEl.classList.add('done');
+                    }
+                });
+
+                if (step === 2) {
+                    if (state.capturedFrames.length < MAX_FRAMES) ensureCameraStarted();
+                } else {
+                    stopCamera();
+                }
+
+                if (step === 3) refreshReview();
+
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            function validateCapture() {
+                els.btnToReview.disabled = state.capturedFrames.length < MAX_FRAMES;
+            }
+
+            function officeText() {
+                var opt = els.officeId.options[els.officeId.selectedIndex];
+                return opt ? opt.text : '-';
+            }
+
+            function fullName() {
+                return [
+                    SecurityUtils.toUpperCase(els.firstName.value),
+                    SecurityUtils.toUpperCase(els.middleName.value),
+                    SecurityUtils.toUpperCase(els.lastName.value)
+                ].filter(Boolean).join(' ');
+            }
+
+            function refreshReview() {
+                els.reviewEmployeeId.textContent = SecurityUtils.toUpperCase(els.employeeId.value) || '-';
+                els.reviewFullName.textContent = fullName() || '-';
+                els.reviewPositionDepartment.textContent =
+                    (SecurityUtils.toUpperCase(els.position.value) || '-') + ' / ' + 
+                    (SecurityUtils.toUpperCase(els.department.value) || '-');
+                els.reviewOffice.textContent = officeText();
+                els.reviewDeviceName.textContent = SecurityUtils.toUpperCase(els.deviceName.value) || '-';
+                els.reviewSampleCount.textContent = state.capturedFrames.length + ' / 10';
+
+                if (state.capturedFrames.length >= MAX_FRAMES) {
+                    els.reviewStatus.textContent = 'All face samples collected and ready';
+                    els.reviewStatus.className = 'status-bar success';
+                } else {
+                    els.reviewStatus.textContent = 'Face samples are incomplete';
+                    els.reviewStatus.className = 'status-bar error';
+                }
+            }
+
+            async function ensureCameraStarted() {
+                if (state.stream) {
+                    startCaptureLoop();
+                    return;
+                }
+
+                try {
+                    state.stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: 'user',
+                            width: { ideal: 640 },
+                            height: { ideal: 480 }
+                        },
+                        audio: false
+                    });
+
+                    els.video.srcObject = state.stream;
+                    await els.video.play();
+                    
+                    // Initialize face overlay
+                    initFaceOverlay();
+                    setFaceStatus('waiting');
+                    
+                    els.statusBar.innerHTML = '<i class="fa-solid fa-face-viewfinder"></i> Look straight at the camera. Collecting 10 samples with different angles.';
+                    els.statusBar.className = 'status-bar waiting';
+                    startCaptureLoop();
+                } catch (err) {
+                    console.error(err);
+                    els.statusBar.textContent = 'Camera access denied';
+                    els.statusBar.className = 'status-bar error';
+                    MobileSwal.error('Camera Access Required', 'Please allow camera access to continue.');
+                }
+            }
+
+            function stopCamera() {
+                if (state.timer) {
+                    clearInterval(state.timer);
+                    state.timer = null;
+                }
+
+                if (state.stream) {
+                    state.stream.getTracks().forEach(function (track) { track.stop(); });
+                    state.stream = null;
+                }
+
+                if (els.video) els.video.srcObject = null;
+            }
+
+            function startCaptureLoop() {
+                if (state.timer || state.capturedFrames.length >= MAX_FRAMES) return;
+
+                state.timer = setInterval(function () {
+                    if (!state.isCapturing && state.capturedFrames.length < MAX_FRAMES) {
+                        captureAndScan();
+                    }
+                }, 400); // OPTIMIZED: 400ms for faster enrollment (was 600ms)
+            }
+
+            // Angle prompts for better face coverage
+            function getAnglePrompt(capturedCount) {
+                // Prompts for next angle
+                switch (capturedCount) {
+                    case 0:
+                    case 1:
+                        return '<i class="fa-solid fa-face-viewfinder"></i> Look straight at camera';
+                    case 2:
+                    case 3:
+                        return '<i class="fa-solid fa-arrow-left"></i> Turn head slightly left';
+                    case 4:
+                    case 5:
+                        return '<i class="fa-solid fa-arrow-right"></i> Turn head slightly right';
+                    case 6:
+                    case 7:
+                        return '<i class="fa-solid fa-arrow-up"></i> Look up slightly';
+                    case 8:
+                    case 9:
+                        return '<i class="fa-solid fa-face-viewfinder"></i> Back to center';
+                    default:
+                        return 'Hold still...';
+                }
+            }
+
+            function updateProgress() {
+                document.querySelectorAll('.capture-dot').forEach(function (dot, i) {
+                    dot.classList.toggle('captured', i < state.capturedFrames.length);
+                });
+            }
+
+            function addPreview(dataUrl) {
+                var img = document.createElement('img');
+                img.src = dataUrl;
+                img.className = 'preview-thumb captured';
+                els.previewStrip.appendChild(img);
+            }
+
+            function updateLiveness(score, ok) {
+                var pct = Math.round((Number(score) || 0) * 100);
+
+                if (ok) {
+                    els.livenessIndicator.textContent = 'Live ' + pct + '%';
+                    els.livenessIndicator.className = 'liveness-indicator real';
+                } else {
+                    els.livenessIndicator.textContent = 'Checking ' + pct + '%';
+                    els.livenessIndicator.className = 'liveness-indicator checking';
+                }
+            }
+
+            async function captureAndScan() {
+                if (!els.video.videoWidth || !els.video.videoHeight) return;
+
+                state.isCapturing = true;
+                setFaceStatus('scanning');
+
+                try {
+                    els.canvas.width = els.video.videoWidth;
+                    els.canvas.height = els.video.videoHeight;
+
+                    var ctx = els.canvas.getContext('2d');
+                    ctx.drawImage(els.video, 0, 0, els.canvas.width, els.canvas.height);
+
+                    var blob = await new Promise(function (resolve) {
+                        els.canvas.toBlob(resolve, 'image/jpeg', 0.9);
+                    });
+
+                    var formData = new FormData();
+                    formData.append('image', blob, 'frame.jpg');
+                    formData.append('__RequestVerificationToken', getToken());
+
+                    var response = await fetch(els.scanUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    var raw = await response.json();
+                    var data = normalizeResult(raw);
+
+                    if (!data.ok) {
+                        setFaceStatus('error');
+                        els.statusBar.textContent = data.message || 'No face detected';
+                        els.statusBar.className = 'status-bar error';
+                        return;
+                    }
+
+                    updateLiveness(data.liveness, data.livenessOk);
+
+                    if (data.isMatch) {
+                        setFaceStatus('error');
+                        els.statusBar.textContent = 'This face already matches employee ' + (data.matchEmployee || '');
+                        els.statusBar.className = 'status-bar error';
+                        return;
+                    }
+
+                    if (data.livenessOk && data.encoding) {
+                        setFaceStatus('good');
+
+                        state.capturedFrames.push({
+                            liveness: Number(data.liveness) || 0,
+                            encoding: data.encoding
+                        });
+
+                        if (!state.bestEncoding || (Number(data.liveness) || 0) > state.bestEncoding.liveness) {
+                            state.bestEncoding = {
+                                encoding: data.encoding,
+                                liveness: Number(data.liveness) || 0
+                            };
+                        }
+
+                        updateProgress();
+                        addPreview(els.canvas.toDataURL('image/jpeg'));
+                        validateCapture();
+
+                        if (state.capturedFrames.length >= MAX_FRAMES) {
+                            clearInterval(state.timer);
+                            state.timer = null;
+                            stopCamera();
+                            els.statusBar.textContent = 'All 10 captures complete! Continue to review.';
+                            els.statusBar.className = 'status-bar success';
+
+                            if (!state.captureCompleteNotified) {
+                                state.captureCompleteNotified = true;
+                                MobileSwal.success('Captures Complete', 'Your 10 face samples are ready.');
+                            }
+                        } else {
+                            // Show angle prompts based on current sample count
+                            var prompt = getAnglePrompt(state.capturedFrames.length);
+                            els.statusBar.textContent = 'Sample ' + state.capturedFrames.length + ' of ' + MAX_FRAMES + ' captured. ' + prompt;
+                            els.statusBar.className = 'status-bar success';
+                        }
+                    } else {
+                        setFaceStatus('waiting');
+                        els.statusBar.textContent = 'Face detected. Hold still and improve lighting.';
+                        els.statusBar.className = 'status-bar waiting';
+                    }
+                } catch (err) {
+                    console.error('Scan error:', err);
+                    els.statusBar.textContent = 'Scan failed. Please try again.';
+                    els.statusBar.className = 'status-bar error';
+                } finally {
+                    state.isCapturing = false;
+                }
+            }
+
+            async function submitEnrollment() {
+                // Final validation before submit
+                if (!allFieldsValid()) {
+                    MobileSwal.warning('Validation Error', 'Please correct all form fields before submitting.');
+                    setStep(1);
+                    return;
+                }
+
+                if (state.capturedFrames.length < MAX_FRAMES) {
+                    MobileSwal.warning('Face Captures Incomplete', 'Please complete all 10 face samples with different angles.');
+                    setStep(2);
+                    return;
+                }
+
+                var confirmResult = await MobileSwal.confirm(
+                    'Submit Enrollment?',
+                    'Your registration will be sent for admin approval.',
+                    'Yes, Submit',
+                    'Review Again'
+                );
+
+                if (!confirmResult.isConfirmed) return;
+
+                els.submitBtn.disabled = true;
+                els.submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+
+                // Sanitize all inputs before sending
+                var formData = new FormData();
+                formData.append('__RequestVerificationToken', getToken());
+                formData.append('EmployeeId', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.employeeId.value)));
+                formData.append('FirstName', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.firstName.value)));
+                formData.append('MiddleName', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.middleName.value)));
+                formData.append('LastName', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.lastName.value)));
+                formData.append('Position', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.position.value)));
+                formData.append('Department', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.department.value)));
+                formData.append('OfficeId', els.officeId.value);
+                // Send all captured encodings for multi-template storage
+                var allEncodings = state.capturedFrames.map(function(f) { return f.encoding; });
+                formData.append('FaceEncoding', state.bestEncoding ? state.bestEncoding.encoding : '');
+                formData.append('AllFaceEncodingsJson', JSON.stringify(allEncodings));
+                formData.append('DeviceName', SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(els.deviceName.value)));
+
+                try {
+                    var response = await fetch(els.submitUrl, {
+                        method: 'POST',
+                        body: formData
+                    });
+
+                    var raw = await response.json();
+                    var data = normalizeResult(raw);
+
+                    if (!data.ok) {
+                        MobileSwal.error('Submission Failed', data.message || 'Please try again.');
+                        els.submitBtn.disabled = false;
+                        els.submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Enrollment';
+                        return;
+                    }
+
+                    await MobileSwal.success('Enrollment Submitted', 'Your registration is now pending admin approval.');
+                    window.location.href = '/MobileRegistration/Success?isNewEmployee=true&employeeDbId=' + encodeURIComponent(data.employeeDbId || '');
+                } catch (err) {
+                    console.error(err);
+                    MobileSwal.error('Network Error', 'Please check your connection and try again.');
+                    els.submitBtn.disabled = false;
+                    els.submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Enrollment';
+                }
+            }
+
+            // Event listeners for real-time validation
+            els.employeeId.addEventListener('input', function() {
+                validateEmployeeId();
+                updateContinueButton();
+            });
+            els.employeeId.addEventListener('blur', validateEmployeeId);
+
+            els.firstName.addEventListener('input', function() {
+                validateFirstName();
+                updateContinueButton();
+            });
+            els.firstName.addEventListener('blur', validateFirstName);
+
+            els.lastName.addEventListener('input', function() {
+                validateLastName();
+                updateContinueButton();
+            });
+            els.lastName.addEventListener('blur', validateLastName);
+
+            els.middleName.addEventListener('input', function() {
+                validateMiddleName();
+                updateContinueButton();
+            });
+            els.middleName.addEventListener('blur', validateMiddleName);
+
+            els.position.addEventListener('input', function() {
+                validatePosition();
+                updateContinueButton();
+            });
+            els.position.addEventListener('blur', validatePosition);
+
+            els.department.addEventListener('input', function() {
+                validateDepartment();
+                updateContinueButton();
+            });
+            els.department.addEventListener('blur', validateDepartment);
+
+            els.officeId.addEventListener('change', function() {
+                validateOfficeId();
+                updateContinueButton();
+            });
+
+            els.deviceName.addEventListener('input', function() {
+                validateDeviceName();
+                updateContinueButton();
+            });
+            els.deviceName.addEventListener('blur', validateDeviceName);
+
+            els.btnToCapture.addEventListener('click', function () {
+                if (!allFieldsValid()) {
+                    MobileSwal.warning('Validation Error', 'Please correct all form fields before continuing.');
+                    return;
+                }
+                setStep(2);
+            });
+
+            els.btnBackToDetails.addEventListener('click', function () {
+                setStep(1);
+            });
+
+            els.btnToReview.addEventListener('click', function () {
+                if (state.capturedFrames.length < MAX_FRAMES) {
+                    MobileSwal.warning('Face Captures Incomplete', 'Please wait until all 10 samples are collected.');
+                    return;
+                }
+                setStep(3);
+            });
+
+            els.btnBackToCapture.addEventListener('click', function () {
+                setStep(2);
+            });
+
+            els.submitBtn.addEventListener('click', submitEnrollment);
+            window.addEventListener('beforeunload', stopCamera);
+
+            // Initial validation
+            validateEmployeeId();
+            validateFirstName();
+            validateLastName();
+            validateMiddleName();
+            validatePosition();
+            validateDepartment();
+            validateOfficeId();
+            validateDeviceName();
+            validateCapture();
+            updateContinueButton();
+        })();
+    </script>
+}

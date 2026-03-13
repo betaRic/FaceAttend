@@ -231,6 +231,7 @@
                             <th>Liveness</th>
                             <th>Distance</th>
                             <th>Flags</th>
+                            <th style="width:140px;">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -327,6 +328,36 @@
                                             </span>
                                         }
                                     </div>
+                                </td>
+                                <td class="text-end">
+                                    @if (row.NeedsReview)
+                                    {
+                                        <div class="d-flex gap-1 justify-content-end">
+                                            <form method="post" action="@Url.Action("MarkReviewed", "Attendance", new { area = "Admin" })" class="d-inline">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="id" value="@row.Id" />
+                                                <button type="submit" class="btn btn-sm btn-success" title="Approve - Mark as reviewed">
+                                                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                                </button>
+                                            </form>
+                                            <form method="post" action="@Url.Action("Delete", "Attendance", new { area = "Admin" })" class="d-inline">
+                                                @Html.AntiForgeryToken()
+                                                <input type="hidden" name="id" value="@row.Id" />
+                                                <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                                        data-confirm="Delete this record?"
+                                                        data-confirm-text="This will permanently remove the attendance record."
+                                                        title="Reject - Delete record">
+                                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                                </button>
+                                            </form>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <a class="btn btn-sm btn-outline-secondary" href="@Url.Action("Details", "Attendance", new { area = "Admin", id = row.Id })" title="View details">
+                                            <i class="fa-solid fa-eye" aria-hidden="true"></i>
+                                        </a>
+                                    }
                                 </td>
                             </tr>
                         }

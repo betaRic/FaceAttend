@@ -17,16 +17,53 @@ namespace FaceAttend.Services.Biometrics
             if (image == null || image.ContentLength <= 0)
                 return new { ok = false, error = "NO_IMAGE" };
 
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var max = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
             if (image.ContentLength > max)
                 return new { ok = false, error = "TOO_LARGE" };
 
+            // OPTIMIZED: Use FastScanPipeline for in-memory processing when enabled
+            if (ConfigurationService.GetBool("Biometrics:UseFastPipeline", true))
+            {
+                try
+                {
+                    var fastResult = FastScanPipeline.ScanInMemory(image, includeTimings: false);
+                    
+                    if (!fastResult.Ok)
+                    {
+                        return new { ok = false, error = fastResult.Error };
+                    }
+                    
+                    var liveTh = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                    
+                    return new
+                    {
+                        ok = true,
+                        count = 1,
+                        liveness = fastResult.LivenessScore,
+                        livenessOk = fastResult.LivenessOk,
+                        faceBox = fastResult.FaceBox != null ? new
+                        {
+                            x = fastResult.FaceBox.Left,
+                            y = fastResult.FaceBox.Top,
+                            w = fastResult.FaceBox.Width,
+                            h = fastResult.FaceBox.Height
+                        } : null,
+                        message = "scan complete (fast pipeline)"
+                    };
+                }
+                catch
+                {
+                    // Fallback to legacy path on error
+                }
+            }
+
+            // LEGACY PATH: File-based processing
             string path = null;
             string processedPath = null;
 
             try
             {
-                path = SecureFileUpload.SaveTemp(image, prefix, max);
+                path = FileSecurityService.SaveTemp(image, prefix, max);
 
                 bool isProcessed;
                 processedPath = ImagePreprocessor.PreprocessForDetection(path, prefix, out isProcessed);
@@ -89,9 +126,9 @@ namespace FaceAttend.Services.Biometrics
                 if (!scored.Ok)
                     return new { ok = false, error = scored.Error, count = 1, faceBox };
 
-                var th = (float)SystemConfigService.GetDoubleCached(
+                var th = (float)ConfigurationService.GetDouble(
                     "Biometrics:LivenessThreshold",
-                    AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
+                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
 
                 var p = scored.Probability ?? 0f;
 
@@ -111,7 +148,7 @@ namespace FaceAttend.Services.Biometrics
             {
                 System.Diagnostics.Trace.TraceError("[ScanFramePipeline] Scan frame failed: " + ex);
                 // Huwag mag-leak ng raw exception details sa client.
-                var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
                 return debug
                     ? (object)new { ok = false, error = "SCAN_ERROR", detail = ex.Message }
                     : new { ok = false, error = "SCAN_ERROR" };
@@ -119,7 +156,7 @@ namespace FaceAttend.Services.Biometrics
             finally
             {
                 ImagePreprocessor.Cleanup(processedPath, path);
-                SecureFileUpload.TryDelete(path);
+                FileSecurityService.TryDelete(path);
             }
         }
     }

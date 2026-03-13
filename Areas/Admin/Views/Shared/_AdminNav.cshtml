@@ -5,13 +5,16 @@
     string curCtrl = (ViewContext.RouteData.Values["controller"] as string ?? "").Trim().ToLowerInvariant();
     string curAct  = (ViewContext.RouteData.Values["action"] as string ?? "").Trim().ToLowerInvariant();
 
-    bool onDash     = (curCtrl == "dashboard");
-    bool onEmp      = (curCtrl == "employees");
-    bool onOff      = (curCtrl == "offices");
-    bool onAtt      = (curCtrl == "attendance" && curAct == "index");
-    bool onSummary  = (curCtrl == "attendance" && curAct == "summaryreport");
-    bool onVisitors = (curCtrl == "visitors");
-    bool onSet      = (curCtrl == "settings");
+    bool onDash             = (curCtrl == "dashboard");
+    bool onEmp              = (curCtrl == "employees" && curAct == "index");
+    bool onPendingEnroll    = (curCtrl == "employees" && curAct == "pendingenrollments");
+    bool onDevices          = (curCtrl == "employees" && curAct == "devices");
+    bool onPendingDevices   = (curCtrl == "employees" && curAct == "pendingdevices");
+    bool onOff              = (curCtrl == "offices");
+    bool onAtt              = (curCtrl == "attendance" && curAct == "index");
+    bool onSummary          = (curCtrl == "attendance" && curAct == "summaryreport");
+    bool onVisitors         = (curCtrl == "visitors");
+    bool onSet              = (curCtrl == "settings");
 }
 
 <nav class="admin-nav" aria-label="Admin navigation">
@@ -28,6 +31,12 @@
            href="@Url.Action("Index", "Employees", new { area = "Admin" })">
             <span class="admin-nav-icon"><i class="fa-solid fa-users" aria-hidden="true"></i></span>
             Employees
+        </a>
+
+        <a class="admin-nav-link @(onDevices ? "active" : "")"
+           href="@Url.Action("Devices", "Employees", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-mobile-screen" aria-hidden="true"></i></span>
+            Devices
         </a>
 
         <a class="admin-nav-link @(onOff ? "active" : "")"

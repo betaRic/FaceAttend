@@ -5,7 +5,6 @@ using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
-using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -76,12 +75,12 @@ namespace FaceAttend.Areas.Admin.Controllers
                     vm.DatabaseHealthy = false;
                 }
 
-                vm.LivenessModelLoaded = FileSystemHelper.FileExists(
-                    AppSettings.GetString("Biometrics:LivenessModelPath",
+                vm.LivenessModelLoaded = FaceAttend.Services.Helpers.FileSystemHelper.FileExists(
+                    ConfigurationService.GetString("Biometrics:LivenessModelPath",
                         "~/App_Data/models/liveness/minifasnet.onnx"));
 
-                vm.DlibModelsLoaded = FileSystemHelper.DlibModelsPresent(
-                    AppSettings.GetString("Biometrics:DlibModelsDir",
+                vm.DlibModelsLoaded = FaceAttend.Services.Helpers.FileSystemHelper.DlibModelsPresent(
+                    ConfigurationService.GetString("Biometrics:DlibModelsDir",
                         "~/App_Data/models/dlib"));
 
                 vm.OfflineAssetsOk = true;
@@ -167,6 +166,28 @@ namespace FaceAttend.Areas.Admin.Controllers
             catch (Exception ex)
             {
                 TempData["msg"] = "Error: " + ex.Message;
+                TempData["msgKind"] = "danger";
+            }
+            return RedirectToAction("Index");
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult ClearFaceCache()
+        {
+            try
+            {
+                // Clear the in-memory face caches
+                EmployeeFaceIndex.Invalidate();
+                VisitorFaceIndex.Invalidate();
+                FastFaceMatcher.ReloadFromDatabase();
+                
+                TempData["msg"] = "Face cache cleared successfully. New enrollments can now proceed.";
+                TempData["msgKind"] = "success";
+            }
+            catch (Exception ex)
+            {
+                TempData["msg"] = "Error clearing cache: " + ex.Message;
                 TempData["msgKind"] = "danger";
             }
             return RedirectToAction("Index");

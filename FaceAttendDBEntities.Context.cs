@@ -27,6 +27,7 @@ namespace FaceAttend
     
         public virtual DbSet<AdminAuditLog> AdminAuditLogs { get; set; }
         public virtual DbSet<AttendanceLog> AttendanceLogs { get; set; }
+        public virtual DbSet<Device> Devices { get; set; }
         public virtual DbSet<Employee> Employees { get; set; }
         public virtual DbSet<Office> Offices { get; set; }
         public virtual DbSet<SystemConfiguration> SystemConfigurations { get; set; }

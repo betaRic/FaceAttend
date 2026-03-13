@@ -33,7 +33,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 NeedsReviewOnly = needsReview.HasValue && needsReview.Value,
                 Page            = page.GetValueOrDefault(1),
                 PageSize        = pageSize.GetValueOrDefault(25),
-                ExportMaxRows   = AppSettings.GetInt("Attendance:ExportMaxRows", 10000)
+                ExportMaxRows   = ConfigurationService.GetInt("Attendance:ExportMaxRows", 10000)
             };
 
             if (vm.Page     <= 0)   vm.Page     = 1;
@@ -276,6 +276,26 @@ namespace FaceAttend.Areas.Admin.Controllers
             return RedirectToAction("Details", new { id });
         }
 
+        // ── Delete (Reject) ──────────────────────────────────────────────────────
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Delete(long id)
+        {
+            using (var db = new FaceAttendDBEntities())
+            {
+                var row = db.AttendanceLogs.FirstOrDefault(x => x.Id == id);
+                if (row == null) return HttpNotFound();
+
+                db.AttendanceLogs.Remove(row);
+                db.SaveChanges();
+            }
+
+            TempData["msg"] = "Record deleted.";
+            TempData["msgKind"] = "success";
+            return RedirectToAction("Index");
+        }
+
         // ── SummaryReport ────────────────────────────────────────────────────────
 
         /// <summary>
@@ -332,11 +352,14 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!string.IsNullOrWhiteSpace(deptTerm))
                     q = q.Where(x => x.Department.Contains(deptTerm));
 
-                int cap = AppSettings.GetInt("Attendance:SummaryExportMaxRawRows", 50000);
+                int cap = ConfigurationService.GetInt("Attendance:SummaryExportMaxRawRows", 50000);
                 if (cap < 1000) cap = 1000;
                 if (cap > 200000) cap = 200000;
 
+                // PHASE 2 FIX: Added eager loading for Employee to prevent N+1 queries
+                // when accessing Employee.EmployeeId with LazyLoading disabled
                 var raw = q
+                    .Include(x => x.Employee)
                     .Select(x => new RawLog
                     {
                         EmpId      = x.Employee.EmployeeId,
@@ -432,7 +455,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (needsReview.HasValue && needsReview.Value)
                     q = q.Where(x => x.NeedsReview);
 
-                int max = AppSettings.GetInt("Attendance:ExportMaxRows", 10000);
+                int max = ConfigurationService.GetInt("Attendance:ExportMaxRows", 10000);
 
                 var rows = q
                     .OrderByDescending(x => x.Timestamp)
@@ -504,7 +527,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!string.IsNullOrWhiteSpace(deptTerm))
                     q = q.Where(x => x.Department.Contains(deptTerm));
 
-                int cap = AppSettings.GetInt("Attendance:SummaryExportMaxRawRows", 50000);
+                int cap = ConfigurationService.GetInt("Attendance:SummaryExportMaxRawRows", 50000);
                 if (cap < 1000) cap = 1000;
                 if (cap > 200000) cap = 200000;
 
@@ -613,8 +636,8 @@ namespace FaceAttend.Areas.Admin.Controllers
         private static AttendancePolicy LoadAttendancePolicy(FaceAttendDBEntities db)
         {
             // SystemConfigService keys are optional; fall back to Web.config.
-            var sStart = SystemConfigService.GetString(db, "Attendance:WorkStart", AppSettings.GetString("Attendance:WorkStart", "08:00"));
-            var sEnd   = SystemConfigService.GetString(db, "Attendance:WorkEnd",   AppSettings.GetString("Attendance:WorkEnd",   "17:00"));
+            var sStart = ConfigurationService.GetString(db, "Attendance:WorkStart", ConfigurationService.GetString("Attendance:WorkStart", "08:00"));
+            var sEnd   = ConfigurationService.GetString(db, "Attendance:WorkEnd",   ConfigurationService.GetString("Attendance:WorkEnd",   "17:00"));
 
             TimeSpan start;
             TimeSpan end;
@@ -625,11 +648,11 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 WorkStart = start,
                 WorkEnd = end,
-                GraceMinutes = SystemConfigService.GetInt(db, "Attendance:GraceMinutes", AppSettings.GetInt("Attendance:GraceMinutes", 10)),
-                FullDayHours = SystemConfigService.GetDouble(db, "Attendance:FullDayHours", AppSettings.GetDouble("Attendance:FullDayHours", 8)),
-                HalfDayHours = SystemConfigService.GetDouble(db, "Attendance:HalfDayHours", AppSettings.GetDouble("Attendance:HalfDayHours", 4)),
-                LunchMinutes = SystemConfigService.GetInt(db, "Attendance:LunchMinutes", AppSettings.GetInt("Attendance:LunchMinutes", 60)),
-                LunchDeductAfterHours = SystemConfigService.GetDouble(db, "Attendance:LunchDeductAfterHours", AppSettings.GetDouble("Attendance:LunchDeductAfterHours", 5.5))
+                GraceMinutes = ConfigurationService.GetInt(db, "Attendance:GraceMinutes", ConfigurationService.GetInt("Attendance:GraceMinutes", 10)),
+                FullDayHours = ConfigurationService.GetDouble(db, "Attendance:FullDayHours", ConfigurationService.GetDouble("Attendance:FullDayHours", 8)),
+                HalfDayHours = ConfigurationService.GetDouble(db, "Attendance:HalfDayHours", ConfigurationService.GetDouble("Attendance:HalfDayHours", 4)),
+                LunchMinutes = ConfigurationService.GetInt(db, "Attendance:LunchMinutes", ConfigurationService.GetInt("Attendance:LunchMinutes", 60)),
+                LunchDeductAfterHours = ConfigurationService.GetDouble(db, "Attendance:LunchDeductAfterHours", ConfigurationService.GetDouble("Attendance:LunchDeductAfterHours", 5.5))
             };
         }
 

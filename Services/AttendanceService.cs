@@ -59,9 +59,9 @@ namespace FaceAttend.Services
             var startUtc   = todayRange.fromUtc;
             var endUtc     = todayRange.toUtcExclusive;
 
-            int minGapSeconds = SystemConfigService.GetInt(
+            int minGapSeconds = ConfigurationService.GetInt(
                 db, "Attendance:MinGapSeconds",
-                AppSettings.GetInt("Attendance:MinGapSeconds", 180));
+                ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
 
             // --- Transaction: prevents concurrent duplicate scans ---
             // OPTIMIZATION: Changed from Serializable to ReadCommitted
@@ -109,9 +109,9 @@ namespace FaceAttend.Services
                         if (string.Equals(lastToday.EventType, "IN", StringComparison.OrdinalIgnoreCase))
                         {
                             // IN -> OUT transition: mag-apply ng InToOut minimum gap
-                            applicableGap = SystemConfigService.GetInt(
+                            applicableGap = ConfigurationService.GetInt(
                                 db, "Attendance:MinGap:InToOutSeconds",
-                                AppSettings.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
+                                ConfigurationService.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
                             var minsNeeded = (int)Math.Ceiling(applicableGap / 60.0);
                             gapMessage = "You just timed in. Please wait at least "
                                 + minsNeeded + " minute(s) before timing out.";
@@ -119,9 +119,9 @@ namespace FaceAttend.Services
                         else
                         {
                             // OUT -> IN transition: mag-apply ng OutToIn minimum gap
-                            applicableGap = SystemConfigService.GetInt(
+                            applicableGap = ConfigurationService.GetInt(
                                 db, "Attendance:MinGap:OutToInSeconds",
-                                AppSettings.GetInt("Attendance:MinGap:OutToInSeconds", 300));
+                                ConfigurationService.GetInt("Attendance:MinGap:OutToInSeconds", 300));
                             var minsNeeded = (int)Math.Ceiling(applicableGap / 60.0);
                             gapMessage = "Please wait at least "
                                 + minsNeeded + " minute(s) before timing in again.";

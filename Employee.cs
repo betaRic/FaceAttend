@@ -18,6 +18,7 @@ namespace FaceAttend
         public Employee()
         {
             this.AttendanceLogs = new HashSet<AttendanceLog>();
+            this.Devices = new HashSet<Device>();
         }
     
         public int Id { get; set; }
@@ -36,9 +37,15 @@ namespace FaceAttend
         public string Position { get; set; }
         public string FaceEncodingsJson { get; set; }
         public System.DateTime CreatedDate { get; set; }
+        public string Status { get; set; }
+        public string DeviceFingerprint { get; set; }
+        public string DeviceName { get; set; }
+        public string RegisteredFromIp { get; set; }
     
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
         public virtual ICollection<AttendanceLog> AttendanceLogs { get; set; }
+        [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
+        public virtual ICollection<Device> Devices { get; set; }
         public virtual Office Office { get; set; }
     }
 }

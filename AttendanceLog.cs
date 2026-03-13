@@ -44,6 +44,8 @@ namespace FaceAttend
         public string ProvinceName { get; set; }
         public string HUCName { get; set; }
         public bool IsAutoRecorded { get; set; }
+        public Nullable<System.DateTime> AttendanceDate { get; set; }
+        public Nullable<System.DateTime> AttemptedAtUtc { get; set; }
     
         public virtual Employee Employee { get; set; }
         public virtual Office Office { get; set; }

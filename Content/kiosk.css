@@ -88,9 +88,17 @@ html, body {
         "center  center    center"
         "bottom  bottom    bottom";
     gap: var(--space-4);
-    padding: var(--space-4);
+    min-height: 100vh;
+    min-height: 100dvh;
     height: 100vh;
+    height: 100dvh;
+    padding-top: max(var(--space-4), env(safe-area-inset-top));
+    padding-right: max(var(--space-4), env(safe-area-inset-right));
+    padding-bottom: max(calc(var(--space-4) + env(safe-area-inset-bottom)), 1rem);
+    padding-left: max(var(--space-4), env(safe-area-inset-left));
     position: relative;
+    align-items: start;
+    overflow: hidden;
 }
 
 /* Video Background */
@@ -245,9 +253,13 @@ html, body {
    ========================================================================== */
 #center {
     grid-area: center;
-    display: grid;
-    place-items: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     z-index: 10;
+    /* Prevent expansion that could push bottom area up */
+    min-height: 0;
+    overflow: hidden;
 }
 
 #centerBlock {
@@ -279,17 +291,53 @@ html, body {
 }
 
 /* ==========================================================================
+   5.5 Modal Backdrops (Fixed overlays - outside grid flow)
+   ========================================================================== */
+.kiosk-backdrop {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(3, 7, 18, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    /* Ensure backdrop is outside grid flow */
+    width: 100vw;
+    height: 100vh;
+    overflow: auto;
+}
+
+.kiosk-backdrop.hidden {
+    display: none !important;
+}
+
+/* Unlock Success Modal - centered like other modals to prevent layout shift */
+#unlockSuccessBackdrop {
+    /* Use default flex centering from .kiosk-backdrop */
+}
+
+#unlockSuccessModal {
+    max-width: 400px;
+    width: 90%;
+}
+
+/* ==========================================================================
    6. Bottom Area (Main Prompt)
    ========================================================================== */
 #bottom {
     grid-area: bottom;
     justify-self: center;
+    align-self: end;  /* Keep at bottom of grid cell */
     z-index: 10;
+    position: relative;  /* Establish positioning context */
 }
 
 #bottomCenter {
     text-align: center;
     min-width: 320px;
+    position: relative;  /* Stay in flow but establish context */
+    transform: translateZ(0);  /* Force GPU layer for stability */
 }
 
 #mainPrompt {
@@ -318,7 +366,12 @@ html, body {
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: var(--space-6);
+    min-height: 100vh;
+    min-height: 100dvh;
+    padding-top: max(var(--space-6), env(safe-area-inset-top));
+    padding-right: max(var(--space-4), env(safe-area-inset-right));
+    padding-bottom: max(calc(var(--space-6) + env(safe-area-inset-bottom)), 1.25rem);
+    padding-left: max(var(--space-4), env(safe-area-inset-left));
     overflow-y: auto;
 }
 
@@ -331,11 +384,18 @@ html, body {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: var(--space-8);
+    justify-content: space-between;
+    gap: var(--space-6);
     max-width: 480px;
     width: 100%;
+    min-height: calc(100dvh - env(safe-area-inset-top) - env(safe-area-inset-bottom) - 2rem);
     text-align: center;
-    animation: fadeIn 0.4s ease-out;
+}
+
+#bottomCenter {
+    text-align: center;
+    min-width: 0;
+    width: min(100%, 720px);
 }
 
 /* Brand Header */
@@ -425,26 +485,16 @@ html, body {
 
 .status-pulse.success {
     background: var(--accent-success);
-    animation: idlePulseSuccess 2s ease-in-out infinite;
+    --pulse-color: var(--glow-success);
 }
 
 .status-pulse.error {
     background: var(--accent-danger);
-    animation: idlePulseError 2s ease-in-out infinite;
+    --pulse-color: rgba(239, 68, 68, 0.4);
 }
 
 @keyframes idlePulse {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--glow-primary); }
-    50% { opacity: 0.7; box-shadow: 0 0 0 8px transparent; }
-}
-
-@keyframes idlePulseSuccess {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--glow-success); }
-    50% { opacity: 0.7; box-shadow: 0 0 0 8px transparent; }
-}
-
-@keyframes idlePulseError {
-    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+    0%, 100% { opacity: 1; box-shadow: 0 0 0 0 var(--pulse-color, var(--glow-primary)); }
     50% { opacity: 0.7; box-shadow: 0 0 0 8px transparent; }
 }
 
@@ -774,11 +824,6 @@ html, body {
 /* ==========================================================================
    11. Animations
    ========================================================================== */
-@keyframes pulse {
-    0%, 100% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.1); opacity: 0.8; }
-}
-
 @keyframes scanLine {
     0% { transform: translateY(-100%); }
     100% { transform: translateY(100vh); }
@@ -896,6 +941,38 @@ html, body {
     
     .idle-footer .idle-clock {
         font-size: 2rem;
+    }
+}
+
+@media (max-width: 640px) {
+    #center {
+        align-items: end;
+        padding-bottom: 5.5rem;
+    }
+
+    #mainPrompt {
+        font-size: 1.125rem;
+    }
+
+    #subPrompt {
+        font-size: 0.8125rem;
+    }
+
+    .idle-wrapper {
+        gap: 1rem;
+    }
+
+    .idle-map {
+        height: min(160px, 24dvh);
+    }
+
+    .idle-footer .idle-clock {
+        font-size: 1.75rem;
+    }
+
+    .mobile-register-btn {
+        width: 100%;
+        justify-content: center;
     }
 }
 

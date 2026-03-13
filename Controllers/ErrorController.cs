@@ -1,4 +1,5 @@
 using System;
+using System.Web;
 using System.Web.Mvc;
 
 namespace FaceAttend.Controllers
@@ -55,7 +56,7 @@ namespace FaceAttend.Controllers
             ViewBag.MessageText = message;
             ViewBag.RequestId = GetRequestId();
 
-            return View("ErrorPage");
+            return View("~/Views/Shared/ErrorPage.cshtml");
         }
 
         private string GetRequestId()

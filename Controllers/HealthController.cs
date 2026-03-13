@@ -143,8 +143,8 @@ namespace FaceAttend.Controllers
         [OutputCache(NoStore = true, Duration = 0, VaryByParam = "*")]
         public ActionResult Diagnostics()
         {
-            var dlibDir = AppSettings.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
-            var livenessPath = AppSettings.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx");
+            var dlibDir = ConfigurationService.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
+            var livenessPath = ConfigurationService.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx");
             
             // Check individual model files
             var dlibDetails = new Dictionary<string, object>();

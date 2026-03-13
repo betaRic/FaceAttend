@@ -127,14 +127,14 @@
                         </div>
                         <div class="col-md-6">
                             <div class="p-3 border rounded-3 bg-light-subtle">
-                                <div class="d-flex align-items-center gap-2 mb-1">
-                                    @Html.CheckBoxFor(m => m.IsActive, new { @class = "form-check-input mt-0", id = "IsActive" })
-                                    <label class="form-check-label fw-semibold" for="IsActive">
-                                        <i class="fa-solid fa-circle-check me-1 text-success" aria-hidden="true"></i>
-                                        Active
-                                    </label>
-                                </div>
-                                <div class="text-muted small">Inactive employees cannot use the kiosk.</div>
+                                <label class="form-label fw-semibold mb-2">Status</label>
+                                @Html.DropDownListFor(m => m.Status, new[]
+                                {
+                                    new SelectListItem { Text = "Active", Value = "ACTIVE", Selected = Model.Status == "ACTIVE" },
+                                    new SelectListItem { Text = "Pending", Value = "PENDING", Selected = Model.Status == "PENDING" },
+                                    new SelectListItem { Text = "Inactive", Value = "INACTIVE", Selected = Model.Status == "INACTIVE" }
+                                }, new { @class = "form-select" })
+                                <div class="text-muted small mt-2">Pending is for self-enrollment waiting for approval. Inactive is soft delete.</div>
                             </div>
                         </div>
                     </div>

@@ -33,6 +33,15 @@ namespace FaceAttend.Areas.Admin.Filters
             if (filterContext.ExceptionHandled)
                 return;
 
+            // FIX: Only handle exceptions from Admin area controllers
+            // This filter is registered globally but should only affect Admin controllers
+            var area = filterContext.RouteData?.DataTokens["area"] as string;
+            if (string.IsNullOrEmpty(area) || !area.Equals("Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                // Not an Admin area request - let the default error handling deal with it
+                return;
+            }
+
             var ex = filterContext.Exception;
             var httpContext = filterContext.HttpContext;
 
@@ -52,7 +61,7 @@ namespace FaceAttend.Areas.Admin.Filters
             }
             else
             {
-                filterContext.Result = CreateViewResult(ex, requestId, httpContext);
+                filterContext.Result = CreateViewResult(ex, requestId, httpContext, filterContext);
             }
 
             // Ensure proper status code
@@ -86,35 +95,53 @@ namespace FaceAttend.Areas.Admin.Filters
             return result;
         }
 
-        private ActionResult CreateViewResult(Exception ex, string requestId, HttpContextBase httpContext)
+        private ActionResult CreateViewResult(Exception ex, string requestId, HttpContextBase httpContext, ExceptionContext context)
         {
             var isDeveloper = IsDeveloperRequest(httpContext);
+            var controller = context.RouteData?.Values["controller"]?.ToString() ?? "Dashboard";
+            var action = context.RouteData?.Values["action"]?.ToString() ?? "Index";
+            
+            // FIX: Preserve the original area instead of hardcoding "Admin"
+            // This filter is registered globally, so it can catch exceptions from any area
+            var area = context.RouteData?.DataTokens["area"]?.ToString() ?? "";
 
-            // Prepare view data
-            var viewData = new ViewDataDictionary
-            {
-                ["StatusCode"] = 500,
-                ["TitleText"] = "Something went wrong",
-                ["MessageText"] = "We couldn't process your request. Please try again.",
-                ["RequestId"] = requestId,
-                ["IsDeveloper"] = isDeveloper
-            };
-
-            // Add developer-only details
+            // Build error message for end users
+            var errorMessage = "An error occurred while processing your request. Please try again.";
+            
+            // For developer requests, include more details in the error
             if (isDeveloper)
             {
-                viewData["ExceptionType"] = ex.GetType().FullName;
-                viewData["ExceptionMessage"] = ex.Message;
-                viewData["StackTrace"] = ex.StackTrace;
-                viewData["InnerException"] = ex.InnerException?.ToString();
+                errorMessage = $"[{ex.GetType().Name}] {ex.Message}";
             }
 
-            return new ViewResult
+            // Store error in TempData for inline display
+            var tempData = context.Controller.TempData;
+            tempData["Error"] = errorMessage;
+            tempData["RequestId"] = requestId;
+            
+            // For developer, also store full details
+            if (isDeveloper)
             {
-                ViewName = "ErrorPage",
-                MasterName = "_AdminLayout",
-                ViewData = viewData
+                tempData["Developer_Exception"] = ex.GetType().FullName;
+                tempData["Developer_Message"] = ex.Message;
+                tempData["Developer_StackTrace"] = ex.StackTrace;
+            }
+
+            // Redirect back to the same action to show the error inline
+            // FIX: Use the original area from RouteData instead of hardcoding "Admin"
+            var routeValues = new System.Web.Routing.RouteValueDictionary
+            {
+                { "controller", controller },
+                { "action", action }
             };
+            
+            // Only add area if it's not empty
+            if (!string.IsNullOrEmpty(area))
+            {
+                routeValues["area"] = area;
+            }
+            
+            return new RedirectToRouteResult(routeValues);
         }
 
         private bool IsDeveloperRequest(HttpContextBase httpContext)

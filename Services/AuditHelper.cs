@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.Web;
 using Newtonsoft.Json;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Services
 {
@@ -57,11 +58,11 @@ namespace FaceAttend.Services
                 var row = new AdminAuditLog
                 {
                     Timestamp   = DateTime.UtcNow,
-                    AdminIp     = Trim(adminIp, 100),
-                    Action      = Trim(action, 100),
-                    EntityType  = Trim(entityType, 100),
-                    EntityId    = Trim(entityId == null ? null : Convert.ToString(entityId), 100),
-                    Description = Trim(description, 1000),
+                    AdminIp     = StringHelper.Truncate(adminIp, 100),
+                    Action      = StringHelper.Truncate(action, 100),
+                    EntityType  = StringHelper.Truncate(entityType, 100),
+                    EntityId    = StringHelper.Truncate(entityId == null ? null : Convert.ToString(entityId), 100),
+                    Description = StringHelper.Truncate(description, 1000),
                     OldValues   = ToJson(oldValues),
                     NewValues   = ToJson(newValues)
                 };
@@ -69,9 +70,9 @@ namespace FaceAttend.Services
                 db.AdminAuditLogs.Add(row);
                 db.SaveChanges();
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.WriteLine("[AuditHelper] Audit write failed: " + ex.Message);
+                // Audit write failed - silent
             }
         }
 
@@ -83,18 +84,12 @@ namespace FaceAttend.Services
             {
                 return JsonConvert.SerializeObject(value);
             }
-            catch (Exception ex)
+            catch
             {
-                Debug.WriteLine("[AuditHelper] JSON serialize failed: " + ex.Message);
+                // JSON serialize failed - silent
                 return null;
             }
         }
 
-        private static string Trim(string value, int max)
-        {
-            if (string.IsNullOrWhiteSpace(value)) return value;
-            value = value.Trim();
-            return value.Length <= max ? value : value.Substring(0, max);
-        }
     }
 }

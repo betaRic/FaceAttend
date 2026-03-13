@@ -15,6 +15,36 @@
     @Styles.Render("~/Content/admin")
     @RenderSection("head", required: false)
     @RenderSection("styles", required: false)
+    
+    <!-- FIX: Offcanvas backdrop stuck issue -->
+    <style>
+        /* Force hide offcanvas backdrop when sidebar is hidden */
+        .offcanvas-backdrop {
+            opacity: 0 !important;
+            display: none !important;
+            pointer-events: none !important;
+        }
+        
+        /* Only show backdrop when offcanvas is actually showing */
+        .offcanvas.show ~ .offcanvas-backdrop,
+        .offcanvas.offcanvas.show ~ .offcanvas-backdrop,
+        .offcanvas-backdrop.show {
+            opacity: 0.5 !important;
+            display: block !important;
+            pointer-events: auto !important;
+        }
+        
+        /* Ensure clicking outside closes the sidebar properly */
+        .admin-sidebar:not(.show) {
+            transform: translateX(-100%) !important;
+        }
+        
+        /* Allow clicks on main content when sidebar is closed */
+        .admin-main {
+            position: relative;
+            z-index: 1;
+        }
+    </style>
 </head>
 <body class="admin-body">
 
@@ -34,7 +64,7 @@
                     </button>
 
                     <a class="admin-brand" href="@Url.Action("Index","Dashboard", new { area = "Admin" })">
-                        <i class="fa-solid fa-face-smile-beam"></i>
+                        <img src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG" style="height:28px;width:auto;" />
                         <span>FaceAttend</span>
                     </a>
                 </div>
@@ -115,6 +145,38 @@
         <!-- Main -->
         <main class="admin-main">
             <div class="admin-content container-fluid">
+                
+                @* Inline error alerts - shown when TempData["Error"] is set *@
+                @if (TempData["Error"] != null)
+                {
+                    <div class="alert alert-danger alert-dismissible fade show mt-3" role="alert">
+                        <i class="fa-solid fa-circle-xmark me-2"></i>
+                        <strong>Error:</strong> @TempData["Error"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                }
+                
+                @* Inline success alerts - shown when TempData["Success"] is set *@
+                @if (TempData["Success"] != null)
+                {
+                    <div class="alert alert-success alert-dismissible fade show mt-3" role="alert">
+                        <i class="fa-solid fa-circle-check me-2"></i>
+                        @TempData["Success"]
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                }
+                
+                @* Inline module error - shown when ViewBag.ModuleError is set *@
+                @if (ViewBag.ModuleError != null)
+                {
+                    <div class="ea-page mt-3">
+                        <div class="ea-alert danger mb-0">
+                            <i class="fa-solid fa-triangle-exclamation me-2"></i>
+                            @ViewBag.ModuleError
+                        </div>
+                    </div>
+                }
+                
                 @RenderBody()
 
                 <footer class="admin-footer">
@@ -148,8 +210,71 @@
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/bootstrap")
     @Scripts.Render("~/bundles/toastr")
+    @Scripts.Render("~/bundles/sweetalert")
     @Scripts.Render("~/bundles/vendor")
     @Scripts.Render("~/bundles/admin")
+    
+    <!-- FIX: Force-remove stuck offcanvas backdrops -->
+    <script>
+        (function() {
+            'use strict';
+            
+            // Remove any stuck backdrops when page loads
+            function removeStuckBackdrops() {
+                var backdrops = document.querySelectorAll('.offcanvas-backdrop, .modal-backdrop');
+                backdrops.forEach(function(backdrop) {
+                    if (!backdrop.classList.contains('show')) {
+                        backdrop.remove();
+                    }
+                });
+                
+                // Also remove body classes that might be blocking clicks
+                document.body.classList.remove('offcanvas-backdrop-visible');
+                document.body.style.overflow = '';
+                document.body.style.paddingRight = '';
+            }
+            
+            // Run on page load
+            document.addEventListener('DOMContentLoaded', removeStuckBackdrops);
+            
+            // Run after a short delay (in case Bootstrap is still initializing)
+            setTimeout(removeStuckBackdrops, 500);
+            setTimeout(removeStuckBackdrops, 1000);
+            
+            // Listen for offcanvas hide events
+            var sidebar = document.getElementById('adminSidebar');
+            if (sidebar) {
+                sidebar.addEventListener('hidden.bs.offcanvas', function() {
+                    // Force remove all backdrops after offcanvas is hidden
+                    setTimeout(removeStuckBackdrops, 100);
+                    setTimeout(removeStuckBackdrops, 300);
+                });
+                
+                // Also handle when clicking outside to close
+                sidebar.addEventListener('click', function(e) {
+                    if (e.target === sidebar) {
+                        // Clicked on the sidebar itself (not content), close it
+                        var bsOffcanvas = bootstrap.Offcanvas.getInstance(sidebar);
+                        if (bsOffcanvas) {
+                            bsOffcanvas.hide();
+                        }
+                    }
+                });
+            }
+            
+            // Emergency fix: click anywhere on main content closes sidebar
+            var mainContent = document.querySelector('.admin-main');
+            if (mainContent) {
+                mainContent.addEventListener('click', function() {
+                    var bsOffcanvas = bootstrap.Offcanvas.getInstance(sidebar);
+                    if (bsOffcanvas && sidebar.classList.contains('show')) {
+                        bsOffcanvas.hide();
+                    }
+                });
+            }
+        })();
+    </script>
+    
     @RenderSection("scripts", required: false)
 
     <script>

@@ -1,0 +1,764 @@
+@model FaceAttend.Controllers.DeviceRegistrationVm
+@{
+    Layout = "~/Views/Shared/_MobileLayout.cshtml";
+    ViewBag.Title = "Register Device";
+}
+
+@section styles {
+    <style>
+        /* Page Header */
+        .page-header {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        
+        .page-header h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: var(--mobile-text-primary);
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.75rem;
+        }
+        
+        .page-header p {
+            color: var(--mobile-text-muted);
+            font-size: 0.9375rem;
+        }
+        
+        /* Progress Steps */
+        .progress-steps {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .step {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .step-dot {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        
+        .step-dot.completed {
+            background: var(--mobile-accent-success);
+            color: white;
+        }
+        
+        .step-dot.active {
+            background: var(--mobile-accent);
+            color: white;
+            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
+        }
+        
+        .step-line {
+            width: 40px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 1px;
+        }
+        
+        .step-line.completed {
+            background: var(--mobile-accent-success);
+        }
+        
+        /* Employee Card */
+        .employee-card {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.2);
+            border-radius: var(--mobile-radius-lg);
+            padding: 1.25rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            animation: slideUp 0.4s ease;
+        }
+        
+        .employee-avatar {
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--mobile-accent) 0%, #2563eb 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            color: white;
+            flex-shrink: 0;
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+        
+        .employee-info { flex: 1; }
+        
+        .employee-name {
+            font-weight: 700;
+            font-size: 1.0625rem;
+            color: var(--mobile-text-primary);
+            margin-bottom: 0.25rem;
+        }
+        
+        .employee-meta {
+            color: var(--mobile-text-muted);
+            font-size: 0.875rem;
+        }
+        
+        .employee-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.375rem 0.75rem;
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--mobile-accent-success);
+        }
+        
+        /* Alert Cards */
+        .alert-card {
+            border-radius: var(--mobile-radius);
+            padding: 1rem 1.25rem;
+            margin-bottom: 1.25rem;
+            display: flex;
+            gap: 0.875rem;
+            animation: slideUp 0.4s ease 0.1s both;
+        }
+        
+        .alert-card.warning {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.05) 100%);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+        }
+        
+        .alert-card.info {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
+            border: 1px solid rgba(59, 130, 246, 0.25);
+        }
+        
+        .alert-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.125rem;
+            flex-shrink: 0;
+        }
+        
+        .alert-card.warning .alert-icon {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--mobile-accent-warning);
+        }
+        
+        .alert-card.info .alert-icon {
+            background: rgba(59, 130, 246, 0.15);
+            color: var(--mobile-accent);
+        }
+        
+        .alert-content { flex: 1; }
+        
+        .alert-title {
+            font-weight: 600;
+            font-size: 0.9375rem;
+            margin-bottom: 0.375rem;
+        }
+        
+        .alert-card.warning .alert-title { color: var(--mobile-accent-warning); }
+        .alert-card.info .alert-title { color: var(--mobile-accent); }
+        
+        .alert-text {
+            color: var(--mobile-text-secondary);
+            font-size: 0.875rem;
+            line-height: 1.5;
+        }
+        
+        /* Device Preview Card */
+        .device-preview {
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: var(--mobile-radius);
+            padding: 1.5rem;
+            margin-bottom: 1.25rem;
+            text-align: center;
+            animation: slideUp 0.4s ease 0.2s both;
+        }
+        
+        .device-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 1rem;
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%);
+            border: 2px solid rgba(59, 130, 246, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.5rem;
+            color: var(--mobile-accent);
+        }
+        
+        .device-icon.pulse {
+            animation: pulse 2s infinite;
+        }
+        
+        .device-preview h3 {
+            font-size: 1.0625rem;
+            font-weight: 600;
+            color: var(--mobile-text-primary);
+            margin-bottom: 0.25rem;
+        }
+        
+        .device-preview p {
+            color: var(--mobile-text-muted);
+            font-size: 0.875rem;
+        }
+        
+        /* Form Styling */
+        .form-card {
+            background: rgba(15, 23, 42, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.06);
+            border-radius: var(--mobile-radius);
+            padding: 1.25rem;
+            animation: slideUp 0.4s ease 0.3s both;
+        }
+        
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+        
+        .form-group:last-child {
+            margin-bottom: 0;
+        }
+        
+        .form-label {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            color: var(--mobile-text-primary);
+            margin-bottom: 0.625rem;
+        }
+        
+        .form-label .required {
+            color: var(--mobile-accent-error);
+        }
+        
+        .form-label .hint {
+            color: var(--mobile-text-muted);
+            font-size: 0.8125rem;
+            font-weight: 400;
+        }
+        
+        .input-wrapper {
+            position: relative;
+        }
+        
+        .input-wrapper i {
+            position: absolute;
+            left: 1rem;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--mobile-text-muted);
+            font-size: 1rem;
+            transition: color 0.2s;
+        }
+        
+        .input-wrapper input {
+            width: 100%;
+            padding: 0.875rem 1rem 0.875rem 2.75rem;
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: var(--mobile-text-primary);
+            font-size: 1rem;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+        
+        .input-wrapper input:focus {
+            outline: none;
+            border-color: var(--mobile-accent);
+            background: rgba(0, 0, 0, 0.4);
+        }
+        
+        .input-wrapper input:focus + i,
+        .input-wrapper input:focus ~ i {
+            color: var(--mobile-accent);
+        }
+        
+        .input-wrapper input.valid {
+            border-color: var(--mobile-accent-success);
+            background: rgba(34, 197, 94, 0.05);
+        }
+        
+        .input-wrapper input.invalid {
+            border-color: var(--mobile-accent-error);
+            background: rgba(239, 68, 68, 0.05);
+        }
+        
+        .validation-message {
+            display: flex;
+            align-items: center;
+            gap: 0.375rem;
+            font-size: 0.8125rem;
+            margin-top: 0.5rem;
+            min-height: 1.25rem;
+        }
+        
+        .validation-message.error {
+            color: var(--mobile-accent-error);
+        }
+        
+        .validation-message.success {
+            color: var(--mobile-accent-success);
+        }
+        
+        .input-hint {
+            color: var(--mobile-text-muted);
+            font-size: 0.8125rem;
+            margin-top: 0.5rem;
+            line-height: 1.4;
+        }
+        
+        /* Security Badge */
+        .security-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.625rem 1rem;
+            background: rgba(34, 197, 94, 0.08);
+            border: 1px solid rgba(34, 197, 94, 0.15);
+            border-radius: 8px;
+            font-size: 0.8125rem;
+            color: var(--mobile-accent-success);
+            margin-bottom: 1rem;
+        }
+        
+        /* Action Buttons */
+        .action-bar {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            margin-top: 1.5rem;
+        }
+        
+        .btn-modern {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.625rem;
+            padding: 1rem 1.5rem;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            border: none;
+            width: 100%;
+        }
+        
+        .btn-modern:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-modern.primary {
+            background: linear-gradient(135deg, var(--mobile-accent) 0%, #2563eb 100%);
+            color: white;
+            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+        }
+        
+        .btn-modern.primary:not(:disabled):hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
+        }
+        
+        .btn-modern.primary:not(:disabled):active {
+            transform: translateY(0);
+        }
+        
+        .btn-modern.secondary {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--mobile-text-secondary);
+        }
+        
+        .btn-modern.secondary:hover {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--mobile-text-primary);
+        }
+        
+        /* Animations */
+        @@keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @@keyframes pulse {
+            0%, 100% {
+                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+            }
+            50% {
+                box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
+            }
+        }
+        
+        /* Existing Device Card */
+        .existing-device-card {
+            background: rgba(245, 158, 11, 0.05);
+            border: 1px dashed rgba(245, 158, 11, 0.3);
+            border-radius: 12px;
+            padding: 1rem;
+            margin-top: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.875rem;
+        }
+        
+        .existing-device-card i {
+            color: var(--mobile-accent-warning);
+            font-size: 1.25rem;
+        }
+        
+        .existing-device-card .device-info {
+            flex: 1;
+        }
+        
+        .existing-device-card .device-name {
+            font-weight: 600;
+            color: var(--mobile-text-primary);
+            font-size: 0.9375rem;
+        }
+        
+        .existing-device-card .device-status {
+            font-size: 0.8125rem;
+            color: var(--mobile-text-muted);
+        }
+    </style>
+}
+
+<!-- Page Header -->
+<div class="page-header">
+    <h1>
+        <i class="fa-solid fa-mobile-screen-button"></i>
+        Register Device
+    </h1>
+    <p>Complete your device setup</p>
+</div>
+
+<!-- Progress Steps -->
+<div class="progress-steps">
+    <div class="step">
+        <div class="step-dot completed">
+            <i class="fa-solid fa-check"></i>
+        </div>
+    </div>
+    <div class="step-line completed"></div>
+    <div class="step">
+        <div class="step-dot completed">
+            <i class="fa-solid fa-check"></i>
+        </div>
+    </div>
+    <div class="step-line completed"></div>
+    <div class="step">
+        <div class="step-dot active">3</div>
+    </div>
+</div>
+
+@Html.AntiForgeryToken()
+<input type="hidden" id="employeeId" value="@Model.EmployeeId" />
+<input type="hidden" id="isNewEmployee" value="@Model.IsNewEmployee.ToString().ToLower()" />
+<input type="hidden" id="employeeDbId" value="@(Model.EmployeeDbId?.ToString() ?? "")" />
+
+@if (!Model.IsNewEmployee)
+{
+    <!-- Employee Card -->
+    <div class="employee-card">
+        <div class="employee-avatar">
+            <i class="fa-solid fa-user"></i>
+        </div>
+        <div class="employee-info">
+            <div class="employee-name">@Model.EmployeeFullName</div>
+            <div class="employee-meta">@(string.IsNullOrEmpty(Model.Department) ? "DILG Employee" : Model.Department)</div>
+        </div>
+        <div class="employee-badge">
+            <i class="fa-solid fa-shield-check"></i>
+            Verified
+        </div>
+    </div>
+}
+
+@if (Model.HasExistingDevice)
+{
+    <!-- Warning Alert -->
+    <div class="alert-card warning">
+        <div class="alert-icon">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+        </div>
+        <div class="alert-content">
+            <div class="alert-title">Replace Existing Device?</div>
+            <div class="alert-text">
+                You already have a registered device. This action will replace it with your current device.
+                <div class="existing-device-card">
+                    <i class="fa-solid fa-mobile-screen"></i>
+                    <div class="device-info">
+                        <div class="device-name">@Model.ExistingDeviceName</div>
+                        <div class="device-status">Currently active device</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+else if (Model.IsNewEmployee)
+{
+    <!-- Info Alert -->
+    <div class="alert-card info">
+        <div class="alert-icon">
+            <i class="fa-solid fa-circle-info"></i>
+        </div>
+        <div class="alert-content">
+            <div class="alert-title">Pending Approval</div>
+            <div class="alert-text">
+                Your device will be registered as pending. An admin will activate it once your enrollment is approved.
+            </div>
+        </div>
+    </div>
+}
+
+<!-- Device Preview -->
+<div class="device-preview">
+    <div class="device-icon pulse">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+    </div>
+    <h3>@(Model.IsNewEmployee ? "New Employee Device" : "Personal Device")</h3>
+    <p>Name your device to continue</p>
+</div>
+
+<!-- Form Card -->
+<div class="form-card">
+    <div class="form-group">
+        <label class="form-label">
+            <i class="fa-solid fa-tag"></i>
+            Device Name
+            <span class="required">*</span>
+        </label>
+        <div class="input-wrapper">
+            <input type="text" 
+                   id="deviceName" 
+                   class="uppercase" 
+                   value="@Model.DeviceName.ToUpperInvariant()" 
+                   placeholder="e.g., MY IPHONE 15" 
+                   required 
+                   maxlength="50" 
+                   autocomplete="off" />
+            <i class="fa-solid fa-mobile-screen-button"></i>
+        </div>
+        <div class="validation-message" id="deviceNameValidation"></div>
+        <p class="input-hint">
+            <i class="fa-solid fa-circle-info"></i>
+            Choose a name you'll recognize. Use letters, numbers, spaces, hyphens, or underscores.
+        </p>
+    </div>
+    
+    <div class="security-badge">
+        <i class="fa-solid fa-lock"></i>
+        <span>Secure connection • Anti-XSS protected</span>
+    </div>
+</div>
+
+<!-- Action Buttons -->
+<div class="action-bar">
+    <button type="button" class="btn-modern primary" id="registerBtn" disabled>
+        <i class="fa-solid fa-check"></i>
+        <span>@(Model.IsNewEmployee ? "Complete Registration" : "Register Device")</span>
+    </button>
+    
+    <a href="@(Model.IsNewEmployee ? "/MobileRegistration/Enroll" : "/MobileRegistration/Identify")" class="btn-modern secondary">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Go Back</span>
+    </a>
+</div>
+
+@section scripts {
+    <script>
+        (function() {
+            'use strict';
+            
+            const registerBtn = document.getElementById('registerBtn');
+            const deviceNameInput = document.getElementById('deviceName');
+            
+            // Validation rules
+            const ValidationRules = {
+                deviceName: {
+                    pattern: /^[A-Z0-9\s.\-_'\x40]+$/,
+                    minLength: 2,
+                    maxLength: 100,
+                    message: 'Invalid characters. Use letters, numbers, spaces, hyphens, or underscores only.'
+                }
+            };
+            
+            // Security utilities
+            const SecurityUtils = {
+                sanitizeInput: function(value) {
+                    if (!value) return '';
+                    return value
+                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+                        .replace(/<[^>]+>/g, '')
+                        .replace(/javascript:/gi, '')
+                        .replace(/on\w+\s*=/gi, '')
+                        .trim();
+                },
+                toUpperCase: function(value) {
+                    if (!value) return '';
+                    return value.toUpperCase().trim();
+                }
+            };
+            
+            function validateDeviceName() {
+                var value = SecurityUtils.toUpperCase(deviceNameInput.value);
+                var validationEl = document.getElementById('deviceNameValidation');
+                var rule = ValidationRules.deviceName;
+                var inputWrapper = deviceNameInput.closest('.input-wrapper');
+                
+                // Auto-convert to uppercase
+                if (deviceNameInput.value !== value) {
+                    deviceNameInput.value = value;
+                }
+                
+                // Check if empty
+                if (!value || value.length === 0) {
+                    deviceNameInput.classList.remove('valid', 'invalid');
+                    if (validationEl) {
+                        validationEl.innerHTML = '';
+                        validationEl.className = 'validation-message';
+                    }
+                    registerBtn.disabled = true;
+                    return false;
+                }
+                
+                // Check min length
+                if (value.length < rule.minLength) {
+                    deviceNameInput.classList.add('invalid');
+                    deviceNameInput.classList.remove('valid');
+                    if (validationEl) {
+                        validationEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Too short (min ' + rule.minLength + ' characters)';
+                        validationEl.className = 'validation-message error';
+                    }
+                    registerBtn.disabled = true;
+                    return false;
+                }
+                
+                // Check max length
+                if (value.length > rule.maxLength) {
+                    deviceNameInput.value = value.substring(0, rule.maxLength);
+                    value = deviceNameInput.value;
+                }
+                
+                // Check pattern
+                if (!rule.pattern.test(value)) {
+                    deviceNameInput.classList.add('invalid');
+                    deviceNameInput.classList.remove('valid');
+                    if (validationEl) {
+                        validationEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> ' + rule.message;
+                        validationEl.className = 'validation-message error';
+                    }
+                    registerBtn.disabled = true;
+                    return false;
+                }
+                
+                // Valid
+                deviceNameInput.classList.add('valid');
+                deviceNameInput.classList.remove('invalid');
+                if (validationEl) {
+                    validationEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Looks good!';
+                    validationEl.className = 'validation-message success';
+                }
+                registerBtn.disabled = false;
+                return true;
+            }
+            
+            // Real-time validation
+            deviceNameInput.addEventListener('input', validateDeviceName);
+            deviceNameInput.addEventListener('blur', validateDeviceName);
+            
+            registerBtn.addEventListener('click', async () => {
+                if (!validateDeviceName()) {
+                    MobileSwal.warning('Validation Error', 'Please enter a valid device name before continuing.');
+                    return;
+                }
+                
+                const deviceName = SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(deviceNameInput.value));
+                
+                registerBtn.disabled = true;
+                registerBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Registering...</span>';
+
+                const formData = new FormData();
+                formData.append('EmployeeId', document.getElementById('employeeId').value);
+                formData.append('IsNewEmployee', document.getElementById('isNewEmployee').value === 'true');
+                formData.append('EmployeeDbId', document.getElementById('employeeDbId').value || '');
+                formData.append('DeviceName', deviceName);
+                formData.append('__RequestVerificationToken', $('input[name="__RequestVerificationToken"]').val());
+
+                try {
+                    const response = await fetch('/MobileRegistration/RegisterDevice', {
+                        method: 'POST',
+                        headers: {
+                            'X-Requested-With': 'XMLHttpRequest'
+                        },
+                        body: formData
+                    });
+                    const raw = await response.json();
+                    const data = raw && raw.ok && raw.data ? Object.assign({ ok: raw.ok, message: raw.message || null }, raw.data) : raw;
+
+                    if (data.ok) {
+                        window.location.href = '/MobileRegistration/Success?isNewEmployee=' + data.isNewEmployee + 
+                            (data.employeeDbId ? '&employeeDbId=' + data.employeeDbId : '');
+                    } else {
+                        MobileSwal.error('Registration Failed', data.message || 'Please try again');
+                        registerBtn.disabled = false;
+                        const isNew = document.getElementById('isNewEmployee').value === 'true';
+                        registerBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>' + 
+                            (isNew ? 'Complete Registration' : 'Register Device') + '</span>';
+                    }
+                } catch (err) {
+                    MobileSwal.error('Network Error', 'Please check your connection and try again');
+                    registerBtn.disabled = false;
+                    const isNew = document.getElementById('isNewEmployee').value === 'true';
+                    registerBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>' + 
+                        (isNew ? 'Complete Registration' : 'Register Device') + '</span>';
+                }
+            });
+            
+            // Initial validation
+            validateDeviceName();
+            
+            // Focus input on load
+            setTimeout(() => deviceNameInput.focus(), 300);
+        })();
+    </script>
+}

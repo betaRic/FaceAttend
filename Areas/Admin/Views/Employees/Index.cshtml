@@ -1,13 +1,13 @@
-@model System.Collections.Generic.List<Employee>
+@model System.Collections.Generic.List<FaceAttend.Areas.Admin.Controllers.EmployeeListRowVm>
 @{
     ViewBag.Title = "Employees";
 
-    var q            = (ViewBag.Q ?? "").ToString();
-    var showInactive = ViewBag.ShowInactive != null && (bool)ViewBag.ShowInactive;
+    var q = (ViewBag.Q ?? "").ToString();
+    var statusFilter = (ViewBag.StatusFilter ?? "ACTIVE").ToString();
 
-    int page      = ViewBag.Page     == null ? 1   : System.Convert.ToInt32(ViewBag.Page);
-    int pageSize  = ViewBag.PageSize == null ? 200 : System.Convert.ToInt32(ViewBag.PageSize);
-    int total     = ViewBag.Total    == null ? Model.Count : System.Convert.ToInt32(ViewBag.Total);
+    int page = ViewBag.Page == null ? 1 : System.Convert.ToInt32(ViewBag.Page);
+    int pageSize = ViewBag.PageSize == null ? 200 : System.Convert.ToInt32(ViewBag.PageSize);
+    int total = ViewBag.Total == null ? Model.Count : System.Convert.ToInt32(ViewBag.Total);
 
     int totalPages = (int)System.Math.Ceiling(total / (double)pageSize);
     if (totalPages < 1) { totalPages = 1; }
@@ -15,18 +15,22 @@
     if (page > totalPages) { page = totalPages; }
 
     int startNum = total == 0 ? 0 : ((page - 1) * pageSize) + 1;
-    int endNum   = System.Math.Min(page * pageSize, total);
+    int endNum = System.Math.Min(page * pageSize, total);
 
     int startPage = System.Math.Max(1, page - 3);
-    int endPage   = System.Math.Min(totalPages, startPage + 6);
+    int endPage = System.Math.Min(totalPages, startPage + 6);
     if (endPage - startPage < 6) { startPage = System.Math.Max(1, endPage - 6); }
 
-    var names = ViewBag.OfficeNames as System.Collections.Generic.Dictionary<int, string>;
+    Func<string, string> badgeClass = s =>
+    {
+        var key = (s ?? "").ToUpperInvariant();
+        if (key == "PENDING") return "warning";
+        if (key == "INACTIVE") return "inactive";
+        return "active";
+    };
 }
 
 <div class="ea-page">
-
-    @* -- Page header -- *@
     <div class="ea-page-header">
         <div>
             <h1 class="ea-page-title">
@@ -34,17 +38,31 @@
                 Employees
             </h1>
             <div class="ea-page-subtitle">
-                @total employee@(total == 1 ? "" : "s") registered
+                @total employee@(total == 1 ? "" : "s") found
             </div>
         </div>
-        <div class="ea-page-actions">
+        <div class="ea-page-actions d-flex gap-2">
             <a class="btn btn-primary" href="@Url.Action("Create")">
                 <i class="fa-solid fa-user-plus me-1" aria-hidden="true"></i>Add Employee
             </a>
         </div>
     </div>
 
-    @* -- Filter card -- *@
+    @if (TempData["Success"] != null)
+    {
+        <div class="ea-alert success">
+            <i class="fa-solid fa-circle-check fa-sm" aria-hidden="true"></i>
+            @TempData["Success"]
+        </div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="ea-alert danger">
+            <i class="fa-solid fa-circle-xmark fa-sm" aria-hidden="true"></i>
+            @TempData["Error"]
+        </div>
+    }
+
     @using (Html.BeginForm("Index", "Employees", FormMethod.Get, new { area = "Admin", @class = "ea-filter-card" }))
     {
         <div class="row g-2 align-items-end">
@@ -63,11 +81,13 @@
             </div>
             <div class="col-12 col-sm-4 col-lg-2">
                 <label class="ea-filter-label">
-                    <i class="fa-solid fa-eye fa-xs me-1"></i>Show
+                    <i class="fa-solid fa-filter fa-xs me-1"></i>Status
                 </label>
-                <select class="form-select form-select-sm" name="showInactive">
-                    <option value="false" @(!showInactive ? "selected" : "")>Active only</option>
-                    <option value="true"  @(showInactive  ? "selected" : "")>Active + inactive</option>
+                <select class="form-select form-select-sm" name="status">
+                    <option value="ACTIVE" @(statusFilter == "ACTIVE" ? "selected" : "")>Active only</option>
+                    <option value="PENDING" @(statusFilter == "PENDING" ? "selected" : "")>Pending only</option>
+                    <option value="INACTIVE" @(statusFilter == "INACTIVE" ? "selected" : "")>Inactive only</option>
+                    <option value="ALL" @(statusFilter == "ALL" ? "selected" : "")>All statuses</option>
                 </select>
             </div>
             <div class="col-12 col-sm-auto col-lg-auto ms-lg-auto">
@@ -83,7 +103,6 @@
         </div>
     }
 
-    @* -- Table card -- *@
     <div class="ea-table-card">
         <div class="ea-table-header">
             <div class="ea-table-title">
@@ -92,8 +111,7 @@
             </div>
             @if (total > 0)
             {
-                <span class="badge bg-primary-subtle text-primary border border-primary-subtle"
-                      style="font-size:.75rem;">
+                <span class="badge bg-primary-subtle text-primary border border-primary-subtle" style="font-size:.75rem;">
                     Showing @startNum-@endNum of @total
                 </span>
             }
@@ -129,23 +147,20 @@
                             <th>Office</th>
                             <th>Status</th>
                             <th>Face</th>
-                            <th style="width:240px;"></th>
+                            <th style="width:260px;"></th>
                         </tr>
                     </thead>
                     <tbody>
                         @foreach (var e in Model)
                         {
-                            var officeName  = (names != null && names.ContainsKey(e.OfficeId)) ? names[e.OfficeId] : "-";
-                            var initials    = "";
+                            var initials = "";
                             if (!string.IsNullOrWhiteSpace(e.FirstName)) { initials += e.FirstName[0]; }
-                            if (!string.IsNullOrWhiteSpace(e.LastName))  { initials += e.LastName[0]; }
+                            if (!string.IsNullOrWhiteSpace(e.LastName)) { initials += e.LastName[0]; }
                             initials = initials.ToUpperInvariant();
-                            var hasFace = !string.IsNullOrEmpty(e.FaceEncodingBase64);
+                            var rowStatus = (e.Status ?? "ACTIVE").ToUpperInvariant();
 
                             <tr>
-                                <td>
-                                    <div class="ea-avatar sm">@initials</div>
-                                </td>
+                                <td><div class="ea-avatar sm">@initials</div></td>
                                 <td>
                                     <span class="fw-semibold" style="font-size:.85rem;">@e.EmployeeId</span>
                                     @if (e.IsFlexi)
@@ -162,23 +177,25 @@
                                         <div class="ea-cell-muted">@e.Department</div>
                                     }
                                 </td>
-                                <td class="ea-cell-muted" style="font-size:.82rem;">@officeName</td>
+                                <td class="ea-cell-muted" style="font-size:.82rem;">@e.OfficeName</td>
                                 <td>
-                                    @if (e.IsActive)
-                                    {
-                                        <span class="ea-badge active">
-                                            <i class="fa-solid fa-circle-check fa-xs"></i>Active
-                                        </span>
-                                    }
-                                    else
-                                    {
-                                        <span class="ea-badge inactive">
-                                            <i class="fa-solid fa-circle-xmark fa-xs"></i>Inactive
-                                        </span>
-                                    }
+                                    <span class="ea-badge @badgeClass(rowStatus)">
+                                        @if (rowStatus == "PENDING")
+                                        {
+                                            <i class="fa-solid fa-clock fa-xs"></i><text>Pending</text>
+                                        }
+                                        else if (rowStatus == "INACTIVE")
+                                        {
+                                            <i class="fa-solid fa-circle-xmark fa-xs"></i><text>Inactive</text>
+                                        }
+                                        else
+                                        {
+                                            <i class="fa-solid fa-circle-check fa-xs"></i><text>Active</text>
+                                        }
+                                    </span>
                                 </td>
                                 <td>
-                                    @if (hasFace)
+                                    @if (e.HasFace)
                                     {
                                         <span class="ea-badge enrolled">
                                             <i class="fa-solid fa-camera fa-xs"></i>Enrolled
@@ -193,6 +210,16 @@
                                 </td>
                                 <td class="text-end">
                                     <div class="d-flex gap-1 justify-content-end">
+                                        @if (rowStatus == "PENDING")
+                                        {
+                                            <button class="btn btn-sm btn-success btn-approve" 
+                                                    type="button" 
+                                                    data-id="@e.Id"
+                                                    data-name="@(e.LastName + ", " + e.FirstName)"
+                                                    title="Approve pending employee">
+                                                <i class="fa-solid fa-check" aria-hidden="true"></i>
+                                            </button>
+                                        }
                                         <a class="btn btn-sm btn-outline-primary"
                                            href="@Url.Action("Enroll", new { id = e.Id })"
                                            title="Enroll / re-enroll face">
@@ -209,11 +236,11 @@
                                             <input type="hidden" name="id" value="@e.Id" />
                                             <button class="btn btn-sm btn-outline-danger"
                                                     type="submit"
-                                                    data-confirm="PERMANENTLY DELETE this employee?"
-                                                    data-confirm-text="WARNING: This will permanently delete the employee and all their attendance records. This action cannot be undone."
-                                                    data-confirm-icon="error"
-                                                    title="Delete Permanently">
-                                                <i class="fa-solid fa-trash" aria-hidden="true"></i>
+                                                    data-confirm="Set this employee to inactive?"
+                                                    data-confirm-text="This is a soft delete. The employee and attendance logs will stay in the system."
+                                                    data-confirm-icon="warning"
+                                                    title="Set inactive">
+                                                <i class="fa-solid fa-user-slash" aria-hidden="true"></i>
                                             </button>
                                         }
                                     </div>
@@ -225,7 +252,6 @@
             }
         </div>
 
-        @* Pagination *@
         @if (totalPages > 1)
         {
             <div class="ea-table-footer">
@@ -236,7 +262,7 @@
                     <ul class="pagination pagination-sm mb-0">
                         <li class="page-item @(page <= 1 ? "disabled" : "")">
                             <a class="page-link"
-                               href="@Url.Action("Index", new { q = q, showInactive = showInactive, page = page - 1 })"
+                               href="@Url.Action("Index", new { q = q, status = statusFilter, page = page - 1 })"
                                aria-label="Previous">
                                 <i class="fa-solid fa-chevron-left" aria-hidden="true"></i>
                             </a>
@@ -245,12 +271,12 @@
                         {
                             <li class="page-item @(p == page ? "active" : "")">
                                 <a class="page-link"
-                                   href="@Url.Action("Index", new { q = q, showInactive = showInactive, page = p })">@p</a>
+                                   href="@Url.Action("Index", new { q = q, status = statusFilter, page = p })">@p</a>
                             </li>
                         }
                         <li class="page-item @(page >= totalPages ? "disabled" : "")">
                             <a class="page-link"
-                               href="@Url.Action("Index", new { q = q, showInactive = showInactive, page = page + 1 })"
+                               href="@Url.Action("Index", new { q = q, status = statusFilter, page = page + 1 })"
                                aria-label="Next">
                                 <i class="fa-solid fa-chevron-right" aria-hidden="true"></i>
                             </a>
@@ -260,5 +286,61 @@
             </div>
         }
     </div>
-
 </div>
+
+@section scripts {
+    <script>
+        $(document).ready(function () {
+            // Approve pending employee with SweetAlert
+            $('.btn-approve').on('click', function () {
+                var $btn = $(this);
+                var id = $btn.data('id');
+                var name = $btn.data('name');
+                var token = $('input[name="__RequestVerificationToken"]').first().val();
+
+                Swal.fire({
+                    title: 'Approve Employee?',
+                    text: 'Are you sure you want to approve ' + name + '?',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonColor: '#198754',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Yes, approve!',
+                    cancelButtonText: 'Cancel'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        // Show loading
+                        $btn.prop('disabled', true).html('<i class="fa-solid fa-spinner fa-spin"></i>');
+
+                        $.ajax({
+                            url: '@Url.Action("ApprovePendingEmployee", "Employees", new { area = "Admin" })',
+                            type: 'POST',
+                            data: { id: id, __RequestVerificationToken: token },
+                            success: function (response) {
+                                if (response.ok) {
+                                    Swal.fire({
+                                        title: 'Approved!',
+                                        text: response.message,
+                                        icon: 'success',
+                                        timer: 1500,
+                                        showConfirmButton: false
+                                    }).then(() => {
+                                        // Reload page to show updated status
+                                        window.location.reload();
+                                    });
+                                } else {
+                                    Swal.fire('Error', response.message, 'error');
+                                    $btn.prop('disabled', false).html('<i class="fa-solid fa-check"></i>');
+                                }
+                            },
+                            error: function () {
+                                Swal.fire('Error', 'An error occurred while approving.', 'error');
+                                $btn.prop('disabled', false).html('<i class="fa-solid fa-check"></i>');
+                            }
+                        });
+                    }
+                });
+            });
+        });
+    </script>
+}

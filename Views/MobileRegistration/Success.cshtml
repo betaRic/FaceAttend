@@ -1,0 +1,155 @@
+@{
+    Layout = "~/Views/Shared/_MobileLayout.cshtml";
+    ViewBag.Title = "Registration Complete";
+    var isNewEmployee = ViewBag.IsNewEmployee ?? false;
+    var employeeDbId = ViewBag.EmployeeDbId;
+}
+
+@section styles {
+    <style>
+        .success-icon {
+            width: 100px;
+            height: 100px;
+            background: linear-gradient(135deg, var(--accent-success), #16a34a);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 30px auto;
+            font-size: 50px;
+            color: white;
+            animation: scaleIn 0.5s ease;
+        }
+        
+        .title { 
+            font-size: 28px; 
+            font-weight: 700; 
+            margin-bottom: 16px; 
+            text-align: center;
+        }
+        .message { 
+            color: var(--text-secondary); 
+            font-size: 16px; 
+            line-height: 1.6; 
+            margin-bottom: 30px; 
+            text-align: center;
+        }
+        
+        .status-box {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 30px;
+            text-align: left;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .status-item:last-child { margin-bottom: 0; }
+        .status-item i { color: var(--accent-success); }
+        .status-item.pending i { color: var(--accent-primary); }
+        
+        .check-status {
+            margin-bottom: 30px;
+            color: var(--text-muted);
+            font-size: 14px;
+            text-align: center;
+        }
+        
+        @@keyframes scaleIn {
+            from { transform: scale(0); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+    </style>
+}
+
+<div class="success-icon">
+    <i class="fa-solid fa-check"></i>
+</div>
+
+<h1 class="title">Registration Complete!</h1>
+
+@if (isNewEmployee)
+{
+    <p class="message">
+        Your enrollment has been submitted successfully. An administrator will review and approve your registration.
+    </p>
+    
+    <div class="status-box">
+        <div class="status-item">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Face enrolled</span>
+        </div>
+        <div class="status-item">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Employee details submitted</span>
+        </div>
+        <div class="status-item">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Pending device saved</span>
+        </div>
+        <div class="status-item pending">
+            <i class="fa-solid fa-clock"></i>
+            <span>Waiting for admin approval</span>
+        </div>
+    </div>
+    
+    <div class="check-status" data-employee-id="@employeeDbId">
+        <i class="fa-solid fa-spinner fa-spin"></i> Checking approval status...
+    </div>
+}
+else
+{
+    <p class="message">
+        Your device has been registered successfully. You can now use Face Attendance on this device.
+    </p>
+    
+    <div class="status-box">
+        <div class="status-item">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Face identified</span>
+        </div>
+        <div class="status-item">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Pending device saved</span>
+        </div>
+        <div class="status-item">
+            <i class="fa-solid fa-check-circle"></i>
+            <span>Ready to use</span>
+        </div>
+    </div>
+}
+
+<a href="/" class="btn btn-primary">
+    <i class="fa-solid fa-arrow-right"></i>
+    Go to Attendance Kiosk
+</a>
+
+@section scripts {
+    @if (isNewEmployee && employeeDbId != null)
+    {
+        <script>
+            // Check approval status periodically
+            var checkInterval = setInterval(function() {
+                fetch('/MobileRegistration/CheckStatus?employeeDbId=@employeeDbId')
+                    .then(r => r.json())
+                    .then(raw => {
+                        var data = raw && raw.ok && raw.data ? Object.assign({ ok: raw.ok, message: raw.message || null }, raw.data) : raw;
+                        if (data.isApproved) {
+                            clearInterval(checkInterval);
+                            document.querySelector('.check-status').innerHTML = 
+                                '<i class="fa-solid fa-check-circle" style="color: var(--accent-success);"></i> Approved! You can now use the kiosk.';
+                        } else if (data.message) {
+                            document.querySelector('.check-status').innerHTML = data.message;
+                        }
+                    });
+            }, 10000); // Check every 10 seconds
+        </script>
+    }
+}

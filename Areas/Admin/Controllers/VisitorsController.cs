@@ -1,19 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Data.Entity;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.Mvc;
 using FaceRecognitionDotNet;
 using FaceAttend.Filters;
-using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Services;
+using FaceAttend.Services.Security;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Helpers;
-using FaceAttend.Services.Security;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -36,7 +36,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!(showInactive ?? false))
                     baseQ = baseQ.Where(v => v.IsActive);
 
-                var cap = AppSettings.GetInt("Visitors:MaxListRows", 500);
+                var cap = ConfigurationService.GetInt("Visitors:MaxListRows", 500);
                 if (cap < 50) cap = 50;
                 if (cap > 5000) cap = 5000;
 
@@ -107,7 +107,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var v = db.Visitors.FirstOrDefault(x => x.Id == id);
                 if (v == null) return HttpNotFound();
 
-                var perFrame = SystemConfigService.GetDouble(db, "Biometrics:LivenessThreshold", 0.75);
+                var perFrame = ConfigurationService.GetDouble(db, "Biometrics:LivenessThreshold", 0.75);
                 ViewBag.PerFrame = perFrame.ToString("0.00####", CultureInfo.InvariantCulture);
 
                 return View(v);
@@ -201,7 +201,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             if (image == null || image.ContentLength <= 0)
                 return Json(new { ok = false, error = "NO_IMAGE" });
 
-            var max = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var max = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
             if (image.ContentLength > max)
                 return Json(new { ok = false, error = "TOO_LARGE" });
 
@@ -210,7 +210,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             try
             {
-                path = SecureFileUpload.SaveTemp(image, "v_", max);
+                path = FileSecurityService.SaveTemp(image, "v_", max);
 
                 bool isProcessed;
                 processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
@@ -228,9 +228,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (!scored.Ok)
                     return Json(new { ok = false, error = scored.Error });
 
-                var th = (float)SystemConfigService.GetDoubleCached(
+                var th = (float)ConfigurationService.GetDoubleCached(
                     "Biometrics:LivenessThreshold",
-                    AppSettings.GetDouble("Biometrics:LivenessThreshold", 0.75));
+                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
                 var p = scored.Probability ?? 0f;
                 if (p < th)
                     return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p });
@@ -239,15 +239,15 @@ namespace FaceAttend.Areas.Admin.Controllers
                 double[] vec;
                 if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr) || vec == null)
                 {
-                    var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                    var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
                     if (debug)
                         return Json(new { ok = false, error = encErr ?? "ENCODING_FAIL", detail = encErr });
 
                     return Json(new { ok = false, error = encErr ?? "ENCODING_FAIL" });
                 }
 
-                var tol = AppSettings.GetDouble("Visitors:DlibTolerance",
-                    AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60));
+                var tol = ConfigurationService.GetDouble("Visitors:DlibTolerance",
+                    ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
 
                 using (var db = new FaceAttendDBEntities())
                 {
@@ -284,7 +284,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError("[Visitors.EnrollFace] Enrollment failed: " + ex);
-                var debug = AppSettings.GetBool("Biometrics:Debug", false);
+                var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
                 if (debug)
                     return Json(new { ok = false, error = "ENROLL_ERROR", detail = ex.Message });
 
@@ -293,7 +293,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             finally
             {
                 ImagePreprocessor.Cleanup(processedPath, path);
-                SecureFileUpload.TryDelete(path);
+                FileSecurityService.TryDelete(path);
             }
         }
 
@@ -316,8 +316,8 @@ namespace FaceAttend.Areas.Admin.Controllers
             if (!int.TryParse(idText, out id) || id <= 0)
                 return Json(new { ok = false, error = "NO_VISITOR_ID" });
 
-            var maxBytes = AppSettings.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            var maxImages = AppSettings.GetInt("Biometrics:Enroll:MaxImages", 5);
+            var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+            var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
 
             var files = new List<HttpPostedFileBase>();
             try
@@ -351,10 +351,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                     return Json(new { ok = false, error = "TOO_LARGE" });
             }
 
-            var th = (float)SystemConfigService.GetDoubleCached("Biometrics:LivenessThreshold", 0.75);
+            var th = (float)ConfigurationService.GetDoubleCached("Biometrics:LivenessThreshold", 0.75);
 
-            var tol = AppSettings.GetDouble("Visitors:DlibTolerance",
-                AppSettings.GetDouble("Biometrics:DlibTolerance", 0.60));
+            var tol = ConfigurationService.GetDouble("Visitors:DlibTolerance",
+                ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
 
             var candidates = new List<EnrollCandidate>();
 
@@ -368,7 +368,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 try
                 {
-                    path = SecureFileUpload.SaveTemp(f, "v_", maxBytes);
+                    path = FileSecurityService.SaveTemp(f, "v_", maxBytes);
 
                     bool isProcessed;
                     processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
@@ -407,7 +407,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 finally
                 {
                     ImagePreprocessor.Cleanup(processedPath, path);
-                    SecureFileUpload.TryDelete(path);
+                    FileSecurityService.TryDelete(path);
                 }
             }
 
@@ -572,7 +572,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult Purge()
         {
-            int years = AppSettings.GetInt("Visitors:RetentionYears", 2);
+            int years = ConfigurationService.GetInt("Visitors:RetentionYears", 2);
 
             using (var db = new FaceAttendDBEntities())
             {

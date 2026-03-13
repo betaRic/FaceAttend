@@ -7,6 +7,8 @@ using System.Web;
 using System.Web.Mvc;
 using System.Web.Security;
 using System.Web.SessionState;
+using FaceAttend.Services;
+using FaceAttend.Services.Helpers;
 using FaceAttend.Services.Security;
 
 namespace FaceAttend.Filters
@@ -43,6 +45,7 @@ namespace FaceAttend.Filters
     public class AdminAuthorizeAttribute : AuthorizeAttribute
     {
         private const string SessionKeyAuthedUtc  = "AdminAuthedUtc";
+        private const string SessionKeyAdminId    = "AdminId";
         private const string UnlockCookieName     = "fa_admin_unlock";
         private static readonly string[] UnlockCookiePurpose = { "FaceAttend.AdminUnlock.v1" };
 
@@ -60,7 +63,7 @@ namespace FaceAttend.Filters
 
             // Hakbang 1: IP allowlist check — blocked agad kung hindi naka-list ang IP.
             // Kapag walang nilista sa Admin:AllowedIpRanges, lahat ng IP ay pinapayagan.
-            var clientIp = NormalizeClientIp(httpContext.Request?.UserHostAddress);
+            var clientIp = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
             if (!AdminAccessControl.IsAllowed(clientIp))
             {
                 httpContext.Items["AdminBlockReason"] = "IP_NOT_ALLOWED";
@@ -73,12 +76,12 @@ namespace FaceAttend.Filters
             {
                 // Walang session — subukang gamitin ang one-time unlock cookie
                 // na ini-issue pagkatapos ng matagumpay na PIN verification.
-                var ip = NormalizeClientIp(httpContext.Request?.UserHostAddress);
+                var ip = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
                 return TryConsumeUnlockCookie(httpContext, ip);
             }
 
             // Hakbang 3: Tingnan kung expired na ang session.
-            var minutes = GetInt("Admin:SessionMinutes", 30);
+            var minutes = ConfigurationService.GetInt("Admin:SessionMinutes", 30);
             return (DateTime.UtcNow - authedUtc) <= TimeSpan.FromMinutes(minutes);
         }
 
@@ -106,10 +109,26 @@ namespace FaceAttend.Filters
             session[SessionKeyAuthedUtc] = DateTime.UtcNow;
         }
 
+        public static void MarkAuthed(HttpSessionStateBase session, int adminId)
+        {
+            if (session == null) return;
+            session[SessionKeyAuthedUtc] = DateTime.UtcNow;
+            session[SessionKeyAdminId] = adminId;
+        }
+
+        public static int GetAdminId(HttpSessionStateBase session)
+        {
+            if (session == null) return 1;
+            var id = session[SessionKeyAdminId];
+            if (id is int intId) return intId;
+            return 1; // Default fallback
+        }
+
         public static void ClearAuthed(HttpSessionStateBase session)
         {
             if (session == null) return;
             session.Remove(SessionKeyAuthedUtc);
+            session.Remove(SessionKeyAdminId);
             session.Abandon();
         }
 
@@ -133,7 +152,7 @@ namespace FaceAttend.Filters
             if (session == null) return 0;
             if (!(session[SessionKeyAuthedUtc] is DateTime authedUtc)) return 0;
 
-            var minutes = GetInt("Admin:SessionMinutes", 30);
+            var minutes = ConfigurationService.GetInt("Admin:SessionMinutes", 30);
             var elapsed = DateTime.UtcNow - authedUtc;
             var remaining = TimeSpan.FromMinutes(minutes) - elapsed;
             return remaining.TotalSeconds > 0 ? (int)remaining.TotalSeconds : 0;
@@ -171,12 +190,12 @@ namespace FaceAttend.Filters
         {
             if (httpContext == null) return;
 
-            var seconds = GetInt("Admin:UnlockCookieSeconds", 120);
+            var seconds = ConfigurationService.GetInt("Admin:UnlockCookieSeconds", 120);
             if (seconds < 30)  seconds = 30;
             if (seconds > 600) seconds = 600;
 
             var nowUtc  = DateTime.UtcNow;
-            var ip      = NormalizeClientIp(clientIp);
+            var ip      = StringHelper.NormalizeIp(clientIp);
             var nonce   = Guid.NewGuid().ToString("N");
             var payload = nowUtc.Ticks.ToString() + "|" + ip + "|" + nonce;
             var plain   = Encoding.UTF8.GetBytes(payload);
@@ -211,7 +230,7 @@ namespace FaceAttend.Filters
             var cookie = httpContext.Request.Cookies[UnlockCookieName];
             if (cookie == null) return false;
 
-            var seconds = GetInt("Admin:UnlockCookieSeconds", 120);
+            var seconds = ConfigurationService.GetInt("Admin:UnlockCookieSeconds", 120);
             if (seconds < 30)  seconds = 30;
             if (seconds > 600) seconds = 600;
 
@@ -237,8 +256,8 @@ namespace FaceAttend.Filters
             if ((DateTime.UtcNow - issuedUtc) > TimeSpan.FromSeconds(seconds))
             { ExpireUnlockCookie(httpContext); return false; }
 
-                        var cookieIp = NormalizeClientIp(parts[1]);
-            var ip       = NormalizeClientIp(clientIp);
+            var cookieIp = StringHelper.NormalizeIp(parts[1]);
+            var ip       = StringHelper.NormalizeIp(clientIp);
             if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
             { ExpireUnlockCookie(httpContext); return false; }
 
@@ -272,11 +291,11 @@ namespace FaceAttend.Filters
         {
             pin = (pin ?? "").Trim();
             
-            ip  = NormalizeClientIp(ip);
-if (pin.Length == 0) return false;
+            ip  = StringHelper.NormalizeIp(ip);
+            if (pin.Length == 0) return false;
 
-            var maxAttempts    = GetInt("Admin:PinMaxAttempts",    5);
-            var lockoutSeconds = GetInt("Admin:PinLockoutSeconds", 300);
+            var maxAttempts    = ConfigurationService.GetInt("Admin:PinMaxAttempts",    5);
+            var lockoutSeconds = ConfigurationService.GetInt("Admin:PinLockoutSeconds", 300);
 
             // Hakbang 1: Tingnan kung naka-lockout ang IP.
             if (!string.IsNullOrEmpty(ip) && _lockouts.TryGetValue(ip, out var lockout))
@@ -431,27 +450,7 @@ if (pin.Length == 0) return false;
         }
 
 
-        private static string NormalizeClientIp(string ip)
-        {
-            ip = (ip ?? "").Trim();
-
-            if (ip.Length == 0)
-                return "";
-
-            if (ip.Equals("::1", StringComparison.OrdinalIgnoreCase) ||
-                ip.Equals("0:0:0:0:0:0:0:1", StringComparison.OrdinalIgnoreCase))
-                return "127.0.0.1";
-
-            if (ip.StartsWith("::ffff:", StringComparison.OrdinalIgnoreCase))
-                return ip.Substring(7);
-
-            return ip;
-        }
-        private static int GetInt(string key, int fallback)
-        {
-            var v = ConfigurationManager.AppSettings[key];
-            return int.TryParse(v, out var n) ? n : fallback;
-        }
+        // Note: Using AppSettings.GetInt() from FaceAttend.Services for consistency
 
         // ─────────────────────────────────────────────────────────────────────
         // Lockout tracking

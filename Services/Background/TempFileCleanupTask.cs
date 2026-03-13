@@ -53,13 +53,13 @@ namespace FaceAttend.Services.Background
         /// napaka-conservative.
         /// </summary>
         private static int MaxAgeMinutes =>
-            AppSettings.GetInt("TempFile:MaxAgeMinutes", 30);
+            ConfigurationService.GetInt("TempFile:MaxAgeMinutes", 30);
 
         /// <summary>
         /// Gaano kadalas mag-run ang cleanup. Default: 60 minuto.
         /// </summary>
         private static int CleanupIntervalMinutes =>
-            AppSettings.GetInt("TempFile:CleanupIntervalMinutes", 60);
+            ConfigurationService.GetInt("TempFile:CleanupIntervalMinutes", 60);
 
         // ─── Lifecycle ────────────────────────────────────────────────────────────
 

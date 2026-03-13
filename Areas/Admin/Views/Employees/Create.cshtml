@@ -134,13 +134,11 @@
                         <div class="col-md-6">
                             <div class="p-3 border rounded-3 bg-light-subtle">
                                 <div class="d-flex align-items-center gap-2 mb-1">
-                                    @Html.CheckBoxFor(m => m.IsActive, new { @class = "form-check-input mt-0", id = "IsActive" })
-                                    <label class="form-check-label fw-semibold" for="IsActive">
-                                        <i class="fa-solid fa-circle-check me-1 text-success" aria-hidden="true"></i>
-                                        Active
-                                    </label>
+                                    <i class="fa-solid fa-circle-check text-success" aria-hidden="true"></i>
+                                    <span class="fw-semibold">Status: Active</span>
                                 </div>
-                                <div class="text-muted small">Inactive employees cannot use the kiosk.</div>
+                                <div class="text-muted small">Admin-created employees are saved as active and approved right away.</div>
+                                @Html.HiddenFor(m => m.Status, new { Value = "ACTIVE" })
                             </div>
                         </div>
                     </div>

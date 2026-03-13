@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Services
 {
@@ -74,11 +75,11 @@ namespace FaceAttend.Services
                 VisitorId   = visitorId,
                 OfficeId    = officeId,
                 Timestamp   = now,
-                VisitorName = Trunc(visitor.Name, 400),
-                Purpose = string.IsNullOrWhiteSpace(purpose) ? null : purpose.Trim().Substring(0, Math.Min(purpose.Trim().Length, 500)),
+                VisitorName = StringHelper.Truncate(visitor.Name, 400),
+                Purpose = StringHelper.TruncateAndTrim(purpose, 500),
                 Source      = "KIOSK",
-                ClientIP    = Trunc(clientIp  ?? "", 100),
-                UserAgent   = Trunc(userAgent ?? "", 1000)
+                ClientIP    = StringHelper.Truncate(clientIp  ?? "", 100),
+                UserAgent   = StringHelper.Truncate(userAgent ?? "", 1000)
             };
 
             db.VisitorLogs.Add(log);
@@ -157,12 +158,6 @@ namespace FaceAttend.Services
         }
 
         // ── Helpers ──────────────────────────────────────────────────────────────
-
-        private static string Trunc(string s, int maxLen)
-        {
-            if (string.IsNullOrEmpty(s)) return s;
-            return s.Length <= maxLen ? s : s.Substring(0, maxLen);
-        }
 
     }
 }

@@ -79,9 +79,6 @@ namespace FaceAttend.Areas.Admin.Models
         [Display(Name = "Preprocessed JPEG quality")]
         public int PreprocessJpegQuality { get; set; }
 
-        [Display(Name = "Adaptive tolerance tuning")]
-        public bool FaceMatchTunerEnabled { get; set; }
-
         // ─── Location ──────────────────────────────────────────────────────────────
 
         [Range(5, 5000)]

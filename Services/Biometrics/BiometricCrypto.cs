@@ -24,7 +24,7 @@ namespace FaceAttend.Services.Biometrics
 
         public static bool IsEnabled()
         {
-            return AppSettings.GetBool("Biometrics:Crypto:Enabled", true);
+            return ConfigurationService.GetBool("Biometrics:Crypto:Enabled", true);
         }
 
         public static bool IsProtectedValue(string value)
@@ -138,7 +138,7 @@ namespace FaceAttend.Services.Biometrics
 
         private static byte[] GetEntropyBytes()
         {
-            var entropy = AppSettings.GetString("Biometrics:Crypto:Entropy", "");
+            var entropy = ConfigurationService.GetString("Biometrics:Crypto:Entropy", "");
             return string.IsNullOrEmpty(entropy) ? null : Encoding.UTF8.GetBytes(entropy);
         }
     }

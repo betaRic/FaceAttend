@@ -30,5 +30,9 @@ namespace FaceAttend.Areas.Admin.Models
 
         public bool IsFlexi { get; set; }
         public bool IsActive { get; set; } = true;
+
+        [Required]
+        [StringLength(20)]
+        public string Status { get; set; } = "ACTIVE";
     }
 }

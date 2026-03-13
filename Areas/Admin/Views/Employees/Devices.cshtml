@@ -1,0 +1,205 @@
+@model List<FaceAttend.Device>
+@{
+    ViewBag.Title = "Registered Devices";
+    var total = Model?.Count ?? 0;
+    var activeCount = Model?.Count(d => d.Status == "ACTIVE") ?? 0;
+    var pendingCount = Model?.Count(d => d.Status == "PENDING") ?? 0;
+    var blockedCount = Model?.Count(d => d.Status == "BLOCKED") ?? 0;
+}
+
+<div class="ea-page">
+
+    @* -- Page header -- *@
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i>
+                Registered Devices
+            </h1>
+            <div class="ea-page-subtitle">
+                @total device@(total == 1 ? "" : "s") registered (@activeCount active, @pendingCount pending, @blockedCount blocked)
+            </div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-warning btn-sm" href="@Url.Action("PendingDevices", "Employees", new { area = "Admin" })">
+                <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>Pending
+                @if (pendingCount > 0)
+                {
+                    <span class="badge bg-warning ms-1">@pendingCount</span>
+                }
+            </a>
+        </div>
+    </div>
+
+    @* -- Flash messages -- *@
+    @if (TempData["Success"] != null)
+    {
+        <div class="ea-alert success">
+            <i class="fa-solid fa-circle-check fa-sm" aria-hidden="true"></i>
+            @TempData["Success"]
+        </div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="ea-alert danger">
+            <i class="fa-solid fa-circle-xmark fa-sm" aria-hidden="true"></i>
+            @TempData["Error"]
+        </div>
+    }
+
+    @* -- KPI Cards -- *@
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-lg-3">
+            <div class="ea-kpi">
+                <div class="ea-kpi-icon success">
+                    <i class="fa-solid fa-check" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@activeCount</div>
+                    <div class="ea-kpi-label">Active Devices</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ea-kpi">
+                <div class="ea-kpi-icon warning">
+                    <i class="fa-solid fa-clock" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@pendingCount</div>
+                    <div class="ea-kpi-label">Pending</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ea-kpi">
+                <div class="ea-kpi-icon danger">
+                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@blockedCount</div>
+                    <div class="ea-kpi-label">Blocked</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="ea-kpi">
+                <div class="ea-kpi-icon primary">
+                    <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i>
+                </div>
+                <div class="ea-kpi-body">
+                    <div class="ea-kpi-num">@total</div>
+                    <div class="ea-kpi-label">Total Devices</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @* -- Table card -- *@
+    <div class="ea-table-card">
+        <div class="ea-table-header">
+            <div class="ea-table-title">
+                <i class="fa-solid fa-list-ul text-primary" aria-hidden="true"></i>
+                All Devices
+            </div>
+        </div>
+
+        <div class="table-responsive">
+            @if (Model == null || Model.Count == 0)
+            {
+                <div class="ea-empty">
+                    <i class="fa-solid fa-mobile-screen" aria-hidden="true"></i>
+                    <div class="ea-empty-title">No devices registered</div>
+                    <div class="ea-empty-desc">
+                        Devices will appear here when employees register their mobile devices.
+                    </div>
+                </div>
+            }
+            else
+            {
+                <table class="ea-table table table-hover align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Device</th>
+                            <th>Employee</th>
+                            <th>Status</th>
+                            <th>Registered</th>
+                            <th>Last Used</th>
+                            <th>Uses</th>
+                            <th style="width:120px;"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var device in Model)
+                        {
+                            <tr class="@(device.Status == "BLOCKED" ? "table-danger" : "")">
+                                <td>
+                                    <div class="fw-semibold" style="font-size:.88rem;">@device.DeviceName</div>
+                                    <div class="ea-cell-muted">@device.DeviceType</div>
+                                </td>
+                                <td>
+                                    <div style="font-size:.85rem;">
+                                        @(device.Employee != null ? device.Employee.FirstName + " " + device.Employee.LastName : "-")
+                                    </div>
+                                    @if (device.Employee != null)
+                                    {
+                                        <div class="ea-cell-muted">@device.Employee.EmployeeId</div>
+                                    }
+                                </td>
+                                <td>
+                                    @if (device.Status == "ACTIVE")
+                                    {
+                                        <span class="ea-badge active">
+                                            <i class="fa-solid fa-circle-check fa-xs"></i>Active
+                                        </span>
+                                    }
+                                    else if (device.Status == "PENDING")
+                                    {
+                                        <span class="ea-badge warning">
+                                            <i class="fa-solid fa-clock fa-xs"></i>Pending
+                                        </span>
+                                    }
+                                    else if (device.Status == "BLOCKED")
+                                    {
+                                        <span class="ea-badge review">
+                                            <i class="fa-solid fa-ban fa-xs"></i>Blocked
+                                        </span>
+                                    }
+                                </td>
+                                <td class="ea-cell-muted" style="font-size:.82rem;">
+                                    @device.RegisteredAt.ToString("MMM dd, yyyy")
+                                </td>
+                                <td class="ea-cell-muted" style="font-size:.82rem;">
+                                    @(device.LastUsedAt?.ToString("MMM dd, yyyy HH:mm") ?? "Never")
+                                </td>
+                                <td class="ea-cell-muted" style="font-size:.82rem;">
+                                    @device.UseCount
+                                </td>
+                                <td class="text-end">
+                                    @if (device.Status != "BLOCKED")
+                                    {
+                                        <form method="post" action="@Url.Action("DisableDevice", "Employees", new { area = "Admin" })" class="d-inline">
+                                            @Html.AntiForgeryToken()
+                                            <input type="hidden" name="id" value="@device.Id" />
+                                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                    data-confirm="Disable this device?"
+                                                    data-confirm-text="This will prevent the employee from using this device for attendance."
+                                                    title="Disable">
+                                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
+                                            </button>
+                                        </form>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted" style="font-size:.75rem;">Disabled</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            }
+        </div>
+    </div>
+
+</div>

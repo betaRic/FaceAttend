@@ -1,7 +1,6 @@
 ﻿using System;
-using System.IO;
-using System.Web.Hosting;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Services
 {
@@ -43,10 +42,10 @@ namespace FaceAttend.Services
                 App = true,
                 WarmUpState = MvcApplication.WarmUpState,
                 WarmUpMessage = MvcApplication.WarmUpMessage,
-                DlibModelsPresent = CheckDlibModelsPresent(
-                    AppSettings.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib")),
-                LivenessModelPresent = CheckFileExists(
-                    AppSettings.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx"))
+                DlibModelsPresent = FileSystemHelper.DlibModelsPresent(
+                    ConfigurationService.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib")),
+                LivenessModelPresent = FileSystemHelper.FileExists(
+                    ConfigurationService.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx"))
             };
 
             try
@@ -80,32 +79,6 @@ namespace FaceAttend.Services
                 snap.WarmUpState == 1;
 
             return snap;
-        }
-
-        private static bool CheckFileExists(string virtualPath)
-        {
-            if (string.IsNullOrWhiteSpace(virtualPath)) return false;
-            try
-            {
-                var abs = HostingEnvironment.MapPath(virtualPath);
-                return !string.IsNullOrWhiteSpace(abs) && File.Exists(abs);
-            }
-            catch { return false; }
-        }
-
-        private static bool CheckDlibModelsPresent(string virtualDir)
-        {
-            if (string.IsNullOrWhiteSpace(virtualDir)) return false;
-            try
-            {
-                var abs = HostingEnvironment.MapPath(virtualDir);
-                if (string.IsNullOrWhiteSpace(abs) || !Directory.Exists(abs))
-                    return false;
-
-                var dat = Directory.GetFiles(abs, "*.dat", SearchOption.TopDirectoryOnly);
-                return dat.Length >= 2;
-            }
-            catch { return false; }
         }
 
         public class HealthSnapshot

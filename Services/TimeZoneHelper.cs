@@ -21,7 +21,7 @@ namespace FaceAttend.Services
 
         private static TimeZoneInfo Ensure()
         {
-            var id = NormalizeId(AppSettings.GetString("App:TimeZoneId", "Asia/Manila"));
+            var id = NormalizeId(ConfigurationService.GetString("App:TimeZoneId", "Asia/Manila"));
 
             var tz = _tz;
             var loadedId = _loadedId;

@@ -1,4 +1,5 @@
-﻿using System.Web.Mvc;
+﻿using System;
+using System.Web.Mvc;
 using FaceAttend.Services;
 
 namespace FaceAttend.Filters
@@ -27,21 +28,21 @@ namespace FaceAttend.Filters
 
             // CSP: start in Report-Only mode by default to avoid breaking pages.
             // When ready, set Security:CspReportOnly=false.
-            var csp = AppSettings.GetString(
+            var csp = ConfigurationService.GetString(
                 "Security:Csp",
                 "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'self'; img-src 'self' data:; " +
                 "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
                 "font-src 'self' https://fonts.gstatic.com; " +
                 "script-src 'self' 'unsafe-inline'; connect-src 'self'");
 
-            var cspReportOnly = AppSettings.GetBool("Security:CspReportOnly", true);
+            var cspReportOnly = ConfigurationService.GetBool("Security:CspReportOnly", true);
             h[cspReportOnly ? "Content-Security-Policy-Report-Only" : "Content-Security-Policy"] = csp;
 
             // HSTS: only when HTTPS is enforced.
-            if (AppSettings.GetBool("Security:HstsEnabled", false) &&
+            if (ConfigurationService.GetBool("Security:HstsEnabled", false) &&
                 filterContext.HttpContext.Request.IsSecureConnection)
             {
-                h["Strict-Transport-Security"] = AppSettings.GetString(
+                h["Strict-Transport-Security"] = ConfigurationService.GetString(
                     "Security:HstsValue",
                     "max-age=31536000; includeSubDomains");
             }

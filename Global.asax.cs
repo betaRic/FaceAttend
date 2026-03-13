@@ -1,10 +1,11 @@
-using System;
+﻿using System;
 using System.Configuration;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
 using System.Web.Optimization;
 using System.Web.Routing;
+using Newtonsoft.Json;
 using FaceAttend.Services;
 using FaceAttend.Services.Background;
 using FaceAttend.Services.Biometrics;
@@ -337,22 +338,10 @@ namespace FaceAttend
         }
 
         // =====================================================================
-        // Global error routing
-        // ---------------------------------------------------------------------
-        // Layunin:
-        //   I-route ang unhandled errors sa tamang error controller/view
-        //   imbes na hayaan si IIS/ASP.NET na magpakita ng generic page.
-        //
-        // Important behavior:
-        //   - Local debug request: huwag pigilan ang default yellow screen
-        //   - Iwasan ang infinite loop kapag error page mismo ang nag-error
-        //   - Separate admin and non-admin error pages
-        // =====================================================================
-        // =====================================================================
         // Global error handler
         // ---------------------------------------------------------------------
-        // Layunin: I-handle ang mga unhandled exceptions at i-log ang mga ito
-        // para madaling i-debug kapag may problema.
+        // Layunin: I-handle ang mga unhandled exceptions at i-route sa tamang
+        // error page. I-log din para madaling i-debug.
         // 
         // GINAGAWA:
         //   1. Kunin ang last error mula sa Server
@@ -389,6 +378,44 @@ namespace FaceAttend
             {
                 // Admin area has its own error handling via HandleAdminErrorAttribute
                 // Let it handle the exception instead of redirecting
+                return;
+            }
+
+            // Para sa AJAX/JSON endpoints, magbalik ng JSON error
+            // para hindi mag-crash ang buong page flow dahil sa HTML error page.
+            var isJsonRequest = false;
+            try
+            {
+                var accept = Request?.Headers?["Accept"] ?? string.Empty;
+                var xhr = Request?.Headers?["X-Requested-With"] ?? string.Empty;
+                var contentType = Request?.ContentType ?? string.Empty;
+                isJsonRequest = accept.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                                string.Equals(xhr, "XMLHttpRequest", StringComparison.OrdinalIgnoreCase) ||
+                                contentType.IndexOf("application/json", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+            catch
+            {
+                isJsonRequest = false;
+            }
+
+            if (isJsonRequest)
+            {
+                Server.ClearError();
+                Response.TrySkipIisCustomErrors = true;
+                Response.StatusCode = statusCode;
+                Response.ContentType = "application/json";
+
+                var payload = new
+                {
+                    ok = false,
+                    error = statusCode == 404 ? "NOT_FOUND" : "SERVER_ERROR",
+                    message = (Request != null && Request.IsLocal && HttpContext.Current?.IsDebuggingEnabled == true)
+                        ? (ex?.GetBaseException()?.Message ?? "Unexpected error")
+                        : "We couldn't process your request."
+                };
+
+                Response.Write(JsonConvert.SerializeObject(payload));
+                try { Response.End(); } catch { }
                 return;
             }
             
@@ -538,7 +565,7 @@ namespace FaceAttend
         {
             var adminRanges =
                 (Environment.GetEnvironmentVariable("FACEATTEND_ADMIN_ALLOWED_IP_RANGES")
-                ?? AppSettings.GetString("Admin:AllowedIpRanges", string.Empty)
+                ?? ConfigurationService.GetString("Admin:AllowedIpRanges", string.Empty)
                 ?? string.Empty)
                 .Trim();
 

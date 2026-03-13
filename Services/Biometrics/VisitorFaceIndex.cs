@@ -1,125 +1,68 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
 namespace FaceAttend.Services.Biometrics
 {
     /// <summary>
-    /// In-memory cache of face encodings for all active, enrolled Visitor profiles.
-    ///
-    /// Mirrors EmployeeFaceIndex pattern exactly:
-    ///   - Volatile _loaded flag for cheap fast-path check without lock.
-    ///   - Single _lock protects all state mutations.
-    ///   - Double-checked locking prevents redundant rebuilds under contention.
-    ///   - _entries is replaced atomically (never mutated in place) so concurrent
-    ///     readers always get a consistent snapshot.
-    ///
-    /// Deliberately separated from EmployeeFaceIndex so that:
-    ///   1. Visitor enrollment does not invalidate the employee index and vice versa.
-    ///   2. Visitor tolerance can be tuned independently in a future phase.
-    ///   3. Linear O(n) scan is fine for typical visitor counts (under ~200).
-    ///      If the visitor roster grows larger, add BallTree here following
-    ///      the same pattern as the employee FaceMatchTuner service.
+    /// Visitor face index - REFACTORED to use FaceIndexBase
     /// </summary>
     public static class VisitorFaceIndex
     {
-        // ── Entry ────────────────────────────────────────────────────────────────
-
         public class Entry
         {
-            public int      VisitorId { get; set; }
-            public string   Name      { get; set; }
-            public double[] Vec       { get; set; }
+            public int VisitorId { get; set; }
+            public string Name { get; set; }
+            public double[] Vec { get; set; }
         }
 
-        // ── State ────────────────────────────────────────────────────────────────
-
-        // Volatile so the fast-path read in GetEntries() is coherent across CPUs
-        // without always entering the lock.
-        private static volatile bool _loaded  = false;
-        private static List<Entry>   _entries = new List<Entry>();
-        private static readonly object _lock  = new object();
-
-        // ── Public API ───────────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Marks the index as stale.
-        /// Call after any write to Visitor.FaceEncodingBase64 or Visitor.IsActive.
-        /// The next call to GetEntries() will trigger a rebuild from the database.
-        /// </summary>
-        public static void Invalidate()
+        // Inner class implementing the base
+        private class VisitorFaceIndexImpl : FaceIndexBase<Entry>
         {
-            _loaded = false;   // volatile write — visible to all threads immediately
-        }
-
-        /// <summary>
-        /// Returns a snapshot of the current visitor face index.
-        /// Rebuilds from the database if the index is stale.  Thread-safe.
-        /// </summary>
-        public static IReadOnlyList<Entry> GetEntries(FaceAttendDBEntities db)
-        {
-            // Fast path: kapag loaded na ang snapshot, iwas lock agad.
-            // Safe ito kasi _entries ay nire-replace lang, hindi mina-mutate in place.
-            if (_loaded)
-                return _entries.ToList();
-
-            lock (_lock)
+            public VisitorFaceIndexImpl() : base(int.MaxValue) // Visitors don't use BallTree
             {
-                // Double-check para isang thread lang ang mag-rebuild.
-                if (!_loaded)
-                    RebuildCore(db);
-
-                return _entries.ToList();
             }
-        }
 
-        /// <summary>
-        /// Forces an immediate synchronous rebuild.  Call after bulk changes.
-        /// </summary>
-        public static void Rebuild(FaceAttendDBEntities db)
-        {
-            lock (_lock)
+            protected override List<Entry> LoadEntriesFromDatabase(FaceAttendDBEntities db)
             {
-                RebuildCore(db);
-            }
-        }
+                var list = new List<Entry>();
 
-        // ── Private ──────────────────────────────────────────────────────────────
-
-        /// <summary>Must only be called with _lock held.</summary>
-        private static void RebuildCore(FaceAttendDBEntities db)
-        {
-            var list = new List<Entry>();
-
-            foreach (var v in db.Visitors
-                         .Where(v => v.IsActive && v.FaceEncodingBase64 != null))
-            {
-                try
+                foreach (var v in db.Visitors
+                    .Where(v => v.IsActive && v.FaceEncodingBase64 != null))
                 {
-                    byte[] bytes;
-                    if (!BiometricCrypto.TryGetBytesFromStoredBase64(v.FaceEncodingBase64, out bytes))
-                        continue;
+                    try
+                    {
+                        byte[] bytes;
+                        if (!BiometricCrypto.TryGetBytesFromStoredBase64(v.FaceEncodingBase64, out bytes))
+                            continue;
 
-                    var vec   = DlibBiometrics.DecodeFromBytes(bytes);
-                    if (vec != null && vec.Length == 128)
-                        list.Add(new Entry
+                        var vec = DlibBiometrics.DecodeFromBytes(bytes);
+                        if (vec != null && vec.Length == 128)
                         {
-                            VisitorId = v.Id,
-                            Name      = v.Name,
-                            Vec       = vec
-                        });
+                            list.Add(new Entry
+                            {
+                                VisitorId = v.Id,
+                                Name = v.Name,
+                                Vec = vec
+                            });
+                        }
+                    }
+                    catch { }
                 }
-                catch
-                {
-                    // Skip corrupt encodings.  Log to application event log in production.
-                }
+
+                return list;
             }
 
-            // Replace the reference atomically.  Readers receive either the old or
-            // the new snapshot — no torn reads because reference assignment is atomic
-            // on all .NET-supported architectures.
-            _entries = list;
-            _loaded  = true;
+            protected override double[] GetVectorFromEntry(Entry entry) => entry.Vec;
+            protected override string GetIdFromEntry(Entry entry) => entry.VisitorId.ToString();
         }
+
+        // Singleton instance
+        private static readonly VisitorFaceIndexImpl _instance = new VisitorFaceIndexImpl();
+
+        // Public API - delegates to instance
+        public static void Invalidate() => _instance.Invalidate();
+        public static IReadOnlyList<Entry> GetEntries(FaceAttendDBEntities db) => _instance.GetEntries(db);
+        public static void Rebuild(FaceAttendDBEntities db) => _instance.Rebuild(db);
     }
 }
