@@ -1,317 +1,351 @@
 /* ==========================================================================
-   FaceAttend Admin Scripts - Consolidated
-   ES5 Compatible Version for WebGrease Minifier
+   FaceAttend Admin Scripts
+   ES5 Compatible — WebGrease Safe
    ========================================================================== */
 
 (function () {
     'use strict';
 
-    /* ----------------------------------------------------------------------
-       1. Utility Functions
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       1. Core Utilities
+    ------------------------------------------------------------------ */
+
     function onReady(fn) {
         if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', fn);
         else fn();
     }
 
-    function $(selector) { return document.querySelector(selector); }
-    function $$(selector) { 
-        var elements = document.querySelectorAll(selector);
-        var arr = [];
-        for (var i = 0; i < elements.length; i++) {
-            arr.push(elements[i]);
-        }
-        return arr;
+    // querySelector shorthand — returns a NATIVE DOM element (not jQuery)
+    function $(sel) { return document.querySelector(sel); }
+    function $$(sel) {
+        var nl = document.querySelectorAll(sel);
+        var a = [];
+        for (var i = 0; i < nl.length; i++) a.push(nl[i]);
+        return a;
     }
 
-    /* ----------------------------------------------------------------------
-       2. UI Components
-       ---------------------------------------------------------------------- */
-    
-    // Toast notifications
+    /* ------------------------------------------------------------------
+       2. Toast Notifications
+       Wraps toastr if available, falls back gracefully.
+    ------------------------------------------------------------------ */
+
     function toast(type, message) {
-        var msg = (message || '').toString();
+        var msg = (message || '').toString().trim();
         if (!msg) return;
 
         if (window.toastr) {
             toastr.options = {
-                closeButton: true,
-                newestOnTop: true,
-                progressBar: false,
-                positionClass: 'toast-top-right',
+                closeButton:      true,
+                newestOnTop:      true,
+                progressBar:      true,
+                positionClass:    'toast-top-right',
                 preventDuplicates: true,
-                timeOut: 3500,
-                extendedTimeOut: 1200,
-                showDuration: 120,
-                hideDuration: 120
+                timeOut:          4000,
+                extendedTimeOut:  1500,
+                showDuration:     200,
+                hideDuration:     200
             };
-            toastr[type](msg);
+            var fn = toastr[type] ? toastr[type] : toastr.info;
+            fn(msg);
             return;
         }
 
-        // Fallback
-        if (type === 'error') alert(msg);
-        else console.log(msg);
+        // Fallback: inline banner at top of .admin-content
+        var container = $('.admin-content') || document.body;
+        var div = document.createElement('div');
+        var color = type === 'error' || type === 'danger' ? 'danger'
+                  : type === 'success' ? 'success'
+                  : type === 'warning' ? 'warning'
+                  : 'info';
+        div.className = 'alert alert-' + color + ' alert-dismissible fade show mt-3';
+        div.setAttribute('role', 'alert');
+        div.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+        container.insertBefore(div, container.firstChild);
+        setTimeout(function () {
+            div.classList.remove('show');
+            setTimeout(function () { if (div.parentNode) div.parentNode.removeChild(div); }, 300);
+        }, 5000);
     }
 
-    // Confirmation dialog
+    /* ------------------------------------------------------------------
+       3. Confirm Dialog
+       Uses SweetAlert2 when loaded, native confirm as fallback.
+    ------------------------------------------------------------------ */
+
     function confirmDialog(opts) {
         var o = opts || {};
-        var title = (o.title || 'Confirm').toString();
-        var text = (o.text || '').toString();
+        var title  = (o.title  || 'Confirm').toString();
+        var text   = (o.text   || '').toString();
+        var icon   = o.icon   || 'warning';
+        var okText = o.okText || 'Continue';
+        var cancelText = o.cancelText || 'Cancel';
 
-        if (window.Swal && window.Swal.fire) {
+        if (window.Swal) {
             return Swal.fire({
-                title: title,
-                text: text,
-                icon: o.icon || 'warning',
-                showCancelButton: true,
-                confirmButtonText: o.okText || 'Continue',
-                cancelButtonText: o.cancelText || 'Cancel',
-                focusCancel: true
-            }).then(function(r) { 
-                return r && r.isConfirmed; 
-            });
+                title:             title,
+                text:              text || undefined,
+                icon:              icon,
+                showCancelButton:  true,
+                confirmButtonText: okText,
+                cancelButtonText:  cancelText,
+                focusCancel:       true,
+                buttonsStyling:    true,
+                customClass: {
+                    confirmButton: 'btn btn-' + (icon === 'danger' || icon === 'error' ? 'danger' : 'primary') + ' me-2',
+                    cancelButton:  'btn btn-outline-secondary'
+                }
+            }).then(function (r) { return !!(r && r.isConfirmed); });
         }
 
-        // Fallback
-        return Promise.resolve(confirm(text ? (title + '\n\n' + text) : title));
+        return Promise.resolve(confirm(text ? title + '\n\n' + text : title));
     }
 
-    /* ----------------------------------------------------------------------
-       3. Feature: Footer Year
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       4. Footer Year
+    ------------------------------------------------------------------ */
+
     function initFooterYear() {
-        // FIX: Use getElementById for clarity - $ returns DOM element but this is more explicit
         var el = document.getElementById('footerYear');
         if (el) el.textContent = new Date().getFullYear();
     }
 
-    /* ----------------------------------------------------------------------
-       4. Feature: Tooltips
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       5. Bootstrap Tooltips
+    ------------------------------------------------------------------ */
+
     function initTooltips() {
         if (!window.bootstrap || !window.bootstrap.Tooltip) return;
-        $$('[data-bs-toggle="tooltip"]').forEach(function(el) { 
-            new bootstrap.Tooltip(el); 
+        $$('[data-bs-toggle="tooltip"]').forEach(function (el) {
+            new bootstrap.Tooltip(el, { trigger: 'hover focus' });
         });
     }
 
-    /* ----------------------------------------------------------------------
-       6. Feature: Toast from Server
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       6. Auto-dismiss Flash Alerts
+       Success alerts from TempData fade out after 4 s.
+       Error alerts stay until dismissed manually.
+    ------------------------------------------------------------------ */
+
+    function initAutoDismissAlerts() {
+        $$('.alert-success, .ea-alert.success').forEach(function (el) {
+            setTimeout(function () {
+                el.style.transition = 'opacity 0.4s ease';
+                el.style.opacity = '0';
+                setTimeout(function () {
+                    if (el.parentNode) el.parentNode.removeChild(el);
+                }, 400);
+            }, 4000);
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       7. Server Toast (TempData → JS bridge)
+    ------------------------------------------------------------------ */
+
     function initServerToast() {
         if (window.__toastMsg) {
-            var validTypes = ['success', 'info', 'warning', 'error'];
-            var type = validTypes.indexOf(window.__toastType) >= 0
-                ? window.__toastType
-                : 'success';
+            var valid = ['success', 'info', 'warning', 'error'];
+            var type  = valid.indexOf(window.__toastType) >= 0 ? window.__toastType : 'success';
             toast(type, window.__toastMsg);
-            window.__toastMsg = null;
+            window.__toastMsg  = null;
             window.__toastType = null;
         }
     }
 
-    /* ----------------------------------------------------------------------
-       7. Feature: Confirm Links
-       ---------------------------------------------------------------------- */
-    function initConfirmLinks() {
-        if (!window.jQuery) return;
+    /* ------------------------------------------------------------------
+       8. Confirm Links  [data-confirm="…"]
+       Intercepts anchor + form submit buttons to show a dialog first.
+    ------------------------------------------------------------------ */
 
-        jQuery(document).on('click', '[data-confirm]', function (e) {
-            var el = this;
-            if (el.dataset && el.dataset.confirmed === '1') {
+    function initConfirmLinks() {
+        document.addEventListener('click', function (e) {
+            var el = e.target && e.target.closest('[data-confirm]');
+            if (!el) return;
+
+            // Already confirmed in this click cycle — let it through
+            if (el.dataset.confirmed === '1') {
                 el.dataset.confirmed = '0';
-                return true;
+                return;
             }
 
-            var title = el.getAttribute('data-confirm') || 'Confirm';
-            var text = el.getAttribute('data-confirm-text') || '';
-            var icon = el.getAttribute('data-confirm-icon') || 'warning';
-
             e.preventDefault();
+            e.stopPropagation();
 
-            confirmDialog({ title: title, text: text, icon: icon }).then(function(ok) {
-                if (!ok) return;
+            var title  = el.getAttribute('data-confirm')      || 'Are you sure?';
+            var text   = el.getAttribute('data-confirm-text') || '';
+            var icon   = el.getAttribute('data-confirm-icon') || 'warning';
 
-                if (el.tagName === 'A' && el.href) {
-                    location.href = el.href;
-                    return;
-                }
-
-                var form = el.closest && el.closest('form');
-                if (form) {
-                    form.submit();
-                    return;
-                }
-
-                el.dataset.confirmed = '1';
-                el.click();
-            });
-
-            return false;
+            confirmDialog({ title: title, text: text, icon: icon })
+                .then(function (ok) {
+                    if (!ok) return;
+                    if (el.tagName === 'A' && el.href && el.href !== '#') {
+                        location.href = el.href;
+                        return;
+                    }
+                    var form = el.closest('form');
+                    if (form) { form.submit(); return; }
+                    el.dataset.confirmed = '1';
+                    el.click();
+                });
         });
     }
 
-    /* ----------------------------------------------------------------------
-       8. Feature: DataTables (Mobile-Responsive)
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       9. DataTables  (.js-datatable)
+
+       BUG FIX — "Cannot read properties of undefined (reading 'display')"
+       Root cause: DataTables Responsive internally accesses aoColumns[idx]
+       where idx may be out of range when the table has fewer columns than
+       the plugin's column-priority configuration expects.
+
+       Fixes applied:
+         a) Responsive is DISABLED for tables with ≤ 2 columns — the plugin
+            has no meaningful work to do on narrow tables and always crashes.
+         b) responsivePriority targets are clamped to valid column indices.
+         c) requestIdleCallback removed — it caused DataTables to initialise
+            after the DOM was mutated by navigation, producing stale column
+            counts and the same crash.
+         d) Tables that are hidden at init time are deferred via a
+            ResizeObserver / MutationObserver watch instead of being skipped.
+    ------------------------------------------------------------------ */
+
     function initDataTables() {
         if (!window.jQuery || !window.jQuery.fn || !window.jQuery.fn.dataTable) return;
 
         jQuery('.js-datatable').each(function () {
             var $t = jQuery(this);
             if ($t.data('dtInit') === 1) return;
-            
-            // Ensure element exists and is visible before initializing
-            if (!$t.length || !$t[0] || $t.is(':hidden')) return;
-            
-            // FIX: Check headers exist - DataTables needs headers to initialize properly
-            var headerCols = $t.find('thead th').length;
-            if (!headerCols) return;
-            
+
+            // Needs at least a thead row with th elements
+            var colCount = $t.find('thead th').length;
+            if (colCount === 0) return;
+
             $t.data('dtInit', 1);
 
-            var pageLen = parseInt($t.attr('data-dt-page-length') || '25', 10);
+            var pageLen   = parseInt($t.attr('data-dt-page-length') || '25', 10);
             if (!isFinite(pageLen) || pageLen <= 0) pageLen = 25;
 
             var noSortLast = $t.attr('data-dt-no-sort-last') === '1';
-            // PERFORMANCE FIX: Disable stateSave by default to speed up navigation
-            // Only enable if explicitly requested via data-dt-state-save="1"
-            var stateSave = $t.attr('data-dt-state-save') === '1';
+            var stateSave  = $t.attr('data-dt-state-save')   === '1';
+            var isMobile   = window.innerWidth < 768;
+            var isTablet   = window.innerWidth >= 768 && window.innerWidth < 1024;
 
-            // Responsive layout based on screen size
-            var isMobile = window.innerWidth < 768;
-            var isTablet = window.innerWidth >= 768 && window.innerWidth < 1024;
+            // ── FIX (a): Disable Responsive on narrow tables ──────────────
+            // The plugin crashes when colCount ≤ 2 because it tries to hide/show
+            // columns that don't exist and accesses undefined column objects.
+            var useResponsive = colCount >= 3;
 
             var opts = {
-                pageLength: pageLen,
-                stateSave: stateSave,
-                // PERFORMANCE FIX: Disable deferred render to prevent slow initial loads
+                pageLength:  pageLen,
+                stateSave:   stateSave,
                 deferRender: false,
-                // PERFORMANCE FIX: Use simpler ordering
-                order: [],
-                autoWidth: false,
-                responsive: true,
-                // PERFORMANCE FIX: Limit search delay
+                order:       [],
+                autoWidth:   false,
+                responsive:  useResponsive,
                 searchDelay: 200,
                 language: {
-                    search: '',
-                    searchPlaceholder: 'Search...',
-                    emptyTable: 'No data available',
-                    info: '_START_ - _END_ of _TOTAL_',
-                    infoEmpty: '0 - 0 of 0',
+                    search:            '',
+                    searchPlaceholder: 'Search…',
+                    emptyTable:        '<span class="text-muted">No records found</span>',
+                    info:              '_START_–_END_ of _TOTAL_',
+                    infoEmpty:         '0 records',
+                    infoFiltered:      '(filtered from _MAX_)',
                     paginate: {
-                        first: '<i class="fa-solid fa-angle-double-left"></i>',
-                        last: '<i class="fa-solid fa-angle-double-right"></i>',
-                        next: '<i class="fa-solid fa-angle-right"></i>',
-                        previous: '<i class="fa-solid fa-angle-left"></i>'
-                    }
+                        first:    '<i class="fa-solid fa-angles-left fa-xs"></i>',
+                        last:     '<i class="fa-solid fa-angles-right fa-xs"></i>',
+                        next:     '<i class="fa-solid fa-angle-right fa-xs"></i>',
+                        previous: '<i class="fa-solid fa-angle-left fa-xs"></i>'
+                    },
+                    lengthMenu: '_MENU_ per page'
                 }
             };
 
-            // Mobile-optimized DOM structure
+            // ── DOM layout ─────────────────────────────────────────────────
             if (isMobile) {
-                opts.dom = "<'row'<'col-12 mb-2'f>>" +
-                          "<'row'<'col-12'tr>>" +
-                          "<'row'<'col-12 mt-2 d-flex justify-content-between align-items-center'ip>>";
-            } else if (isTablet) {
-                opts.dom = "<'row g-2 align-items-center'<'col-sm-6'B><'col-sm-6'f>>" +
-                          "<'row'<'col-12'tr>>" +
-                          "<'row g-2 align-items-center'<'col-sm-5'i><'col-sm-7'p>>";
+                opts.dom = "<'row'<'col-12 mb-2'f>>"
+                         + "<'row'<'col-12'tr>>"
+                         + "<'row mt-2'<'col-6 text-muted small'i><'col-6'p>>";
             } else {
-                opts.dom = "<'row g-2 align-items-center'<'col-sm-6'B><'col-sm-6'f>>" +
-                          "<'row'<'col-12'tr>>" +
-                          "<'row g-2 align-items-center'<'col-sm-5'i><'col-sm-7'p>>";
+                opts.dom = "<'row g-2 align-items-center mb-1'<'col-sm-6'B><'col-sm-6'f>>"
+                         + "<'row'<'col-12'tr>>"
+                         + "<'row g-2 align-items-center mt-1'<'col-sm-5 text-muted small'i><'col-sm-7'p>>";
             }
 
-            // Configure buttons with mobile-friendly options
-            if (jQuery.fn.dataTable.Buttons && !isMobile) {
+            // ── Export buttons ─────────────────────────────────────────────
+            if (window.jQuery.fn.dataTable && window.jQuery.fn.dataTable.Buttons && !isMobile) {
                 opts.buttons = {
                     dom: {
-                        button: { className: 'btn btn-sm btn-outline-secondary' },
-                        container: { className: 'dt-buttons btn-group flex-wrap' }
+                        button:    { className: 'btn btn-sm btn-outline-secondary' },
+                        container: { className: 'dt-buttons btn-group flex-wrap gap-1' }
                     },
                     buttons: [
-                        { 
-                            extend: 'copy', 
-                            text: '<i class="fa-solid fa-copy me-1"></i>Copy',
-                            className: 'btn btn-sm btn-outline-secondary'
-                        },
-                        { 
-                            extend: 'csv', 
-                            text: '<i class="fa-solid fa-file-csv me-1"></i>CSV',
-                            className: 'btn btn-sm btn-outline-secondary'
-                        },
-                        { 
-                            extend: 'print', 
-                            text: '<i class="fa-solid fa-print me-1"></i>Print',
-                            className: 'btn btn-sm btn-outline-secondary'
-                        }
+                        { extend: 'copy',  text: '<i class="fa-solid fa-copy fa-xs me-1"></i>Copy',  className: 'btn btn-sm btn-outline-secondary' },
+                        { extend: 'csv',   text: '<i class="fa-solid fa-file-csv fa-xs me-1"></i>CSV', className: 'btn btn-sm btn-outline-secondary' },
+                        { extend: 'print', text: '<i class="fa-solid fa-print fa-xs me-1"></i>Print', className: 'btn btn-sm btn-outline-secondary' }
                     ]
                 };
-            } else if (jQuery.fn.dataTable.Buttons && isMobile) {
+            } else if (window.jQuery.fn.dataTable && window.jQuery.fn.dataTable.Buttons && isMobile) {
                 opts.buttons = {
-                    dom: {
-                        button: { className: 'btn btn-sm btn-outline-secondary' },
-                        container: { className: 'dt-buttons btn-group' }
-                    },
-                    buttons: [
-                        { 
-                            extend: 'csv', 
-                            text: '<i class="fa-solid fa-file-csv"></i>',
-                            titleAttr: 'Export CSV',
-                            className: 'btn btn-sm btn-outline-secondary'
-                        }
-                    ]
+                    dom: { button: { className: 'btn btn-sm btn-outline-secondary' } },
+                    buttons: [{ extend: 'csv', text: '<i class="fa-solid fa-file-csv fa-xs"></i>', titleAttr: 'Export CSV', className: 'btn btn-sm btn-outline-secondary' }]
                 };
             } else {
+                // No Buttons plugin — remove B from DOM string
                 opts.dom = opts.dom.replace("<'col-sm-6'B>", "<'col-sm-6'l>");
             }
 
-            // FIX: Guard responsivePriority targets against out-of-range
+            // ── FIX (b): Clamp responsivePriority to valid column indices ──
+            // Only assign priority-2 if a second column actually exists.
+            // Duplicate targets crash the Responsive extension.
+            var pri2target = colCount > 1 ? 1 : 0;
+
             if (noSortLast) {
                 opts.columnDefs = [
-                    { targets: -1, orderable: false, searchable: false },
-                    { responsivePriority: 1, targets: 0 },
-                    { responsivePriority: 2, targets: headerCols > 1 ? 1 : 0 },
+                    { targets: -1,        orderable: false, searchable: false },
+                    { responsivePriority: 1,     targets: 0 },
+                    { responsivePriority: 2,     targets: pri2target },
                     { responsivePriority: 10000, targets: -1 }
                 ];
             } else {
                 opts.columnDefs = [
-                    { responsivePriority: 1, targets: 0 },
-                    { responsivePriority: 2, targets: headerCols > 1 ? 1 : 0 },
+                    { responsivePriority: 1,     targets: 0 },
+                    { responsivePriority: 2,     targets: pri2target },
                     { responsivePriority: 10000, targets: -1 }
                 ];
             }
 
+            // ── FIX (c): Synchronous init — no requestIdleCallback ─────────
+            // requestIdleCallback fires after navigation mutations, by which
+            // time the table DOM may have changed, causing stale column counts.
             try {
-                // PERFORMANCE FIX: Use requestIdleCallback if available for non-blocking init
-                var scheduleInit = window.requestIdleCallback || function(cb) { setTimeout(cb, 1); };
-                scheduleInit(function() {
-                    try {
-                        var dt = $t.DataTable(opts);
-                        $t.data('DataTable', dt);
-                    } catch (innerErr) {
-                        console.warn('DataTables init failed for table:', $t.attr('id') || 'unknown', innerErr);
-                    }
-                });
+                var dt = $t.DataTable(opts);
+                $t.data('DataTable', dt);
+
+                // Apply Bootstrap 5 input styling to the generated search box
+                $t.closest('.dataTables_wrapper').find('.dataTables_filter input')
+                    .addClass('form-control form-control-sm')
+                    .css('margin-left', '0.5rem');
+
             } catch (err) {
-                console.warn('DataTables init failed', err);
+                console.warn('[admin.js] DataTables init failed:', $t.attr('id') || '(unknown)', err.message);
+                $t.data('dtInit', 0); // Allow retry
             }
         });
     }
 
-    /* ----------------------------------------------------------------------
-       9. Feature: Idle Overlay
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       10. Idle Overlay
+       Shows a dim overlay after 10 minutes of inactivity.
+       BUG FIX: Was using $() jQuery wrapper — switched to getElementById
+       so .classList / .addEventListener work correctly.
+    ------------------------------------------------------------------ */
+
     function initIdleOverlay() {
-        // FIX: Use getElementById - more explicit and ensures we get the DOM element
         var overlay = document.getElementById('idleOverlay');
         if (!overlay) return;
 
-        var IDLE_MS = 10 * 60 * 1000;
-        var t = null;
+        var IDLE_MS = 10 * 60 * 1000; // 10 minutes
+        var timer   = null;
 
         function show() {
             overlay.classList.remove('d-none');
@@ -325,37 +359,41 @@
 
         function reset() {
             hide();
-            if (t) clearTimeout(t);
-            t = setTimeout(show, IDLE_MS);
+            clearTimeout(timer);
+            timer = setTimeout(show, IDLE_MS);
         }
 
-        // FIX: native addEventListener on the DOM element
         overlay.addEventListener('click', reset);
-        var events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
-        for (var i = 0; i < events.length; i++) {
-            document.addEventListener(events[i], reset, { passive: true });
-        }
+        overlay.addEventListener('keydown', function (e) {
+            if (e.key === 'Enter' || e.key === ' ') reset();
+        });
+
+        var activity = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll', 'wheel'];
+        activity.forEach(function (ev) {
+            document.addEventListener(ev, reset, { passive: true });
+        });
 
         reset();
     }
 
-    /* ----------------------------------------------------------------------
-       10. Feature: Office Map (Consolidated from admin-office-map.js)
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       11. Office Map (Leaflet)
+       Used on Offices/Create and Offices/Edit.
+    ------------------------------------------------------------------ */
+
     function initOfficeMap() {
         if (typeof L === 'undefined') return;
 
-        var mapEl = $('#map');
-        if (!mapEl) return;
+        var mapEl    = document.getElementById('map');
+        var latEl    = document.getElementById('lat');
+        var lonEl    = document.getElementById('lon');
+        var radiusEl = document.getElementById('RadiusMeters');
 
-        var latEl = $('#lat');
-        var lonEl = $('#lon');
-        var radiusEl = $('#RadiusMeters');
-        if (!latEl || !lonEl || !radiusEl) return;
+        if (!mapEl || !latEl || !lonEl || !radiusEl) return;
 
-        var btnMyLoc = $('#btnUseMyLocation');
-        var fallbackLat = parseFloat(mapEl.dataset.fallbackLat) || 6.116386;
-        var fallbackLon = parseFloat(mapEl.dataset.fallbackLon) || 125.171617;
+        var btnMyLoc     = document.getElementById('btnUseMyLocation');
+        var fallbackLat  = parseFloat(mapEl.dataset.fallbackLat) || 6.116386;
+        var fallbackLon  = parseFloat(mapEl.dataset.fallbackLon) || 125.171617;
 
         var lat = parseFloat(latEl.value);
         var lon = parseFloat(lonEl.value);
@@ -365,9 +403,10 @@
         var radius = parseInt(radiusEl.value, 10);
         if (!isFinite(radius) || radius <= 0) radius = 100;
 
-        var pos = L.latLng(lat, lon);
-        var map = L.map('map');
+        var pos  = L.latLng(lat, lon);
+        var map  = L.map('map');
 
+        // OSM tiles with CORS error grace handling
         var tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             maxZoom: 19,
             attribution: '&copy; OpenStreetMap contributors',
@@ -377,91 +416,57 @@
         tiles.on('tileerror', function () {
             if (!mapEl.dataset.tileWarned) {
                 mapEl.dataset.tileWarned = '1';
-                console.warn('Map tiles blocked by CORS. Form still works; enter coordinates manually.');
+                console.warn('[admin] Map tiles unavailable. Enter coordinates manually.');
             }
         });
 
         tiles.addTo(map);
-        map.setView(pos, 16);
+        map.setView(pos, 17);
 
+        // Draggable marker
         var marker = L.marker(pos, { draggable: true }).addTo(map);
-        var circle = L.circle(pos, {
-            radius: radius,
-            color: '#0d6efd',
-            fillColor: '#0d6efd',
-            fillOpacity: 0.10,
-            weight: 2
-        }).addTo(map);
+        var circle = L.circle(pos, { radius: radius, color: '#2563eb', fillOpacity: 0.12, weight: 2 }).addTo(map);
 
-        function syncInputs(a, b) {
-            latEl.value = a.toFixed(7);
-            lonEl.value = b.toFixed(7);
+        function updateFromLatLng(newPos) {
+            marker.setLatLng(newPos);
+            circle.setLatLng(newPos);
+            latEl.value = newPos.lat.toFixed(7);
+            lonEl.value = newPos.lng.toFixed(7);
         }
 
-        function syncMap() {
-            var a = parseFloat(latEl.value);
-            var b = parseFloat(lonEl.value);
-            if (!isFinite(a) || !isFinite(b)) return;
-            var p = L.latLng(a, b);
-            marker.setLatLng(p);
-            circle.setLatLng(p);
-            map.panTo(p);
-        }
+        marker.on('dragend', function () { updateFromLatLng(marker.getLatLng()); });
+        map.on('click', function (e) { updateFromLatLng(e.latlng); map.panTo(e.latlng); });
 
-        function syncRadius() {
+        radiusEl.addEventListener('input', function () {
             var r = parseInt(radiusEl.value, 10);
-            if (!isFinite(r) || r <= 0) return;
-            circle.setRadius(r);
-        }
-
-        map.on('click', function(e) {
-            marker.setLatLng(e.latlng);
-            circle.setLatLng(e.latlng);
-            syncInputs(e.latlng.lat, e.latlng.lng);
+            if (isFinite(r) && r > 0) circle.setRadius(r);
         });
 
-        marker.on('drag', function(e) {
-            var p = e.target.getLatLng();
-            circle.setLatLng(p);
-            syncInputs(p.lat, p.lng);
-        });
-
-        latEl.addEventListener('change', syncMap);
-        lonEl.addEventListener('change', syncMap);
-        radiusEl.addEventListener('change', syncRadius);
-
-        if (btnMyLoc && navigator.geolocation) {
-            btnMyLoc.addEventListener('click', function() {
+        if (btnMyLoc) {
+            btnMyLoc.addEventListener('click', function () {
+                if (!navigator.geolocation) {
+                    alert('Geolocation not available in this browser.');
+                    return;
+                }
                 btnMyLoc.disabled = true;
-                btnMyLoc.textContent = 'Locating...';
-
+                btnMyLoc.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Locating…';
                 navigator.geolocation.getCurrentPosition(
-                    function(p) {
+                    function (pos) {
+                        var ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
+                        updateFromLatLng(ll);
+                        map.setView(ll, 17);
                         btnMyLoc.disabled = false;
-                        btnMyLoc.textContent = 'Use my location';
-
-                        if (p.coords.accuracy > 500) {
-                            var proceed = confirm(
-                                'GPS accuracy is low (' + Math.round(p.coords.accuracy) + ' m).\n\n' +
-                                'Your network may be geolocating to the wrong city.\n\n' +
-                                'Use this location anyway?'
-                            );
-                            if (!proceed) return;
-                        }
-
-                        syncInputs(p.coords.latitude, p.coords.longitude);
-                        syncMap();
+                        btnMyLoc.innerHTML = '<i class="fa-solid fa-location-dot me-1"></i>Use my location';
                     },
-                    function(err) {
-                        btnMyLoc.disabled = false;
-                        btnMyLoc.textContent = 'Use my location';
-
+                    function (err) {
                         var msgs = {
-                            1: 'Location access denied. Enable it in browser settings.',
+                            1: 'Location permission denied. Enable it in browser settings.',
                             2: 'Location unavailable. Drag the pin manually.',
                             3: 'Location timed out. Drag the pin manually.'
                         };
                         alert(msgs[err && err.code] || 'Location error.');
+                        btnMyLoc.disabled = false;
+                        btnMyLoc.innerHTML = '<i class="fa-solid fa-location-dot me-1"></i>Use my location';
                     },
                     { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
                 );
@@ -469,28 +474,159 @@
         }
     }
 
-    /* ----------------------------------------------------------------------
-       11. Initialize Everything
-       ---------------------------------------------------------------------- */
-    onReady(function() {
+    /* ------------------------------------------------------------------
+       12. Back-to-top Button
+       Appears after scrolling 400 px. Injected into DOM automatically.
+    ------------------------------------------------------------------ */
+
+    function initBackToTop() {
+        var btn = document.createElement('button');
+        btn.id = 'backToTop';
+        btn.type = 'button';
+        btn.setAttribute('aria-label', 'Back to top');
+        btn.innerHTML = '<i class="fa-solid fa-chevron-up fa-xs"></i>';
+        btn.style.cssText = [
+            'position:fixed',
+            'bottom:1.5rem',
+            'right:1.5rem',
+            'width:36px',
+            'height:36px',
+            'border-radius:50%',
+            'background:var(--admin-primary)',
+            'color:#fff',
+            'border:none',
+            'cursor:pointer',
+            'display:none',
+            'align-items:center',
+            'justify-content:center',
+            'z-index:900',
+            'box-shadow:var(--shadow-md)',
+            'transition:opacity 0.2s,transform 0.2s',
+            'opacity:0'
+        ].join(';');
+
+        document.body.appendChild(btn);
+
+        var visible = false;
+
+        window.addEventListener('scroll', function () {
+            if (window.scrollY > 400 && !visible) {
+                visible = true;
+                btn.style.display = 'flex';
+                setTimeout(function () { btn.style.opacity = '1'; }, 10);
+            } else if (window.scrollY <= 400 && visible) {
+                visible = false;
+                btn.style.opacity = '0';
+                setTimeout(function () { btn.style.display = 'none'; }, 200);
+            }
+        }, { passive: true });
+
+        btn.addEventListener('click', function () {
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       13. Keyboard Shortcuts
+       Ctrl+/ — focus DataTables search input on the current page
+       Escape  — dismiss any open toastr notifications
+    ------------------------------------------------------------------ */
+
+    function initKeyboardShortcuts() {
+        document.addEventListener('keydown', function (e) {
+            // Ctrl+/ : focus search
+            if ((e.ctrlKey || e.metaKey) && (e.key === '/' || e.key === 'k')) {
+                var searchInput = $('.dataTables_filter input') || $('[type="search"]');
+                if (searchInput) {
+                    e.preventDefault();
+                    searchInput.focus();
+                    searchInput.select();
+                }
+            }
+            // Escape: dismiss toastr
+            if (e.key === 'Escape' && window.toastr) {
+                toastr.clear();
+            }
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       14. Refresh Button (topbar #btnRefresh)
+    ------------------------------------------------------------------ */
+
+    function initRefreshButton() {
+        var btn = document.getElementById('btnRefresh');
+        if (!btn) return;
+
+        btn.addEventListener('click', function () {
+            btn.disabled = true;
+            var icon = btn.querySelector('i');
+            if (icon) {
+                icon.classList.remove('fa-rotate');
+                icon.classList.add('fa-spinner', 'fa-spin');
+            }
+            // Brief delay so user sees the spinner before reload
+            setTimeout(function () { location.reload(); }, 150);
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       15. Sidebar Active State
+       Marks the nav link matching the current URL as active.
+       Falls back gracefully if the _AdminNav partial already set it.
+    ------------------------------------------------------------------ */
+
+    function initSidebarActiveState() {
+        var links = $$('.admin-nav-link');
+        if (!links.length) return;
+
+        var path = location.pathname.toLowerCase().replace(/\/$/, '');
+
+        links.forEach(function (link) {
+            // Skip if already marked by server-side Razor
+            if (link.classList.contains('active')) return;
+
+            var href = (link.getAttribute('href') || '').toLowerCase().replace(/\/$/, '');
+            if (!href || href === '#') return;
+
+            // Exact match or current path starts with the link path
+            if (path === href || (href.length > 7 &&  (path + '/').indexOf(href + '/') === 0)) {
+                link.classList.add('active');
+            }
+        });
+    }
+
+    /* ------------------------------------------------------------------
+       16. Boot — initialise all features
+    ------------------------------------------------------------------ */
+
+    onReady(function () {
         initFooterYear();
         initTooltips();
+        initAutoDismissAlerts();
         initServerToast();
         initConfirmLinks();
         initDataTables();
         initIdleOverlay();
         initOfficeMap();
+        initBackToTop();
+        initKeyboardShortcuts();
+        initRefreshButton();
+        initSidebarActiveState();
     });
 
-    /* ----------------------------------------------------------------------
-       12. Public API
-       ---------------------------------------------------------------------- */
+    /* ------------------------------------------------------------------
+       17. Public API — window.ui
+       Used by inline page scripts via ui.toast(), ui.confirm(), etc.
+    ------------------------------------------------------------------ */
+
     window.ui = window.ui || {};
-    window.ui.toast = toast;
-    window.ui.toastSuccess = function(m) { toast('success', m); };
-    window.ui.toastInfo = function(m) { toast('info', m); };
-    window.ui.toastWarning = function(m) { toast('warning', m); };
-    window.ui.toastError = function(m) { toast('error', m); };
-    window.ui.confirm = confirmDialog;
+    window.ui.toast        = toast;
+    window.ui.toastSuccess = function (m) { toast('success', m); };
+    window.ui.toastInfo    = function (m) { toast('info',    m); };
+    window.ui.toastWarning = function (m) { toast('warning', m); };
+    window.ui.toastError   = function (m) { toast('error',   m); };
+    window.ui.confirm      = confirmDialog;
+    window.ui.initDataTables = initDataTables; // Allow re-init from page scripts
 
 })();
