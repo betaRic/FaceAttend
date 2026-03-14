@@ -22,13 +22,13 @@ namespace FaceAttend
     ///   ~/bundles/bootstrap   - Bootstrap JS (CDN)
     ///   ~/bundles/vendor      - Third-party plugins (DataTables, SweetAlert2 CDN)
     ///   ~/bundles/admin       - Admin scripts
-    ///   ~/bundles/adminEnroll - Enrollment scripts
+    ///   ~/bundles/enrollment  - Enrollment scripts (unified for admin/mobile)
     ///   ~/bundles/kiosk       - Kiosk scripts
     ///   
     ///   ~/Content/css         - Base CSS (Bootstrap, Toastr)
     ///   ~/bundles/vendor-css  - Third-party CSS (FontAwesome, DataTables)
     ///   ~/Content/admin       - Admin styles
-    ///   ~/Content/admin-enroll - Enrollment styles
+    ///   ~/Content/enrollment  - Enrollment styles (unified for admin/mobile)
     ///   ~/Content/kiosk       - Kiosk styles
     /// 
     /// IMPORTANT - ES6+ SYNTAX COMPATIBILITY:
@@ -117,11 +117,10 @@ namespace FaceAttend
             bundles.Add(new ScriptBundle("~/bundles/admin")
                 .Include("~/Scripts/admin.js"));
 
-            // Admin Enrollment Scripts
-            // Note: enroll-wizard.js removed - the inline script in Enroll.cshtml handles the UI
-            bundles.Add(new ScriptBundle("~/bundles/adminEnroll")
+            // Enrollment Scripts (Shared - unified for admin and mobile)
+            bundles.Add(new ScriptBundle("~/bundles/enrollment")
                 .Include("~/Scripts/modules/enrollment-core.js")
-                .Include("~/Scripts/admin-enroll.js"));
+                .Include("~/Scripts/enrollment-ui.js"));
 
             // Kiosk Scripts (ES5 compatible)
             bundles.Add(new ScriptBundle("~/bundles/kiosk")
@@ -196,11 +195,10 @@ namespace FaceAttend
                     "~/Content/admin.css"
                 ));
 
-            // Admin Enrollment CSS
-            // Uses NonMinifiedStyleBundle because it contains CSS custom properties (--ea-*)
-            // that the WebGrease CSS minifier cannot handle
-            bundles.Add(new NonMinifiedStyleBundle("~/Content/admin-enroll")
-                .Include("~/Content/admin-enroll.css"));
+            // Enrollment CSS (Shared - unified for admin and mobile)
+            // Uses NonMinifiedStyleBundle because it contains CSS custom properties
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/enrollment")
+                .Include("~/Content/enrollment.css"));
 
             // Kiosk CSS
             bundles.Add(new StyleBundle("~/Content/kiosk")

@@ -1,0 +1,394 @@
+/*
+ * FaceAttend — Enrollment UI Styles (Phase 3)
+ * Content/enrollment.css
+ *
+ * Covers ALL enrollment surfaces: Admin (Employee/Visitor), Mobile self-enrollment.
+ * Uses CSS variables from _variables.css.
+ *
+ * NEVER add enrollment-specific styles to admin.css, mobile-kiosk.css, or kiosk.css.
+ * NEVER add <style> blocks to enrollment views.
+ */
+
+/* ── Layout ──────────────────────────────────────────────────────────────── */
+
+.enroll-container {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 0 1rem;
+}
+
+.enroll-hidden {
+    display: none !important;
+}
+
+/* ── Camera ──────────────────────────────────────────────────────────────── */
+
+.enroll-camera-wrap {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    border-radius: var(--radius-md, 12px);
+    overflow: hidden;
+    background: #000;
+    border: 2px solid var(--border-light, #e2e8f0);
+}
+
+[data-theme="kiosk"] .enroll-camera-wrap,
+.mobile-surface .enroll-camera-wrap {
+    border-color: var(--border-subtle, rgba(255,255,255,0.1));
+}
+
+.enroll-video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1); /* Mirror for selfie UX */
+}
+
+.enroll-face-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+/* Face guide circle */
+.enroll-face-guide {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 55%;
+    aspect-ratio: 1;
+    border: 2px dashed rgba(255,255,255,0.3);
+    border-radius: 50%;
+    transition: border-color 0.3s ease, border-style 0.3s ease;
+    pointer-events: none;
+}
+
+.enroll-face-guide--good {
+    border-color: var(--success-500, #22c55e);
+    border-style: solid;
+}
+
+.enroll-face-guide--warning {
+    border-color: var(--warning-500, #f59e0b);
+    border-style: dashed;
+}
+
+.enroll-face-guide--error {
+    border-color: var(--danger-500, #ef4444);
+    border-style: solid;
+}
+
+/* ── Angle Guidance ──────────────────────────────────────────────────────── */
+
+.enroll-angle-guidance {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 16px;
+    background: var(--surface-secondary, #f8fafc);
+    border: 1px solid var(--border-light, #e2e8f0);
+    border-radius: var(--radius-sm, 8px);
+    margin-top: 12px;
+}
+
+[data-theme="kiosk"] .enroll-angle-guidance,
+.mobile-surface .enroll-angle-guidance {
+    background: rgba(255,255,255,0.05);
+    border-color: rgba(255,255,255,0.1);
+}
+
+.enroll-angle-icon {
+    font-size: 20px;
+    color: var(--primary-500, #3b82f6);
+    width: 28px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.enroll-angle-prompt {
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-primary, #0f172a);
+}
+
+[data-theme="kiosk"] .enroll-angle-prompt,
+.mobile-surface .enroll-angle-prompt {
+    color: var(--text-primary, #f8fafc);
+}
+
+/* ── Diversity Dots ──────────────────────────────────────────────────────── */
+
+.enroll-diversity {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+}
+
+.enroll-diversity-label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary, #475569);
+    white-space: nowrap;
+}
+
+.enroll-diversity-dots {
+    display: flex;
+    gap: 6px;
+}
+
+.enroll-diversity-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--gray-200, #e2e8f0);
+    border: 1.5px solid var(--gray-300, #cbd5e1);
+    transition: background 0.25s ease, border-color 0.25s ease, transform 0.15s ease;
+    position: relative;
+}
+
+.enroll-diversity-dot[title]::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 14px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 10px;
+    background: rgba(0,0,0,0.7);
+    color: #fff;
+    padding: 2px 5px;
+    border-radius: 3px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.15s;
+}
+
+.enroll-diversity-dot:hover::after {
+    opacity: 1;
+}
+
+.enroll-diversity-dot--captured {
+    background: var(--success-500, #22c55e);
+    border-color: var(--success-600, #16a34a);
+    transform: scale(1.2);
+}
+
+/* ── Progress ────────────────────────────────────────────────────────────── */
+
+.enroll-progress-wrap {
+    margin-top: 12px;
+}
+
+.enroll-progress-label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8125rem;
+    color: var(--text-secondary, #475569);
+    margin-bottom: 4px;
+}
+
+.enroll-progress-track {
+    height: 6px;
+    background: var(--gray-200, #e2e8f0);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+[data-theme="kiosk"] .enroll-progress-track,
+.mobile-surface .enroll-progress-track {
+    background: rgba(255,255,255,0.1);
+}
+
+.enroll-progress-fill {
+    height: 100%;
+    background: var(--primary-500, #3b82f6);
+    border-radius: 3px;
+    transition: width 0.3s ease;
+    width: 0%;
+}
+
+/* ── Liveness Bar ────────────────────────────────────────────────────────── */
+
+.enroll-liveness-wrap {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.enroll-liveness-label {
+    font-size: 0.8125rem;
+    color: var(--text-secondary, #475569);
+    white-space: nowrap;
+    min-width: 60px;
+}
+
+.enroll-liveness-track {
+    flex: 1;
+    height: 6px;
+    background: var(--gray-200, #e2e8f0);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.enroll-liveness-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.2s ease, background 0.2s ease;
+    width: 0%;
+    background: var(--gray-400, #94a3b8);
+}
+
+.enroll-liveness-fill--pass { background: var(--success-500, #22c55e); }
+.enroll-liveness-fill--warn { background: var(--warning-500, #f59e0b); }
+.enroll-liveness-fill--fail { background: var(--danger-500, #ef4444); }
+
+.enroll-liveness-val {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    min-width: 36px;
+    text-align: right;
+    color: var(--text-primary, #0f172a);
+}
+
+/* ── Status Message ──────────────────────────────────────────────────────── */
+
+.enroll-status {
+    padding: 10px 14px;
+    border-radius: var(--radius-sm, 8px);
+    font-size: 0.9rem;
+    margin-top: 12px;
+    border: 1px solid transparent;
+}
+
+.enroll-status--info    { background: var(--info-50, #f0f9ff);    border-color: #bae6fd; color: #0c4a6e; }
+.enroll-status--success { background: var(--success-50, #f0fdf4); border-color: #bbf7d0; color: #14532d; }
+.enroll-status--warning { background: var(--warning-50, #fffbeb); border-color: #fde68a; color: #78350f; }
+.enroll-status--danger  { background: var(--danger-50, #fef2f2);  border-color: #fecaca; color: #7f1d1d; }
+
+[data-theme="kiosk"] .enroll-status--info,
+.mobile-surface .enroll-status--info {
+    background: rgba(59,130,246,0.1);
+    border-color: rgba(59,130,246,0.2);
+    color: #93c5fd;
+}
+
+[data-theme="kiosk"] .enroll-status--success,
+.mobile-surface .enroll-status--success {
+    background: rgba(34,197,94,0.1);
+    border-color: rgba(34,197,94,0.2);
+    color: #86efac;
+}
+
+[data-theme="kiosk"] .enroll-status--warning,
+.mobile-surface .enroll-status--warning {
+    background: rgba(245,158,11,0.1);
+    border-color: rgba(245,158,11,0.2);
+    color: #fcd34d;
+}
+
+[data-theme="kiosk"] .enroll-status--danger,
+.mobile-surface .enroll-status--danger {
+    background: rgba(239,68,68,0.1);
+    border-color: rgba(239,68,68,0.2);
+    color: #fca5a5;
+}
+
+/* ── Controls ────────────────────────────────────────────────────────────── */
+
+.enroll-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+}
+
+.enroll-controls .btn {
+    flex: 1;
+    min-width: 120px;
+}
+
+/* ── Processing Overlay ──────────────────────────────────────────────────── */
+
+.enroll-processing-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(0,0,0,0.65);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    border-radius: inherit;
+    gap: 12px;
+    z-index: 10;
+}
+
+.enroll-processing-overlay.enroll-hidden {
+    display: none !important;
+}
+
+.enroll-processing-spinner {
+    font-size: 2rem;
+    color: #fff;
+    animation: fa-spin 0.8s linear infinite;
+}
+
+.enroll-processing-text {
+    color: #fff;
+    font-size: 0.9375rem;
+    font-weight: 500;
+}
+
+/* ── Wizard Step Pills ───────────────────────────────────────────────────── */
+
+.enroll-steps {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 20px;
+}
+
+.enroll-step {
+    flex: 1;
+    text-align: center;
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 1px solid var(--border-light, #e2e8f0);
+    background: var(--surface-secondary, #f8fafc);
+    color: var(--text-secondary, #475569);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+[data-theme="kiosk"] .enroll-step,
+.mobile-surface .enroll-step {
+    border-color: rgba(255,255,255,0.12);
+    background: rgba(255,255,255,0.04);
+    color: var(--text-muted, #64748b);
+}
+
+.enroll-step.active {
+    background: rgba(59,130,246,0.12);
+    border-color: rgba(59,130,246,0.4);
+    color: var(--primary-600, #2563eb);
+}
+
+[data-theme="kiosk"] .enroll-step.active,
+.mobile-surface .enroll-step.active {
+    color: #93c5fd;
+}
+
+.enroll-step.done {
+    background: rgba(34,197,94,0.1);
+    border-color: rgba(34,197,94,0.35);
+    color: var(--success-600, #16a34a);
+}
+
+[data-theme="kiosk"] .enroll-step.done,
+.mobile-surface .enroll-step.done {
+    color: #86efac;
+}

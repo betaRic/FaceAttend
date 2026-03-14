@@ -1,7 +1,10 @@
 using System;
 using System.Collections.Concurrent;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Web.Hosting;
 using FaceAttend.Services;
@@ -433,6 +436,172 @@ namespace FaceAttend.Services.Biometrics
             try
             {
                 using (var img = FaceRecognition.LoadImageFile(imagePath))
+                {
+                    var enc = fr.FaceEncodings(img, new[] { faceLocation })
+                               .FirstOrDefault();
+
+                    if (enc == null) { error = "ENCODING_FAIL"; return false; }
+
+                    embedding = enc.GetRawEncoding();
+                    return true;
+                }
+            }
+            finally
+            {
+                ReturnInstance(fr);
+            }
+        }
+
+        // ─── OPTIMIZED: Bitmap-based methods (single-decode pipeline) ─────────────
+
+        /// <summary>
+        /// Convert Bitmap to RGB byte array for FaceRecognitionDotNet.
+        /// Handles BGR to RGB conversion and stride padding.
+        /// </summary>
+        private static byte[] BitmapToRgb(Bitmap bitmap)
+        {
+            int width = bitmap.Width;
+            int height = bitmap.Height;
+            var rgb = new byte[width * height * 3];
+
+            var rect = new Rectangle(0, 0, width, height);
+            var bmpData = bitmap.LockBits(rect, ImageLockMode.ReadOnly, PixelFormat.Format24bppRgb);
+
+            try
+            {
+                int stride = bmpData.Stride;
+                int rowPadding = stride - (width * 3);
+                int srcRowSize = width * 3;
+                
+                // Read entire bitmap data
+                int totalBytes = Math.Abs(stride) * height;
+                var rowBuffer = new byte[totalBytes];
+                Marshal.Copy(bmpData.Scan0, rowBuffer, 0, totalBytes);
+
+                // Convert BGR (with padding) to RGB (no padding)
+                int srcIdx = 0;
+                int dstIdx = 0;
+
+                for (int y = 0; y < height; y++)
+                {
+                    for (int x = 0; x < width; x++)
+                    {
+                        // BGR to RGB
+                        rgb[dstIdx + 2] = rowBuffer[srcIdx + 0]; // B -> R
+                        rgb[dstIdx + 1] = rowBuffer[srcIdx + 1]; // G -> G  
+                        rgb[dstIdx + 0] = rowBuffer[srcIdx + 2]; // R -> B
+                        srcIdx += 3;
+                        dstIdx += 3;
+                    }
+                    srcIdx += rowPadding; // Skip stride padding
+                }
+            }
+            finally
+            {
+                bitmap.UnlockBits(bmpData);
+            }
+
+            return rgb;
+        }
+
+        /// <summary>
+        /// OPTIMIZED: Detect face from already-loaded Bitmap — avoids double JPEG decode.
+        /// Returns FaceBox and FaceRecognitionDotNet.Location for encoding.
+        /// </summary>
+        public bool TryDetectSingleFaceFromBitmap(
+            Bitmap       bitmap,
+            out FaceBox  faceBox,
+            out Location faceLocation,
+            out string   error)
+        {
+            faceBox      = null;
+            faceLocation = default(Location);
+            error        = null;
+
+            if (bitmap == null)
+            {
+                error = "NO_BITMAP";
+                return false;
+            }
+
+            var fr = RentInstance();
+            if (fr == null)
+            {
+                error = "POOL_TIMEOUT";
+                return false;
+            }
+
+            try
+            {
+                // Convert bitmap to RGB array and load into FaceRecognition
+                var rgbData = BitmapToRgb(bitmap);
+                using (var img = FaceRecognition.LoadImage(rgbData, bitmap.Height, bitmap.Width, bitmap.Width * 3, Mode.Rgb))
+                {
+                    var locs = fr.FaceLocations(
+                        img,
+                        numberOfTimesToUpsample: 0,
+                        model: _model).ToArray();
+
+                    if (locs.Length == 0)
+                    {
+                        error = "NO_FACE";
+                        return false;
+                    }
+                    if (locs.Length > 1)
+                    {
+                        error = "MULTI_FACE";
+                        return false;
+                    }
+
+                    var loc = locs[0];
+                    faceLocation = loc;
+                    faceBox = new FaceBox
+                    {
+                        Left   = loc.Left,
+                        Top    = loc.Top,
+                        Width  = Math.Max(0, loc.Right  - loc.Left),
+                        Height = Math.Max(0, loc.Bottom - loc.Top)
+                    };
+                    return true;
+                }
+            }
+            finally
+            {
+                ReturnInstance(fr);
+            }
+        }
+
+        /// <summary>
+        /// OPTIMIZED: Encode face from already-loaded Bitmap — avoids double JPEG decode.
+        /// Requires the Location from a previous detection call.
+        /// </summary>
+        public bool TryEncodeFromBitmapWithLocation(
+            Bitmap       bitmap,
+            Location     faceLocation,
+            out double[] embedding,
+            out string   error)
+        {
+            embedding = null;
+            error     = null;
+
+            if (bitmap == null)
+            {
+                error = "NO_BITMAP";
+                return false;
+            }
+
+            var fr = RentInstance();
+            if (fr == null)
+            {
+                error = "POOL_TIMEOUT";
+                return false;
+            }
+
+            try
+            {
+                // Convert bitmap to RGB array and load into FaceRecognition
+                var rgbData = BitmapToRgb(bitmap);
+                using (var img = FaceRecognition.LoadImage(rgbData, bitmap.Height, bitmap.Width, bitmap.Width * 3, Mode.Rgb))
                 {
                     var enc = fr.FaceEncodings(img, new[] { faceLocation })
                                .FirstOrDefault();

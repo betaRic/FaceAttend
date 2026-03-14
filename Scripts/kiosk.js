@@ -76,8 +76,8 @@
             detectMinConf:     0.30,
             acceptMinScore:    0.60,
             stableFramesMin:   2,
-            // OPT-02: 50ms stable hold (was 100) -- fires faster after idle
-            stableNeededMs:    50,
+            // FIX-02: 20ms stable hold (was 50) -- walk-by mode, just 20ms of relative stability
+            stableNeededMs:    20,
             multiMinAreaRatio: 0.015,
         },
 
@@ -105,7 +105,7 @@
         gating: {
             // OPT-08: 3 stable frames required (was 4)
             stableFramesRequired: 3,
-            stableMaxMovePx:      60,  // Increased from 30 - allows more movement while still "stable"
+            stableMaxMovePx:      120,  // FIX-02: Increased from 60 - allows walking movement, burst handles accuracy
             minFaceAreaRatio:     0.03,
             safeEdgeMarginRatio:  0.02,
             centerMin:            0.12,
@@ -221,6 +221,7 @@
         mpAcceptedCount: 0,
         mpBoxCanvas:     null,
         mpPrevCenter:    null,
+        smoothedBox:     null,  // FIX-01: EMA smoothed bounding box
 
         latestLiveness:    null,
         livenessThreshold: 0.60,  // UPDATED: More forgiving threshold
@@ -1187,6 +1188,40 @@
         };
     }
 
+    // FIX-03: Fast sharpness check using Laplacian variance on face ROI
+    function isFrameSharp(faceBox) {
+        var SIZE = 64;
+        var tmp = document.createElement('canvas');
+        tmp.width = tmp.height = SIZE;
+        var tCtx = tmp.getContext('2d');
+
+        var sx = faceBox ? faceBox.x : canvas.width * 0.2;
+        var sy = faceBox ? faceBox.y : canvas.height * 0.1;
+        var sw = faceBox ? faceBox.w : canvas.width * 0.6;
+        var sh = faceBox ? faceBox.h : canvas.height * 0.8;
+
+        // Draw face ROI downscaled to 64×64
+        tCtx.drawImage(video, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
+        var data = tCtx.getImageData(0, 0, SIZE, SIZE).data;
+
+        // Grayscale + Laplacian variance
+        var gray = new Float32Array(SIZE * SIZE);
+        for (var i = 0; i < data.length; i += 4) {
+            gray[i >> 2] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+        }
+        var sum = 0, sumSq = 0, n = 0;
+        for (var y = 1; y < SIZE - 1; y++) {
+            for (var x = 1; x < SIZE - 1; x++) {
+                var idx = y * SIZE + x;
+                var lap = gray[idx-SIZE] + gray[idx-1] - 4*gray[idx] + gray[idx+1] + gray[idx+SIZE];
+                sum += lap; sumSq += lap * lap; n++;
+            }
+        }
+        var mean = sum / n;
+        var variance = (sumSq / n) - (mean * mean);
+        return variance > 30; // Below 30 = too blurry to bother sending
+    }
+
     // =========
     // mediapipe tasks adapter
     // =========
@@ -1258,6 +1293,7 @@
                 if (valid.length === 0) {
                     state.faceStatus  = 'none';
                     state.mpBoxCanvas = null;
+                    state.smoothedBox = null;  // FIX-01: Reset EMA when face lost
                     return;
                 }
 
@@ -1285,7 +1321,20 @@
                 };
                 // bbox debug log disabled
 state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELAXED: just check minimum dimensions
-                state.mpBoxCanvas  = box;
+                
+                // FIX-01: EMA smoothing for bounding box (glides instead of jumps)
+                if (!state.smoothedBox) {
+                    state.smoothedBox = { x: box.x, y: box.y, w: box.w, h: box.h };
+                } else {
+                    var a = 0.35; // Alpha: 0.35 gives smooth glide without noticeable lag
+                    state.smoothedBox = {
+                        x: state.smoothedBox.x + a * (box.x - state.smoothedBox.x),
+                        y: state.smoothedBox.y + a * (box.y - state.smoothedBox.y),
+                        w: state.smoothedBox.w + a * (box.w - state.smoothedBox.w),
+                        h: state.smoothedBox.h + a * (box.h - state.smoothedBox.h)
+                    };
+                }
+                state.mpBoxCanvas  = state.smoothedBox;
                 state.mpFaceSeenAt = Date.now();
                 this.failStreak    = 0;
 
@@ -1321,11 +1370,19 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
         if (!state.mpPrevCenter) { state.mpPrevCenter = c; state.mpStableStart = now; return; }
         var move = Math.hypot(c.x - state.mpPrevCenter.x, c.y - state.mpPrevCenter.y);
         state.mpPrevCenter = c;
-        if (move > CFG.gating.stableMaxMovePx) {
+        
+        // FIX-02: Walk-by mode - velocity-based decay instead of hard reset
+        if (move > CFG.gating.stableMaxMovePx * 2) {
+            // Actually running/thrashing - hard reset
             state.mpStableStart = 0;
             safeSetPrompt('Hold still.', '');
             return;
         }
+        if (move > CFG.gating.stableMaxMovePx) {
+            // Walking pace - don't reset, let timer keep ticking
+            if (state.mpStableStart === 0) state.mpStableStart = now;
+        }
+        
         if (state.mpStableStart === 0) state.mpStableStart = now;
         if ((now - state.mpStableStart) < CFG.mp.stableNeededMs) {
             safeSetPrompt('Hold still.', '');
@@ -2568,6 +2625,16 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                         var useBurst = isMobile && !document.body.getAttribute('data-force-kiosk');
                         
                         if (useBurst) {
+                            // FIX-03: Check frame sharpness before capture to skip blurry frames
+                            var faceBox = getFaceBoxForServer();
+                            if (faceBox && !isFrameSharp(faceBox)) {
+                                // Frame too blurry - skip this cycle, try again next loop
+                                state.liveInFlight = false;
+                                state.mpReadyToFire = true; // allow immediate retry
+                                safeSetPrompt('Too blurry.', 'Please hold still.');
+                                return;
+                            }
+                            
                             // Mobile burst capture - OPTIMIZED for speed
                             state.mpReadyToFire = false;
                             state.mpStableStart = 0;

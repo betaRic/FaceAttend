@@ -59,30 +59,51 @@ namespace FaceAttend.Filters
 
         protected override bool AuthorizeCore(HttpContextBase httpContext)
         {
-            if (httpContext == null) return false;
-
-            // Hakbang 1: IP allowlist check — blocked agad kung hindi naka-list ang IP.
-            // Kapag walang nilista sa Admin:AllowedIpRanges, lahat ng IP ay pinapayagan.
-            var clientIp = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
-            if (!AdminAccessControl.IsAllowed(clientIp))
+            try
             {
-                httpContext.Items["AdminBlockReason"] = "IP_NOT_ALLOWED";
+                if (httpContext == null) return false;
+
+                var requestUrl = httpContext.Request?.RawUrl ?? "unknown";
+                System.Diagnostics.Trace.TraceInformation("[AdminAuth] AuthorizeCore called for: " + requestUrl);
+
+                // Hakbang 1: IP allowlist check — blocked agad kung hindi naka-list ang IP.
+                // Kapag walang nilista sa Admin:AllowedIpRanges, lahat ng IP ay pinapayagan.
+                var clientIp = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
+                if (!AdminAccessControl.IsAllowed(clientIp))
+                {
+                    httpContext.Items["AdminBlockReason"] = "IP_NOT_ALLOWED";
+                    System.Diagnostics.Trace.TraceWarning("[AdminAuth] IP not allowed: " + clientIp);
+                    return false;
+                }
+
+                // Hakbang 2: Tingnan kung may valid na session na.
+                var authedUtcObj = httpContext.Session?[SessionKeyAuthedUtc];
+                if (!(authedUtcObj is DateTime authedUtc))
+                {
+                    // Walang session — subukang gamitin ang one-time unlock cookie
+                    // na ini-issue pagkatapos ng matagumpay na PIN verification.
+                    System.Diagnostics.Trace.TraceInformation("[AdminAuth] No active session, trying unlock cookie");
+                    var ip = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
+                    var result = TryConsumeUnlockCookie(httpContext, ip);
+                    System.Diagnostics.Trace.TraceInformation("[AdminAuth] Unlock cookie result: " + result);
+                    return result;
+                }
+
+                // Hakbang 3: Tingnan kung expired na ang session.
+                var minutes = ConfigurationService.GetInt("Admin:SessionMinutes", 30);
+                var elapsed = DateTime.UtcNow - authedUtc;
+                var isValid = elapsed <= TimeSpan.FromMinutes(minutes);
+                System.Diagnostics.Trace.TraceInformation("[AdminAuth] Session found, elapsed: " + elapsed.TotalMinutes + " min, valid: " + isValid);
+                return isValid;
+            }
+            catch (Exception ex)
+            {
+                // CRITICAL FIX: Catch any unexpected exceptions during authorization
+                // to prevent HandleAdminErrorAttribute from causing a redirect loop.
+                // Log the error and return false to trigger normal unauthorized handling.
+                System.Diagnostics.Trace.TraceError("[AdminAuth] Exception during authorization: " + ex);
                 return false;
             }
-
-            // Hakbang 2: Tingnan kung may valid na session na.
-            var authedUtcObj = httpContext.Session?[SessionKeyAuthedUtc];
-            if (!(authedUtcObj is DateTime authedUtc))
-            {
-                // Walang session — subukang gamitin ang one-time unlock cookie
-                // na ini-issue pagkatapos ng matagumpay na PIN verification.
-                var ip = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
-                return TryConsumeUnlockCookie(httpContext, ip);
-            }
-
-            // Hakbang 3: Tingnan kung expired na ang session.
-            var minutes = ConfigurationService.GetInt("Admin:SessionMinutes", 30);
-            return (DateTime.UtcNow - authedUtc) <= TimeSpan.FromMinutes(minutes);
         }
 
         protected override void HandleUnauthorizedRequest(AuthorizationContext filterContext)
@@ -92,9 +113,10 @@ namespace FaceAttend.Filters
             var rawUrl  = filterContext.HttpContext.Request.RawUrl ?? "/Admin";
             var safeUrl = SanitizeReturnUrl(rawUrl);
 
-            var url      = new UrlHelper(filterContext.RequestContext);
-            var kioskUrl = url.Action("Index", "Kiosk",
-                new { area = "", unlock = 1, returnUrl = safeUrl });
+            // CRITICAL FIX: Bypass MVC routing to avoid resolving Kiosk inside Admin area.
+            // When inside the Admin area, url.Action("Index", "Kiosk", new { area = "" })
+            // incorrectly resolves to "/Admin/Kiosk" instead of "/Kiosk", causing redirect loop.
+            var kioskUrl = "/Kiosk?unlock=1&returnUrl=" + HttpUtility.UrlEncode(safeUrl);
 
             filterContext.Result = new RedirectResult(kioskUrl);
         }
@@ -202,21 +224,23 @@ namespace FaceAttend.Filters
 
             byte[] protectedBytes;
             try   { protectedBytes = MachineKey.Protect(plain, UnlockCookiePurpose); }
-            catch { return; } // Kung nag-fail ang protect, huwag mag-issue ng cookie.
+            catch (Exception ex) 
+            { 
+                System.Diagnostics.Trace.TraceError("[AdminAuth] Failed to protect unlock cookie: " + ex.Message);
+                return; 
+            }
 
             var cookie = new HttpCookie(UnlockCookieName, Convert.ToBase64String(protectedBytes))
             {
                 HttpOnly = true,
-                // PHASE 1 FIX (S-08): Secure flag — ang cookie ay ipapadala lang
-                // sa HTTPS connections. Kapag HTTP pa rin, hindi magtatakbo ito
-                // pero acceptable iyon dahil dapat HTTPS na lahat.
-                Secure   = true,
-                SameSite = SameSiteMode.Strict,
-                Path     = "/",
-                Expires  = nowUtc.AddSeconds(seconds)
+                Secure = httpContext.Request.IsSecureConnection,
+                SameSite = SameSiteMode.Lax,
+                Path = "/",
+                Expires = nowUtc.AddSeconds(seconds)
             };
 
             httpContext.Response.Cookies.Set(cookie);
+            System.Diagnostics.Trace.TraceInformation("[AdminAuth] Unlock cookie issued for IP: " + ip + ", expires in " + seconds + " seconds, secure: " + httpContext.Request.IsSecureConnection);
         }
 
         /// <summary>
@@ -228,7 +252,11 @@ namespace FaceAttend.Filters
             if (httpContext == null) return false;
 
             var cookie = httpContext.Request.Cookies[UnlockCookieName];
-            if (cookie == null) return false;
+            if (cookie == null) 
+            {
+                System.Diagnostics.Trace.TraceInformation("[AdminAuth] No unlock cookie found");
+                return false;
+            }
 
             var seconds = ConfigurationService.GetInt("Admin:UnlockCookieSeconds", 120);
             if (seconds < 30)  seconds = 30;
@@ -236,32 +264,64 @@ namespace FaceAttend.Filters
 
             byte[] protectedBytes;
             try   { protectedBytes = Convert.FromBase64String(cookie.Value ?? ""); }
-            catch { ExpireUnlockCookie(httpContext); return false; }
+            catch 
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Failed to decode unlock cookie");
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             byte[] plain;
             try   { plain = MachineKey.Unprotect(protectedBytes, UnlockCookiePurpose); }
-            catch { ExpireUnlockCookie(httpContext); return false; }
+            catch (Exception ex) 
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Failed to unprotect unlock cookie: " + ex.Message);
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             if (plain == null || plain.Length == 0)
-            { ExpireUnlockCookie(httpContext); return false; }
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Unlock cookie plaintext is empty");
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             var s     = Encoding.UTF8.GetString(plain);
             var parts = s.Split('|');
-            if (parts.Length < 3) { ExpireUnlockCookie(httpContext); return false; }
+            if (parts.Length < 3) 
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Unlock cookie has invalid format");
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             if (!long.TryParse(parts[0], out var ticks))
-            { ExpireUnlockCookie(httpContext); return false; }
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Unlock cookie has invalid timestamp");
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             var issuedUtc = new DateTime(ticks, DateTimeKind.Utc);
             if ((DateTime.UtcNow - issuedUtc) > TimeSpan.FromSeconds(seconds))
-            { ExpireUnlockCookie(httpContext); return false; }
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Unlock cookie expired");
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             var cookieIp = StringHelper.NormalizeIp(parts[1]);
             var ip       = StringHelper.NormalizeIp(clientIp);
             if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
-            { ExpireUnlockCookie(httpContext); return false; }
+            { 
+                System.Diagnostics.Trace.TraceWarning("[AdminAuth] Unlock cookie IP mismatch. Cookie: " + cookieIp + ", Current: " + ip);
+                ExpireUnlockCookie(httpContext); 
+                return false; 
+            }
 
             // Valid ang cookie — i-consume (i-expire agad) at i-mark ang session.
+            System.Diagnostics.Trace.TraceInformation("[AdminAuth] Unlock cookie valid, marking session authenticated");
             ExpireUnlockCookie(httpContext);
             MarkAuthed(httpContext.Session);
             return true;
@@ -272,8 +332,8 @@ namespace FaceAttend.Filters
             var expired = new HttpCookie(UnlockCookieName, "")
             {
                 HttpOnly = true,
-                Secure   = true,
-                SameSite = SameSiteMode.Strict,
+                Secure   = httpContext?.Request?.IsSecureConnection ?? true,
+                SameSite = SameSiteMode.Lax,
                 Path     = "/",
                 Expires  = DateTime.UtcNow.AddDays(-1)
             };

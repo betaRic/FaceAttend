@@ -41,6 +41,7 @@ namespace FaceAttend.Services.Biometrics
                         count = 1,
                         liveness = fastResult.LivenessScore,
                         livenessOk = fastResult.LivenessOk,
+                        sharpness = fastResult.Sharpness,    // NEW: Phase 1
                         faceBox = fastResult.FaceBox != null ? new
                         {
                             x = fastResult.FaceBox.Left,
@@ -121,10 +122,13 @@ namespace FaceAttend.Services.Biometrics
                 // Find the largest face (assumed to be the main subject/nearest person)
                 var mainFace = faces.OrderByDescending(f => (long)f.Width * f.Height).First();
 
+                // Compute sharpness on face ROI
+                var sharpness = FaceQualityAnalyzer.CalculateSharpness(processedPath, mainFace);
+
                 var live = new OnnxLiveness();
                 var scored = live.ScoreFromFile(processedPath, mainFace);
                 if (!scored.Ok)
-                    return new { ok = false, error = scored.Error, count = 1, faceBox };
+                    return new { ok = false, error = scored.Error, count = 1, faceBox, sharpness };
 
                 var th = (float)ConfigurationService.GetDouble(
                     "Biometrics:LivenessThreshold",
@@ -141,6 +145,7 @@ namespace FaceAttend.Services.Biometrics
                     faceBox,
                     liveness = p,
                     livenessOk = p >= th,
+                    sharpness = sharpness,   // NEW: Phase 1
                     message = count > 1 ? "using nearest face" : null
                 };
             }

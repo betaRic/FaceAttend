@@ -115,7 +115,7 @@ namespace FaceAttend.Controllers
                     string duplicateEmployeeId = null;
                     using (var checkDb = new FaceAttendDBEntities())
                     {
-                        duplicateEmployeeId = FindDuplicateEmployeeInDatabase(checkDb, vec, null, enrollStrictTolerance);
+                        duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(checkDb, vec, null, enrollStrictTolerance);
                     }
                     var isMatch = !string.IsNullOrEmpty(duplicateEmployeeId);
                     
@@ -206,7 +206,7 @@ namespace FaceAttend.Controllers
                     var strictTolerance = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
                     
                     // Check for duplicate directly from database (bypass cache)
-                    var duplicateEmployeeId = FindDuplicateEmployeeInDatabase(db, faceVector, normalizedEmployeeId, strictTolerance);
+                    var duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(db, faceVector, normalizedEmployeeId, strictTolerance);
                     
                     if (!string.IsNullOrEmpty(duplicateEmployeeId))
                     {
@@ -1239,49 +1239,8 @@ namespace FaceAttend.Controllers
 
         #endregion
 
-        #region Helper Methods - Duplicate Detection
-
-        /// <summary>
-        /// CRITICAL FIX: Checks for duplicate faces directly in database.
-        /// Bypasses FastFaceMatcher cache to avoid stale data issues.
-        /// </summary>
-        private string FindDuplicateEmployeeInDatabase(FaceAttendDBEntities db, double[] faceVector, string excludeEmployeeId, double tolerance)
-        {
-            if (faceVector == null || faceVector.Length != 128)
-                return null;
-
-            // Query active employees excluding the current one
-            var employees = db.Employees
-                .Where(e => e.Status == "ACTIVE" && 
-                           e.EmployeeId != excludeEmployeeId &&
-                           (e.FaceEncodingBase64 != null || e.FaceEncodingsJson != null))
-                .Select(e => new { e.EmployeeId, e.FaceEncodingBase64, e.FaceEncodingsJson })
-                .ToList();
-
-            foreach (var emp in employees)
-            {
-                var existingVectors = FaceEncodingHelper.LoadEmployeeVectors(
-                    emp.FaceEncodingBase64,
-                    emp.FaceEncodingsJson,
-                    5); // max 5 vectors per employee
-
-                foreach (var existingVec in existingVectors)
-                {
-                    if (existingVec != null && existingVec.Length == 128)
-                    {
-                        var distance = DlibBiometrics.Distance(faceVector, existingVec);
-                        if (distance <= tolerance)
-                        {
-                            return emp.EmployeeId; // Found duplicate
-                        }
-                    }
-                }
-            }
-
-            return null; // No duplicate found
-        }
-
-        #endregion
+        // NOTE: FindDuplicateEmployeeInDatabase removed - use DuplicateCheckHelper.FindDuplicate instead
+        // This helper is now shared in Services/Biometrics/DuplicateCheckHelper.cs
     }
 
     #region View Models

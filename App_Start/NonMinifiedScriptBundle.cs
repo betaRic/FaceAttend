@@ -92,7 +92,7 @@ namespace FaceAttend
         /// <summary>
         /// Creates a new non-minified style bundle.
         /// </summary>
-        /// <param name="virtualPath">The virtual path for the bundle (e.g., "~/Content/admin-enroll")</param>
+        /// <param name="virtualPath">The virtual path for the bundle (e.g., "~/Content/enrollment")</param>
         public NonMinifiedStyleBundle(string virtualPath)
             : base(virtualPath)
         {

@@ -16,33 +16,25 @@
     @RenderSection("head", required: false)
     @RenderSection("styles", required: false)
     
-    <!-- FIX: Offcanvas backdrop stuck issue -->
+    <!-- Sidebar/backdrop fixes for Bootstrap offcanvas-lg -->
     <style>
-        /* Force hide offcanvas backdrop when sidebar is hidden */
-        .offcanvas-backdrop {
-            opacity: 0 !important;
-            display: none !important;
-            pointer-events: none !important;
+        /* Desktop sidebar: override Bootstrap's transparent background on offcanvas-lg */
+        @@media (min-width: 992px) {
+            .admin-sidebar {
+                background-color: var(--admin-surface, #fff) !important;
+                visibility: visible !important;
+                transform: none !important;
+                position: sticky !important;
+                top: 56px;
+                height: calc(100vh - 56px);
+            }
         }
-        
-        /* Only show backdrop when offcanvas is actually showing */
-        .offcanvas.show ~ .offcanvas-backdrop,
-        .offcanvas.offcanvas.show ~ .offcanvas-backdrop,
-        .offcanvas-backdrop.show {
-            opacity: 0.5 !important;
-            display: block !important;
-            pointer-events: auto !important;
-        }
-        
-        /* Ensure clicking outside closes the sidebar properly */
-        .admin-sidebar:not(.show) {
-            transform: translateX(-100%) !important;
-        }
-        
-        /* Allow clicks on main content when sidebar is closed */
-        .admin-main {
-            position: relative;
-            z-index: 1;
+
+        /* Mobile: only hide backdrop when sidebar is not open */
+        @@media (max-width: 991.98px) {
+            .offcanvas-backdrop {
+                transition: opacity 0.15s linear;
+            }
         }
     </style>
 </head>
@@ -214,64 +206,19 @@
     @Scripts.Render("~/bundles/vendor")
     @Scripts.Render("~/bundles/admin")
     
-    <!-- FIX: Force-remove stuck offcanvas backdrops -->
+    <!-- Backdrop cleanup for Bootstrap offcanvas -->
     <script>
-        (function() {
+        (function () {
             'use strict';
-            
-            // Remove any stuck backdrops when page loads
-            function removeStuckBackdrops() {
-                var backdrops = document.querySelectorAll('.offcanvas-backdrop, .modal-backdrop');
-                backdrops.forEach(function(backdrop) {
-                    if (!backdrop.classList.contains('show')) {
-                        backdrop.remove();
-                    }
-                });
-                
-                // Also remove body classes that might be blocking clicks
-                document.body.classList.remove('offcanvas-backdrop-visible');
+            var sidebar = document.getElementById('adminSidebar');
+            if (!sidebar) return;
+
+            // Bootstrap offcanvas-lg fires these events correctly - use them
+            sidebar.addEventListener('hidden.bs.offcanvas', function () {
+                // Bootstrap handles backdrop removal - just clean up body state
                 document.body.style.overflow = '';
                 document.body.style.paddingRight = '';
-            }
-            
-            // Run on page load
-            document.addEventListener('DOMContentLoaded', removeStuckBackdrops);
-            
-            // Run after a short delay (in case Bootstrap is still initializing)
-            setTimeout(removeStuckBackdrops, 500);
-            setTimeout(removeStuckBackdrops, 1000);
-            
-            // Listen for offcanvas hide events
-            var sidebar = document.getElementById('adminSidebar');
-            if (sidebar) {
-                sidebar.addEventListener('hidden.bs.offcanvas', function() {
-                    // Force remove all backdrops after offcanvas is hidden
-                    setTimeout(removeStuckBackdrops, 100);
-                    setTimeout(removeStuckBackdrops, 300);
-                });
-                
-                // Also handle when clicking outside to close
-                sidebar.addEventListener('click', function(e) {
-                    if (e.target === sidebar) {
-                        // Clicked on the sidebar itself (not content), close it
-                        var bsOffcanvas = bootstrap.Offcanvas.getInstance(sidebar);
-                        if (bsOffcanvas) {
-                            bsOffcanvas.hide();
-                        }
-                    }
-                });
-            }
-            
-            // Emergency fix: click anywhere on main content closes sidebar
-            var mainContent = document.querySelector('.admin-main');
-            if (mainContent) {
-                mainContent.addEventListener('click', function() {
-                    var bsOffcanvas = bootstrap.Offcanvas.getInstance(sidebar);
-                    if (bsOffcanvas && sidebar.classList.contains('show')) {
-                        bsOffcanvas.hide();
-                    }
-                });
-            }
+            });
         })();
     </script>
     

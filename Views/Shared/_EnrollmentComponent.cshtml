@@ -1,0 +1,106 @@
+@*
+ * Views/Shared/_EnrollmentComponent.cshtml
+ * Shared enrollment UI component.
+ * Called from: Admin/Employees/Enroll, Admin/Visitors/Enroll, MobileRegistration/Enroll (step 2)
+ *
+ * Required ViewBag:
+ *   ViewBag.EmployeeId        string  — employee/visitor ID
+ *   ViewBag.ScanUrl           string  — URL for ScanFrame AJAX endpoint
+ *   ViewBag.EnrollUrl         string  — URL for Enroll AJAX endpoint
+ *   ViewBag.RedirectUrl       string  — URL after enrollment success
+ *   ViewBag.Mode              string  — "admin" | "mobile" | "visitor"
+ *   ViewBag.MinFrames         int     — minimum good frames required (default 3)
+ *   ViewBag.LivenessThreshold double  — per-frame liveness threshold (default 0.75)
+ *@
+
+@{
+    var mode         = (string)(ViewBag.Mode ?? "admin");
+    var isMobile     = (mode == "mobile");
+    var minFrames    = (int)(ViewBag.MinFrames ?? 3);
+    var liveTh       = (double)(ViewBag.LivenessThreshold ?? 0.75);
+    var surfaceClass = isMobile ? "mobile-surface" : "admin-surface";
+
+    @* FIX: Pre-compute the formatted string so it doesn't use double quotes
+       inside a double-quoted HTML attribute — Razor would end the attribute early. *@
+    var liveThStr = liveTh.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+}
+
+<div id="enrollRoot"
+     class="enroll-container @surfaceClass"
+     data-employee-id="@ViewBag.EmployeeId"
+     data-mode="@mode"
+     data-scan-url="@ViewBag.ScanUrl"
+     data-enroll-url="@ViewBag.EnrollUrl"
+     data-redirect-url="@ViewBag.RedirectUrl"
+     data-min-frames="@minFrames"
+     data-liveness-th="@liveThStr">
+
+    @* ── Camera wrap ─────────────────────────────────────────────────────── *@
+    <div class="enroll-camera-wrap" id="enrollCameraWrap">
+        <video id="enrollVideo" autoplay playsinline muted></video>
+
+        @* Face guide overlay *@
+        <div class="enroll-face-guide" id="enrollFaceGuide"></div>
+
+        @* Processing overlay (shown during server submit) *@
+        <div class="enroll-processing-overlay enroll-hidden" id="enrollProcessing">
+            <i class="fa-solid fa-circle-notch enroll-processing-spinner"></i>
+            <span class="enroll-processing-text" id="enrollProcessingStatus">Processing...</span>
+        </div>
+    </div>
+
+    @* ── Angle guidance ──────────────────────────────────────────────────── *@
+    <div class="enroll-angle-guidance" id="enrollAngleGuidance">
+        <i class="enroll-angle-icon fa-solid fa-circle-dot" id="angleIcon"></i>
+        <span class="enroll-angle-prompt" id="anglePrompt">Click Start to begin</span>
+    </div>
+
+    @* ── Diversity dots ──────────────────────────────────────────────────── *@
+    <div class="enroll-diversity">
+        <span class="enroll-diversity-label">Angles captured:</span>
+        <div class="enroll-diversity-dots">
+            <div class="enroll-diversity-dot" data-bucket="center" title="Center"></div>
+            <div class="enroll-diversity-dot" data-bucket="left"   title="Left"></div>
+            <div class="enroll-diversity-dot" data-bucket="right"  title="Right"></div>
+            <div class="enroll-diversity-dot" data-bucket="up"     title="Up"></div>
+            <div class="enroll-diversity-dot" data-bucket="down"   title="Down"></div>
+        </div>
+    </div>
+
+    @* ── Progress ────────────────────────────────────────────────────────── *@
+    <div class="enroll-progress-wrap">
+        <div class="enroll-progress-label">
+            <span>Frames captured</span>
+            <span id="enrollProgressText">0 / 8</span>
+        </div>
+        <div class="enroll-progress-track">
+            <div class="enroll-progress-fill" id="enrollProgressBar"></div>
+        </div>
+    </div>
+
+    @* ── Liveness bar ────────────────────────────────────────────────────── *@
+    <div class="enroll-liveness-wrap">
+        <span class="enroll-liveness-label">Liveness</span>
+        <div class="enroll-liveness-track">
+            <div class="enroll-liveness-fill" id="enrollLivenessBar"></div>
+        </div>
+        <span class="enroll-liveness-val" id="enrollLivenessVal">0%</span>
+    </div>
+
+    @* ── Status message ──────────────────────────────────────────────────── *@
+    <div class="enroll-status enroll-status--info" id="enrollStatus">Ready</div>
+
+    @* ── Controls ────────────────────────────────────────────────────────── *@
+    <div class="enroll-controls">
+        <button class="btn btn-primary" id="enrollStartBtn" type="button">
+            <i class="fa-solid fa-camera"></i> Start Enrollment
+        </button>
+        <button class="btn btn-success enroll-hidden" id="enrollConfirmBtn" type="button">
+            <i class="fa-solid fa-check"></i> Save Enrollment
+        </button>
+        <button class="btn btn-secondary enroll-hidden" id="enrollRetakeBtn" type="button">
+            <i class="fa-solid fa-rotate-left"></i> Retake
+        </button>
+    </div>
+
+</div>

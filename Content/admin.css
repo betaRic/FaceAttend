@@ -190,6 +190,31 @@ body.admin-body {
     }
 }
 
+/* Override Bootstrap offcanvas-lg desktop behavior
+   Bootstrap sets background-color: transparent and position: initial on desktop.
+   We need sticky positioning and the correct background. */
+@media (min-width: 992px) {
+    .offcanvas-lg.admin-sidebar {
+        --bs-offcanvas-bg: var(--admin-surface);
+        background-color: var(--admin-surface) !important;
+        position: sticky !important;
+        top: 56px !important;
+        height: calc(100vh - 56px) !important;
+        visibility: visible !important;
+        transform: none !important;
+        z-index: auto !important;
+        border-right: 1px solid var(--admin-border);
+    }
+
+    /* offcanvas-lg wraps content in offcanvas-body - restore normal overflow */
+    .offcanvas-lg.admin-sidebar .offcanvas-body {
+        display: block !important;
+        overflow-y: auto !important;
+        padding: 0 !important;
+        flex-grow: 1 !important;
+    }
+}
+
 /* Main Content */
 .admin-main {
     grid-area: main;

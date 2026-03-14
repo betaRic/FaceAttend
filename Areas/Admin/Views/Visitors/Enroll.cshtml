@@ -1,527 +1,414 @@
-@model Visitor
+@model FaceAttend.Models.Visitor
+
 @{
-    ViewBag.Title = "Enroll Visitor Face";
-}
-@{
-    var perFrame = (ViewBag.PerFrame ?? "0.75").ToString();
+    Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
+    ViewBag.Title = "Enroll Visitor Face — " + Model.Name;
+    
     var isEnrolled = !string.IsNullOrEmpty(Model.FaceEncodingBase64);
     var initials = "";
     if (!string.IsNullOrWhiteSpace(Model.Name)) { initials += Model.Name[0]; }
     initials = initials.ToUpperInvariant();
 }
 
-@section head {
-    @Styles.Render("~/Content/admin-enroll")
-    <link rel="stylesheet" href="@Url.Content("~/Scripts/vendor/sweetalert2/sweetalert2.min.css")" />
+@section styles{
+    <link rel="stylesheet" href="~/Content/enrollment.css" asp-append-version="true" />
+    <style>
+        /* Page-specific styles */
+        .fa-enroll-page { padding: 1.25rem 0; }
+        .fa-hero {
+            display: flex; align-items: center; gap: 1rem;
+            background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
+            padding: 1rem 1.25rem; margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,.04);
+        }
+        .fa-avatar {
+            width: 56px; height: 56px; border-radius: 50%;
+            background: linear-gradient(135deg, #0d6efd, #0a58ca);
+            color: #fff; font-size: 1.25rem; font-weight: 700;
+            display: grid; place-items: center; flex-shrink: 0;
+        }
+        .fa-hero-info { flex: 1; min-width: 0; }
+        .fa-hero-name { font-weight: 700; font-size: 1.15rem; margin-bottom: .25rem; }
+        .fa-hero-meta { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .85rem; color: #64748b; }
+        .fa-hero-actions { display: flex; gap: .5rem; }
+        .fa-status-badge {
+            display: inline-flex; align-items: center; gap: .35rem;
+            padding: .35rem .65rem; border-radius: 999px; font-size: .78rem; font-weight: 600;
+        }
+        .fa-status-badge.enrolled { background: #d1fae5; color: #065f46; }
+        .fa-status-badge.not-enrolled { background: #fee2e2; color: #991b1b; }
+        
+        /* Step indicator */
+        .fa-stepbar {
+            display: flex; align-items: center; justify-content: center;
+            gap: .5rem; margin-bottom: 1.25rem;
+        }
+        .fa-step {
+            display: flex; align-items: center; gap: .4rem;
+            padding: .45rem .7rem; border-radius: 999px;
+            background: #f1f5f9; color: #64748b; font-size: .85rem;
+            transition: all .2s ease;
+        }
+        .fa-step.active { background: #0d6efd; color: #fff; box-shadow: 0 6px 20px rgba(13,110,253,.25); }
+        .fa-step.done { background: #198754; color: #fff; }
+        .fa-step-num {
+            width: 22px; height: 22px; border-radius: 50%;
+            background: rgba(0,0,0,.15); display: grid; place-items: center;
+            font-size: .72rem; font-weight: 700;
+        }
+        .fa-step-divider { width: 32px; height: 2px; background: #e2e8f0; border-radius: 2px; }
+        .fa-step-divider.done { background: #198754; }
+        
+        /* Method selection cards */
+        .fa-method-grid {
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 1rem; max-width: 720px; margin: 0 auto;
+        }
+        .fa-method-card {
+            position: relative; border: 2px solid #e2e8f0; border-radius: 16px;
+            padding: 1.25rem; text-align: center; cursor: pointer;
+            transition: all .2s ease; background: #fff;
+        }
+        .fa-method-card:hover { border-color: #94a3b8; transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,.06); }
+        .fa-method-icon { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #f8fafc, #e2e8f0); color: #0d6efd; display: grid; place-items: center; font-size: 1.5rem; margin: 0 auto .75rem; }
+        .fa-method-title { font-weight: 700; margin-bottom: .35rem; }
+        .fa-method-desc { font-size: .82rem; color: #64748b; line-height: 1.35; }
+        .fa-method-rec { position: absolute; top: 10px; right: 10px; background: #0d6efd; color: #fff; font-size: .65rem; font-weight: 600; padding: .2rem .5rem; border-radius: 999px; display: flex; align-items: center; }
+        
+        /* Success overlay */
+        .fa-success-overlay {
+            position: fixed; inset: 0; background: rgba(255,255,255,.95);
+            display: grid; place-items: center; z-index: 9999;
+            animation: fadeIn .3s ease;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        .fa-success-content { text-align: center; padding: 2rem; }
+        .fa-success-icon { font-size: 5rem; color: #198754; margin-bottom: 1rem; }
+        .fa-success-title { font-size: 1.75rem; font-weight: 700; margin-bottom: .5rem; }
+        .fa-success-message { color: #64748b; margin-bottom: 1.5rem; }
+        .fa-success-actions { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; }
+        
+        /* Upload pane */
+        .fa-dropzone {
+            border: 2px dashed #cbd5e1; border-radius: 16px;
+            padding: 2rem; text-align: center; cursor: pointer;
+            transition: all .2s ease;
+        }
+        .fa-dropzone:hover, .fa-dropzone.drag-over { border-color: #0d6efd; background: #f8fafc; }
+        .fa-dropzone-icon { font-size: 3rem; color: #94a3b8; margin-bottom: 1rem; }
+        .fa-dropzone-title { font-weight: 600; margin-bottom: .5rem; }
+        .fa-dropzone-desc { color: #64748b; font-size: .9rem; margin-bottom: 1rem; }
+        .fa-dropzone-rules { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; font-size: .78rem; color: #94a3b8; }
+        .fa-file-strip { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
+        .fa-file-chip { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: .4rem .7rem; font-size: .85rem; display: flex; align-items: center; gap: .4rem; }
+        
+        /* Pane visibility */
+        .fa-pane { display: none; }
+        .fa-pane.active { display: block; animation: slideIn .25s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .fa-back-btn { background: #f1f5f9; border: none; border-radius: 8px; padding: .5rem 1rem; font-size: .85rem; color: #475569; cursor: pointer; transition: all .2s ease; }
+        .fa-back-btn:hover { background: #e2e8f0; }
+        
+        /* Processing modal */
+        .fa-processing-modal {
+            position: fixed; inset: 0; background: rgba(255,255,255,.95);
+            display: grid; place-items: center; z-index: 10000;
+        }
+        .fa-processing-content { text-align: center; padding: 2rem; max-width: 400px; }
+        .fa-processing-spinner { font-size: 3rem; color: #0d6efd; margin-bottom: 1rem; }
+        .fa-processing-title { font-size: 1.25rem; font-weight: 600; margin-bottom: .5rem; }
+        .fa-processing-progress { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+        .fa-processing-bar { height: 100%; background: linear-gradient(90deg, #0d6efd, #0dcaf0); width: 0; transition: width .3s ease; }
+    </style>
 }
 
 <div class="fa-enroll-page">
-<div class="container-xl" style="max-width:1100px;">
-
-    <div class="fa-hero">
-        <div class="fa-avatar" aria-hidden="true">@initials</div>
-        <div class="fa-hero-info">
-            <div class="fa-hero-name">@Model.Name</div>
-            <div class="fa-hero-meta">
-                <span><i class="fa-solid fa-id-badge fa-xs me-1"></i>Visitor #@Model.Id</span>
-                @if (!string.IsNullOrWhiteSpace(Model.Company))
-                {
-                    <span><i class="fa-solid fa-building fa-xs me-1"></i>@Model.Company</span>
-                }
-                @if (!string.IsNullOrWhiteSpace(Model.Phone))
-                {
-                    <span><i class="fa-solid fa-phone fa-xs me-1"></i>@Model.Phone</span>
-                }
-            </div>
-        </div>
-        <div class="fa-hero-actions">
-            <span class="fa-status-badge @(isEnrolled ? "enrolled" : "not-enrolled")">
-                <i class="fa-solid @(isEnrolled ? "fa-circle-check" : "fa-circle-exclamation") fa-xs"></i>
-                @(isEnrolled ? "Enrolled" : "Not Enrolled")
-            </span>
-            <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-sm btn-outline-secondary" title="Edit visitor">
-                <i class="fa-solid fa-pen"></i>
-            </a>
-            <a href="@Url.Action("Index")" class="btn btn-sm btn-outline-secondary" title="Back to list">
-                <i class="fa-solid fa-arrow-left"></i>
-            </a>
-        </div>
-    </div>
-
-    <div class="fa-steps" id="faSteps">
-        <div class="fa-step active" data-step="1">
-            <span class="fa-step-num">1</span>
-            <span>Choose Method</span>
-        </div>
-        <div class="fa-step-divider" id="divider1"></div>
-        <div class="fa-step" data-step="2">
-            <span class="fa-step-num">2</span>
-            <span>Capture</span>
-        </div>
-        <div class="fa-step-divider" id="divider2"></div>
-        <div class="fa-step" data-step="3">
-            <span class="fa-step-num"><i class="fa-solid fa-check fa-xs"></i></span>
-            <span>Done</span>
-        </div>
-    </div>
-
-    <div class="fa-card">
-        @using (Html.BeginForm("", "", FormMethod.Post, new { id = "hiddenForm", @class = "d-none" }))
-        { @Html.AntiForgeryToken() }
-
-        <div id="enrollRoot"
-             data-employee-id="@Model.Id"
-             data-per-frame="@perFrame"
-             data-scan-url="@Url.Action("ScanFrame", "Visitors", new { area = "Admin" })"
-             data-enroll-url="@Url.Action("EnrollWizard", "Visitors", new { area = "Admin" })"
-             data-redirect-url="@Url.Action("Index", "Visitors", new { area = "Admin" })"
-             data-min-good-frames="3"
-             data-max-keep-frames="5">
-
-            <div id="enrollWizard">
-                <div class="text-center mb-4">
-                    <div class="fw-bold fs-5 mb-1">Select Enrollment Method</div>
-                    <div class="text-muted" style="font-size:.86rem;">
-                        Choose how to capture the face biometric for this visitor.
-                    </div>
-                </div>
-                <div class="fa-method-grid">
-                    <div class="fa-method-card" role="button" tabindex="0" data-enroll-mode="live" aria-label="Live camera enrollment">
-                        <div class="fa-method-icon"><i class="fa-solid fa-camera" aria-hidden="true"></i></div>
-                        <div class="fa-method-title">Live Camera</div>
-                        <div class="fa-method-desc">Real-time face capture with automatic liveness detection.</div>
-                        <span class="fa-method-rec"><i class="fa-solid fa-star fa-xs me-1"></i>Recommended</span>
-                    </div>
-                    <div class="fa-method-card" role="button" tabindex="0" data-enroll-mode="upload" aria-label="Upload photo enrollment">
-                        <div class="fa-method-icon"><i class="fa-solid fa-cloud-arrow-up" aria-hidden="true"></i></div>
-                        <div class="fa-method-title">Upload Photos</div>
-                        <div class="fa-method-desc">Choose 1-5 clear existing photos. Auto-verified and enrolled.</div>
-                    </div>
+    <div class="container-xl" style="max-width:1100px;">
+    
+        @* Hero Section *@
+        <div class="fa-hero">
+            <div class="fa-avatar">@initials</div>
+            <div class="fa-hero-info">
+                <div class="fa-hero-name">@Model.Name</div>
+                <div class="fa-hero-meta">
+                    <span><i class="fa-solid fa-id-badge fa-xs me-1"></i>Visitor #@Model.Id</span>
+                    @if (!string.IsNullOrWhiteSpace(Model.Company))
+                    {
+                        <span><i class="fa-solid fa-building fa-xs me-1"></i>@Model.Company</span>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Model.Phone))
+                    {
+                        <span><i class="fa-solid fa-phone fa-xs me-1"></i>@Model.Phone</span>
+                    }
                 </div>
             </div>
-
-            <div id="successOverlay" class="fa-success-overlay d-none">
-                <div class="fa-success-content">
-                    <div class="fa-success-icon"><i class="fa-solid fa-circle-check"></i></div>
-                    <div class="fa-success-title">Enrollment Complete!</div>
-                    <div class="fa-success-message">Face biometric successfully enrolled for<br/><strong>@Model.Name</strong></div>
-                    <div class="fa-success-details" id="successDetails"></div>
-                    <div class="fa-success-actions">
-                        <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })" class="btn btn-primary"><i class="fa-solid fa-arrow-left me-2"></i>Back to Visitor List</a>
-                        <a href="@Url.Action("Edit", "Visitors", new { area = "Admin", id = Model.Id })" class="btn btn-outline-secondary"><i class="fa-solid fa-pen me-2"></i>Edit Visitor</a>
-                    </div>
-                </div>
+            <div class="fa-hero-actions">
+                <span class="fa-status-badge @(isEnrolled ? "enrolled" : "not-enrolled")">
+                    <i class="fa-solid @(isEnrolled ? "fa-circle-check" : "fa-circle-exclamation") fa-xs"></i>
+                    @(isEnrolled ? "Enrolled" : "Not Enrolled")
+                </span>
+                <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-pen"></i>
+                </a>
+                <a href="@Url.Action("Index")" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </a>
             </div>
+        </div>
 
-            <div id="processingModal" class="fa-processing-modal d-none">
-                <div class="fa-processing-content">
-                    <div class="fa-processing-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
-                    <div class="fa-processing-title">Processing Enrollment...</div>
-                    <div class="fa-processing-status" id="processingStatus">Uploading images...</div>
-                    <div class="fa-processing-progress"><div class="fa-processing-bar" id="processingBar"></div></div>
-                    <div class="fa-processing-percent" id="processingPercent">0%</div>
-                </div>
-            </div>
+        @* Step indicator *@
+        <div class="fa-stepbar" id="stepBar">
+            <div class="fa-step active" data-step="1"><span class="fa-step-num">1</span><span>Method</span></div>
+            <div class="fa-step-divider" id="divider1"></div>
+            <div class="fa-step" data-step="2"><span class="fa-step-num">2</span><span>Capture</span></div>
+            <div class="fa-step-divider" id="divider2"></div>
+            <div class="fa-step" data-step="3"><span class="fa-step-num"><i class="fa-solid fa-check fa-xs"></i></span><span>Done</span></div>
+        </div>
 
-            <div id="livePane" class="fa-pane">
-                <button class="fa-back-btn mb-3" id="backFromLive" type="button">
-                    <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
-                </button>
-                <div class="fa-cam-layout">
-                    <div class="fa-video-wrap" id="videoWrap" aria-label="Camera preview">
-                        <div class="fa-live-bar-wrap">
-                            <div class="fa-live-bar-label">
-                                <span><i class="fa-solid fa-shield-halved fa-xs me-1"></i>Liveness</span>
-                                <span id="liveBarPct">---</span>
+        @* Main Card *@
+        <div class="card shadow-sm">
+            <div class="card-body p-4">
+                @using (Html.BeginForm("", "", FormMethod.Post, new { id = "hiddenForm", @class = "d-none" }))
+                { @Html.AntiForgeryToken() }
+
+                <div id="enrollContainer">
+                    
+                    @* Wizard: choose method *@
+                    <div id="enrollWizard">
+                        <div class="text-center mb-4">
+                            <div class="fw-bold fs-5 mb-1">Select Enrollment Method</div>
+                            <div class="text-muted" style="font-size:.86rem;">Choose how to capture the face biometric for this visitor.</div>
+                        </div>
+                        <div class="fa-method-grid">
+                            <div class="fa-method-card" role="button" data-enroll-mode="live">
+                                <div class="fa-method-icon"><i class="fa-solid fa-camera"></i></div>
+                                <div class="fa-method-title">Live Camera</div>
+                                <div class="fa-method-desc">Real-time face capture with automatic liveness detection.</div>
+                                <span class="fa-method-rec"><i class="fa-solid fa-star fa-xs me-1"></i>Recommended</span>
                             </div>
-                            <div class="fa-live-bar-track"><div class="fa-live-bar-fill" id="liveBarFill"></div></div>
-                        </div>
-                        <div class="fa-cam-corner tl"></div><div class="fa-cam-corner tr"></div>
-                        <div class="fa-cam-corner bl"></div><div class="fa-cam-corner br"></div>
-                        <video id="cam" autoplay playsinline muted></video>
-                        <canvas id="enrollOverlay" class="enroll-overlay"></canvas>
-                        <div class="fa-progress-dots" id="progressDots" aria-label="Capture progress">
-                            <div class="fa-dot" id="dot1"></div><div class="fa-dot" id="dot2"></div>
-                            <div class="fa-dot" id="dot3"></div><div class="fa-dot" id="dot4"></div>
-                            <div class="fa-dot" id="dot5"></div>
-                        </div>
-                        <div id="camStatus"></div>
-                    </div>
-                    <div class="fa-side-panel">
-                        <div class="fa-side-card">
-                            <div class="fa-side-card-title"><i class="fa-solid fa-waveform-lines fa-xs"></i>Liveness Score</div>
-                            <div class="fa-live-score-num" id="sideScore">0</div>
-                            <div class="fa-live-score-label" id="sideScoreLabel">Waiting for scan</div>
-                            <div class="fa-pass-indicator mt-2" id="sidePassBadge" style="display:none;">
-                                <span>Result</span><span class="badge-pass" id="sideBadgeText">PASS</span>
+                            <div class="fa-method-card" role="button" data-enroll-mode="upload">
+                                <div class="fa-method-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                                <div class="fa-method-title">Upload Photos</div>
+                                <div class="fa-method-desc">Choose 1-5 clear existing photos. Auto-verified and enrolled.</div>
                             </div>
                         </div>
-                        <div class="fa-side-card">
-                            <div class="fa-side-card-title"><i class="fa-solid fa-images fa-xs"></i>Samples Collected</div>
-                            <div style="font-size:1.8rem;font-weight:800;line-height:1;" id="sideCaptures">0</div>
-                            <div style="font-size:.78rem;color:var(--ea-muted);margin-top:.15rem;">minimum 3, keeps up to 5</div>
-                            <div class="progress mt-2" style="height:4px;border-radius:100px;">
-                                <div class="progress-bar bg-primary" id="capProgressBar" style="width:0%;transition:width .4s ease;"></div>
+                    </div>
+
+                    @* Live camera pane - using shared enrollment component *@
+                    <div id="livePane" class="fa-pane">
+                        <button class="fa-back-btn mb-3" id="backFromLive" type="button">
+                            <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
+                        </button>
+                        
+                        @Html.Partial("_EnrollmentComponent", new ViewDataDictionary {
+                            ["EmployeeId"] = Model.Id.ToString(),
+                            ["ScanUrl"] = Url.Action("ScanFrame", "Visitors", new { area = "Admin" }),
+                            ["EnrollUrl"] = Url.Action("EnrollWizard", "Visitors", new { area = "Admin" }),
+                            ["RedirectUrl"] = Url.Action("Index", "Visitors", new { area = "Admin" }),
+                            ["Mode"] = "admin",
+                            ["MinFrames"] = 3,
+                            ["MaxFrames"] = 5,
+                            ["LivenessThreshold"] = 0.85f
+                        })
+                    </div>
+
+                    @* Upload pane *@
+                    <div id="uploadPane" class="fa-pane">
+                        <button class="fa-back-btn mb-3" id="backFromUpload" type="button">
+                            <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
+                        </button>
+                        
+                        @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
+                        {
+                            @Html.AntiForgeryToken()
+                            <div class="fa-dropzone" id="dropzone" role="button">
+                                <input type="file" id="file" accept="image/*" multiple style="display:none;" />
+                                <div class="fa-dropzone-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
+                                <div class="fa-dropzone-title">Drop photos here or click to browse</div>
+                                <div class="fa-dropzone-desc">Select 1 to 5 clear, well-lit face photos.</div>
+                                <div class="fa-dropzone-rules">
+                                    <span><i class="fa-solid fa-user-check"></i>Main face in photo</span>
+                                    <span><i class="fa-solid fa-images"></i>Up to 5 files</span>
+                                    <span><i class="fa-solid fa-file-image"></i>JPG / PNG</span>
+                                </div>
                             </div>
-                        </div>
-                        <div class="fa-side-card">
-                            <div class="fa-side-card-title"><i class="fa-solid fa-circle-info fa-xs"></i>Tips</div>
-                            <ul class="fa-tips">
-                                <li><i class="fa-solid fa-sun fa-xs"></i>Good, even lighting</li>
-                                <li><i class="fa-solid fa-user fa-xs"></i>Main face closest to camera</li>
-                                <li><i class="fa-solid fa-glasses fa-xs"></i>Remove sunglasses</li>
-                                <li><i class="fa-solid fa-arrows-to-dot fa-xs"></i>Face centered, fill frame</li>
-                                <li><i class="fa-solid fa-person-half-dress fa-xs"></i>Look directly at camera</li>
-                            </ul>
+                        }
+                        <div class="fa-file-strip" id="fileStrip"></div>
+                        <div id="upStatus" class="mt-3"></div>
+                        <div class="text-center mt-3">
+                            <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
+                                <i class="fa-solid fa-upload me-2"></i>Upload & Enroll
+                            </button>
                         </div>
                     </div>
+
                 </div>
             </div>
-
-            <div id="uploadPane" class="fa-pane">
-                <button class="fa-back-btn mb-3" id="backFromUpload" type="button">
-                    <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
-                </button>
-                @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
-                {
-                    @Html.AntiForgeryToken()
-                    <div class="fa-dropzone" id="dropzone" role="button" aria-label="Upload photos">
-                        <input type="file" id="file" accept="image/*" multiple />
-                        <div class="fa-dropzone-icon" aria-hidden="true"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-                        <div class="fa-dropzone-title">Drop photos here or click to browse</div>
-                        <div class="fa-dropzone-desc">Select 1 to 5 clear, well-lit face photos.</div>
-                        <div class="fa-dropzone-rules">
-                            <span><i class="fa-solid fa-user-check"></i>Main face in photo</span>
-                            <span><i class="fa-solid fa-images"></i>Up to 5 files</span>
-                            <span><i class="fa-solid fa-file-image"></i>JPG / PNG</span>
-                        </div>
-                    </div>
-                }
-                <div class="fa-file-strip" id="fileStrip"></div>
-                <div id="upStatus"></div>
-            </div>
-            <canvas id="cap" style="display:none;"></canvas>
         </div>
     </div>
-
 </div>
+
+@* Success Overlay *@
+<div id="successOverlay" class="fa-success-overlay d-none">
+    <div class="fa-success-content">
+        <div class="fa-success-icon"><i class="fa-solid fa-circle-check"></i></div>
+        <div class="fa-success-title">Enrollment Complete!</div>
+        <div class="fa-success-message">Face biometric successfully enrolled for<br/><strong>@Model.Name</strong></div>
+        <div class="fa-success-actions">
+            <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })" class="btn btn-primary">
+                <i class="fa-solid fa-arrow-left me-2"></i>Back to Visitor List
+            </a>
+            <a href="@Url.Action("Edit", "Visitors", new { area = "Admin", id = Model.Id })" class="btn btn-outline-secondary">
+                <i class="fa-solid fa-pen me-2"></i>Edit Visitor
+            </a>
+        </div>
+    </div>
+</div>
+
+@* Processing Modal *@
+<div id="processingModal" class="fa-processing-modal d-none">
+    <div class="fa-processing-content">
+        <div class="fa-processing-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
+        <div class="fa-processing-title">Processing Enrollment...</div>
+        <div class="fa-processing-status" id="processingStatus">Initializing...</div>
+        <div class="fa-processing-progress"><div class="fa-processing-bar" id="processingBar"></div></div>
+    </div>
 </div>
 
 @section scripts{
-@Html.Raw("<script>")
-(function () {
-    'use strict';
-    function el(id) { return document.getElementById(id); }
-    var liveBarFill = el('liveBarFill');
-    var liveBarPct = el('liveBarPct');
-    var sideScore = el('sideScore');
-    var sideLabel = el('sideScoreLabel');
-    var sideBadge = el('sidePassBadge');
-    var sideBadgeTx = el('sideBadgeText');
-    var dots = [el('dot1'),el('dot2'),el('dot3'),el('dot4'),el('dot5')];
-    var capBar = el('capProgressBar');
-    var sideCapCount = el('sideCaptures');
-    var videoWrap = el('videoWrap');
-    var camStatusEl = el('camStatus');
-    var upStatusEl = el('upStatus');
-    var dropzone = el('dropzone');
-    var fileInput = el('file');
-    var fileStrip = el('fileStrip');
-    var divider1 = el('divider1');
-    var divider2 = el('divider2');
-    var stepEls = document.querySelectorAll('.fa-step');
-    var rootEl = el('enrollRoot');
-    var CAPTURE_TARGET = parseInt((rootEl && rootEl.getAttribute('data-min-good-frames')) || '3', 10);
-    if (!isFinite(CAPTURE_TARGET) || CAPTURE_TARGET < 1) CAPTURE_TARGET = 3;
-
-    function setStep(n) {
-        stepEls.forEach(function (s) {
-            var sn = parseInt(s.getAttribute('data-step'), 10);
-            s.classList.remove('active', 'done');
-            if (sn < n) s.classList.add('done');
-            if (sn === n) s.classList.add('active');
-        });
-        if (divider1) divider1.classList.toggle('done', n > 1);
-        if (divider2) divider2.classList.toggle('done', n > 2);
-    }
-
-    function updateLiveness(pct, kind) {
-        if (liveBarFill) {
-            liveBarFill.style.width = pct + '%';
-            liveBarFill.className = 'fa-live-bar-fill' + (kind === 'pass' ? ' live-pass' : kind === 'warn' ? ' live-warn' : kind === 'fail' ? ' live-fail' : '');
+    <script src="~/Scripts/modules/enrollment-core.js"></script>
+    <script src="~/Scripts/enrollment-ui.js"></script>
+    
+    <script>
+    (function() {
+        'use strict';
+        
+        var wizard = document.getElementById('enrollWizard');
+        var livePane = document.getElementById('livePane');
+        var uploadPane = document.getElementById('uploadPane');
+        var stepEls = document.querySelectorAll('.fa-step');
+        var divider1 = document.getElementById('divider1');
+        var divider2 = document.getElementById('divider2');
+        
+        function setStep(n) {
+            stepEls.forEach(function(s) {
+                var sn = parseInt(s.getAttribute('data-step'), 10);
+                s.classList.remove('active', 'done');
+                if (sn < n) s.classList.add('done');
+                if (sn === n) s.classList.add('active');
+            });
+            if (divider1) divider1.classList.toggle('done', n > 1);
+            if (divider2) divider2.classList.toggle('done', n > 2);
         }
-        if (liveBarPct) liveBarPct.textContent = pct + '%';
-        if (sideScore) {
-            sideScore.textContent = pct + '%';
-            sideScore.className = 'fa-live-score-num' + (kind === 'pass' ? ' pass' : kind === 'fail' ? ' fail' : '');
+        
+        function showWizard() {
+            wizard.style.display = 'block';
+            livePane.classList.remove('active');
+            uploadPane.classList.remove('active');
+            setStep(1);
+            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.stop();
         }
-        if (sideBadge && sideBadgeTx && kind) {
-            sideBadge.style.display = 'flex';
-            sideBadgeTx.className = kind === 'pass' ? 'badge-pass' : 'badge-fail';
-            sideBadgeTx.textContent = kind === 'pass' ? 'PASS' : kind === 'fail' ? 'FAIL' : 'LOW';
+        
+        function showLive() {
+            wizard.style.display = 'none';
+            livePane.classList.add('active');
+            uploadPane.classList.remove('active');
+            setStep(2);
+            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.start();
         }
-    }
-
-    function setCaptures(n) {
-        n = Math.max(0, parseInt(n, 10) || 0);
-        var progressCount = Math.min(n, CAPTURE_TARGET);
-        dots.forEach(function (d, i) {
-            if (!d) return;
-            d.classList.remove('filled', 'active');
-            if (i >= CAPTURE_TARGET) { d.style.display = 'none'; return; }
-            d.style.display = '';
-            if (i < progressCount) d.classList.add('filled');
-            else if (i === progressCount && progressCount < CAPTURE_TARGET) d.classList.add('active');
-        });
-        if (capBar) capBar.style.width = ((progressCount / CAPTURE_TARGET) * 100) + '%';
-        if (sideCapCount) sideCapCount.textContent = n;
-    }
-
-    function setVideoGlow(kind) {
-        if (!videoWrap) return;
-        videoWrap.classList.remove('border-success-glow', 'border-danger-glow', 'pulse-border');
-        if (kind === 'success') videoWrap.classList.add('border-success-glow');
-        else if (kind === 'danger') videoWrap.classList.add('border-danger-glow');
-        else if (kind === 'scan') videoWrap.classList.add('pulse-border');
-    }
-
-    function iconFor(k) {
-        if (k === 'success') return '<i class="fa-solid fa-circle-check" aria-hidden="true"></i>';
-        if (k === 'danger') return '<i class="fa-solid fa-circle-xmark" aria-hidden="true"></i>';
-        if (k === 'warning') return '<i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>';
-        return '<span class="fa-status-spinner" aria-hidden="true"></span>';
-    }
-
-    function parseLivenessFromText(text, kind) {
-        var m = text.match(/liveness[:]\s]+([0-9]+\.?[0-9]*)/i);
-        if (m) {
-            var val = parseFloat(m[1]);
-            var pct = val <= 1 ? Math.round(val * 100) : Math.round(val);
-            var lvKind = kind === 'success' ? 'pass' : kind === 'warning' ? 'warn' : 'fail';
-            updateLiveness(Math.min(100, pct), lvKind);
+        
+        function showUpload() {
+            wizard.style.display = 'none';
+            livePane.classList.remove('active');
+            uploadPane.classList.add('active');
+            setStep(2);
         }
-        var good = text.match(/good frames:\s*(\d+)\s*\/\s*(\d+)/i);
-        if (good) setCaptures(parseInt(good[1], 10));
-        var coll = text.match(/saving enrollment\s*\((\d+)\s*frame/i);
-        if (coll) setCaptures(parseInt(coll[1], 10));
-        if (/enrollment saved/i.test(text)) {
+        
+        function showSuccess(details) {
             setStep(3);
-            setCaptures(CAPTURE_TARGET);
-            setVideoGlow('success');
-            if (sideLabel) sideLabel.textContent = 'Enrollment complete!';
+            document.getElementById('successDetails').textContent = details || '';
+            document.getElementById('successOverlay').classList.remove('d-none');
         }
-    }
-
-    var _origDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-    var _origSet = _origDescriptor.set;
-
-    function renderCamStatus(text, kind) {
-        var k = kind || 'info';
-        var extraCls = (k !== 'info') ? ' is-' + k : '';
-        var safeText = text.replace(/<[^>]+>/g, '');
-        if (camStatusEl) {
-            _origSet.call(camStatusEl, '<div class="fa-status-msg' + extraCls + '">' + iconFor(k) + '<span>' + safeText + '</span></div>');
-        }
-        setVideoGlow(k === 'success' ? 'success' : k === 'danger' ? 'danger' : 'scan');
-        parseLivenessFromText(safeText, k);
-        if (sideLabel && !/liveness/i.test(safeText)) sideLabel.textContent = safeText.substring(0, 60);
-    }
-
-    function renderUpStatus(text, kind) {
-        var k = kind || 'info';
-        var safeText = text.replace(/<[^>]+>/g, '');
-        if (upStatusEl) {
-            _origSet.call(upStatusEl, '<div class="fa-upstatus-box is-' + k + '">' + iconFor(k) + '<span>' + safeText + '</span></div>');
-        }
-    }
-
-    function patchStatusEl(target, renderFn) {
-        if (!target) return;
-        Object.defineProperty(target, 'innerHTML', {
-            get: function () { return _origDescriptor.get.call(this); },
-            set: function (html) {
-                var m = html ? html.match(/alert-(\w+)[^>]*>([\s\S]*?)(?:<\/div>|$)/) : null;
-                if (m) { var kd = m[1] === 'primary' ? 'info' : m[1]; renderFn(m[2], kd); }
-                else { _origSet.call(this, html || ''); }
-            },
-            configurable: true
-        });
-    }
-
-    patchStatusEl(camStatusEl, renderCamStatus);
-    patchStatusEl(upStatusEl, renderUpStatus);
-
-    var wizardEl = el('enrollWizard');
-    var livePane = el('livePane');
-    var upPane = el('uploadPane');
-
-    function syncStepFromPanes() {
-        var wizHidden = wizardEl && wizardEl.classList.contains('d-none');
-        var liveVisible = livePane && !livePane.classList.contains('d-none');
-        var upVisible = upPane && !upPane.classList.contains('d-none');
-        if (!wizHidden && !liveVisible && !upVisible) setStep(1);
-        else if (liveVisible || upVisible) setStep(2);
-    }
-
-    var paneObs = new MutationObserver(syncStepFromPanes);
-    [wizardEl, livePane, upPane].forEach(function (n) {
-        if (n) paneObs.observe(n, { attributes: true, attributeFilter: ['class'] });
-    });
-
-    function bridgeClass(pane) {
-        if (!pane) return;
-        new MutationObserver(function () {
-            pane.classList.toggle('active', !pane.classList.contains('d-none'));
-        }).observe(pane, { attributes: true, attributeFilter: ['class'] });
-    }
-    bridgeClass(livePane);
-    bridgeClass(upPane);
-
-    function goBack() {
-        if (wizardEl) { wizardEl.classList.remove('d-none'); wizardEl.style.display = ''; }
-        if (livePane) { livePane.classList.add('d-none'); livePane.classList.remove('active'); }
-        if (upPane) { upPane.classList.add('d-none'); upPane.classList.remove('active'); }
-        document.dispatchEvent(new CustomEvent('fa:stopCam'));
-        var camEl = el('cam');
-        if (camEl && camEl.srcObject) {
-            try { camEl.srcObject.getTracks().forEach(function (t) { t.stop(); }); } catch (_) { }
-            camEl.srcObject = null;
-        }
-        if (fileInput) fileInput.value = '';
-        if (fileStrip) _origSet.call(fileStrip, '');
-        if (upStatusEl) _origSet.call(upStatusEl, '');
-        setStep(1);
-        setCaptures(0);
-        setVideoGlow(null);
-        if (liveBarFill) { liveBarFill.style.width = '0'; liveBarFill.className = 'fa-live-bar-fill'; }
-        if (liveBarPct) liveBarPct.textContent = '---';
-        if (sideScore) { sideScore.textContent = '---'; sideScore.className = 'fa-live-score-num'; }
-        if (sideLabel) sideLabel.textContent = 'Waiting for scan...';
-        if (sideBadge) sideBadge.style.display = 'none';
-        if (camStatusEl) _origSet.call(camStatusEl, '');
-    }
-
-    var backL = el('backFromLive');
-    var backU = el('backFromUpload');
-    if (backL) backL.addEventListener('click', goBack);
-    if (backU) backU.addEventListener('click', goBack);
-
-    document.querySelectorAll('.fa-method-card').forEach(function (card) {
-        card.addEventListener('keydown', function (e) {
-            if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); card.click(); }
-        });
-    });
-
-    if (dropzone && fileInput) {
-        dropzone.addEventListener('dragover', function (e) { e.preventDefault(); dropzone.classList.add('drag-over'); });
-        ['dragleave', 'dragend'].forEach(function (ev) {
-            dropzone.addEventListener(ev, function () { dropzone.classList.remove('drag-over'); });
-        });
-        dropzone.addEventListener('drop', function (e) {
-            e.preventDefault();
-            dropzone.classList.remove('drag-over');
-            if (e.dataTransfer && e.dataTransfer.files.length) {
-                try {
-                    var dt = new DataTransfer();
-                    Array.prototype.forEach.call(e.dataTransfer.files, function (f) { dt.items.add(f); });
-                    fileInput.files = dt.files;
-                } catch (_) { }
-                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-        });
-    }
-
-    if (fileInput && fileStrip) {
-        fileInput.addEventListener('change', function () {
-            _origSet.call(fileStrip, '');
-            Array.prototype.slice.call(fileInput.files || [], 0, 5).forEach(function (f) {
-                var ext = (f.name.split('.').pop() || '').toLowerCase();
-                var icon = (ext === 'png') ? 'fa-file-image' : 'fa-image';
-                var chip = document.createElement('div');
-                chip.className = 'fa-file-chip';
-                chip.innerHTML = '<i class="fa-solid ' + icon + '" aria-hidden="true"></i><span>' + f.name.replace(/(.{20})..+/, '$1...') + '</span>';
-                fileStrip.appendChild(chip);
+        
+        // Method selection
+        document.querySelectorAll('.fa-method-card').forEach(function(card) {
+            card.addEventListener('click', function() {
+                var mode = this.getAttribute('data-enroll-mode');
+                mode === 'live' ? showLive() : showUpload();
             });
         });
-    }
-
-    var successOverlay = el('successOverlay');
-    var processingModal = el('processingModal');
-    var processingBar = el('processingBar');
-    var processingStatus = el('processingStatus');
-    var processingPercent = el('processingPercent');
-    var successDetails = el('successDetails');
-
-    function showProcessingModal(show) {
-        if (!processingModal) return;
-        processingModal.classList.toggle('d-none', !show);
-        if (show) updateProcessingProgress(0, 'Initializing...');
-    }
-
-    function updateProcessingProgress(percent, status) {
-        if (processingBar) processingBar.style.width = percent + '%';
-        if (processingPercent) processingPercent.textContent = percent + '%';
-        if (processingStatus && status) processingStatus.textContent = status;
-    }
-
-    function showSuccessOverlay(details) {
-        if (!successOverlay) return;
-        if (successDetails && details) successDetails.textContent = details;
-        successOverlay.classList.remove('d-none');
-        document.dispatchEvent(new CustomEvent('fa:stopCam'));
-        var camEl = el('cam');
-        if (camEl && camEl.srcObject) {
-            try { camEl.srcObject.getTracks().forEach(function (t) { t.stop(); }); } catch (_) { }
-            camEl.srcObject = null;
+        
+        // Back buttons
+        document.getElementById('backFromLive').addEventListener('click', showWizard);
+        document.getElementById('backFromUpload').addEventListener('click', showWizard);
+        
+        // Enrollment callbacks
+        window.enrollCallbacks = {
+            onEnrollmentComplete: function(result) {
+                showSuccess(result.vectorsSaved + ' face sample(s) saved');
+            },
+            onEnrollmentError: function(error) {
+                Swal.fire({ icon: 'error', title: 'Enrollment Failed', text: error.message || 'Please try again.' });
+            }
+        };
+        
+        // Upload handling
+        var dropzone = document.getElementById('dropzone');
+        var fileInput = document.getElementById('file');
+        var fileStrip = document.getElementById('fileStrip');
+        var uploadBtn = document.getElementById('uploadBtn');
+        
+        dropzone.addEventListener('click', function() { fileInput.click(); });
+        dropzone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
+        ['dragleave', 'dragend'].forEach(function(ev) {
+            dropzone.addEventListener(ev, function() { this.classList.remove('drag-over'); });
+        });
+        dropzone.addEventListener('drop', function(e) {
+            e.preventDefault(); this.classList.remove('drag-over');
+            if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; updateFileList(); }
+        });
+        
+        fileInput.addEventListener('change', updateFileList);
+        
+        function updateFileList() {
+            fileStrip.innerHTML = '';
+            var files = Array.prototype.slice.call(fileInput.files || [], 0, 5);
+            files.forEach(function(f) {
+                var chip = document.createElement('div');
+                chip.className = 'fa-file-chip';
+                chip.innerHTML = '<i class="fa-solid fa-image"></i><span>' + f.name.replace(/(.{20})..+/, '$1...') + '</span>';
+                fileStrip.appendChild(chip);
+            });
+            uploadBtn.disabled = files.length === 0;
         }
-    }
-
-    var origRenderCamStatus = renderCamStatus;
-    renderCamStatus = function(text, kind) {
-        origRenderCamStatus(text, kind);
-        if (/uploading/i.test(text)) { showProcessingModal(true); updateProcessingProgress(25, 'Uploading images...'); }
-        if (/saving enrollment/i.test(text)) { showProcessingModal(true); updateProcessingProgress(75, 'Processing faces...'); }
-        if (/enrollment saved/i.test(text)) {
-            updateProcessingProgress(100, 'Complete!');
-            setTimeout(function() {
-                showProcessingModal(false);
-                var match = text.match(/\[(\d+)\s*vector/i);
-                showSuccessOverlay(match ? match[1] + ' face sample(s) saved' : '');
-            }, 500);
-        }
-    };
-
-    var origRenderUpStatus = renderUpStatus;
-    renderUpStatus = function(text, kind) {
-        origRenderUpStatus(text, kind);
-        if (/uploading|processing/i.test(text)) { showProcessingModal(true); updateProcessingProgress(30, 'Uploading images...'); }
-        if (/saved successfully/i.test(text)) {
-            updateProcessingProgress(100, 'Complete!');
-            setTimeout(function() {
-                showProcessingModal(false);
-                var match = text.match(/\[(\d+)\s*vector/i);
-                showSuccessOverlay(match ? match[1] + ' face sample(s) saved' : '');
-            }, 500);
-        }
-    };
-
-    function showMultiFaceWarning(show) {
-        var existing = document.querySelector('.fa-multi-face-warning');
-        if (!show) { if (existing) existing.remove(); return; }
-        if (existing) return;
-        var warn = document.createElement('div');
-        warn.className = 'fa-multi-face-warning';
-        warn.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Multiple faces detected - using nearest person';
-        if (videoWrap) videoWrap.appendChild(warn);
-    }
-
-    document.addEventListener('fa:multiFaceWarning', function(e) {
-        showMultiFaceWarning(e.detail && e.detail.count > 1);
-    });
-
-    setStep(1);
-    setCaptures(0);
-})();
-@Html.Raw("</script>")
-@Scripts.Render("~/bundles/adminEnroll")
+        
+        uploadBtn.addEventListener('click', function() {
+            if (!fileInput.files.length) return;
+            document.getElementById('processingModal').classList.remove('d-none');
+            
+            var formData = new FormData();
+            formData.append('__RequestVerificationToken', document.querySelector('#hiddenForm input[name="__RequestVerificationToken"]').value);
+            formData.append('id', '@Model.Id');
+            Array.prototype.forEach.call(fileInput.files, function(f) { formData.append('files', f); });
+            
+            fetch('@Url.Action("UploadEnroll", "Visitors", new { area = "Admin" })', {
+                method: 'POST', body: formData
+            })
+            .then(function(r) { return r.json(); })
+            .then(function(data) {
+                if (data.success) {
+                    document.getElementById('processingModal').classList.add('d-none');
+                    showSuccess(data.vectorsSaved + ' face sample(s) saved');
+                } else { throw new Error(data.message); }
+            })
+            .catch(function(err) {
+                document.getElementById('processingModal').classList.add('d-none');
+                Swal.fire({ icon: 'error', title: 'Upload Failed', text: err.message });
+            });
+        });
+        
+        setStep(1);
+    })();
+    </script>
 }

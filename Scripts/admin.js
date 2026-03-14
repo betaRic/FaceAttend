@@ -82,7 +82,8 @@
        3. Feature: Footer Year
        ---------------------------------------------------------------------- */
     function initFooterYear() {
-        var el = $('#footerYear');
+        // FIX: Use getElementById for clarity - $ returns DOM element but this is more explicit
+        var el = document.getElementById('footerYear');
         if (el) el.textContent = new Date().getFullYear();
     }
 
@@ -165,8 +166,9 @@
             // Ensure element exists and is visible before initializing
             if (!$t.length || !$t[0] || $t.is(':hidden')) return;
             
-            // Check if the table has any rows/columns to prevent DataTables errors
-            if ($t.find('tbody tr').length === 0 && $t.find('thead th').length === 0) return;
+            // FIX: Check headers exist - DataTables needs headers to initialize properly
+            var headerCols = $t.find('thead th').length;
+            if (!headerCols) return;
             
             $t.data('dtInit', 1);
 
@@ -267,17 +269,18 @@
                 opts.dom = opts.dom.replace("<'col-sm-6'B>", "<'col-sm-6'l>");
             }
 
+            // FIX: Guard responsivePriority targets against out-of-range
             if (noSortLast) {
                 opts.columnDefs = [
                     { targets: -1, orderable: false, searchable: false },
                     { responsivePriority: 1, targets: 0 },
-                    { responsivePriority: 2, targets: 1 },
+                    { responsivePriority: 2, targets: headerCols > 1 ? 1 : 0 },
                     { responsivePriority: 10000, targets: -1 }
                 ];
             } else {
                 opts.columnDefs = [
                     { responsivePriority: 1, targets: 0 },
-                    { responsivePriority: 2, targets: 1 },
+                    { responsivePriority: 2, targets: headerCols > 1 ? 1 : 0 },
                     { responsivePriority: 10000, targets: -1 }
                 ];
             }
@@ -303,7 +306,8 @@
        9. Feature: Idle Overlay
        ---------------------------------------------------------------------- */
     function initIdleOverlay() {
-        var overlay = $('#idleOverlay');
+        // FIX: Use getElementById - more explicit and ensures we get the DOM element
+        var overlay = document.getElementById('idleOverlay');
         if (!overlay) return;
 
         var IDLE_MS = 10 * 60 * 1000;
@@ -325,6 +329,7 @@
             t = setTimeout(show, IDLE_MS);
         }
 
+        // FIX: native addEventListener on the DOM element
         overlay.addEventListener('click', reset);
         var events = ['mousemove', 'keydown', 'mousedown', 'touchstart', 'scroll'];
         for (var i = 0; i < events.length; i++) {

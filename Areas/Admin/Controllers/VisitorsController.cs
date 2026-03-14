@@ -308,7 +308,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult EnrollWizard(string employeeId, HttpPostedFileBase image)
         {
-            // Wizard reuses admin-enroll.js, so it posts "employeeId".
+            // Wizard uses shared enrollment component, so it posts "employeeId".
             // For visitors, this is the Visitor.Id value.
             var idText = (employeeId ?? "").Trim();
 

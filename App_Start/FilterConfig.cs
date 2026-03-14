@@ -29,7 +29,8 @@ namespace FaceAttend
             //
             // Matapos mailagay ang cert mula sa 01_CreateInternalCA.ps1,
             // i-uncomment ang linya sa ibaba:
-            filters.Add(new RequireHttpsAttribute());
+            // filters.Add(new RequireHttpsAttribute()); // DEFERRED: Enable only after SSL cert is bound in IIS
         }
     }
 }
+

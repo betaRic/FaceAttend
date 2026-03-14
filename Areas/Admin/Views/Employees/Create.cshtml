@@ -42,35 +42,39 @@
                         Identity
                     </div>
                     <div class="row g-3">
-                        <div class="col-md-3">
+                        <div class="col-md-2">
                             <label class="form-label">Employee ID <span class="text-danger">*</span></label>
-                            @Html.TextBoxFor(m => m.EmployeeId, new {
+                            @Html.TextBoxFor(m => m.EmployeeId, new
+                            {
                                 @class = "form-control",
                                 placeholder = "e.g. EMP-001",
                                 style = "text-transform:uppercase;"
                             })
                             @Html.ValidationMessageFor(m => m.EmployeeId, "", new { @class = "text-danger small mt-1 d-block" })
                         </div>
-                        <div class="col-md-9">
+                        <div class="col-md-4">
                             <label class="form-label">First Name <span class="text-danger">*</span></label>
-                            @Html.TextBoxFor(m => m.FirstName, new {
+                            @Html.TextBoxFor(m => m.FirstName, new
+                            {
                                 @class = "form-control",
                                 placeholder = "First name",
                                 style = "text-transform:uppercase;"
                             })
                             @Html.ValidationMessageFor(m => m.FirstName, "", new { @class = "text-danger small mt-1 d-block" })
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <label class="form-label">Middle Name</label>
-                            @Html.TextBoxFor(m => m.MiddleName, new {
+                            @Html.TextBoxFor(m => m.MiddleName, new
+                            {
                                 @class = "form-control",
                                 placeholder = "Middle name (optional)",
                                 style = "text-transform:uppercase;"
                             })
                         </div>
-                        <div class="col-md-6">
+                        <div class="col-md-3">
                             <label class="form-label">Last Name <span class="text-danger">*</span></label>
-                            @Html.TextBoxFor(m => m.LastName, new {
+                            @Html.TextBoxFor(m => m.LastName, new
+                            {
                                 @class = "form-control",
                                 placeholder = "Last name",
                                 style = "text-transform:uppercase;"
