@@ -1,0 +1,222 @@
+@* 
+    FaceAttend Shared Camera Component
+    Reusable camera with face guide overlay
+    
+    Usage:
+    @Html.Partial("~/Views/Shared/Components/_Camera.cshtml", new CameraViewModel {
+        Id = "enrollCamera",
+        ShowGuide = true,
+        AutoStart = false,
+        GuideType = "circle"
+    })
+*@
+
+@model FaceAttend.ViewModels.CameraViewModel
+
+@{
+    var containerId = Model.Id;
+    var videoId = Model.Id + "Video";
+    var guideId = Model.Id + "Guide";
+    var statusId = Model.Id + "Status";
+}
+
+<div class="camera @(Model.IsActive ? "camera--active" : "") @(Model.CssClass)" 
+     id="@containerId"
+     data-autostart="@(Model.AutoStart ? "true" : "false")"
+     data-camera-options="@Model.CameraOptionsJson">
+    
+    @* Video Element *@
+    <video id="@videoId" 
+           class="camera__video" 
+           autoplay 
+           playsinline 
+           muted
+           @(Model.VideoWidth > 0 ? $"width={Model.VideoWidth}" : "")
+           @(Model.VideoHeight > 0 ? $"height={Model.VideoHeight}" : "")>
+    </video>
+    
+    @* Guide Overlay *@
+    @if (Model.ShowGuide)
+    {
+        <div class="camera__overlay">
+            @if (Model.GuideType == "circle")
+            {
+                <div class="camera__guide" id="@guideId"></div>
+            }
+            else if (Model.GuideType == "oval")
+            {
+                <div class="camera__guide camera__guide--oval" id="@guideId"></div>
+            }
+            else if (Model.GuideType == "rectangle")
+            {
+                <div class="camera__guide camera__guide--rect" id="@guideId"></div>
+            }
+        </div>
+    }
+    
+    @* Status Text *@
+    @if (Model.ShowStatus)
+    {
+        <div class="camera__status" id="@statusId">
+            @Model.InitialStatus
+        </div>
+    }
+    
+    @* Capture Flash Effect *@
+    <div class="camera__flash" id="@containerId-flash"></div>
+</div>
+
+@* Component Styles (inline for portability) *@
+<style>
+#@containerId .camera__guide--oval {
+    border-radius: 50%;
+    width: 50%;
+    height: 65%;
+}
+
+#@containerId .camera__guide--rect {
+    border-radius: var(--radius);
+    width: 60%;
+    height: 70%;
+}
+
+#@containerId .camera__flash {
+    position: absolute;
+    inset: 0;
+    background: white;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.1s;
+}
+
+#@containerId .camera__flash--active {
+    opacity: 0.8;
+}
+</style>
+
+@* Component Script *@
+<script>
+(function() {
+    'use strict';
+    
+    var container = document.getElementById('@containerId');
+    if (!container) return;
+    
+    var video = document.getElementById('@videoId');
+    var guide = document.getElementById('@guideId');
+    var status = document.getElementById('@statusId');
+    var flash = document.getElementById('@containerId-flash');
+    
+    // Camera state
+    var cameraState = {
+        isActive: false,
+        isScanning: false
+    };
+    
+    // Initialize
+    function init() {
+        // Auto-start if requested
+        var autoStart = container.dataset.autostart === 'true';
+        if (autoStart && window.FaceAttend && window.FaceAttend.Camera) {
+            startCamera();
+        }
+        
+        // Expose API on container
+        container.faceCamera = {
+            start: startCamera,
+            stop: stopCamera,
+            capture: captureFrame,
+            setGuideState: setGuideState,
+            setStatus: setStatus,
+            flash: triggerFlash
+        };
+    }
+    
+    function startCamera(options) {
+        if (!window.FaceAttend || !window.FaceAttend.Camera) {
+            console.error('[Camera Component] FaceAttend.Camera not available');
+            return Promise.reject('Camera module not loaded');
+        }
+        
+        var opts = {};
+        try {
+            opts = JSON.parse(container.dataset.cameraOptions || '{}');
+        } catch(e) {}
+        
+        if (options) {
+            Object.assign(opts, options);
+        }
+        
+        return new Promise(function(resolve, reject) {
+            window.FaceAttend.Camera.start(
+                video,
+                opts,
+                function(stream) {
+                    cameraState.isActive = true;
+                    container.classList.add('camera--active');
+                    resolve(stream);
+                },
+                function(err) {
+                    reject(err);
+                }
+            );
+        });
+    }
+    
+    function stopCamera() {
+        if (window.FaceAttend && window.FaceAttend.Camera) {
+            window.FaceAttend.Camera.stop();
+        }
+        cameraState.isActive = false;
+        container.classList.remove('camera--active');
+    }
+    
+    function captureFrame(width, height) {
+        if (!window.FaceAttend || !window.FaceAttend.Camera) {
+            return null;
+        }
+        return window.FaceAttend.Camera.capture(width, height);
+    }
+    
+    function setGuideState(state) {
+        if (!guide) return;
+        
+        guide.classList.remove(
+            'camera__guide--active',
+            'camera__guide--success',
+            'camera__guide--warning'
+        );
+        
+        if (state) {
+            guide.classList.add('camera__guide--' + state);
+        }
+    }
+    
+    function setStatus(text, type) {
+        if (!status) return;
+        
+        status.textContent = text;
+        status.className = 'camera__status';
+        
+        if (type) {
+            status.classList.add('camera__status--' + type);
+        }
+    }
+    
+    function triggerFlash() {
+        if (!flash) return;
+        
+        flash.classList.add('camera__flash--active');
+        setTimeout(function() {
+            flash.classList.remove('camera__flash--active');
+        }, 150);
+    }
+    
+    // Initialize on DOM ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
+</script>

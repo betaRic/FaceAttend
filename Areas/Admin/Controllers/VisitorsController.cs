@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Globalization;
@@ -6,7 +6,6 @@ using System.Linq;
 using System.Text;
 using System.Web;
 using System.Web.Mvc;
-using FaceRecognitionDotNet;
 using FaceAttend.Filters;
 using FaceAttend.Areas.Admin.Models;
 using FaceAttend.Areas.Admin.Helpers;
@@ -186,14 +185,25 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
+        /// <summary>
+        /// DEPRECATED: Use /api/scan/frame instead.
+        /// This endpoint is kept for backward compatibility but will be removed in a future version.
+        /// </summary>
+        [Obsolete("Use /api/scan/frame instead. This endpoint will be removed in v3.0.")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult ScanFrame(HttpPostedFileBase image)
         {
+            // Redirect to unified API
             var result = ScanFramePipeline.Run(image, "v_");
             return Json(result);
         }
 
+        /// <summary>
+        /// DEPRECATED: Use /api/enrollment/enroll instead.
+        /// This endpoint is kept for backward compatibility but will be removed in a future version.
+        /// </summary>
+        [Obsolete("Use /api/enrollment/enroll instead. This endpoint will be removed in v3.0.")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult EnrollFace(int id, HttpPostedFileBase image)
@@ -216,7 +226,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
 
                 var dlib = new DlibBiometrics();
-                // FaceBox ay nested class ng DlibBiometrics — kailangan ng fully-qualified name.
                 DlibBiometrics.FaceBox faceBox;
                 Location faceLocation;
                 string detectErr;
@@ -297,169 +306,18 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
-        private class EnrollCandidate
-        {
-            public double[] Vec { get; set; }
-            public float Liveness { get; set; }
-            public int Area { get; set; }
-        }
-
+        /// <summary>
+        /// DEPRECATED: Use /api/enrollment/enroll instead.
+        /// This endpoint is kept for backward compatibility but will be removed in a future version.
+        /// </summary>
+        [Obsolete("Use /api/enrollment/enroll instead. This endpoint will be removed in v3.0.")]
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult EnrollWizard(string employeeId, HttpPostedFileBase image)
         {
-            // Wizard uses shared enrollment component, so it posts "employeeId".
-            // For visitors, this is the Visitor.Id value.
-            var idText = (employeeId ?? "").Trim();
-
-            int id;
-            if (!int.TryParse(idText, out id) || id <= 0)
-                return Json(new { ok = false, error = "NO_VISITOR_ID" });
-
-            var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
-
-            var files = new List<HttpPostedFileBase>();
-            try
-            {
-                if (Request != null && Request.Files != null && Request.Files.Count > 0)
-                {
-                    for (int i = 0; i < Request.Files.Count; i++)
-                    {
-                        var f = Request.Files[i];
-                        if (f == null || f.ContentLength <= 0) continue;
-
-                        files.Add(f);
-                        if (files.Count >= maxImages) break;
-                    }
-                }
-            }
-            catch
-            {
-                // Ignore and fall back to the single parameter.
-            }
-
-            if (files.Count == 0 && image != null && image.ContentLength > 0)
-                files.Add(image);
-
-            if (files.Count == 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
-
-            foreach (var f in files)
-            {
-                if (f.ContentLength > maxBytes)
-                    return Json(new { ok = false, error = "TOO_LARGE" });
-            }
-
-            var th = (float)ConfigurationService.GetDoubleCached("Biometrics:LivenessThreshold", 0.75);
-
-            var tol = ConfigurationService.GetDouble("Visitors:DlibTolerance",
-                ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
-
-            var candidates = new List<EnrollCandidate>();
-
-            var dlib = new DlibBiometrics();
-            var live = new OnnxLiveness();
-
-            foreach (var f in files)
-            {
-                string path = null;
-                string processedPath = null;
-
-                try
-                {
-                    path = FileSecurityService.SaveTemp(f, "v_", maxBytes);
-
-                    bool isProcessed;
-                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
-
-                    // FaceBox ay nested class ng DlibBiometrics — kailangan ng fully-qualified name.
-                    DlibBiometrics.FaceBox faceBox;
-                    Location faceLocation;
-                    string detectErr;
-                    if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLocation, out detectErr))
-                        continue;
-
-                    var scored = live.ScoreFromFile(processedPath, faceBox);
-                    if (!scored.Ok) continue;
-
-                    var p = scored.Probability ?? 0f;
-                    if (p < th) continue;
-
-                    string encErr;
-                    double[] vec;
-                    if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr) || vec == null)
-                        continue;
-
-                    var area = Math.Max(1, faceBox.Width * faceBox.Height);
-
-                    candidates.Add(new EnrollCandidate
-                    {
-                        Vec = vec,
-                        Liveness = p,
-                        Area = area
-                    });
-                }
-                catch
-                {
-                    // Ignore a single bad frame.
-                }
-                finally
-                {
-                    ImagePreprocessor.Cleanup(processedPath, path);
-                    FileSecurityService.TryDelete(path);
-                }
-            }
-
-            if (candidates.Count == 0)
-                return Json(new { ok = false, error = "NO_VALID_FACE" });
-
-            // Pick best (highest liveness, then largest face box).
-            var best = candidates
-                .OrderByDescending(x => x.Liveness)
-                .ThenByDescending(x => x.Area)
-                .First();
-
-            using (var db = new FaceAttendDBEntities())
-            {
-                var v = db.Visitors.FirstOrDefault(x => x.Id == id);
-                if (v == null) return Json(new { ok = false, error = "VISITOR_NOT_FOUND" });
-
-                var entries = VisitorFaceIndex.GetEntries(db);
-
-                // Duplicate check against other visitors using all candidates.
-                foreach (var c in candidates)
-                {
-                    foreach (var e in entries)
-                    {
-                        if (e.VisitorId == id) continue;
-
-                        var dist = DlibBiometrics.Distance(c.Vec, e.Vec);
-                        if (dist <= tol)
-                        {
-                            return Json(new
-                            {
-                                ok = false,
-                                error = "FACE_ALREADY_ENROLLED",
-                                matchVisitorId = e.VisitorId,
-                                matchName = e.Name,
-                                distance = dist
-                            });
-                        }
-                    }
-                }
-
-                var bytes = DlibBiometrics.EncodeToBytes(best.Vec);
-                v.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(bytes);
-                db.SaveChanges();
-
-                VisitorFaceIndex.Invalidate();
-            }
-
-            return Json(new { ok = true, liveness = best.Liveness });
+            // Redirect logic to unified API
+            return RedirectToAction("Enroll", "Enrollment", new { area = "", employeeId });
         }
-
-
 
         [HttpGet]
         public ActionResult Logs(string from, string to, int? officeId, string q, bool? knownOnly)
@@ -584,6 +442,11 @@ namespace FaceAttend.Areas.Admin.Controllers
             return RedirectToAction("Logs");
         }
 
-        // CSV helpers moved to FaceAttend.Services.Helpers.CsvHelper
+        private class EnrollCandidate
+        {
+            public double[] Vec { get; set; }
+            public float Liveness { get; set; }
+            public int Area { get; set; }
+        }
     }
 }

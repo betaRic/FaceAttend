@@ -1,5 +1,5 @@
 /**
- * FaceAttend — Unified Enrollment UI Controller
+ * FaceAttend - Unified Enrollment UI Controller
  * Scripts/enrollment-ui.js
  *
  * REQUIRES: Scripts/modules/enrollment-core.js loaded first
@@ -7,7 +7,7 @@
  * KEY DESIGN RULE:
  *   Camera does NOT start on page load. #enrollRoot lives inside a hidden
  *   .fa-pane. Camera only starts when window.FaceAttendEnrollment.start()
- *   is called — which Enroll.cshtml triggers from showLive().
+ *   is called - which Enroll.cshtml triggers from showLive().
  *
  * data-* attributes on #enrollRoot:
  *   data-employee-id   string   employee / visitor ID
@@ -82,6 +82,19 @@
 
     enrollment.elements.cam = ui.video;
 
+    // getEncodings() - returns base64 face encodings from all captured good frames.
+    // Called by mobile wizard submitEnrollment() to build the server POST payload.
+    // enrollment-core.js stores the server-returned encoding on each goodFrame.
+    enrollment.getEncodings = function () {
+        var result = [];
+        for (var i = 0; i < this.goodFrames.length; i++) {
+            var frame = this.goodFrames[i];
+            var enc = frame.encoding || frame.enc || null;
+            if (enc) result.push(enc);
+        }
+        return result;
+    };
+
     // ── UI helpers ─────────────────────────────────────────────────────────────
     function dark() {
         return cfg.mode === 'mobile'
@@ -148,12 +161,12 @@
         }
     }
 
-    // ── Camera start / stop — called by view pane controller ──────────────────
+    // ── Camera start / stop - called by view pane controller ──────────────────
     function startCamera() {
         if (_running) return;
         _running      = true;
         _errShownOnce = false;
-        setStatus('Starting camera…', 'info');
+        setStatus('Starting camera...', 'info');
 
         enrollment.startCamera(ui.video)
             .then(function () {
@@ -189,6 +202,12 @@
     enrollment.callbacks.onCaptureProgress = function (current, target) {
         updateProgress(current, target);
         updateDots();
+        // Forward to mobile wizard callback if present
+        if (typeof window.enrollCallbacks === 'object' &&
+            window.enrollCallbacks !== null &&
+            typeof window.enrollCallbacks.onCaptureProgress === 'function') {
+            window.enrollCallbacks.onCaptureProgress(current);
+        }
     };
 
     enrollment.callbacks.onAngleUpdate = function (next) {
@@ -227,7 +246,7 @@
     if (ui.confirmBtn) {
         ui.confirmBtn.addEventListener('click', function () {
             if (enrollment.goodFrames.length < cfg.minFrames) return;
-            showProcessing(true, 'Processing enrollment…');
+            showProcessing(true, 'Processing enrollment...');
             enrollment.performEnrollment();
         });
     }
@@ -238,19 +257,19 @@
             enrollment.passHist   = [];
             enrollment.enrolled   = false;
             enrollment.enrolling  = false;
-            updateProgress(0, 8);
+            updateProgress(0, cfg.minFrames || 8);
             updateDots();
             if (ui.confirmBtn) ui.confirmBtn.classList.add('enroll-hidden');
             enrollment.startAutoEnrollment();
             if (typeof enrollment.getNextAnglePrompt === 'function')
                 showAngle(enrollment.getNextAnglePrompt());
-            setStatus('Retaking — follow the angle prompts.', 'info');
+            setStatus('Retaking - follow the angle prompts.', 'info');
         });
     }
 
-    // ── Init — UI state only, camera NOT started ───────────────────────────────
-    updateProgress(0, 8);
-    setStatus('Waiting for camera…', 'info');
+    // ── Init - UI state only, camera NOT started ───────────────────────────────
+    updateProgress(0, cfg.minFrames || 8);
+    setStatus('Waiting for camera...', 'info');
     if (ui.confirmBtn) ui.confirmBtn.classList.add('enroll-hidden');
     showAngle({ bucket: 'center', prompt: 'Look straight at the camera', icon: 'fa-circle-dot' });
 

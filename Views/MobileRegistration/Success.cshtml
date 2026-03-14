@@ -6,11 +6,12 @@
 }
 
 @section styles {
+    @Styles.Render("~/Content/facescan-v2")
     <style>
         .success-icon {
             width: 100px;
             height: 100px;
-            background: linear-gradient(135deg, var(--accent-success), #16a34a);
+            background: linear-gradient(135deg, var(--color-success), #16a34a);
             border-radius: 50%;
             display: flex;
             align-items: center;
@@ -52,8 +53,8 @@
         }
         
         .status-item:last-child { margin-bottom: 0; }
-        .status-item i { color: var(--accent-success); }
-        .status-item.pending i { color: var(--accent-primary); }
+        .status-item i { color: var(--color-success); }
+        .status-item.pending i { color: var(--color-primary); }
         
         .check-status {
             margin-bottom: 30px;
@@ -144,7 +145,7 @@ else
                         if (data.isApproved) {
                             clearInterval(checkInterval);
                             document.querySelector('.check-status').innerHTML = 
-                                '<i class="fa-solid fa-check-circle" style="color: var(--accent-success);"></i> Approved! You can now use the kiosk.';
+                                '<i class="fa-solid fa-check-circle" style="color: var(--color-success);"></i> Approved! You can now use the kiosk.';
                         } else if (data.message) {
                             document.querySelector('.check-status').innerHTML = data.message;
                         }

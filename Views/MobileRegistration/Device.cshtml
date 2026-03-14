@@ -5,6 +5,7 @@
 }
 
 @section styles {
+    @Styles.Render("~/Content/facescan-v2")
     <style>
         /* Page Header */
         .page-header {
@@ -15,7 +16,7 @@
         .page-header h1 {
             font-size: 1.5rem;
             font-weight: 700;
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
             margin-bottom: 0.5rem;
             display: flex;
             align-items: center;
@@ -24,7 +25,7 @@
         }
         
         .page-header p {
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
             font-size: 0.9375rem;
         }
         
@@ -56,12 +57,12 @@
         }
         
         .step-dot.completed {
-            background: var(--mobile-accent-success);
+            background: var(--color-success);
             color: white;
         }
         
         .step-dot.active {
-            background: var(--mobile-accent);
+            background: var(--color-primary);
             color: white;
             box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
         }
@@ -74,14 +75,14 @@
         }
         
         .step-line.completed {
-            background: var(--mobile-accent-success);
+            background: var(--color-success);
         }
         
         /* Employee Card */
         .employee-card {
             background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
             border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: var(--mobile-radius-lg);
+            border-radius: var(--radius-lg);
             padding: 1.25rem;
             margin-bottom: 1.25rem;
             display: flex;
@@ -94,7 +95,7 @@
             width: 56px;
             height: 56px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--mobile-accent) 0%, #2563eb 100%);
+            background: linear-gradient(135deg, var(--color-primary) 0%, #2563eb 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -109,12 +110,12 @@
         .employee-name {
             font-weight: 700;
             font-size: 1.0625rem;
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
             margin-bottom: 0.25rem;
         }
         
         .employee-meta {
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
             font-size: 0.875rem;
         }
         
@@ -128,12 +129,12 @@
             border-radius: 9999px;
             font-size: 0.75rem;
             font-weight: 600;
-            color: var(--mobile-accent-success);
+            color: var(--color-success);
         }
         
         /* Alert Cards */
         .alert-card {
-            border-radius: var(--mobile-radius);
+            border-radius: var(--radius-md);
             padding: 1rem 1.25rem;
             margin-bottom: 1.25rem;
             display: flex;
@@ -164,12 +165,12 @@
         
         .alert-card.warning .alert-icon {
             background: rgba(245, 158, 11, 0.15);
-            color: var(--mobile-accent-warning);
+            color: var(--color-warning);
         }
         
         .alert-card.info .alert-icon {
             background: rgba(59, 130, 246, 0.15);
-            color: var(--mobile-accent);
+            color: var(--color-primary);
         }
         
         .alert-content { flex: 1; }
@@ -180,11 +181,11 @@
             margin-bottom: 0.375rem;
         }
         
-        .alert-card.warning .alert-title { color: var(--mobile-accent-warning); }
-        .alert-card.info .alert-title { color: var(--mobile-accent); }
+        .alert-card.warning .alert-title { color: var(--color-warning); }
+        .alert-card.info .alert-title { color: var(--color-primary); }
         
         .alert-text {
-            color: var(--mobile-text-secondary);
+            color: var(--text-secondary);
             font-size: 0.875rem;
             line-height: 1.5;
         }
@@ -193,7 +194,7 @@
         .device-preview {
             background: rgba(15, 23, 42, 0.6);
             border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: var(--mobile-radius);
+            border-radius: var(--radius-md);
             padding: 1.5rem;
             margin-bottom: 1.25rem;
             text-align: center;
@@ -211,7 +212,7 @@
             align-items: center;
             justify-content: center;
             font-size: 2.5rem;
-            color: var(--mobile-accent);
+            color: var(--color-primary);
         }
         
         .device-icon.pulse {
@@ -221,12 +222,12 @@
         .device-preview h3 {
             font-size: 1.0625rem;
             font-weight: 600;
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
             margin-bottom: 0.25rem;
         }
         
         .device-preview p {
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
             font-size: 0.875rem;
         }
         
@@ -234,7 +235,7 @@
         .form-card {
             background: rgba(15, 23, 42, 0.4);
             border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: var(--mobile-radius);
+            border-radius: var(--radius-md);
             padding: 1.25rem;
             animation: slideUp 0.4s ease 0.3s both;
         }
@@ -253,16 +254,16 @@
             gap: 0.375rem;
             font-size: 0.9375rem;
             font-weight: 500;
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
             margin-bottom: 0.625rem;
         }
         
         .form-label .required {
-            color: var(--mobile-accent-error);
+            color: var(--color-error);
         }
         
         .form-label .hint {
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
             font-size: 0.8125rem;
             font-weight: 400;
         }
@@ -276,7 +277,7 @@
             left: 1rem;
             top: 50%;
             transform: translateY(-50%);
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
             font-size: 1rem;
             transition: color 0.2s;
         }
@@ -287,7 +288,7 @@
             background: rgba(0, 0, 0, 0.3);
             border: 2px solid rgba(255, 255, 255, 0.1);
             border-radius: 12px;
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
             font-size: 1rem;
             font-weight: 500;
             transition: all 0.2s ease;
@@ -295,22 +296,22 @@
         
         .input-wrapper input:focus {
             outline: none;
-            border-color: var(--mobile-accent);
+            border-color: var(--color-primary);
             background: rgba(0, 0, 0, 0.4);
         }
         
         .input-wrapper input:focus + i,
         .input-wrapper input:focus ~ i {
-            color: var(--mobile-accent);
+            color: var(--color-primary);
         }
         
         .input-wrapper input.valid {
-            border-color: var(--mobile-accent-success);
+            border-color: var(--color-success);
             background: rgba(34, 197, 94, 0.05);
         }
         
         .input-wrapper input.invalid {
-            border-color: var(--mobile-accent-error);
+            border-color: var(--color-error);
             background: rgba(239, 68, 68, 0.05);
         }
         
@@ -324,15 +325,15 @@
         }
         
         .validation-message.error {
-            color: var(--mobile-accent-error);
+            color: var(--color-error);
         }
         
         .validation-message.success {
-            color: var(--mobile-accent-success);
+            color: var(--color-success);
         }
         
         .input-hint {
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
             font-size: 0.8125rem;
             margin-top: 0.5rem;
             line-height: 1.4;
@@ -348,7 +349,7 @@
             border: 1px solid rgba(34, 197, 94, 0.15);
             border-radius: 8px;
             font-size: 0.8125rem;
-            color: var(--mobile-accent-success);
+            color: var(--color-success);
             margin-bottom: 1rem;
         }
         
@@ -381,7 +382,7 @@
         }
         
         .btn-modern.primary {
-            background: linear-gradient(135deg, var(--mobile-accent) 0%, #2563eb 100%);
+            background: linear-gradient(135deg, var(--color-primary) 0%, #2563eb 100%);
             color: white;
             box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
         }
@@ -398,12 +399,12 @@
         .btn-modern.secondary {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--mobile-text-secondary);
+            color: var(--text-secondary);
         }
         
         .btn-modern.secondary:hover {
             background: rgba(255, 255, 255, 0.1);
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
         }
         
         /* Animations */
@@ -440,7 +441,7 @@
         }
         
         .existing-device-card i {
-            color: var(--mobile-accent-warning);
+            color: var(--color-warning);
             font-size: 1.25rem;
         }
         
@@ -450,13 +451,13 @@
         
         .existing-device-card .device-name {
             font-weight: 600;
-            color: var(--mobile-text-primary);
+            color: var(--text-primary);
             font-size: 0.9375rem;
         }
         
         .existing-device-card .device-status {
             font-size: 0.8125rem;
-            color: var(--mobile-text-muted);
+            color: var(--text-muted);
         }
     </style>
 }
@@ -587,7 +588,7 @@ else if (Model.IsNewEmployee)
     
     <div class="security-badge">
         <i class="fa-solid fa-lock"></i>
-        <span>Secure connection • Anti-XSS protected</span>
+        <span>Secure connection - Anti-XSS protected</span>
     </div>
 </div>
 

@@ -1,0 +1,76 @@
+@model FaceAttend.ViewModels.FileUploaderViewModel
+@*
+    FileUploader Component - Drag-and-drop file upload
+    
+    USAGE:
+    @Html.Partial("~/Views/Shared/Components/_FileUploader.cshtml", new FileUploaderViewModel {
+        Id = "employeeUpload",
+        Accept = "image/*",
+        MaxFiles = 5,
+        MaxSizeMB = 10,
+        AllowedTypes = new[] { ".jpg", ".jpeg", ".png" },
+        OnFilesSelected = "handleFilesSelected",
+        Title = "Drop photos here",
+        Description = "Select clear face photos"
+    })
+    
+    JAVASCRIPT:
+    function handleFilesSelected(files) {
+        console.log('Selected:', files);
+    }
+    
+    // Or use the component API:
+    FaceAttend.UI.Uploader.init('employeeUpload', {
+        maxFiles: 5,
+        onFilesSelected: function(files) { ... }
+    });
+*@
+
+@{
+    var containerClass = "fa-uploader";
+    if (Model.Variant == UploaderVariant.Compact) {
+        containerClass += " fa-uploader--compact";
+    } else if (Model.Variant == UploaderVariant.Borderless) {
+        containerClass += " fa-uploader--borderless";
+    }
+    
+    var acceptAttr = string.Join(",", Model.AllowedTypes);
+}
+
+<div class="@containerClass" id="@Model.Id" 
+     data-max-files="@Model.MaxFiles"
+     data-max-size="@(Model.MaxSizeMB * 1024 * 1024)"
+     data-accept="@acceptAttr"
+     data-on-selected="@Model.OnFilesSelected"
+     data-on-error="@Model.OnError">
+    
+    <div class="fa-uploader__dropzone">
+        <input type="file" 
+               class="fa-uploader__input" 
+               id="@(Model.Id)_input"
+               accept="@acceptAttr" 
+               @(Model.Multiple ? "multiple" : "")
+               aria-label="File upload" />
+        
+        <div class="fa-uploader__icon">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+        </div>
+        <div class="fa-uploader__title">@Model.Title</div>
+        <div class="fa-uploader__desc">@Model.Description</div>
+        <div class="fa-uploader__rules">
+            <span><i class="fa-solid fa-file-image"></i> @string.Join(", ", Model.AllowedTypes)</span>
+            @if (Model.MaxFiles > 1)
+            {
+                <span><i class="fa-solid fa-images"></i> Up to @Model.MaxFiles files</span>
+            }
+            else
+            {
+                <span><i class="fa-solid fa-image"></i> 1 file</span>
+            }
+            <span><i class="fa-solid fa-weight-hanging"></i> Max @Model.MaxSizeMB MB</span>
+        </div>
+    </div>
+    
+    <div class="fa-uploader__files" id="@(Model.Id)_files"></div>
+    <div class="fa-uploader__error" id="@(Model.Id)_error"></div>
+</div>

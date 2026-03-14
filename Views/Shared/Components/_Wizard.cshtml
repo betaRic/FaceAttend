@@ -1,0 +1,61 @@
+@model FaceAttend.ViewModels.WizardViewModel
+@*
+    Wizard Component - Multi-step navigation indicator
+    
+    USAGE:
+    @Html.Partial("~/Views/Shared/Components/_Wizard.cshtml", new WizardViewModel {
+        Steps = new[] { "Method", "Capture", "Done" },
+        CurrentStep = 2,
+        Size = WizardSize.Medium,  // Small, Medium, Large
+        Variant = WizardVariant.Default  // Default, Minimal
+    })
+    
+    JAVASCRIPT:
+    FaceAttend.UI.Wizard.init('wizardId', {
+        steps: ['Method', 'Capture', 'Done'],
+        onStepChange: function(step) { console.log('Step:', step); }
+    });
+*@
+
+@{
+    var containerClass = "fa-wizard";
+    if (Model.Size != WizardSize.Medium) {
+        containerClass += " fa-wizard--" + Model.Size.ToString().ToLower();
+    }
+    if (Model.Variant != WizardVariant.Default) {
+        containerClass += " fa-wizard--" + Model.Variant.ToString().ToLower();
+    }
+}
+
+<div class="@containerClass" id="@Model.Id" data-current="@Model.CurrentStep">
+    @for (int i = 0; i < Model.Steps.Length; i++)
+    {
+        var stepNum = i + 1;
+        var isActive = stepNum == Model.CurrentStep;
+        var isDone = stepNum < Model.CurrentStep;
+        var stepClass = "fa-wizard__step";
+        if (isActive) { stepClass += " is-active"; }
+        if (isDone) { stepClass += " is-done"; }
+        
+        <div class="@stepClass" data-step="@stepNum">
+            <span class="fa-wizard__number">
+                @if (isDone)
+                {
+                    <i class="fa-solid fa-check"></i>
+                }
+                else
+                {
+                    @stepNum
+                }
+            </span>
+            <span class="fa-wizard__label">@Model.Steps[i]</span>
+        </div>
+        
+        if (i < Model.Steps.Length - 1)
+        {
+            var dividerClass = "fa-wizard__divider";
+            if (isDone) { dividerClass += " is-done"; }
+            <div class="@dividerClass"></div>
+        }
+    }
+</div>

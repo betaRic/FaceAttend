@@ -1,6 +1,6 @@
 /* ==========================================================================
    FaceAttend Admin Scripts
-   ES5 Compatible — WebGrease Safe
+   ES5 Compatible - WebGrease Safe
    ========================================================================== */
 
 (function () {
@@ -15,7 +15,7 @@
         else fn();
     }
 
-    // querySelector shorthand — returns a NATIVE DOM element (not jQuery)
+    // querySelector shorthand - returns a NATIVE DOM element (not jQuery)
     function $(sel) { return document.querySelector(sel); }
     function $$(sel) {
         var nl = document.querySelectorAll(sel);
@@ -153,7 +153,7 @@
     }
 
     /* ------------------------------------------------------------------
-       8. Confirm Links  [data-confirm="…"]
+       8. Confirm Links  [data-confirm="..."]
        Intercepts anchor + form submit buttons to show a dialog first.
     ------------------------------------------------------------------ */
 
@@ -162,7 +162,7 @@
             var el = e.target && e.target.closest('[data-confirm]');
             if (!el) return;
 
-            // Already confirmed in this click cycle — let it through
+            // Already confirmed in this click cycle - let it through
             if (el.dataset.confirmed === '1') {
                 el.dataset.confirmed = '0';
                 return;
@@ -193,16 +193,16 @@
     /* ------------------------------------------------------------------
        9. DataTables  (.js-datatable)
 
-       BUG FIX — "Cannot read properties of undefined (reading 'display')"
+       BUG FIX - "Cannot read properties of undefined (reading 'display')"
        Root cause: DataTables Responsive internally accesses aoColumns[idx]
        where idx may be out of range when the table has fewer columns than
        the plugin's column-priority configuration expects.
 
        Fixes applied:
-         a) Responsive is DISABLED for tables with ≤ 2 columns — the plugin
+         a) Responsive is DISABLED for tables with ≤ 2 columns - the plugin
             has no meaningful work to do on narrow tables and always crashes.
          b) responsivePriority targets are clamped to valid column indices.
-         c) requestIdleCallback removed — it caused DataTables to initialise
+         c) requestIdleCallback removed - it caused DataTables to initialise
             after the DOM was mutated by navigation, producing stale column
             counts and the same crash.
          d) Tables that are hidden at init time are deferred via a
@@ -245,9 +245,9 @@
                 searchDelay: 200,
                 language: {
                     search:            '',
-                    searchPlaceholder: 'Search…',
+                    searchPlaceholder: 'Search...',
                     emptyTable:        '<span class="text-muted">No records found</span>',
-                    info:              '_START_–_END_ of _TOTAL_',
+                    info:              '_START_-_END_ of _TOTAL_',
                     infoEmpty:         '0 records',
                     infoFiltered:      '(filtered from _MAX_)',
                     paginate: {
@@ -290,7 +290,7 @@
                     buttons: [{ extend: 'csv', text: '<i class="fa-solid fa-file-csv fa-xs"></i>', titleAttr: 'Export CSV', className: 'btn btn-sm btn-outline-secondary' }]
                 };
             } else {
-                // No Buttons plugin — remove B from DOM string
+                // No Buttons plugin - remove B from DOM string
                 opts.dom = opts.dom.replace("<'col-sm-6'B>", "<'col-sm-6'l>");
             }
 
@@ -314,7 +314,7 @@
                 ];
             }
 
-            // ── FIX (c): Synchronous init — no requestIdleCallback ─────────
+            // ── FIX (c): Synchronous init - no requestIdleCallback ─────────
             // requestIdleCallback fires after navigation mutations, by which
             // time the table DOM may have changed, causing stale column counts.
             try {
@@ -336,7 +336,7 @@
     /* ------------------------------------------------------------------
        10. Idle Overlay
        Shows a dim overlay after 10 minutes of inactivity.
-       BUG FIX: Was using $() jQuery wrapper — switched to getElementById
+       BUG FIX: Was using $() jQuery wrapper - switched to getElementById
        so .classList / .addEventListener work correctly.
     ------------------------------------------------------------------ */
 
@@ -449,7 +449,7 @@
                     return;
                 }
                 btnMyLoc.disabled = true;
-                btnMyLoc.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Locating…';
+                btnMyLoc.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i>Locating...';
                 navigator.geolocation.getCurrentPosition(
                     function (pos) {
                         var ll = L.latLng(pos.coords.latitude, pos.coords.longitude);
@@ -528,8 +528,8 @@
 
     /* ------------------------------------------------------------------
        13. Keyboard Shortcuts
-       Ctrl+/ — focus DataTables search input on the current page
-       Escape  — dismiss any open toastr notifications
+       Ctrl+/ - focus DataTables search input on the current page
+       Escape  - dismiss any open toastr notifications
     ------------------------------------------------------------------ */
 
     function initKeyboardShortcuts() {
@@ -590,14 +590,14 @@
             if (!href || href === '#') return;
 
             // Exact match or current path starts with the link path
-            if (path === href || (href.length > 7 &&  (path + '/').indexOf(href + '/') === 0)) {
+            if (path === href || (href.length > 7 && (path + '/').indexOf(href + '/') === 0)) {
                 link.classList.add('active');
             }
         });
     }
 
     /* ------------------------------------------------------------------
-       16. Boot — initialise all features
+       16. Boot - initialise all features
     ------------------------------------------------------------------ */
 
     onReady(function () {
@@ -616,7 +616,7 @@
     });
 
     /* ------------------------------------------------------------------
-       17. Public API — window.ui
+       17. Public API - window.ui
        Used by inline page scripts via ui.toast(), ui.confirm(), etc.
     ------------------------------------------------------------------ */
 

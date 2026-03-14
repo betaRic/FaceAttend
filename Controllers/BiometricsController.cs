@@ -14,7 +14,8 @@ using FaceAttend.Services.Security;
 namespace FaceAttend.Controllers
 {
     /// <summary>
-    /// SAGUPA: Admin controller para sa biometric operations (enrollment, scanning).
+    /// DEPRECATED: This controller is being phased out in favor of unified API controllers.
+    /// Use Controllers/Api/ScanController.cs and Controllers/Api/EnrollmentController.cs instead.
     /// 
     /// PHASE 1 IMPLEMENTATION: Diversity-aware enrollment with pose bucketing.
     /// 
@@ -23,6 +24,7 @@ namespace FaceAttend.Controllers
     ///   Anti-forgery token validation - proteksyon laban sa CSRF attacks
     /// </summary>
     [AdminAuthorize]
+    [Obsolete("Use /api/scan and /api/enrollment endpoints instead. This controller will be removed in v3.0.")]
     public class BiometricsController : Controller
     {
         [HttpPost]

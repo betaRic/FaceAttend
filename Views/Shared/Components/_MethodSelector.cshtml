@@ -1,0 +1,66 @@
+@model FaceAttend.ViewModels.MethodSelectorViewModel
+@*
+    MethodSelector Component - Selection cards for enrollment methods
+    
+    USAGE:
+    @Html.Partial("~/Views/Shared/Components/_MethodSelector.cshtml", new MethodSelectorViewModel {
+        Id = "enrollMethods",
+        Methods = new List<MethodOption> {
+            new MethodOption { 
+                Id = "live", 
+                Icon = "fa-camera", 
+                Title = "Live Camera", 
+                Description = "Real-time face capture with liveness detection",
+                Recommended = true 
+            },
+            new MethodOption { 
+                Id = "upload", 
+                Icon = "fa-cloud-arrow-up", 
+                Title = "Upload Photos", 
+                Description = "Choose existing photos from your device" 
+            }
+        },
+        OnSelect = "onMethodSelect"
+    })
+    
+    JAVASCRIPT:
+    function onMethodSelect(methodId) {
+        if (methodId === 'live') {
+            showLiveCapture();
+        } else if (methodId === 'upload') {
+            showUploadForm();
+        }
+    }
+*@
+
+<div class="fa-method-grid" id="@Model.Id">
+    @foreach (var method in Model.Methods)
+    {
+        <div class="fa-method-card" 
+             role="button"
+             tabindex="0"
+             data-method="@method.Id"
+             onclick="@Model.OnSelect('@method.Id')"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();@Model.OnSelect('@method.Id')}">
+            
+            <div class="fa-method__icon">
+                <i class="fa-solid @method.Icon"></i>
+            </div>
+            <div class="fa-method__title">@method.Title</div>
+            <div class="fa-method__desc">@method.Description</div>
+            
+            @if (method.Recommended)
+            {
+                <span class="fa-method__badge">
+                    <i class="fa-solid fa-star fa-xs"></i> Recommended
+                </span>
+            }
+            else if (!string.IsNullOrEmpty(method.Badge))
+            {
+                <span class="fa-method__badge">
+                    @method.Badge
+                </span>
+            }
+        </div>
+    }
+</div>

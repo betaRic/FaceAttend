@@ -2,7 +2,7 @@
 
 @{
     Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
-    ViewBag.Title = "Enroll Visitor Face — " + Model.Name;
+    ViewBag.Title = "Enroll Visitor Face - " + Model.Name;
 
     var isEnrolled = !string.IsNullOrEmpty(Model.FaceEncodingBase64);
     var initials = "";
@@ -11,26 +11,30 @@
 }
 
 @section styles{
-    <link rel="stylesheet" href="~/Content/enrollment.css" asp-append-version="true" />
+    @Styles.Render("~/Content/facescan-v2")
     <style>
         /* Page-specific styles */
         .fa-enroll-page { padding: 1.25rem 0; }
+        
         .fa-hero {
             display: flex; align-items: center; gap: 1rem;
             background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
             padding: 1rem 1.25rem; margin-bottom: 1rem;
             box-shadow: 0 1px 3px rgba(0,0,0,.04);
         }
+        
         .fa-avatar {
             width: 56px; height: 56px; border-radius: 50%;
             background: linear-gradient(135deg, #0d6efd, #0a58ca);
             color: #fff; font-size: 1.25rem; font-weight: 700;
             display: grid; place-items: center; flex-shrink: 0;
         }
+        
         .fa-hero-info { flex: 1; min-width: 0; }
         .fa-hero-name { font-weight: 700; font-size: 1.15rem; margin-bottom: .25rem; }
         .fa-hero-meta { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .85rem; color: #64748b; }
         .fa-hero-actions { display: flex; gap: .5rem; }
+        
         .fa-status-badge {
             display: inline-flex; align-items: center; gap: .35rem;
             padding: .35rem .65rem; border-radius: 999px; font-size: .78rem; font-weight: 600;
@@ -38,88 +42,10 @@
         .fa-status-badge.enrolled { background: #d1fae5; color: #065f46; }
         .fa-status-badge.not-enrolled { background: #fee2e2; color: #991b1b; }
 
-        /* Step indicator */
-        .fa-stepbar {
-            display: flex; align-items: center; justify-content: center;
-            gap: .5rem; margin-bottom: 1.25rem;
-        }
-        .fa-step {
-            display: flex; align-items: center; gap: .4rem;
-            padding: .45rem .7rem; border-radius: 999px;
-            background: #f1f5f9; color: #64748b; font-size: .85rem;
-            transition: all .2s ease;
-        }
-        .fa-step.active { background: #0d6efd; color: #fff; box-shadow: 0 6px 20px rgba(13,110,253,.25); }
-        .fa-step.done { background: #198754; color: #fff; }
-        .fa-step-num {
-            width: 22px; height: 22px; border-radius: 50%;
-            background: rgba(0,0,0,.15); display: grid; place-items: center;
-            font-size: .72rem; font-weight: 700;
-        }
-        .fa-step-divider { width: 32px; height: 2px; background: #e2e8f0; border-radius: 2px; }
-        .fa-step-divider.done { background: #198754; }
-
-        /* Method selection cards */
-        .fa-method-grid {
-            display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 1rem; max-width: 720px; margin: 0 auto;
-        }
-        .fa-method-card {
-            position: relative; border: 2px solid #e2e8f0; border-radius: 16px;
-            padding: 1.25rem; text-align: center; cursor: pointer;
-            transition: all .2s ease; background: #fff;
-        }
-        .fa-method-card:hover { border-color: #94a3b8; transform: translateY(-2px); box-shadow: 0 10px 25px rgba(0,0,0,.06); }
-        .fa-method-icon { width: 56px; height: 56px; border-radius: 14px; background: linear-gradient(135deg, #f8fafc, #e2e8f0); color: #0d6efd; display: grid; place-items: center; font-size: 1.5rem; margin: 0 auto .75rem; }
-        .fa-method-title { font-weight: 700; margin-bottom: .35rem; }
-        .fa-method-desc { font-size: .82rem; color: #64748b; line-height: 1.35; }
-        .fa-method-rec { position: absolute; top: 10px; right: 10px; background: #0d6efd; color: #fff; font-size: .65rem; font-weight: 600; padding: .2rem .5rem; border-radius: 999px; display: flex; align-items: center; }
-
-        /* Success overlay */
-        .fa-success-overlay {
-            position: fixed; inset: 0; background: rgba(255,255,255,.95);
-            display: grid; place-items: center; z-index: 9999;
-            animation: fadeIn .3s ease;
-        }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-        .fa-success-content { text-align: center; padding: 2rem; }
-        .fa-success-icon { font-size: 5rem; color: #198754; margin-bottom: 1rem; }
-        .fa-success-title { font-size: 1.75rem; font-weight: 700; margin-bottom: .5rem; }
-        .fa-success-message { color: #64748b; margin-bottom: 1.5rem; }
-        .fa-success-actions { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; }
-
-        /* Upload pane */
-        .fa-dropzone {
-            border: 2px dashed #cbd5e1; border-radius: 16px;
-            padding: 2rem; text-align: center; cursor: pointer;
-            transition: all .2s ease;
-        }
-        .fa-dropzone:hover, .fa-dropzone.drag-over { border-color: #0d6efd; background: #f8fafc; }
-        .fa-dropzone-icon { font-size: 3rem; color: #94a3b8; margin-bottom: 1rem; }
-        .fa-dropzone-title { font-weight: 600; margin-bottom: .5rem; }
-        .fa-dropzone-desc { color: #64748b; font-size: .9rem; margin-bottom: 1rem; }
-        .fa-dropzone-rules { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; font-size: .78rem; color: #94a3b8; }
-        .fa-file-strip { display: flex; gap: .5rem; flex-wrap: wrap; margin-top: 1rem; }
-        .fa-file-chip { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 8px; padding: .4rem .7rem; font-size: .85rem; display: flex; align-items: center; gap: .4rem; }
-
-        /* Pane visibility */
-        .fa-pane { display: none; }
-        .fa-pane.active { display: block; animation: slideIn .25s ease; }
-        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-
-        .fa-back-btn { background: #f1f5f9; border: none; border-radius: 8px; padding: .5rem 1rem; font-size: .85rem; color: #475569; cursor: pointer; transition: all .2s ease; }
-        .fa-back-btn:hover { background: #e2e8f0; }
-
-        /* Processing modal */
-        .fa-processing-modal {
-            position: fixed; inset: 0; background: rgba(255,255,255,.95);
-            display: grid; place-items: center; z-index: 10000;
-        }
-        .fa-processing-content { text-align: center; padding: 2rem; max-width: 400px; }
-        .fa-processing-spinner { font-size: 3rem; color: #0d6efd; margin-bottom: 1rem; }
-        .fa-processing-title { font-size: 1.25rem; font-weight: 600; margin-bottom: .5rem; }
-        .fa-processing-progress { height: 6px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
-        .fa-processing-bar { height: 100%; background: linear-gradient(90deg, #0d6efd, #0dcaf0); width: 0; transition: width .3s ease; }
+        /* Theme overrides */
+        .fa-wizard__step { background: #f1f5f9; }
+        .fa-method-card { background: #fff; }
+        .fa-uploader__dropzone { background: #f8fafc; }
     </style>
 }
 
@@ -157,14 +83,14 @@
             </div>
         </div>
 
-        @* Step indicator *@
-        <div class="fa-stepbar" id="stepBar">
-            <div class="fa-step active" data-step="1"><span class="fa-step-num">1</span><span>Method</span></div>
-            <div class="fa-step-divider" id="divider1"></div>
-            <div class="fa-step" data-step="2"><span class="fa-step-num">2</span><span>Capture</span></div>
-            <div class="fa-step-divider" id="divider2"></div>
-            <div class="fa-step" data-step="3"><span class="fa-step-num"><i class="fa-solid fa-check fa-xs"></i></span><span>Done</span></div>
-        </div>
+        @* Step indicator - Using Unified Component *@
+        @Html.Partial("~/Views/Shared/Components/_Wizard.cshtml", new FaceAttend.ViewModels.WizardViewModel {
+            Id = "visitorWizard",
+            Steps = new[] { "Method", "Capture", "Done" },
+            CurrentStep = 1,
+            Size = WizardSize.Medium,
+            Variant = WizardVariant.Default
+        })
 
         @* Main Card *@
         <div class="card shadow-sm">
@@ -174,67 +100,70 @@
 
                 <div id="enrollContainer">
 
-                    @* Wizard: choose method *@
-                    <div id="enrollWizard">
+                    @* Wizard: choose method - Using Unified Component *@
+                    <div id="enrollWizardPane">
                         <div class="text-center mb-4">
                             <div class="fw-bold fs-5 mb-1">Select Enrollment Method</div>
                             <div class="text-muted" style="font-size:.86rem;">Choose how to capture the face biometric for this visitor.</div>
                         </div>
-                        <div class="fa-method-grid">
-                            <div class="fa-method-card" role="button" data-enroll-mode="live">
-                                <div class="fa-method-icon"><i class="fa-solid fa-camera"></i></div>
-                                <div class="fa-method-title">Live Camera</div>
-                                <div class="fa-method-desc">Real-time face capture with automatic liveness detection.</div>
-                                <span class="fa-method-rec"><i class="fa-solid fa-star fa-xs me-1"></i>Recommended</span>
-                            </div>
-                            <div class="fa-method-card" role="button" data-enroll-mode="upload">
-                                <div class="fa-method-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-                                <div class="fa-method-title">Upload Photos</div>
-                                <div class="fa-method-desc">Choose 1-5 clear existing photos. Auto-verified and enrolled.</div>
-                            </div>
-                        </div>
+
+                        @Html.Partial("~/Views/Shared/Components/_MethodSelector.cshtml", new FaceAttend.ViewModels.MethodSelectorViewModel {
+                            Id = "visitorMethods",
+                            Methods = new List<FaceAttend.ViewModels.MethodOption> {
+                                new FaceAttend.ViewModels.MethodOption { 
+                                    Id = "live", 
+                                    Icon = "fa-camera", 
+                                    Title = "Live Camera", 
+                                    Description = "Real-time face capture with automatic liveness detection.",
+                                    Recommended = true 
+                                },
+                                new FaceAttend.ViewModels.MethodOption { 
+                                    Id = "upload", 
+                                    Icon = "fa-cloud-arrow-up", 
+                                    Title = "Upload Photos", 
+                                    Description = "Choose 1-5 clear existing photos. Auto-verified and enrolled." 
+                                }
+                            },
+                            OnSelect = "onMethodSelect"
+                        })
                     </div>
 
                     @* Live camera pane - using shared enrollment component *@
-                    <div id="livePane" class="fa-pane">
-                        <button class="fa-back-btn mb-3" id="backFromLive" type="button">
-                            <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
+                    <div id="livePane" class="d-none">
+                        <button class="btn btn-outline-secondary btn-sm mb-3" id="backFromLive" type="button">
+                            <i class="fa-solid fa-chevron-left fa-xs me-1"></i> Choose another method
                         </button>
 
                         @Html.Partial("~/Views/Shared/_EnrollmentComponent.cshtml", new ViewDataDictionary
                         {
                             ["EmployeeId"] = Model.Id.ToString(),
-                            ["ScanUrl"] = Url.Action("ScanFrame", "Visitors", new { area = "Admin" }),
-                            ["EnrollUrl"] = Url.Action("EnrollWizard", "Visitors", new { area = "Admin" }),
+                            ["ScanUrl"] = "/api/scan/frame",           // MIGRATED: Unified API
+                            ["EnrollUrl"] = "/api/enrollment/enroll",  // MIGRATED: Unified API
                             ["RedirectUrl"] = Url.Action("Index", "Visitors", new { area = "Admin" }),
                             ["Mode"] = "admin",
                             ["MinFrames"] = 3,
+                            ["MaxFrames"] = 5,
                             ["LivenessThreshold"] = 0.85f
                         })
                     </div>
 
-                    @* Upload pane *@
-                    <div id="uploadPane" class="fa-pane">
-                        <button class="fa-back-btn mb-3" id="backFromUpload" type="button">
-                            <i class="fa-solid fa-chevron-left fa-xs"></i> Choose another method
+                    @* Upload pane - Using Unified Component *@
+                    <div id="uploadPane" class="d-none">
+                        <button class="btn btn-outline-secondary btn-sm mb-3" id="backFromUpload" type="button">
+                            <i class="fa-solid fa-chevron-left fa-xs me-1"></i> Choose another method
                         </button>
 
-                        @using (Html.BeginForm("", "", FormMethod.Post, new { id = "uploadForm", enctype = "multipart/form-data" }))
-                        {
-                            @Html.AntiForgeryToken()
-                            <div class="fa-dropzone" id="dropzone" role="button">
-                                <input type="file" id="file" accept="image/*" multiple style="display:none;" />
-                                <div class="fa-dropzone-icon"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-                                <div class="fa-dropzone-title">Drop photos here or click to browse</div>
-                                <div class="fa-dropzone-desc">Select 1 to 5 clear, well-lit face photos.</div>
-                                <div class="fa-dropzone-rules">
-                                    <span><i class="fa-solid fa-user-check"></i>Main face in photo</span>
-                                    <span><i class="fa-solid fa-images"></i>Up to 5 files</span>
-                                    <span><i class="fa-solid fa-file-image"></i>JPG / PNG</span>
-                                </div>
-                            </div>
-                        }
-                        <div class="fa-file-strip" id="fileStrip"></div>
+                        @Html.Partial("~/Views/Shared/Components/_FileUploader.cshtml", new FaceAttend.ViewModels.FileUploaderViewModel {
+                            Id = "visitorUploader",
+                            Accept = "image/*",
+                            MaxFiles = 5,
+                            MaxSizeMB = 10,
+                            AllowedTypes = new[] { ".jpg", ".jpeg", ".png" },
+                            OnFilesSelected = "onUploadFilesSelected",
+                            Title = "Drop photos here or click to browse",
+                            Description = "Select 1 to 5 clear, well-lit face photos."
+                        })
+
                         <div id="upStatus" class="mt-3"></div>
                         <div class="text-center mt-3">
                             <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
@@ -249,13 +178,24 @@
     </div>
 </div>
 
+@* Processing Modal - Using Unified Component *@
+@Html.Partial("~/Views/Shared/Components/_ProcessingModal.cshtml", new FaceAttend.ViewModels.ProcessingModalViewModel {
+    Id = "processingModal",
+    Title = "Processing Enrollment...",
+    InitialStatus = "Initializing...",
+    ShowProgress = true
+})
+
 @* Success Overlay *@
-<div id="successOverlay" class="fa-success-overlay d-none">
-    <div class="fa-success-content">
-        <div class="fa-success-icon"><i class="fa-solid fa-circle-check"></i></div>
-        <div class="fa-success-title">Enrollment Complete!</div>
-        <div class="fa-success-message">Face biometric successfully enrolled for<br /><strong>@Model.Name</strong></div>
-        <div class="fa-success-actions">
+<div id="successOverlay" class="fa-modal fa-modal--success d-none" role="dialog" aria-modal="true">
+    <div class="fa-modal__backdrop"></div>
+    <div class="fa-modal__content">
+        <div class="fa-modal__success-icon">
+            <i class="fa-solid fa-circle-check"></i>
+        </div>
+        <div class="fa-modal__title">Enrollment Complete!</div>
+        <div class="fa-modal__message">Face biometric successfully enrolled for<br /><strong>@Model.Name</strong></div>
+        <div class="fa-modal__actions">
             <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })" class="btn btn-primary">
                 <i class="fa-solid fa-arrow-left me-2"></i>Back to Visitor List
             </a>
@@ -266,77 +206,94 @@
     </div>
 </div>
 
-@* Processing Modal *@
-<div id="processingModal" class="fa-processing-modal d-none">
-    <div class="fa-processing-content">
-        <div class="fa-processing-spinner"><i class="fa-solid fa-circle-notch fa-spin"></i></div>
-        <div class="fa-processing-title">Processing Enrollment...</div>
-        <div class="fa-processing-status" id="processingStatus">Initializing...</div>
-        <div class="fa-processing-progress"><div class="fa-processing-bar" id="processingBar"></div></div>
-    </div>
-</div>
-
 @section scripts{
-    @Scripts.Render("~/bundles/enrollment")1
+    @Scripts.Render("~/bundles/facescan-core")
+    @Scripts.Render("~/bundles/facescan-ui")
 
     <script>
     (function() {
         'use strict';
 
-        var wizard = document.getElementById('enrollWizard');
+        // DOM Elements
+        var wizardPane = document.getElementById('enrollWizardPane');
         var livePane = document.getElementById('livePane');
         var uploadPane = document.getElementById('uploadPane');
-        var stepEls = document.querySelectorAll('.fa-step');
-        var divider1 = document.getElementById('divider1');
-        var divider2 = document.getElementById('divider2');
+        var uploadBtn = document.getElementById('uploadBtn');
+        var selectedUploadFiles = [];
 
-        function setStep(n) {
-            stepEls.forEach(function(s) {
-                var sn = parseInt(s.getAttribute('data-step'), 10);
-                s.classList.remove('active', 'done');
-                if (sn < n) s.classList.add('done');
-                if (sn === n) s.classList.add('active');
-            });
-            if (divider1) divider1.classList.toggle('done', n > 1);
-            if (divider2) divider2.classList.toggle('done', n > 2);
-        }
+        // Initialize Wizard
+        var wizard = FaceAttend.UI.Wizard.init('visitorWizard', {
+            steps: ['Method', 'Capture', 'Done'],
+            allowBack: true,
+            onStepChange: function(step) {
+                console.log('[Wizard] Step changed to:', step);
+            }
+        });
 
+        // Initialize Uploader
+        var uploader = FaceAttend.UI.Uploader.init('visitorUploader', {
+            maxFiles: 5,
+            maxSize: 10 * 1024 * 1024,
+            allowedTypes: ['image/jpeg', 'image/png', 'image/jpg'],
+            onFilesSelected: function(files) {
+                selectedUploadFiles = files;
+                uploadBtn.disabled = files.length === 0;
+            },
+            onError: function(errors) {
+                console.error('[Uploader] Errors:', errors);
+            }
+        });
+
+        // Method selection callback
+        window.onMethodSelect = function(methodId) {
+            if (methodId === 'live') {
+                showLive();
+            } else if (methodId === 'upload') {
+                showUpload();
+            }
+        };
+
+        // Upload files selected callback
+        window.onUploadFilesSelected = function(files) {
+            selectedUploadFiles = files;
+            uploadBtn.disabled = files.length === 0;
+        };
+
+        // Show/hide panes
         function showWizard() {
-            wizard.style.display = 'block';
-            livePane.classList.remove('active');
-            uploadPane.classList.remove('active');
-            setStep(1);
-            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.stop();
+            wizardPane.classList.remove('d-none');
+            livePane.classList.add('d-none');
+            uploadPane.classList.add('d-none');
+            FaceAttend.UI.Wizard.goTo('visitorWizard', 1);
+
+            if (window.FaceAttendEnrollment) {
+                window.FaceAttendEnrollment.stop();
+            }
         }
 
         function showLive() {
-            wizard.style.display = 'none';
-            livePane.classList.add('active');
-            uploadPane.classList.remove('active');
-            setStep(2);
-            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.start();
+            wizardPane.classList.add('d-none');
+            livePane.classList.remove('d-none');
+            uploadPane.classList.add('d-none');
+            FaceAttend.UI.Wizard.goTo('visitorWizard', 2);
+
+            if (window.FaceAttendEnrollment) {
+                window.FaceAttendEnrollment.start();
+            }
         }
 
         function showUpload() {
-            wizard.style.display = 'none';
-            livePane.classList.remove('active');
-            uploadPane.classList.add('active');
-            setStep(2);
+            wizardPane.classList.add('d-none');
+            livePane.classList.add('d-none');
+            uploadPane.classList.remove('d-none');
+            FaceAttend.UI.Wizard.goTo('visitorWizard', 2);
         }
 
         function showSuccess(details) {
-            setStep(3);
-            document.getElementById('successDetails').textContent = details || '';
+            FaceAttend.UI.Wizard.goTo('visitorWizard', 3);
             document.getElementById('successOverlay').classList.remove('d-none');
+            document.getElementById('successOverlay').classList.add('is-open');
         }
-
-        // Method selection
-        document.querySelectorAll('.fa-method-card').forEach(function(card) {
-            card.addEventListener('click', function() {
-                var mode = this.getAttribute('data-enroll-mode');
-                mode === 'live' ? showLive() : showUpload();
-            });
-        });
 
         // Back buttons
         document.getElementById('backFromLive').addEventListener('click', showWizard);
@@ -348,66 +305,58 @@
                 showSuccess(result.vectorsSaved + ' face sample(s) saved');
             },
             onEnrollmentError: function(error) {
-                Swal.fire({ icon: 'error', title: 'Enrollment Failed', text: error.message || 'Please try again.' });
+                FaceAttend.UI.Modal.alert('Enrollment Failed', error.message || 'Please try again.', 'error');
             }
         };
 
-        // Upload handling
-        var dropzone = document.getElementById('dropzone');
-        var fileInput = document.getElementById('file');
-        var fileStrip = document.getElementById('fileStrip');
-        var uploadBtn = document.getElementById('uploadBtn');
-
-        dropzone.addEventListener('click', function() { fileInput.click(); });
-        dropzone.addEventListener('dragover', function(e) { e.preventDefault(); this.classList.add('drag-over'); });
-        ['dragleave', 'dragend'].forEach(function(ev) {
-            dropzone.addEventListener(ev, function() { this.classList.remove('drag-over'); });
-        });
-        dropzone.addEventListener('drop', function(e) {
-            e.preventDefault(); this.classList.remove('drag-over');
-            if (e.dataTransfer.files.length) { fileInput.files = e.dataTransfer.files; updateFileList(); }
-        });
-
-        fileInput.addEventListener('change', updateFileList);
-
-        function updateFileList() {
-            fileStrip.innerHTML = '';
-            var files = Array.prototype.slice.call(fileInput.files || [], 0, 5);
-            files.forEach(function(f) {
-                var chip = document.createElement('div');
-                chip.className = 'fa-file-chip';
-                chip.innerHTML = '<i class="fa-solid fa-image"></i><span>' + f.name.replace(/(.{20})..+/, '$1...') + '</span>';
-                fileStrip.appendChild(chip);
-            });
-            uploadBtn.disabled = files.length === 0;
-        }
-
+        // Upload submission
         uploadBtn.addEventListener('click', function() {
-            if (!fileInput.files.length) return;
-            document.getElementById('processingModal').classList.remove('d-none');
+            if (selectedUploadFiles.length === 0) return;
+
+            FaceAttend.UI.Modal.showProcessing('processingModal', {
+                title: 'Processing Enrollment...',
+                status: 'Uploading images...',
+                percent: 10
+            });
 
             var formData = new FormData();
-            formData.append('__RequestVerificationToken', document.querySelector('#hiddenForm input[name="__RequestVerificationToken"]').value);
-            formData.append('id', '@Model.Id');
-            Array.prototype.forEach.call(fileInput.files, function(f) { formData.append('files', f); });
+            formData.append('__RequestVerificationToken', 
+                document.querySelector('#hiddenForm input[name="__RequestVerificationToken"]').value);
+            formData.append('employeeId', '@Model.Id');
+            
+            selectedUploadFiles.forEach(function(file) {
+                formData.append('images', file);
+            });
 
-            fetch('@Url.Action("UploadEnroll", "Visitors", new { area = "Admin" })', {
-                method: 'POST', body: formData
+            // MIGRATED: Use unified API endpoint
+            fetch('/api/enrollment/enroll', {
+                method: 'POST',
+                body: formData
             })
             .then(function(r) { return r.json(); })
             .then(function(data) {
-                if (data.success) {
-                    document.getElementById('processingModal').classList.add('d-none');
-                    showSuccess(data.vectorsSaved + ' face sample(s) saved');
-                } else { throw new Error(data.message); }
+                if (data.ok) {
+                    FaceAttend.UI.Modal.update('processingModal', {
+                        percent: 100,
+                        status: 'Complete!'
+                    });
+
+                    setTimeout(function() {
+                        FaceAttend.UI.Modal.hide('processingModal');
+                        showSuccess(data.savedVectors + ' face sample(s) saved');
+                    }, 500);
+                } else {
+                    throw new Error(data.error || 'Upload failed');
+                }
             })
             .catch(function(err) {
-                document.getElementById('processingModal').classList.add('d-none');
-                Swal.fire({ icon: 'error', title: 'Upload Failed', text: err.message });
+                FaceAttend.UI.Modal.hide('processingModal');
+                FaceAttend.UI.Modal.alert('Upload Failed', err.message, 'error');
             });
         });
 
-        setStep(1);
+        // Initialize
+        FaceAttend.UI.Wizard.goTo('visitorWizard', 1);
     })();
     </script>
 }

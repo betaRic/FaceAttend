@@ -6,35 +6,23 @@ using FaceAttend.Services.Helpers;
 namespace FaceAttend
 {
     /// <summary>
-    /// SAGUPA: Nagre-register ng CSS at JavaScript bundles para sa application.
-    /// 
-    /// PAGLALARAWAN:
-    ///   Ang bundling ay nagko-combine ng maraming files into single request,
-    ///   para mas mabilis ang page load. Ginagamit ito sa production.
-    /// 
-    /// GINAGAMIT SA:
-    ///   - Global.asax.cs sa Application_Start
-    ///   - Mga Views via @Styles.Render() at @Scripts.Render()
+    /// Unified Bundle Configuration for FaceAttend v2
     /// 
     /// BUNDLE STRUCTURE:
-    ///   ~/bundles/jquery      - jQuery core
-    ///   ~/bundles/jqueryval   - jQuery validation
-    ///   ~/bundles/bootstrap   - Bootstrap JS (CDN)
-    ///   ~/bundles/vendor      - Third-party plugins (DataTables, SweetAlert2 CDN)
-    ///   ~/bundles/admin       - Admin scripts
-    ///   ~/bundles/enrollment  - Enrollment scripts (unified for admin/mobile)
-    ///   ~/bundles/kiosk       - Kiosk scripts
+    ///   ~/bundles/jquery           - jQuery core
+    ///   ~/bundles/jqueryval        - jQuery validation
+    ///   ~/bundles/bootstrap        - Bootstrap JS
+    ///   ~/bundles/vendor           - Third-party plugins
+    ///   ~/bundles/facescan-core    - Core face scanning modules
+    ///   ~/bundles/facescan-ui      - UI components (v2 simplified)
+    ///   ~/bundles/admin            - Admin scripts
+    ///   ~/bundles/kiosk            - Kiosk scripts
     ///   
-    ///   ~/Content/css         - Base CSS (Bootstrap, Toastr)
-    ///   ~/bundles/vendor-css  - Third-party CSS (FontAwesome, DataTables)
-    ///   ~/Content/admin       - Admin styles
-    ///   ~/Content/enrollment  - Enrollment styles (unified for admin/mobile)
-    ///   ~/Content/kiosk       - Kiosk styles
-    /// 
-    /// IMPORTANT - ES6+ SYNTAX COMPATIBILITY:
-    ///   The default WebGrease minifier does NOT support ES6+ syntax (const, let, =>, etc.)
-    ///   Vendor libraries like Bootstrap 5 and SweetAlert2 use ES6+ and are already minified.
-    ///   We use NonMinifiedScriptBundle for these to avoid JSParser NullReferenceException.
+    ///   ~/Content/css              - Base CSS (Bootstrap, Toastr)
+    ///   ~/bundles/vendor-css       - Third-party CSS
+    ///   ~/Content/facescan-v2      - Unified design system (v2 - USE THIS)
+    ///   ~/Content/admin            - Admin styles
+    ///   ~/Content/kiosk            - Kiosk styles
     /// </summary>
     public class BundleConfig
     {
@@ -44,33 +32,29 @@ namespace FaceAttend
             // JAVASCRIPT BUNDLES
             // =================================================================
 
-            // jQuery Core (ES5 - can be minified)
+            // jQuery Core
             bundles.Add(new ScriptBundle("~/bundles/jquery")
                 .Include("~/Scripts/jquery-3.7.1.min.js"));
 
-            // jQuery Validation (ES5 - can be minified)
+            // jQuery Validation
             bundles.Add(new ScriptBundle("~/bundles/jqueryval")
                 .Include(
                     "~/Scripts/jquery.validate.min.js",
                     "~/Scripts/jquery.validate.unobtrusive.min.js"
                 ));
 
-            // Bootstrap 5 - ES6+ syntax, already minified, use CDN
-            // Local fallback for offline development
+            // Bootstrap 5
             var bootstrapBundle = new NonMinifiedScriptBundle("~/bundles/bootstrap");
             if (FileSystemHelper.FileExists("~/Scripts/bootstrap.bundle.min.js"))
                 bootstrapBundle.Include("~/Scripts/bootstrap.bundle.min.js");
             bundles.Add(bootstrapBundle);
 
-            // Toastr Notifications (ES5 - can be minified)
+            // Toastr Notifications
             bundles.Add(new ScriptBundle("~/bundles/toastr")
                 .Include("~/Scripts/toastr.min.js"));
 
-            // Vendor Plugins (SweetAlert2 ES6+ CDN, DataTables ES5)
-            // SweetAlert2 uses ES6+ - use CDN version that's already minified
+            // Vendor Plugins (DataTables, SweetAlert2)
             var vendor = new NonMinifiedScriptBundle("~/bundles/vendor");
-            
-            // DataTables - ES5 compatible, can be minified
             foreach (var p in new[]
             {
                 "~/Scripts/vendor/datatables/dataTables.min.js",
@@ -78,29 +62,20 @@ namespace FaceAttend
                 "~/Scripts/vendor/datatables/js/dataTables.buttons.min.js",
                 "~/Scripts/vendor/datatables/js/buttons.html5.min.js",
                 "~/Scripts/vendor/datatables/js/buttons.print.min.js",
-                "~/Scripts/vendor/datatables/buttons.bootstrap5.min.js"
-            })
-            {
-                if (FileSystemHelper.FileExists(p)) vendor.Include(p);
-            }
-
-            // DataTables Responsive
-            var responsiveJsFiles = new[]
-            {
+                "~/Scripts/vendor/datatables/buttons.bootstrap5.min.js",
                 "~/Scripts/vendor/datatables/js/dataTables.responsive.min.js",
                 "~/Scripts/vendor/datatables/responsive.bootstrap5.min.js"
-            };
-            foreach (var p in responsiveJsFiles)
+            })
             {
                 if (FileSystemHelper.FileExists(p)) vendor.Include(p);
             }
             bundles.Add(vendor);
 
-            // SweetAlert2 - ES6+ syntax, use CDN
+            // SweetAlert2
             bundles.Add(new NonMinifiedScriptBundle("~/bundles/sweetalert")
                 .Include("~/Scripts/vendor/sweetalert2/sweetalert2.all.min.js"));
 
-            // Kiosk Vendor (Toastify + Leaflet + SweetAlert2)
+            // Kiosk Vendor
             var kioskVendor = new ScriptBundle("~/bundles/kiosk-vendor");
             foreach (var p in new[]
             {
@@ -113,18 +88,34 @@ namespace FaceAttend
             }
             bundles.Add(kioskVendor);
 
-            // Admin Scripts (consolidated - ES5 compatible)
+            // FaceAttend Core Modules (Camera, API, Notify, FaceScan)
+            bundles.Add(new ScriptBundle("~/bundles/facescan-core")
+                .Include("~/Scripts/core/camera.js")
+                .Include("~/Scripts/core/api.js")
+                .Include("~/Scripts/core/notify.js")
+                .Include("~/Scripts/core/facescan.js"));
+
+            // FaceAttend UI Components v2 (Simplified - Single File)
+            bundles.Add(new ScriptBundle("~/bundles/facescan-ui")
+                .Include("~/Scripts/facescan-ui.js"));
+
+            // Admin Scripts
             bundles.Add(new ScriptBundle("~/bundles/admin")
                 .Include("~/Scripts/admin.js"));
 
-            // Enrollment Scripts (Shared - unified for admin and mobile)
-            bundles.Add(new ScriptBundle("~/bundles/enrollment")
-                .Include("~/Scripts/modules/enrollment-core.js")
-                .Include("~/Scripts/enrollment-ui.js"));
-
-            // Kiosk Scripts (ES5 compatible)
+            // Kiosk Scripts
             bundles.Add(new ScriptBundle("~/bundles/kiosk")
                 .Include("~/Scripts/kiosk.js"));
+
+            // Enrollment Bundle (Core + UI + Enrollment logic)
+            bundles.Add(new ScriptBundle("~/bundles/enrollment")
+                .Include("~/Scripts/core/camera.js")
+                .Include("~/Scripts/core/api.js")
+                .Include("~/Scripts/core/notify.js")
+                .Include("~/Scripts/core/facescan.js")
+                .Include("~/Scripts/facescan-ui.js")
+                .Include("~/Scripts/modules/enrollment-core-refactored.js")
+                .Include("~/Scripts/enrollment-ui.js"));
 
             // =================================================================
             // CSS BUNDLES
@@ -138,8 +129,6 @@ namespace FaceAttend
                 ));
 
             // Vendor CSS (FontAwesome + DataTables + SweetAlert2)
-            // Use NonMinifiedStyleBundle because FontAwesome and DataTables CSS contain
-            // modern CSS features (custom properties, vendor prefixes) that WebGrease minifier can't handle
             var vendorCss = new NonMinifiedStyleBundle("~/bundles/vendor-css")
                 .Include("~/Content/vendor/fontawesome/css/all.min.css", new CssRewriteUrlTransform());
 
@@ -147,19 +136,10 @@ namespace FaceAttend
             {
                 "~/Scripts/vendor/sweetalert2/sweetalert2.min.css",
                 "~/Scripts/vendor/datatables/dataTables.bootstrap5.min.css",
-                "~/Scripts/vendor/datatables/buttons.bootstrap5.min.css"
-            })
-            {
-                if (FileSystemHelper.FileExists(p)) vendorCss.Include(p);
-            }
-
-            // DataTables Responsive CSS
-            var responsiveCssFiles = new[]
-            {
+                "~/Scripts/vendor/datatables/buttons.bootstrap5.min.css",
                 "~/Scripts/vendor/datatables/responsive.dataTables.min.css",
                 "~/Scripts/vendor/datatables/responsive.bootstrap5.min.css"
-            };
-            foreach (var p in responsiveCssFiles)
+            })
             {
                 if (FileSystemHelper.FileExists(p)) vendorCss.Include(p);
             }
@@ -178,37 +158,34 @@ namespace FaceAttend
             }
             bundles.Add(kioskVendorCss);
 
-            // Kiosk Base (Bootstrap only)
+            // Kiosk Base
             bundles.Add(new StyleBundle("~/Content/kiosk-base")
                 .Include("~/Content/bootstrap.min.css"));
 
-            // Shared Variables and Animations
-            bundles.Add(new StyleBundle("~/Content/shared")
-                .Include(
-                    "~/Content/_variables.css",
-                    "~/Content/_animations.css"
-                ));
+            // FaceAttend v2 - Unified Design System (SIMPLIFIED - USE THIS)
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/facescan-v2")
+                .Include("~/Content/facescan-v2.css"));
 
-            // Admin CSS (consolidated)
+            // Legacy bundles (for backward compatibility)
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/facescan")
+                .Include("~/Content/_tokens.css")
+                .Include("~/Content/_components.css"));
+
+            // Admin CSS
             bundles.Add(new StyleBundle("~/Content/admin")
-                .Include(
-                    "~/Content/admin.css"
-                ));
-
-            // Enrollment CSS (Shared - unified for admin and mobile)
-            // Uses NonMinifiedStyleBundle because it contains CSS custom properties
-            bundles.Add(new NonMinifiedStyleBundle("~/Content/enrollment")
-                .Include("~/Content/enrollment.css"));
+                .Include("~/Content/admin.css"));
 
             // Kiosk CSS
             bundles.Add(new StyleBundle("~/Content/kiosk")
                 .Include("~/Content/kiosk.css"));
 
+            // Enrollment CSS
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/enrollment")
+                .Include("~/Content/enrollment.css"));
+
             // =================================================================
             // BUNDLE OPTIMIZATION
             // =================================================================
-            // Enable optimizations in production based on Web.config setting
-            // NonMinifiedScriptBundle classes skip minification entirely
 #if DEBUG
             BundleTable.EnableOptimizations = false;
 #else

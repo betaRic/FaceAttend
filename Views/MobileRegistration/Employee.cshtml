@@ -441,7 +441,7 @@
     </div>
     <div class="employee-name">@Model.FullName</div>
     <div class="employee-meta">
-        @Model.Position @(string.IsNullOrEmpty(Model.Department) ? "" : "•") @Model.Department<br>
+        @Model.Position @(string.IsNullOrEmpty(Model.Department) ? "" : "-") @Model.Department<br>
         @Model.OfficeName
     </div>
 </div>

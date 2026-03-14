@@ -1,0 +1,35 @@
+/**
+ * FaceAttend Unified Design System
+ * Version: 2.0
+ * 
+ * This is the main entry point for the unified design system.
+ * Import this file to get all components and utilities.
+ * 
+ * Usage:
+ *   @Styles.Render("~/Content/unified")
+ * 
+ * Or import individual files:
+ *   @Styles.Render("~/Content/unified/tokens")
+ *   @Styles.Render("~/Content/unified/components/wizard")
+ */
+
+/* ========================================
+   DESIGN TOKENS (Required First)
+   ======================================== */
+@import url('tokens.css');
+
+/* ========================================
+   COMPONENT LIBRARY
+   ======================================== */
+@import url('components/wizard.css');
+@import url('components/uploader.css');
+@import url('components/modal.css');
+@import url('components/camera.css');
+@import url('components/method-selector.css');
+
+/* ========================================
+   THEME VARIANTS (Optional)
+   ======================================== */
+/* @import url('themes/admin.css'); */
+/* @import url('themes/dark.css'); */
+/* @import url('themes/kiosk.css'); */

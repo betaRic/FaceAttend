@@ -1,28 +1,52 @@
 @*
  * Views/Shared/_EnrollmentComponent.cshtml
- * Shared enrollment UI component.
- * Called from: Admin/Employees/Enroll, Admin/Visitors/Enroll, MobileRegistration/Enroll (step 2)
+ * Unified Enrollment UI Component - MIGRATED to use FaceAttend.Core modules
+ * Called from: Admin/Employees/Enroll, Admin/Visitors/Enroll, MobileRegistration/Enroll
  *
  * Required ViewBag:
- *   ViewBag.EmployeeId        string  — employee/visitor ID
- *   ViewBag.ScanUrl           string  — URL for ScanFrame AJAX endpoint
- *   ViewBag.EnrollUrl         string  — URL for Enroll AJAX endpoint
- *   ViewBag.RedirectUrl       string  — URL after enrollment success
- *   ViewBag.Mode              string  — "admin" | "mobile" | "visitor"
- *   ViewBag.MinFrames         int     — minimum good frames required (default 3)
- *   ViewBag.LivenessThreshold double  — per-frame liveness threshold (default 0.75)
+ *   ViewBag.EmployeeId        string  - employee/visitor ID
+ *   ViewBag.ScanUrl           string  - URL for ScanFrame AJAX endpoint
+ *   ViewBag.EnrollUrl         string  - URL for Enroll AJAX endpoint
+ *   ViewBag.RedirectUrl       string  - URL after enrollment success
+ *   ViewBag.Mode              string  - "admin" | "mobile" | "visitor"
+ *   ViewBag.MinFrames         int     - minimum good frames required (default 10)
+ *   ViewBag.LivenessThreshold double  - per-frame liveness threshold (default 0.75)
+ * 
+ * MIGRATION NOTES:
+ *   - Now uses FaceAttend.Camera for camera management
+ *   - Now uses FaceAttend.FaceScan for diversity-aware scanning
+ *   - Now uses FaceAttend.API for server communication
+ *   - Uses _Camera.cshtml and _FaceProgress.cshtml components
  *@
 
+@using FaceAttend.ViewModels
 @{
     var mode         = (string)(ViewBag.Mode ?? "admin");
     var isMobile     = (mode == "mobile");
-    var minFrames    = (int)(ViewBag.MinFrames ?? 3);
+    var minFrames    = (int)(ViewBag.MinFrames ?? 10);
+    var maxFrames    = (int)(ViewBag.MaxFrames ?? 10);
     var liveTh       = (double)(ViewBag.LivenessThreshold ?? 0.75);
     var surfaceClass = isMobile ? "mobile-surface" : "admin-surface";
 
-    @* FIX: Pre-compute the formatted string so it doesn't use double quotes
-       inside a double-quoted HTML attribute — Razor would end the attribute early. *@
     var liveThStr = liveTh.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);
+    
+    // Build camera view model
+    var cameraModel = new CameraViewModel
+    {
+        VideoId = "enrollVideo",
+        ShowGuide = true,
+        GuideText = "Center your face",
+        Mirror = true,
+        AspectRatio = "4/3"
+    };
+    
+    // Build progress view model
+    var progressModel = new FaceProgressViewModel
+    {
+        MinFrames = minFrames,
+        CurrentFrames = 0,
+        CapturedBuckets = new List<string>()
+    };
 }
 
 <div id="enrollRoot"
@@ -33,15 +57,13 @@
      data-enroll-url="@ViewBag.EnrollUrl"
      data-redirect-url="@ViewBag.RedirectUrl"
      data-min-frames="@minFrames"
+     data-max-frames="@maxFrames"
      data-liveness-th="@liveThStr">
 
-    @* ── Camera wrap ─────────────────────────────────────────────────────── *@
+    @* ── Camera Component (MIGRATED: Uses _Camera.cshtml) ───────────────── *@
     <div class="enroll-camera-wrap" id="enrollCameraWrap">
-        <video id="enrollVideo" autoplay playsinline muted></video>
-
-        @* Face guide overlay *@
-        <div class="enroll-face-guide" id="enrollFaceGuide"></div>
-
+        @Html.Partial("~/Views/Shared/Components/_Camera.cshtml", cameraModel)
+        
         @* Processing overlay (shown during server submit) *@
         <div class="enroll-processing-overlay enroll-hidden" id="enrollProcessing">
             <i class="fa-solid fa-circle-notch enroll-processing-spinner"></i>
@@ -49,34 +71,14 @@
         </div>
     </div>
 
-    @* ── Angle guidance ──────────────────────────────────────────────────── *@
+    @* ── Angle Guidance ──────────────────────────────────────────────────── *@
     <div class="enroll-angle-guidance" id="enrollAngleGuidance">
         <i class="enroll-angle-icon fa-solid fa-circle-dot" id="angleIcon"></i>
         <span class="enroll-angle-prompt" id="anglePrompt">Click Start to begin</span>
     </div>
 
-    @* ── Diversity dots ──────────────────────────────────────────────────── *@
-    <div class="enroll-diversity">
-        <span class="enroll-diversity-label">Angles captured:</span>
-        <div class="enroll-diversity-dots">
-            <div class="enroll-diversity-dot" data-bucket="center" title="Center"></div>
-            <div class="enroll-diversity-dot" data-bucket="left"   title="Left"></div>
-            <div class="enroll-diversity-dot" data-bucket="right"  title="Right"></div>
-            <div class="enroll-diversity-dot" data-bucket="up"     title="Up"></div>
-            <div class="enroll-diversity-dot" data-bucket="down"   title="Down"></div>
-        </div>
-    </div>
-
-    @* ── Progress ────────────────────────────────────────────────────────── *@
-    <div class="enroll-progress-wrap">
-        <div class="enroll-progress-label">
-            <span>Frames captured</span>
-            <span id="enrollProgressText">0 / 8</span>
-        </div>
-        <div class="enroll-progress-track">
-            <div class="enroll-progress-fill" id="enrollProgressBar"></div>
-        </div>
-    </div>
+    @* ── Progress Component (MIGRATED: Uses _FaceProgress.cshtml) ───────── *@
+    @Html.Partial("~/Views/Shared/Components/_FaceProgress.cshtml", progressModel)
 
     @* ── Liveness bar ────────────────────────────────────────────────────── *@
     <div class="enroll-liveness-wrap">
@@ -104,3 +106,271 @@
     </div>
 
 </div>
+
+<script>
+(function() {
+    'use strict';
+    
+    // Wait for FaceAttend core modules to load
+    function initEnrollmentComponent() {
+        if (typeof FaceAttend === 'undefined' || !FaceAttend.Camera || !FaceAttend.FaceScan) {
+            setTimeout(initEnrollmentComponent, 100);
+            return;
+        }
+        
+        var root = document.getElementById('enrollRoot');
+        if (!root) return;
+        
+        var cfg = {
+            employeeId: root.dataset.employeeId,
+            mode: root.dataset.mode,
+            scanUrl: root.dataset.scanUrl || '/api/scan/frame',
+            enrollUrl: root.dataset.enrollUrl || '/api/enrollment/enroll',
+            redirectUrl: root.dataset.redirectUrl,
+            minFrames: parseInt(root.dataset.minFrames) || 10,
+            maxFrames: parseInt(root.dataset.maxFrames) || 10,
+            livenessTh: parseFloat(root.dataset.livenessTh) || 0.75
+        };
+        
+        // DOM refs
+        var els = {
+            video: document.getElementById('enrollVideo'),
+            startBtn: document.getElementById('enrollStartBtn'),
+            confirmBtn: document.getElementById('enrollConfirmBtn'),
+            retakeBtn: document.getElementById('enrollRetakeBtn'),
+            status: document.getElementById('enrollStatus'),
+            anglePrompt: document.getElementById('anglePrompt'),
+            angleIcon: document.getElementById('angleIcon'),
+            livenessBar: document.getElementById('enrollLivenessBar'),
+            livenessVal: document.getElementById('enrollLivenessVal'),
+            processing: document.getElementById('enrollProcessing'),
+            processingStatus: document.getElementById('enrollProcessingStatus')
+        };
+        
+        // Scanner instance
+        var scanner = null;
+        var capturedEncodings = [];
+        
+        // Bucket icon map
+        var bucketIcons = {
+            center: 'fa-circle-dot',
+            left: 'fa-arrow-left',
+            right: 'fa-arrow-right',
+            up: 'fa-arrow-up',
+            down: 'fa-arrow-down'
+        };
+        
+        function setStatus(msg, type) {
+            if (!els.status) return;
+            els.status.textContent = msg;
+            els.status.className = 'enroll-status enroll-status--' + (type || 'info');
+        }
+        
+        function updateLiveness(val) {
+            if (!els.livenessBar || !els.livenessVal) return;
+            var pct = Math.round((val || 0) * 100);
+            els.livenessBar.style.width = pct + '%';
+            els.livenessVal.textContent = pct + '%';
+            
+            // Color coding
+            els.livenessBar.className = 'enroll-liveness-fill';
+            if (val >= cfg.livenessTh) els.livenessBar.classList.add('high');
+            else if (val >= 0.5) els.livenessBar.classList.add('medium');
+            else els.livenessBar.classList.add('low');
+        }
+        
+        function updateAnglePrompt(bucket) {
+            if (!els.anglePrompt || !els.angleIcon) return;
+            
+            var prompts = {
+                center: 'Look straight at camera',
+                left: 'Turn your head LEFT',
+                right: 'Turn your head RIGHT',
+                up: 'Look UP slightly',
+                down: 'Look DOWN slightly'
+            };
+            
+            els.anglePrompt.textContent = prompts[bucket] || 'Hold still...';
+            
+            // Update icon
+            els.angleIcon.className = 'enroll-angle-icon fa-solid ' + (bucketIcons[bucket] || 'fa-circle-dot');
+        }
+        
+        function updateProgressUI(progress) {
+            // Update FaceProgress component if available
+            if (window.FaceAttendProgress && typeof window.FaceAttendProgress.update === 'function') {
+                window.FaceAttendProgress.update({
+                    current: progress.current,
+                    target: cfg.minFrames,
+                    buckets: progress.buckets
+                });
+            }
+            
+            // Update liveness
+            if (progress.lastLiveness !== undefined) {
+                updateLiveness(progress.lastLiveness);
+            }
+            
+            // Update angle guidance
+            if (progress.currentBucket) {
+                updateAnglePrompt(progress.currentBucket);
+            }
+            
+            // Update status
+            setStatus('Capturing: ' + progress.current + ' / ' + cfg.minFrames + ' frames', 'info');
+            
+            // Notify parent callbacks
+            if (window.enrollCallbacks && typeof window.enrollCallbacks.onCaptureProgress === 'function') {
+                window.enrollCallbacks.onCaptureProgress(progress.current);
+            }
+        }
+        
+        function onScanComplete(result) {
+            capturedEncodings = result.encodings || [];
+            
+            // Hide processing
+            if (els.processing) els.processing.classList.add('enroll-hidden');
+            
+            // Update UI
+            els.startBtn.classList.add('enroll-hidden');
+            els.confirmBtn.classList.remove('enroll-hidden');
+            els.retakeBtn.classList.remove('enroll-hidden');
+            
+            setStatus('Capture complete! ' + capturedEncodings.length + ' samples collected', 'success');
+            
+            // Notify parent
+            if (window.enrollCallbacks && typeof window.enrollCallbacks.onEnrollmentComplete === 'function') {
+                window.enrollCallbacks.onEnrollmentComplete({
+                    vectorsSaved: capturedEncodings.length,
+                    encodings: capturedEncodings
+                });
+            }
+        }
+        
+        function onScanError(error) {
+            // Hide processing
+            if (els.processing) els.processing.classList.add('enroll-hidden');
+            
+            setStatus(error.message || 'Error occurred', 'error');
+            
+            // Notify parent
+            if (window.enrollCallbacks && typeof window.enrollCallbacks.onEnrollmentError === 'function') {
+                window.enrollCallbacks.onEnrollmentError(error);
+            } else {
+                FaceAttend.Notify.error(error.message || 'Enrollment failed', 5000);
+            }
+        }
+        
+        function startEnrollment() {
+            // Show processing initially
+            if (els.processing) els.processing.classList.remove('enroll-hidden');
+            if (els.processingStatus) els.processingStatus.textContent = 'Starting camera...';
+            
+            // Create scanner using FaceAttend.FaceScan
+            scanner = Object.create(FaceAttend.FaceScan).init({
+                minFrames: cfg.minFrames,
+                maxFrames: cfg.maxFrames,
+                livenessTh: cfg.livenessTh,
+                scanUrl: cfg.scanUrl
+            });
+            
+            // Start scanning
+            scanner.start(els.video, {
+                onCaptureProgress: updateProgressUI,
+                onAngleUpdate: updateAnglePrompt,
+                onComplete: onScanComplete,
+                onError: onScanError
+            });
+            
+            setStatus('Camera starting...', 'info');
+        }
+        
+        function submitEnrollment() {
+            if (capturedEncodings.length === 0) {
+                FaceAttend.Notify.error('No face samples captured', 3000);
+                return;
+            }
+            
+            // Show processing
+            if (els.processing) {
+                els.processing.classList.remove('enroll-hidden');
+                els.processingStatus.textContent = 'Saving enrollment...';
+            }
+            
+            // Prepare images (convert encodings back to blobs for API)
+            // Note: In a real implementation, you'd capture actual image blobs
+            // For now, we send the encodings directly
+            FaceAttend.API.enroll(cfg.employeeId, capturedEncodings, {
+                mode: cfg.mode,
+                isMobile: cfg.mode === 'mobile'
+            }, function(result) {
+                // Success
+                if (els.processing) els.processing.classList.add('enroll-hidden');
+                
+                FaceAttend.Notify.success('Enrollment saved successfully!', 3000);
+                
+                if (cfg.redirectUrl) {
+                    window.location.href = cfg.redirectUrl;
+                }
+            }, function(error) {
+                // Error
+                if (els.processing) els.processing.classList.add('enroll-hidden');
+                
+                FaceAttend.Notify.error(error.message || 'Failed to save enrollment', 5000);
+            });
+        }
+        
+        function retake() {
+            capturedEncodings = [];
+            
+            els.confirmBtn.classList.add('enroll-hidden');
+            els.retakeBtn.classList.add('enroll-hidden');
+            els.startBtn.classList.remove('enroll-hidden');
+            
+            setStatus('Ready to capture', 'info');
+            updateLiveness(0);
+            
+            // Reset FaceProgress component
+            if (window.FaceAttendProgress && typeof window.FaceAttendProgress.reset === 'function') {
+                window.FaceAttendProgress.reset();
+            }
+        }
+        
+        // Event listeners
+        if (els.startBtn) {
+            els.startBtn.addEventListener('click', startEnrollment);
+        }
+        if (els.confirmBtn) {
+            els.confirmBtn.addEventListener('click', submitEnrollment);
+        }
+        if (els.retakeBtn) {
+            els.retakeBtn.addEventListener('click', retake);
+        }
+        
+        // Expose public API
+        window.FaceAttendEnrollment = {
+            start: startEnrollment,
+            stop: function() {
+                if (scanner && typeof scanner.stop === 'function') {
+                    scanner.stop();
+                }
+            },
+            getEncodings: function() {
+                return capturedEncodings;
+            },
+            isRunning: function() {
+                return scanner && scanner.running;
+            }
+        };
+        
+        setStatus('Ready - Click Start to begin', 'info');
+    }
+    
+    // Initialize when DOM is ready
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initEnrollmentComponent);
+    } else {
+        initEnrollmentComponent();
+    }
+})();
+</script>

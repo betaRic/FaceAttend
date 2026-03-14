@@ -5,16 +5,16 @@
    
    DEPENDENCIES (ViewModel):
      FaceAttend.Areas.Admin.Models.DashboardViewModel
-     — KPI counts, recent logs, system health flags, circuit breaker flags
+     - KPI counts, recent logs, system health flags, circuit breaker flags
    
    SECTIONS:
-     @section styles  — page-scoped CSS (health dots, mini-bar chart)
-     @section scripts — AJAX KPI refresh + circuit-breaker JS (bottom of page)
+     @section styles  - page-scoped CSS (health dots, mini-bar chart)
+     @section scripts - AJAX KPI refresh + circuit-breaker JS (bottom of page)
    
    AJAX REFRESH:
      KPI numbers are refreshed every 2 minutes via fetch() against:
        GET /Admin/Dashboard/KpiJson
-     The full page is never auto-reloaded — only the 5 number elements are
+     The full page is never auto-reloaded - only the 5 number elements are
      patched in-place.  Element IDs must match kpiMap in the scripts section.
    ============================================================================ *@
 
@@ -98,7 +98,7 @@
         <i class="fa-solid fa-triangle-exclamation fa-lg flex-shrink-0" aria-hidden="true"></i>
         <div class="flex-grow-1">
             <strong>Liveness Detection Problem!</strong>
-            The liveness circuit breaker is open — employees cannot scan at the kiosk.
+            The liveness circuit breaker is open - employees cannot scan at the kiosk.
             Check system logs and reset when the issue is resolved.
         </div>
         @using (Html.BeginForm("ResetLivenessCircuit", "Dashboard", new { area = "Admin" }, FormMethod.Post))
@@ -113,7 +113,7 @@
     @* ── Pending-review alert ─────────────────────────────────────────────────
        Shown only when attendance records are flagged NeedsReview = true.
        Count is rendered server-side on page load; AJAX does not refresh this
-       banner — a manual page reload picks up changes after the admin reviews.
+       banner - a manual page reload picks up changes after the admin reviews.
     ─────────────────────────────────────────────────────────────────────────── *@
     @if (Model.PendingReviews > 0)
     {
@@ -297,7 +297,7 @@
                     @{
                         /*
                          * healthItems drives the health-check rows.
-                         * To add a new check, append a row here — no other HTML needed.
+                         * To add a new check, append a row here - no other HTML needed.
                          * The DB health dot (id="db-health-indicator") is updated by
                          * the AJAX refresh loop when it receives a new dbHealthy value.
                          */
@@ -385,18 +385,18 @@
    SCRIPTS SECTION
    ─────────────────────────────────────────────────────────────────────────────
    WHAT THIS DOES:
-     • Replaces the old  setTimeout(location.reload, 60000)  full-page reload.
-     • Every 2 minutes, fires a lightweight AJAX request to /Admin/Dashboard/KpiJson
+     - Replaces the old  setTimeout(location.reload, 60000)  full-page reload.
+     - Every 2 minutes, fires a lightweight AJAX request to /Admin/Dashboard/KpiJson
        that runs 5 COUNT queries and returns ~200 bytes of JSON.
-     • Only the 5 KPI number elements are patched in-place — no full redraw,
+     - Only the 5 KPI number elements are patched in-place - no full redraw,
        no scroll-position loss, no interruption to the admin working in other tabs.
 
    ELEMENT IDs THAT MUST EXIST ON THE PAGE (mapped in kpiMap below):
-     kpi-total-employees   — Active Employees card number
-     kpi-today-ins         — Time-Ins Today card number
-     kpi-today-outs        — Time-Outs Today card number
-     kpi-total-visitors    — Known Visitors card number
-     kpi-pending-reviews   — Pending Reviews badge (right column)
+     kpi-total-employees   - Active Employees card number
+     kpi-today-ins         - Time-Ins Today card number
+     kpi-today-outs        - Time-Outs Today card number
+     kpi-total-visitors    - Known Visitors card number
+     kpi-pending-reviews   - Pending Reviews badge (right column)
 
    CIRCUIT BREAKER:
      If the server reports  livenessCircuitOpen = true  or
@@ -441,7 +441,7 @@
 
     // ─────────────────────────────────────────────────────────────────────────
     // CIRCUIT BREAKER: show warning banner on initial page load if needed
-    // This runs synchronously — the Razor if block emits the JS call only
+    // This runs synchronously - the Razor if block emits the JS call only
     // when the circuit was already open when the page was rendered.
     // ─────────────────────────────────────────────────────────────────────────
     @if (Model.LivenessCircuitOpen || Model.LivenessCircuitStuck)
@@ -456,13 +456,13 @@
 
     // ─────────────────────────────────────────────────────────────────────────
     // CORE REFRESH FUNCTION
-    // Called on a fixed interval — never on page load (the server-rendered
+    // Called on a fixed interval - never on page load (the server-rendered
     // HTML already has fresh data at load time).
     // ─────────────────────────────────────────────────────────────────────────
 
     /**
      * Fetches KpiJson and patches KPI number elements and status indicators.
-     * All failures are swallowed silently — stale numbers are better than
+     * All failures are swallowed silently - stale numbers are better than
      * error dialogs appearing in front of an admin doing other work.
      */
     function refreshKpis() {
@@ -477,7 +477,7 @@
         })
         .then(function (data) {
 
-            // Server signals a DB error — leave existing numbers unchanged.
+            // Server signals a DB error - leave existing numbers unchanged.
             if (!data.ok) return;
 
             // ── Patch KPI number elements ──────────────────────────────────
@@ -516,7 +516,7 @@
             // }
         })
         .catch(function (err) {
-            // Silent failure — do not interrupt the admin with an alert.
+            // Silent failure - do not interrupt the admin with an alert.
             // Numbers stay at their last-known values until the next interval.
             if (window.console) {
                 console.warn('[FaceAttend Dashboard] KPI refresh failed:', err);

@@ -1,0 +1,44 @@
+@model FaceAttend.ViewModels.ProcessingModalViewModel
+@*
+    ProcessingModal Component - Full-screen processing overlay
+    
+    USAGE:
+    @Html.Partial("~/Views/Shared/Components/_ProcessingModal.cshtml", new ProcessingModalViewModel {
+        Id = "enrollProcessing",
+        Title = "Processing Enrollment...",
+        InitialStatus = "Uploading images...",
+        ShowProgress = true
+    })
+    
+    JAVASCRIPT:
+    // Show the modal
+    FaceAttend.UI.Modal.show('enrollProcessing');
+    
+    // Update progress
+    FaceAttend.UI.Modal.update('enrollProcessing', {
+        percent: 50,
+        status: 'Analyzing faces...'
+    });
+    
+    // Hide the modal
+    FaceAttend.UI.Modal.hide('enrollProcessing');
+*@
+
+<div class="fa-modal fa-modal--processing d-none" id="@Model.Id" role="dialog" aria-modal="true" aria-labelledby="@(Model.Id)_title">
+    <div class="fa-modal__backdrop"></div>
+    <div class="fa-modal__content">
+        <div class="fa-modal__spinner" aria-hidden="true">
+            <i class="fa-solid fa-circle-notch"></i>
+        </div>
+        <div class="fa-modal__title" id="@(Model.Id)_title">@Model.Title</div>
+        <div class="fa-modal__status" id="@(Model.Id)_status">@Model.InitialStatus</div>
+        
+        @if (Model.ShowProgress)
+        {
+            <div class="fa-modal__progress" id="@(Model.Id)_progress">
+                <div class="fa-modal__progress-bar" id="@(Model.Id)_bar" style="width: 0%"></div>
+            </div>
+            <div class="fa-modal__percent" id="@(Model.Id)_percent">0%</div>
+        }
+    </div>
+</div>

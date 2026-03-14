@@ -1,0 +1,72 @@
+@*
+ * CHANGES TO APPLY IN BOTH:
+ *   Areas/Admin/Views/Employees/Enroll.cshtml
+ *   Areas/Admin/Views/Visitors/Enroll.cshtml
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * FIX 1 — Partial path: use explicit full path to avoid fallback ambiguity
+ *
+ * FIND:
+ *   @Html.Partial("_EnrollmentComponent", new ViewDataDictionary { ... })
+ *
+ * REPLACE WITH (Employees/Enroll.cshtml):
+ *   @Html.Partial("~/Views/Shared/_EnrollmentComponent.cshtml", new ViewDataDictionary {
+ *       ["EmployeeId"]        = Model.EmployeeId,
+ *       ["ScanUrl"]           = Url.Content("~/Biometrics/ScanFrame"),
+ *       ["EnrollUrl"]         = Url.Content("~/Biometrics/Enroll"),
+ *       ["RedirectUrl"]       = Url.Action("Index", "Employees", new { area = "Admin" }),
+ *       ["Mode"]              = "admin",
+ *       ["MinFrames"]         = 5,
+ *       ["LivenessThreshold"] = 0.85f
+ *   })
+ *
+ * REPLACE WITH (Visitors/Enroll.cshtml):
+ *   @Html.Partial("~/Views/Shared/_EnrollmentComponent.cshtml", new ViewDataDictionary {
+ *       ["EmployeeId"]        = Model.Id.ToString(),
+ *       ["ScanUrl"]           = Url.Action("ScanFrame", "Visitors", new { area = "Admin" }),
+ *       ["EnrollUrl"]         = Url.Action("EnrollWizard", "Visitors", new { area = "Admin" }),
+ *       ["RedirectUrl"]       = Url.Action("Index", "Visitors", new { area = "Admin" }),
+ *       ["Mode"]              = "admin",
+ *       ["MinFrames"]         = 3,
+ *       ["LivenessThreshold"] = 0.85f
+ *   })
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * FIX 2 — Script deduplication: remove inline script tags from Enroll.cshtml
+ *
+ * FIND (in @section scripts):
+ *   <script src="~/Scripts/modules/enrollment-core.js"></script>
+ *   <script src="~/Scripts/enrollment-ui.js"></script>
+ *
+ * REPLACE WITH:
+ *   @Scripts.Render("~/bundles/enrollment")
+ *
+ * WHY: _AdminLayout.cshtml does NOT render ~/bundles/enrollment globally.
+ * Using the bundle avoids double-loading in production and ensures proper
+ * minification/cache-busting. The inline <script src="~/ ..."> tags bypass
+ * the bundle system entirely and load unversioned files.
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * FIX 3 — Sidebar active state false-positive in admin.js
+ *
+ * In Scripts/admin.js initSidebarActiveState(), the path check:
+ *   path.indexOf(href) === 0
+ * will match /Admin/Attendance for /Admin/Att (if href ends without /).
+ *
+ * REPLACE the path comparison in initSidebarActiveState():
+ *
+ *   // BEFORE:
+ *   if (path === href || (href.length > 7 && path.indexOf(href) === 0)) {
+ *
+ *   // AFTER (require slash or end-of-string boundary):
+ *   if (path === href || (href.length > 7 &&
+ *       (path + '/').indexOf(href + '/') === 0)) {
+ *
+ * ═══════════════════════════════════════════════════════════════════
+ * FIX 4 — _EnrollmentComponent.cshtml: remove MaxFrames key (unused)
+ *
+ * The partial does not read ViewBag.MaxFrames. The max frame count is
+ * controlled by CAPTURE_TARGET in enrollment-core.js CONSTANTS.
+ * Remove ["MaxFrames"] = ... from all ViewDataDictionary calls to
+ * reduce noise and avoid future confusion.
+ *@

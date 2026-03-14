@@ -1,0 +1,223 @@
+@*
+    FaceAttend Shared Face Progress Component
+    Shows diversity capture progress with angle indicators
+    
+    Usage:
+    @Html.Partial("~/Views/Shared/Components/_FaceProgress.cshtml", new FaceProgressViewModel {
+        Id = "enrollProgress",
+        Label = "Angles Captured",
+        Current = 0,
+        Target = 5,
+        Max = 10,
+        Buckets = new List<string>(),
+        ShowAngles = true
+    })
+*@
+
+@model FaceAttend.ViewModels.FaceProgressViewModel
+
+@{
+    var containerId = Model.Id;
+    var textId = containerId + "Text";
+    var barId = containerId + "Bar";
+    var dotsId = containerId + "Dots";
+    var anglesId = containerId + "Angles";
+    
+    var percentage = Model.Target > 0 
+        ? Math.Min(100, (int)((Model.Current / (double)Model.Target) * 100)) 
+        : 0;
+}
+
+<div class="face-progress" id="@containerId">
+    
+    @* Header with label and count *@
+    <div class="face-progress__header">
+        <span class="face-progress__label">@Model.Label</span>
+        <span class="face-progress__count" id="@textId">
+            @Model.Current / @Model.Target
+        </span>
+    </div>
+    
+    @* Progress bar *@
+    <div class="progress-bar" style="margin-bottom: var(--space-3);">
+        <div class="progress-bar__fill @(Model.Current >= Model.Target ? "progress-bar__fill--success" : "")" 
+             id="@barId" 
+             style="width: @percentage%;"></div>
+    </div>
+    
+    @* Dots indicator *@
+    @if (Model.ShowDots)
+    {
+        <div class="progress-dots" id="@dotsId">
+            @for (int i = 0; i < Model.Max; i++)
+            {
+                var isActive = i < Model.Current;
+                var dotClass = isActive ? "progress-dots__dot--complete" : "";
+                <div class="progress-dots__dot @dotClass" data-index="@i"></div>
+            }
+        </div>
+    }
+    
+    @* Angle indicators *@
+    @if (Model.ShowAngles)
+    {
+        <div class="progress-angles" id="@anglesId">
+            @{
+                var angleConfig = new Dictionary<string, (string Label, string Icon)>
+                {
+                    ["center"] = ("Center", "fa-circle-dot"),
+                    ["left"] = ("Left", "fa-arrow-left"),
+                    ["right"] = ("Right", "fa-arrow-right"),
+                    ["up"] = ("Up", "fa-arrow-up"),
+                    ["down"] = ("Down", "fa-arrow-down")
+                };
+            }
+            
+            @foreach (var angle in angleConfig)
+            {
+                var isCaptured = Model.Buckets != null && Model.Buckets.Contains(angle.Key);
+                var itemClass = isCaptured ? "progress-angles__item--captured" : "";
+                <span class="progress-angles__item @itemClass" data-bucket="@angle.Key">
+                    <i class="fa-solid @angle.Value.Icon progress-angles__icon"></i>
+                    @angle.Value.Label
+                </span>
+            }
+        </div>
+    }
+    
+    @* Next angle prompt *@
+    @if (Model.ShowNextAngle && !string.IsNullOrEmpty(Model.NextAngleLabel))
+    {
+        <div class="face-progress__prompt" id="@containerId-prompt">
+            <i class="fa-solid @Model.NextAngleIcon"></i>
+            <span>@Model.NextAngleLabel</span>
+        </div>
+    }
+</div>
+
+@* Component Styles *@
+<style>
+.face-progress {
+    padding: var(--space-4);
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-subtle);
+    border-radius: var(--radius);
+}
+
+.face-progress__header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: var(--space-3);
+}
+
+.face-progress__label {
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.face-progress__count {
+    font-size: var(--text-sm);
+    font-weight: var(--font-bold);
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+}
+
+.face-progress__prompt {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-top: var(--space-4);
+    padding: var(--space-3);
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.2);
+    border-radius: var(--radius-sm);
+    color: var(--color-accent-primary);
+    font-weight: var(--font-semibold);
+    font-size: var(--text-sm);
+}
+
+.face-progress__prompt i {
+    font-size: var(--text-lg);
+}
+</style>
+
+@* Component Script *@
+<script>
+(function() {
+    'use strict';
+    
+    var container = document.getElementById('@containerId');
+    if (!container) return;
+    
+    var textEl = document.getElementById('@textId');
+    var barEl = document.getElementById('@barId');
+    var dotsEl = document.getElementById('@dotsId');
+    var anglesEl = document.getElementById('@anglesId');
+    
+    // Expose update API
+    container.faceProgress = {
+        update: updateProgress,
+        setNextAngle: setNextAngle
+    };
+    
+    function updateProgress(current, buckets) {
+        var target = @Model.Target;
+        var max = @Model.Max;
+        var percentage = Math.min(100, Math.round((current / target) * 100));
+        
+        // Update text
+        if (textEl) {
+            textEl.textContent = current + ' / ' + target;
+        }
+        
+        // Update bar
+        if (barEl) {
+            barEl.style.width = percentage + '%';
+            if (current >= target) {
+                barEl.classList.add('progress-bar__fill--success');
+            }
+        }
+        
+        // Update dots
+        if (dotsEl) {
+            var dots = dotsEl.querySelectorAll('.progress-dots__dot');
+            dots.forEach(function(dot, index) {
+                dot.classList.remove('progress-dots__dot--active', 'progress-dots__dot--complete');
+                if (index < current) {
+                    dot.classList.add('progress-dots__dot--complete');
+                }
+            });
+        }
+        
+        // Update angles
+        if (anglesEl && buckets) {
+            buckets.forEach(function(bucket) {
+                var item = anglesEl.querySelector('[data-bucket="' + bucket + '"]');
+                if (item) {
+                    item.classList.add('progress-angles__item--captured');
+                }
+            });
+        }
+    }
+    
+    function setNextAngle(label, icon) {
+        var promptEl = document.getElementById('@containerId-prompt');
+        if (!promptEl) return;
+        
+        if (label) {
+            promptEl.style.display = 'flex';
+            promptEl.querySelector('span').textContent = label;
+            if (icon) {
+                promptEl.querySelector('i').className = 'fa-solid ' + icon;
+            }
+        } else {
+            promptEl.style.display = 'none';
+        }
+    }
+})();
+</script>

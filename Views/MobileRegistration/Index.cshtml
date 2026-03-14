@@ -4,6 +4,7 @@
 }
 
 @section styles {
+    @Styles.Render("~/Content/facescan-v2")
     <style>
         .header { 
             text-align: center;
@@ -12,7 +13,7 @@
         }
         .logo { 
             font-size: 48px; 
-            color: var(--accent-primary); 
+            color: var(--color-primary); 
             margin-bottom: 16px; 
             text-align: center;
         }
@@ -36,7 +37,7 @@
         
         .choice-card {
             background: rgba(255, 255, 255, 0.05);
-            border: 2px solid var(--border-subtle);
+            border: 2px solid var(--border-default);
             border-radius: 16px;
             padding: 24px;
             cursor: pointer;
@@ -47,7 +48,7 @@
         }
         
         .choice-card:hover, .choice-card:active {
-            border-color: var(--accent-primary);
+            border-color: var(--color-primary);
             background: rgba(59, 130, 246, 0.1);
             transform: translateY(-2px);
         }
@@ -58,8 +59,8 @@
             display: block; 
             text-align: center;
         }
-        .choice-card.new .choice-icon { color: var(--accent-success); }
-        .choice-card.existing .choice-icon { color: var(--accent-warning); }
+        .choice-card.new .choice-icon { color: var(--color-success); }
+        .choice-card.existing .choice-icon { color: var(--color-warning); }
         .choice-title { 
             font-size: 18px; 
             font-weight: 600; 
@@ -89,7 +90,7 @@
             margin-top: 20px;
             font-size: 14px;
         }
-        .back-link:hover { color: var(--accent-primary); }
+        .back-link:hover { color: var(--color-primary); }
     </style>
 }
 

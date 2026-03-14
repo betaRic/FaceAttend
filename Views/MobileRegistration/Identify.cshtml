@@ -4,6 +4,7 @@
 }
 
 @section styles {
+    @Styles.Render("~/Content/facescan-v2")
     <style>
         .identify-camera {
             position: relative;
@@ -11,10 +12,10 @@
             aspect-ratio: 4/3;
             max-width: 480px;
             margin: 0 auto;
-            border-radius: var(--mobile-radius);
+            border-radius: var(--radius-lg);
             overflow: hidden;
             background: #000;
-            border: 3px solid var(--mobile-border);
+            border: 3px solid var(--border-default);
             transition: border-color 0.3s ease;
         }
         
@@ -57,15 +58,15 @@
         }
         
         .identify-camera.scanning {
-            border-color: var(--mobile-accent);
+            border-color: var(--color-primary);
         }
         
         .identify-camera.success {
-            border-color: var(--mobile-accent-success);
+            border-color: var(--color-success);
         }
         
         .identify-camera.error {
-            border-color: var(--mobile-accent-error);
+            border-color: var(--color-error);
             animation: shake 0.5s ease-in-out;
         }
         
@@ -118,7 +119,7 @@
             width: 48px;
             height: 48px;
             border: 4px solid rgba(255,255,255,0.2);
-            border-top-color: var(--mobile-accent);
+            border-top-color: var(--color-primary);
             border-radius: 50%;
             animation: spin 1s linear infinite;
         }
@@ -149,7 +150,7 @@
         .corner.bottom-right { bottom: 0; right: 0; border-bottom-width: 3px; border-right-width: 3px; }
         
         .result-section {
-            margin-top: var(--mobile-space-5);
+            margin-top: 1.5rem;
             animation: slideUp 0.3s ease;
         }
         
@@ -159,10 +160,10 @@
         }
         
         .employee-details-list {
-            margin-top: var(--mobile-space-3);
+            margin-top: 0.75rem;
             display: flex;
             flex-direction: column;
-            gap: var(--mobile-space-2);
+            gap: 0.5rem;
         }
 
         .retry-counter {
@@ -249,12 +250,12 @@
 </div>
 
 @section scripts {
-    <!-- MediaPipe Face Detection -->
-    <script src="https://cdn.jsdelivr.net/npm/@Html.Raw("@")mediapipe/face_detection/face_detection.js" crossorigin="anonymous"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@Html.Raw("@")mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    @Scripts.Render("~/bundles/facescan-core")
     
     <script>
         (function() {
+            'use strict';
+            
             const video = document.getElementById('cameraVideo');
             const cameraContainer = document.getElementById('cameraContainer');
             const cameraStatus = document.getElementById('cameraStatus');
@@ -269,82 +270,29 @@
             let scanAttempts = 0;
             const maxAttempts = 5;
             let isScanning = false;
-            let faceDetector = null;
             let lastFaceBox = null;
             let detectionInterval = null;
+            let stream = null;
             
             // Initialize MediaPipe face detection
             async function initFaceDetector() {
                 try {
-                    const { FaceDetection } = window;
-                    faceDetector = new FaceDetection({
-                        locateFile: (file) => {
-                            return `https://cdn.jsdelivr.net/npm/@@mediapipe/face_detection/${file}`;
-                        }
+                    const script = document.createElement('script');
+                    script.src = 'https://cdn.jsdelivr.net/npm/@@mediapipe/face_detection/face_detection.js';
+                    script.crossOrigin = 'anonymous';
+                    document.head.appendChild(script);
+                    
+                    await new Promise((resolve, reject) => {
+                        script.onload = resolve;
+                        script.onerror = reject;
+                        setTimeout(reject, 10000);
                     });
                     
-                    faceDetector.setOptions({
-                        model: 'short',
-                        minDetectionConfidence: 0.5
-                    });
-                    
-                    faceDetector.onResults(onFaceDetected);
                     return true;
                 } catch (err) {
-                    console.error('Face detector init error:', err);
+                    console.warn('Face detector not loaded, using basic detection');
                     return false;
                 }
-            }
-            
-            // Handle face detection results
-            function onFaceDetected(results) {
-                if (isScanning) return; // Don't update UI while scanning
-                
-                if (results.detections && results.detections.length > 0) {
-                    const detection = results.detections[0];
-                    const box = detection.boundingBox;
-                    
-                    // Convert normalized coordinates to pixels
-                    const videoWidth = video.videoWidth || 640;
-                    const videoHeight = video.videoHeight || 480;
-                    
-                    const x = box.xMin * videoWidth;
-                    const y = box.yMin * videoHeight;
-                    const w = box.width * videoWidth;
-                    const h = box.height * videoHeight;
-                    
-                    // Mirror x coordinate for mirrored video
-                    const mirroredX = videoWidth - (x + w);
-                    
-                    // Update overlay
-                    faceOverlay.style.display = 'block';
-                    faceOverlay.style.left = (mirroredX / videoWidth * 100) + '%';
-                    faceOverlay.style.top = (y / videoHeight * 100) + '%';
-                    faceOverlay.style.width = (w / videoWidth * 100) + '%';
-                    faceOverlay.style.height = (h / videoHeight * 100) + '%';
-                    faceOverlay.classList.add('active');
-                    
-                    // Store for submission
-                    lastFaceBox = {
-                        x: Math.round(x),
-                        y: Math.round(y),
-                        w: Math.round(w),
-                        h: Math.round(h)
-                    };
-                    
-                    setStatus('ready', 'Face detected');
-                } else {
-                    faceOverlay.classList.remove('active');
-                    lastFaceBox = null;
-                    setStatus('ready', 'Look at camera');
-                }
-            }
-            
-            // Run detection loop
-            async function runDetection() {
-                if (!faceDetector || video.paused || video.ended) return;
-                await faceDetector.send({ image: video });
-                requestAnimationFrame(runDetection);
             }
             
             function setStatus(status, text) {
@@ -361,7 +309,6 @@
                 }
             }
             
-            // Render employee details
             function renderEmployeeDetails(data) {
                 const container = document.getElementById('employeeDetails');
                 container.innerHTML = '';
@@ -380,55 +327,55 @@
                 });
             }
             
+            // MIGRATED: Use FaceAttend.Camera instead of direct getUserMedia
             async function initCamera() {
                 try {
-                    // Initialize face detector first
+                    // Initialize face detector
                     const detectorReady = await initFaceDetector();
                     
-                    const stream = await navigator.mediaDevices.getUserMedia({
-                        video: { 
-                            facingMode: 'user',
-                            width: { ideal: 640 },
-                            height: { ideal: 480 }
+                    // Use unified FaceAttend.Camera
+                    FaceAttend.Camera.start(video, {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        facingMode: 'user'
+                    }, function(startedStream) {
+                        stream = startedStream;
+                        setStatus('ready', 'Look at camera');
+                        
+                        // Start scanning after short delay
+                        setTimeout(startIdentification, 1000);
+                    }, function(error) {
+                        console.error('Camera error:', error);
+                        setStatus('error', 'Camera failed');
+                        if (typeof MobileSwal !== 'undefined') {
+                            MobileSwal.error('Camera Access Required', 'Please allow camera access to identify yourself.');
                         }
                     });
                     
-                    video.srcObject = stream;
-                    
-                    video.onloadedmetadata = () => {
-                        setStatus('ready', 'Look at camera');
-                        if (detectorReady) {
-                            runDetection();
-                        }
-                        // Start scanning after short delay
-                        setTimeout(startIdentification, 1000);
-                    };
-                    
                 } catch (err) {
                     console.error('Camera error:', err);
-                    MobileSwal.error('Camera Access Required', 'Please allow camera access to identify yourself.');
+                    setStatus('error', 'Camera error');
+                    if (typeof MobileSwal !== 'undefined') {
+                        MobileSwal.error('Camera Error', 'Could not initialize camera. Please try again.');
+                    }
                 }
             }
             
-            // Capture single frame
+            // MIGRATED: Use FaceAttend.Camera.capture instead of canvas draw
             async function captureFrame() {
-                const canvas = document.createElement('canvas');
-                canvas.width = video.videoWidth || 640;
-                canvas.height = video.videoHeight || 480;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(video, 0, 0);
+                const canvas = FaceAttend.Camera.capture(640, 480);
+                if (!canvas) return null;
                 
                 return new Promise(resolve => {
                     canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
                 });
             }
             
-            // Capture burst frames
             async function captureBurstFrames(count, intervalMs) {
                 const frames = [];
                 for (let i = 0; i < count; i++) {
                     const blob = await captureFrame();
-                    frames.push(blob);
+                    if (blob) frames.push(blob);
                     if (i < count - 1) {
                         await new Promise(r => setTimeout(r, intervalMs));
                     }
@@ -444,12 +391,14 @@
                     setStatus('error', 'Max attempts reached');
                     cameraContainer.classList.add('error');
                     
-                    const result = await MobileSwal.confirm(
-                        'Not Recognized',
-                        'Could not identify after ' + maxAttempts + ' attempts. Try again?',
-                        'Try Again',
-                        'Back'
-                    );
+                    const result = typeof MobileSwal !== 'undefined' 
+                        ? await MobileSwal.confirm(
+                            'Not Recognized',
+                            'Could not identify after ' + maxAttempts + ' attempts. Try again?',
+                            'Try Again',
+                            'Back'
+                        )
+                        : { isConfirmed: confirm('Not recognized. Try again?') };
                     
                     if (result.isConfirmed) {
                         resetAndRetry();
@@ -472,13 +421,17 @@
                     // Capture 3 frames burst
                     const burstFrames = await captureBurstFrames(3, 50);
                     
+                    if (burstFrames.length === 0) {
+                        throw new Error('No frames captured');
+                    }
+                    
                     const formData = new FormData();
                     burstFrames.forEach((blob, index) => {
                         formData.append('image_' + index, blob, 'frame_' + index + '.jpg');
                     });
                     formData.append('frameCount', burstFrames.length);
                     
-                    // Send face box if available (saves server detection time)
+                    // Send face box if available
                     if (lastFaceBox) {
                         formData.append('faceX', lastFaceBox.x);
                         formData.append('faceY', lastFaceBox.y);
@@ -532,7 +485,9 @@
                 resultSection.style.display = 'block';
                 resultSection.scrollIntoView({ behavior: 'smooth' });
                 
-                MobileSwal.success('Identified!', 'Welcome, ' + data.fullName);
+                if (typeof MobileSwal !== 'undefined') {
+                    MobileSwal.success('Identified!', 'Welcome, ' + data.fullName);
+                }
             }
             
             function onIdentificationError(data) {
@@ -541,19 +496,20 @@
                 scanOverlay.classList.remove('active');
                 
                 if (data.error === 'NOT_RECOGNIZED' || data.error === 'NO_FACE') {
-                    // Silent retry - show brief error then auto-retry
+                    // Silent retry
                     cameraContainer.classList.add('error');
                     faceOverlay.classList.remove('active');
                     setStatus('retrying', 'Retrying...');
                     
                     setTimeout(() => {
                         cameraContainer.classList.remove('error');
-                        startIdentification(); // Auto-retry
+                        startIdentification();
                     }, 800);
                 } else {
-                    // Other errors - show message but allow retry
-                    MobileSwal.error('Identification Failed', 
-                        data.message || 'Please try again.');
+                    // Other errors
+                    if (typeof MobileSwal !== 'undefined') {
+                        MobileSwal.error('Identification Failed', data.message || 'Please try again.');
+                    }
                     retryBtn.style.display = 'block';
                 }
             }
@@ -576,6 +532,11 @@
                     window.location.href = '/MobileRegistration/Device?employeeId=' + 
                         encodeURIComponent(identifiedEmployeeId);
                 }
+            });
+            
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                FaceAttend.Camera.stop();
             });
             
             // Initialize

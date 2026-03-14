@@ -221,7 +221,7 @@ FaceAttend.Enrollment = (function () {
 
     /**
      * Computes Laplacian variance on face ROI, downscaled to 160×160.
-     * Measures image sharpness — higher = sharper.
+     * Measures image sharpness - higher = sharper.
      */
     Enrollment.prototype.calculateSharpness = function(canvas, faceBox) {
         var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
@@ -355,7 +355,7 @@ FaceAttend.Enrollment = (function () {
             }
         }
 
-        return { bucket: 'center', prompt: 'Hold still — capturing final frames', icon: 'fa-check' };
+        return { bucket: 'center', prompt: 'Hold still - capturing final frames', icon: 'fa-check' };
     };
 
     // -------------------------------------------------------------------------
