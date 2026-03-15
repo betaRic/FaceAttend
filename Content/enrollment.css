@@ -113,6 +113,17 @@
     transition: all 0.3s ease;
 }
 
+/* Dynamic face bounding box canvas — overlays video, drawn by enrollment-ui.js */
+.enroll-face-canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 2;
+}
+
 .enroll-face-guide--good {
     border-color: var(--color-success);
     border-style: solid;

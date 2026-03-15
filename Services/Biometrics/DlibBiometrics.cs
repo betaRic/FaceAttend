@@ -619,7 +619,71 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        //  Combined encode + landmarks (single file load, one pool rent) 
+        // ─── Combined encode + landmarks from Bitmap (no file I/O) ───────────────
+
+        /// <summary>
+        /// Bitmap version of TryEncodeWithLandmarks — zero file I/O.
+        /// Loads the Bitmap's RGB data once and calls both FaceEncodings()
+        /// and FaceLandmarks() inside a single pool rent.
+        ///
+        /// Used by FastScanPipeline.EnrollmentScanInMemory for the parallel
+        /// encode+landmarks thread. Liveness runs concurrently on the same Bitmap.
+        /// </summary>
+        public bool TryEncodeWithLandmarksFromBitmap(
+            Bitmap       bitmap,
+            Location     faceLocation,
+            out double[] embedding,
+            out float[]  landmarks5,
+            out string   error)
+        {
+            embedding  = null;
+            landmarks5 = null;
+            error      = null;
+
+            if (bitmap == null) { error = "NO_BITMAP"; return false; }
+
+            var fr = RentInstance();
+            if (fr == null) { error = "POOL_TIMEOUT"; return false; }
+
+            try
+            {
+                var rgbData = BitmapToRgb(bitmap);
+                using (var img = FaceRecognition.LoadImage(
+                    rgbData, bitmap.Height, bitmap.Width, bitmap.Width * 3, Mode.Rgb))
+                {
+                    var locations = new[] { faceLocation };
+
+                    // Encoding — primary output, must succeed
+                    var enc = fr.FaceEncodings(img, locations).FirstOrDefault();
+                    if (enc == null) { error = "ENCODING_FAIL"; return false; }
+                    embedding = enc.GetRawEncoding();
+
+                    // Landmarks — best-effort, failure must NOT abort encoding
+                    try
+                    {
+                        // Use FaceLandmark (singular) with Small predictor
+                        var lmSets = fr.FaceLandmark(img, locations, PredictorModel.Small)
+                                       .FirstOrDefault();
+                        if (lmSets != null)
+                            landmarks5 = ExtractLandmarks5(lmSets);
+                    }
+                    catch
+                    {
+                        // shape_predictor_5_face_landmarks.dat missing or other error
+                        // landmarks5 stays null — pose falls back to box geometry
+                        landmarks5 = null;
+                    }
+
+                    return true;
+                }
+            }
+            finally
+            {
+                ReturnInstance(fr);
+            }
+        }
+
+        // ─── Combined encode + landmarks (single file load, one pool rent) ─────────
 
         /// <summary>
         /// Loads the image file ONCE and calls both FaceEncodings() and FaceLandmarks()
@@ -668,11 +732,13 @@ namespace FaceAttend.Services.Biometrics
                     embedding = enc.GetRawEncoding();
 
                     // Landmarks (best-effort  failure does not abort encoding)
-                    // NOTE: FaceLandmark requires shape_predictor_5_face_landmarks.dat model.
+                    // NOTE: FaceLandmarks requires shape_predictor_5_face_landmarks.dat model.
                     // If the model is not present, this will throw an exception which we catch.
                     try
                     {
-                        var landmarkResult = fr.FaceLandmark(img, locations, PredictorModel.Small, Model.Cnn).FirstOrDefault();
+                        // Use FaceLandmark (singular) with Small predictor — consistent with pool init
+                        var landmarkResult = fr.FaceLandmark(img, locations, PredictorModel.Small)
+                                              .FirstOrDefault();
                         if (landmarkResult != null)
                             landmarks5 = ExtractLandmarks5(landmarkResult);
                     }

@@ -208,7 +208,8 @@ FaceAttend.Enrollment = (function () {
         this.passHist = [];
         this.goodFrames = [];
         this.lastFaceBox = null;  // Phase 2: Store last face box for sharpness
-        this.confirmTimer = null; // FIX-002: 30-second fallback confirm timer handle
+        this.confirmTimer = null;    // FIX-002: 30-second fallback confirm timer handle
+        this._scanController = null; // Tracks in-flight scan fetch — aborted by safety timeout
 
         // DOM elements
         this.elements = {};
@@ -510,31 +511,58 @@ FaceAttend.Enrollment = (function () {
     // API Operations (using FaceAttend.API with Promise wrappers)
     // -------------------------------------------------------------------------
     
+    Enrollment.prototype._abortCurrentScan = function () {
+        if (this._scanController) {
+            try { this._scanController.abort(); } catch (e) {}
+            this._scanController = null;
+        }
+    };
+
     Enrollment.prototype.postScanFrame = function (blob) {
         var self = this;
-        
-        // Use FaceAttend.API if available
-        if (FaceAttend.API && FaceAttend.API.scanFrame) {
-            return new Promise(function (resolve, reject) {
-                FaceAttend.API.scanFrame(blob, {}, 
-                    function (result) {
-                        resolve(self.normalizeSuccessResult(result));
-                    },
-                    function (error) {
-                        reject(error);
-                    }
-                );
-            });
-        }
-        
-        // Fallback to raw fetch
+
+        // Abort any previous in-flight scan before starting a new one.
+        // This prevents request pile-up when the server is slow or the safety
+        // timeout fires before the previous response returns.
+        this._abortCurrentScan();
+
+        var controller = new AbortController();
+        this._scanController = controller;
+
         var fd = new FormData();
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('image', blob, 'frame.jpg');
 
-        return fetch(this.config.scanUrl, { method: 'POST', body: fd })
-            .then(function (res) { return res.json(); })
-            .then(function (result) { return self.normalizeSuccessResult(result); });
+        // Send face bbox so server can skip detection (OPT-SPEED-02)
+        if (this.lastFaceBox) {
+            fd.append('faceX', this.lastFaceBox.x);
+            fd.append('faceY', this.lastFaceBox.y);
+            fd.append('faceW', this.lastFaceBox.w);
+            fd.append('faceH', this.lastFaceBox.h);
+        }
+
+        var scanUrl = this.config.scanUrl || '/api/scan/frame';
+
+        return fetch(scanUrl, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            signal: controller.signal
+        })
+        .then(function (r) {
+            if (!r.ok) throw new Error('HTTP ' + r.status);
+            return r.json();
+        })
+        .then(function (data) {
+            return self.normalizeSuccessResult ? self.normalizeSuccessResult(data) : data;
+        })
+        .catch(function (e) {
+            if (e && e.name === 'AbortError') return null; // deliberately aborted — suppress silently
+            throw e;
+        })
+        .finally(function () {
+            if (self._scanController === controller) self._scanController = null;
+        });
     };
 
     Enrollment.prototype.postEnrollMany = function (blobs) {
@@ -793,13 +821,15 @@ FaceAttend.Enrollment = (function () {
 
         this.busy = true;
 
-        // SAFETY: Ensure busy is reset even if synchronous error occurs
+        // SAFETY: If the server takes too long, abort the request and reset busy.
+        // Increased to 10s — long enough for normal server response (2-4s),
+        // short enough to recover from genuine hangs without infinite pending pile-up.
         var safetyTimeout = setTimeout(function() {
             if (self.busy) {
-                console.warn('[Enrollment] Forcing busy reset after timeout');
+                self._abortCurrentScan(); // cancel the stale request first
                 self.busy = false;
             }
-        }, 5000); // 5 second safety timeout
+        }, 10000);
 
         var capturedBlob = null;
 
@@ -808,14 +838,16 @@ FaceAttend.Enrollment = (function () {
         var sharpness = 0;
         if (cam.videoWidth > 0) {
             var tmpCanvas = document.createElement('canvas');
-            // Scale down for performance, but maintain aspect ratio
             var videoW = cam.videoWidth;
             var videoH = cam.videoHeight;
-            var scale = Math.min(1, CONSTANTS.SHARPNESS_SAMPLE_SIZE / Math.max(videoW, videoH));
-            tmpCanvas.width = Math.floor(videoW * scale);
-            tmpCanvas.height = Math.floor(videoH * scale);
+            // DO NOT pre-scale this canvas. calculateSharpness() handles its own
+            // 160×160 downscaling internally. Pre-scaling here breaks coordinate
+            // alignment — this.lastFaceBox is in original video coordinates, and
+            // clamping it against a 160×120 canvas produces sw/sh ≈ 0 → score 0 → always blurry.
+            tmpCanvas.width = videoW;
+            tmpCanvas.height = videoH;
             var tmpCtx = tmpCanvas.getContext('2d');
-            tmpCtx.drawImage(cam, 0, 0, tmpCanvas.width, tmpCanvas.height);
+            tmpCtx.drawImage(cam, 0, 0, videoW, videoH);
 
             // Adaptive threshold: scale down for lower resolution cameras
             // Base threshold calibrated for 1280x720; scale proportionally
@@ -860,9 +892,12 @@ FaceAttend.Enrollment = (function () {
                 self.processScanResult(result);
             })
             .catch(function (e) {
-                self.handleError('Auto enroll failed: ' + (e && e.message ? e.message : e));
+                // AbortError = deliberately cancelled by safety timeout — silent, do not show error
+                if (e && e.name === 'AbortError') return;
+                // Transient network/server error — show brief status but do NOT reset goodFrames
+                // so the user doesn't lose captured progress on a single bad frame
+                self.handleStatus('Scan error, retrying...', 'warning');
                 self.passHist = [];
-                self.goodFrames = [];
             })
             .finally(function () {
                 clearTimeout(safetyTimeout);
@@ -899,8 +934,15 @@ FaceAttend.Enrollment = (function () {
                 if (this.callbacks.onLivenessUpdate) {
                     this.callbacks.onLivenessUpdate(0, 'fail');
                 }
+            } else if (errorCode === 'SCAN_ERROR') {
+                // Silent retry for transient server errors — don't reset goodFrames,
+                // don't show Swal, just log and continue scanning
+                this.handleStatus('Scan error, retrying...', 'warning');
+                // Keep passHist — this is a transient error, not a fundamental failure
+                return;
             } else {
-                this.handleError((r && r.message) ? r.message : (errorCode || 'Scan error'));
+                // Other errors — show in status bar but don't interrupt scanning
+                this.handleStatus((r && r.message) ? r.message : (errorCode || 'Scan error'), 'warning');
                 if (this.callbacks.onLivenessUpdate) {
                     this.callbacks.onLivenessUpdate(0, 'fail');
                 }
@@ -956,6 +998,13 @@ FaceAttend.Enrollment = (function () {
 
         if (pass) {
             // Phase 2: Calculate pose bucket and store with frame
+            // Update lastFaceBox from server response so the NEXT scan can skip
+            // HOG detection by sending this bbox as faceX/Y/W/H params.
+            // Without this, lastFaceBox is always null → HOG runs every frame → +200-500ms each.
+            if (r.faceBox && r.faceBox.w > 0) {
+                this.lastFaceBox = r.faceBox;
+            }
+
             // Pass server landmarks and actual canvas dimensions.
             // r.landmarks = [{x,y},{x,y},{x,y}] (leftEye, rightEye, noseTip) in pixel coords.
             var cam = this.elements.cam;

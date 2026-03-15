@@ -387,11 +387,7 @@
             .catch(function (e) {
                 _running = false;
                 var msg = (e && e.message) || 'Could not access camera.';
-                setStatus('Camera error: ' + msg, 'danger');
-                if (!_errShownOnce) {
-                    _errShownOnce = true;
-                    swal({ icon: 'error', title: 'Camera Error', text: msg });
-                }
+                setStatus('Camera error: ' + msg + ' — Please allow camera access and reload.', 'danger');
             });
     }
 
@@ -402,6 +398,73 @@
         setStatus('Camera stopped.', 'info');
         setLiveness(0, 'info');
     }
+
+    // ── Face bounding box overlay (replaces static dashed circle guide) ────────
+    var overlayCanvas = document.getElementById('enrollFaceCanvas');
+    var overlayCtx    = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+
+    function drawFaceOverlay() {
+        requestAnimationFrame(drawFaceOverlay);
+        if (!overlayCanvas || !overlayCtx) return;
+
+        // Size canvas to its CSS display size each frame (handles resizes)
+        var cw = overlayCanvas.offsetWidth;
+        var ch = overlayCanvas.offsetHeight;
+        if (cw < 1 || ch < 1) return;
+        overlayCanvas.width  = cw;
+        overlayCanvas.height = ch;
+        overlayCtx.clearRect(0, 0, cw, ch);
+
+        var faceBox = enrollment.lastFaceBox;
+        if (!faceBox || !faceBox.w || !faceBox.h) return;
+        if (!ui.video || !ui.video.videoWidth)      return;
+
+        // Map face box from video pixel space → canvas display space
+        var scaleX = cw / ui.video.videoWidth;
+        var scaleY = ch / ui.video.videoHeight;
+
+        // Video is CSS-mirrored (transform:scaleX(-1)), so mirror X coordinate
+        var bx = (ui.video.videoWidth - faceBox.x - faceBox.w) * scaleX;
+        var by = faceBox.y * scaleY;
+        var bw = faceBox.w * scaleX;
+        var bh = faceBox.h * scaleY;
+
+        var goodCount = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
+        var target    = cfg.minFrames || 8;
+        var color     = goodCount >= target ? '#22c55e' : '#3b82f6';
+        var cLen      = Math.min(bw, bh) * 0.18;
+
+        overlayCtx.strokeStyle = color;
+        overlayCtx.lineWidth   = 2.5;
+        overlayCtx.lineCap     = 'round';
+        overlayCtx.lineJoin    = 'round';
+        overlayCtx.shadowColor = color;
+        overlayCtx.shadowBlur  = 10;
+
+        function bracket(ax, ay, bx2, by2, cx, cy) {
+            overlayCtx.beginPath();
+            overlayCtx.moveTo(ax, ay);
+            overlayCtx.lineTo(bx2, by2);
+            overlayCtx.lineTo(cx, cy);
+            overlayCtx.stroke();
+        }
+        // Top-left
+        bracket(bx + cLen, by,      bx,      by,      bx,      by + cLen);
+        // Top-right
+        bracket(bx+bw-cLen, by,     bx+bw,   by,      bx+bw,   by + cLen);
+        // Bottom-left
+        bracket(bx + cLen, by+bh,   bx,      by+bh,   bx,      by+bh-cLen);
+        // Bottom-right
+        bracket(bx+bw-cLen, by+bh,  bx+bw,   by+bh,   bx+bw,   by+bh-cLen);
+
+        // Thin rect fill behind corners
+        overlayCtx.shadowBlur  = 0;
+        overlayCtx.globalAlpha = 0.25;
+        overlayCtx.lineWidth   = 0.5;
+        overlayCtx.strokeRect(bx, by, bw, bh);
+        overlayCtx.globalAlpha = 1;
+    }
+    drawFaceOverlay();
 
     // ── Callbacks ──────────────────────────────────────────────────────────────
     enrollment.callbacks.onStatus = setStatus;
@@ -594,8 +657,9 @@
         var msg = typeof enrollment.describeEnrollError === 'function'
             ? enrollment.describeEnrollError(result)
             : ((result && result.error) || 'Enrollment failed.');
+        // Silent fail — status bar only, no Swal popup. Employee sees the message
+        // and can retake without being interrupted by a modal dialog.
         setStatus(msg, 'danger');
-        swal({ icon: 'error', title: 'Enrollment Failed', html: '<div style="font-size:.9rem">' + msg + '</div>' });
         if (typeof window.enrollCallbacks === 'object' && window.enrollCallbacks.onEnrollmentError)
             window.enrollCallbacks.onEnrollmentError({ message: msg });
     };

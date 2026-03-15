@@ -45,9 +45,9 @@
     {
         Id          = "enroll",        // ← CRITICAL: generates id="enroll" container + id="enrollVideo" video
         VideoId     = "enrollVideo",   // explicit VideoId for clarity
-        ShowGuide   = true,
+        ShowGuide   = false,           // Static circle removed — dynamic canvas bbox used instead
         GuideType   = "circle",
-        GuideText   = "Center your face in the circle",
+        GuideText   = "Center your face in the frame",
         Mirror      = true,
         AspectRatio = "4/3",
         AutoStart   = false,           // enrollment-ui.js controls start/stop
@@ -76,6 +76,9 @@
     @* ── Camera ──────────────────────────────────────────────────────────── *@
     <div class="enroll-camera-wrap" id="enrollCameraWrap">
         @Html.Partial("~/Views/Shared/Components/_Camera.cshtml", cameraModel)
+
+        @* Face bounding box overlay — drawn by enrollment-ui.js rAF loop *@
+        <canvas id="enrollFaceCanvas" class="enroll-face-canvas"></canvas>
 
         @* Processing overlay — shown during server save *@
         <div class="enroll-processing-overlay enroll-hidden" id="enrollProcessing">

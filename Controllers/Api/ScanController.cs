@@ -44,156 +44,89 @@ namespace FaceAttend.Controllers.Api
                 return JsonResponseBuilder.Error("INVALID_FORMAT", "Invalid image format");
             }
 
-            string tempPath = null;
-            string processedPath = null;
+            // Build client face box if provided (skips server HOG detection — saves 200-500ms)
+            DlibBiometrics.FaceBox clientFaceBox = null;
+            if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
+                && faceW.Value > 0 && faceH.Value > 0)
+            {
+                clientFaceBox = new DlibBiometrics.FaceBox
+                {
+                    Left   = faceX.Value,
+                    Top    = faceY.Value,
+                    Width  = faceW.Value,
+                    Height = faceH.Value
+                };
+            }
 
             try
             {
-                // Save to temp
-                tempPath = FileSecurityService.SaveTemp(image, "scan_", maxBytes);
+                var isMobile = DeviceService.IsMobileDevice(Request);
 
-                // Preprocess
-                bool isProcessed;
-                processedPath = ImagePreprocessor.PreprocessForDetection(tempPath, "scan_", out isProcessed);
+                // FAST PATH: single-decode, parallel liveness+encode+landmarks
+                // Replaces 5 sequential file reads with 1 Bitmap load + parallel ops
+                var scan = FastScanPipeline.EnrollmentScanInMemory(image, clientFaceBox, isMobile);
 
-                // Initialize services
-                var dlib = new DlibBiometrics();
-                var liveness = new OnnxLiveness();
-
-                // Build face box from client if provided
-                DlibBiometrics.FaceBox faceBox = null;
-                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue 
-                    && faceW.Value > 0 && faceH.Value > 0)
-                {
-                    faceBox = new DlibBiometrics.FaceBox
-                    {
-                        Left = faceX.Value,
-                        Top = faceY.Value,
-                        Width = faceW.Value,
-                        Height = faceH.Value
-                    };
-                }
-
-                // Detect face
-                DlibBiometrics.FaceBox detectedBox;
-                FaceRecognitionDotNet.Location faceLoc;
-                string detectError;
-
-                if (faceBox != null)
-                {
-                    // Use client-provided box
-                    detectedBox = faceBox;
-                    faceLoc = new FaceRecognitionDotNet.Location(
-                        faceBox.Left, faceBox.Top,
-                        faceBox.Left + faceBox.Width,
-                        faceBox.Top + faceBox.Height);
-                }
-                else if (!dlib.TryDetectSingleFaceFromFile(processedPath, out detectedBox, out faceLoc, out detectError))
+                if (!scan.Ok)
                 {
                     return JsonResponseBuilder.Success(new
                     {
-                        ok = false,
+                        ok    = false,
                         count = 0,
-                        message = "No face detected"
+                        error = scan.Error,
+                        message = scan.Error == "NO_FACE" ? "No face detected" : scan.Error
                     });
                 }
 
-                // Calculate sharpness
-                var sharpness = FaceQualityAnalyzer.CalculateSharpness(processedPath, detectedBox);
-                var isMobile = DeviceService.IsMobileDevice(Request);
-                var sharpnessThreshold = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
-
-                // Liveness check
-                var livenessResult = liveness.ScoreFromFile(processedPath, detectedBox);
-                var livenessThreshold = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
-
-                // Encode face + extract landmarks in single operation
-                double[] encoding;
-                float[] landmarks6;
-                string encodeError;
-                string base64Encoding = null;
-
-                bool encodeOk = dlib.TryEncodeWithLandmarks(processedPath, faceLoc, out encoding, out landmarks6, out encodeError);
-                if (encodeOk && encoding != null)
-                {
-                    base64Encoding = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(encoding));
-                }
-
-                // Get actual image dimensions for accurate pose estimation
-                int imgWidth = 640, imgHeight = 480;
-                try
-                {
-                    if (!string.IsNullOrEmpty(processedPath) && System.IO.File.Exists(processedPath))
-                        using (var img = System.Drawing.Image.FromFile(processedPath))
-                        {
-                            imgWidth = img.Width;
-                            imgHeight = img.Height;
-                        }
-                }
-                catch { /* Use fallback */ }
-
-                // Estimate pose from landmarks (accurate) or fall back to box geometry
-                float yaw = 0f, pitch = 0f;
-                if (landmarks6 != null && landmarks6.Length >= 6)
-                {
-                    (yaw, pitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(landmarks6);
-                }
+                // Pose estimation: landmark-based when available, box-geometry fallback
+                float yaw, pitch;
+                if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
+                    (yaw, pitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(scan.Landmarks5);
                 else
-                {
-                    (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(detectedBox, imgWidth, imgHeight);
-                }
+                    (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(
+                        scan.FaceBox, scan.ImageWidth, scan.ImageHeight);
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
 
-                // Convert landmarks6 to response format [{x,y}, {x,y}, {x,y}]
-                object[] landmarksResponse = null;
-                if (landmarks6 != null && landmarks6.Length >= 6)
+                // Landmarks response: [{x,y},{x,y},{x,y}] = leftEye, rightEye, noseTip
+                object landmarksResponse = null;
+                if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
                 {
                     landmarksResponse = new[]
                     {
-                        new { x = landmarks6[0], y = landmarks6[1] }, // left eye
-                        new { x = landmarks6[2], y = landmarks6[3] }, // right eye
-                        new { x = landmarks6[4], y = landmarks6[5] }  // nose tip
+                        new { x = (int)scan.Landmarks5[0], y = (int)scan.Landmarks5[1] },
+                        new { x = (int)scan.Landmarks5[2], y = (int)scan.Landmarks5[3] },
+                        new { x = (int)scan.Landmarks5[4], y = (int)scan.Landmarks5[5] }
                     };
                 }
 
-                // Build response
                 return JsonResponseBuilder.Success(new
                 {
-                    ok = true,
-                    count = 1,
-                    liveness = livenessResult.Probability ?? 0,
-                    livenessOk = livenessResult.Ok && (livenessResult.Probability ?? 0) >= livenessThreshold,
-                    livenessThreshold = livenessThreshold,
-                    sharpness = sharpness,
-                    sharpnessThreshold = sharpnessThreshold,
-                    sharpnessOk = sharpness >= sharpnessThreshold,
-                    encoding = base64Encoding,
-                    poseYaw = yaw,
-                    posePitch = pitch,
-                    poseBucket = poseBucket,
-                    landmarks = landmarksResponse,
-                    faceBox = new
+                    ok               = true,
+                    count            = 1,
+                    liveness         = scan.LivenessScore,
+                    livenessOk       = scan.LivenessOk,
+                    livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75),
+                    sharpness        = scan.Sharpness,
+                    sharpnessThreshold = scan.SharpnessThreshold,
+                    sharpnessOk      = scan.Sharpness >= scan.SharpnessThreshold,
+                    encoding         = scan.Base64Encoding,
+                    poseYaw          = yaw,
+                    posePitch        = pitch,
+                    poseBucket       = poseBucket,
+                    landmarks        = landmarksResponse,
+                    faceBox = scan.FaceBox != null ? (object)new
                     {
-                        x = detectedBox.Left,
-                        y = detectedBox.Top,
-                        w = detectedBox.Width,
-                        h = detectedBox.Height
-                    }
+                        x = scan.FaceBox.Left,
+                        y = scan.FaceBox.Top,
+                        w = scan.FaceBox.Width,
+                        h = scan.FaceBox.Height
+                    } : null,
+                    timingMs = scan.TimingMs
                 });
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError("[ScanController.Frame] Error: {0}", ex);
                 return JsonResponseBuilder.Error("SCAN_ERROR", "Face scanning failed");
-            }
-            finally
-            {
-                // Cleanup
-                ImagePreprocessor.Cleanup(processedPath, tempPath);
-                if (tempPath != null)
-                {
-                    FileSecurityService.TryDelete(tempPath);
-                }
             }
         }
 

@@ -231,7 +231,7 @@
 
         var capturedFrames = [];
         var selectedFiles = [];
-        var minFrames = 5;
+        var minFrames = 8; // matches CAPTURE_TARGET in enrollment-core.js
 
         // Navigation
         window.showMethod = function() {
@@ -503,8 +503,12 @@
         }
 
         window.retake = function() {
-            if (!liveEnrollment) return;
-            liveEnrollment.startAutoEnrollment();
+            // Use window.FaceAttendEnrollment — this is the instance created by
+            // enrollment-ui.js and actively running. liveEnrollment is a separate
+            // object created in this script that does NOT control the live camera.
+            var enrollment = window.FaceAttendEnrollment;
+            if (!enrollment) return;
+            enrollment.startAutoEnrollment(); // resets goodFrames, passHist, starts interval
             updateLiveCaptureUI(0, minFrames);
             updateLiveAngleDots([]);
             capturedFrames = [];
