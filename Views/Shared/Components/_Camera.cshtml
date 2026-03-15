@@ -1,3 +1,8 @@
+@{
+    // Partial view: Layout must be null to prevent nested layout rendering
+    Layout = null;
+}
+
 @* 
     FaceAttend Shared Camera Component
     Reusable camera with face guide overlay
@@ -21,8 +26,6 @@
 @model FaceAttend.Models.ViewModels.Shared.CameraViewModel
 
 @{
-    // Partial view: Layout must be null to prevent nested layout rendering
-    Layout = null;
     var containerId = Model.Id;
     var videoId = Model.Id + "Video";
     var guideId = Model.Id + "Guide";

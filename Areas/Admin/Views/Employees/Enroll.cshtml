@@ -1,5 +1,4 @@
 @model Employee
-
 @{
     Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
     ViewBag.Title = "Enroll Face - " + Model.LastName + ", " + Model.FirstName;
@@ -284,76 +283,36 @@
             });
         }
 
-        //  FIX-004: Real enrollment pipeline 
-        //
-        // WHAT CHANGED:
-        // The previous camera system called FaceAttend.Camera.start() with the
-        // wrong argument signature (object instead of videoElement as first arg),
-        // used a fake setInterval simulateCapture() that never touched the camera,
-        // and had saveEnrollment() call showSuccess() directly with no API call.
-        //
-        // NOW:
-        // A real FaceAttend.Enrollment instance is created and configured with
-        // this employee's ID and the enrollment API endpoint. Its callbacks are
-        // wired to the existing DOM elements in this page's stats panel.
-        // The auto-capture loop (enrollment-core.js autoTick, every 300ms) handles
-        // frame capture, sharpness check, ScanFrame API call, liveness evaluation,
-        // pose bucketing, and auto-submit trigger.
-        //
-        // FIX-002 INTEGRATION:
-        // When all 5 angles are captured (or 30s fallback fires), enrollment-core.js
-        // calls enrollment.callbacks.onReadyToConfirm instead of performEnrollment()
-        // directly. This page handles onReadyToConfirm by showing the same Swal
-        // confirmation dialog with frame thumbnails, count, angle coverage, and
-        // liveness score  then calls performEnrollment() on Confirm or restarts
-        // the capture loop on Retake.
-        //
-        // IMPORTANT: this enrollment instance is separate from any instance that
-        // enrollment-ui.js might create. enrollment-ui.js returns immediately on
-        // this page because #enrollRoot does not exist here. There is no conflict.
-
-        // Guard: enrollment bundle must be loaded
+        // FIX-004: Real enrollment pipeline
         if (typeof FaceAttend === 'undefined' || typeof FaceAttend.Enrollment === 'undefined') {
-            console.error('[Employees/Enroll] FaceAttend.Enrollment not available. ' +
-                'Ensure ~/bundles/enrollment is loaded in @section scripts.');
+            console.error('[Employees/Enroll] FaceAttend.Enrollment not available.');
         }
 
-        // Create the enrollment instance for this page.
-        // empId = Model.EmployeeId (the string employee ID, e.g. "DILG-2024-001").
-        // enrollUrl = /api/enrollment/enroll (EnrollmentController.Enroll).
-        // scanUrl = /api/scan/frame (ScanController.Frame).
-        // minGoodFrames = minFrames (5 for employees).
         var liveEnrollment = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
             ? FaceAttend.Enrollment.create({
                 empId:             '@Model.EmployeeId',
                 scanUrl:           '@Url.Content("~/api/scan/frame")',
                 enrollUrl:         '@Url.Content("~/api/enrollment/enroll")',
-                redirectUrl:       '',          // no redirect  we show successPane inline
-                minGoodFrames:     minFrames,   // 5 for employees (var minFrames = 5 above)
+                redirectUrl:       '',
+                minGoodFrames:     minFrames,
                 maxKeepFrames:     8,
                 perFrameThreshold: 0.75,
                 enablePreview:     false
               })
             : null;
 
-        //  Helpers that update the stats panel DOM 
-
         function updateLiveCaptureUI(frameCount, target) {
-            // Update count display
             var countEl = document.getElementById('captureCount');
             if (countEl) countEl.textContent = frameCount;
 
-            // Update progress bar
             var progressEl = document.getElementById('captureProgress');
             if (progressEl) {
                 progressEl.style.width = Math.round((frameCount / (target || minFrames)) * 100) + '%';
             }
 
-            // Enable/disable Save button based on minFrames threshold
             var saveBtn = document.getElementById('saveBtn');
             if (saveBtn) saveBtn.disabled = frameCount < minFrames;
 
-            // Turn face guide green when ready
             var faceGuide = document.getElementById('faceGuide');
             if (faceGuide) {
                 faceGuide.classList.toggle('enroll-face-guide--good', frameCount >= minFrames);
@@ -361,7 +320,6 @@
         }
 
         function updateLiveAngleDots(goodFrames) {
-            // Mark each angle item as captured based on goodFrames poseBucket values
             var captured = {};
             if (goodFrames) {
                 for (var i = 0; i < goodFrames.length; i++) {
@@ -375,17 +333,12 @@
             });
         }
 
-        //  Wire enrollment callbacks to DOM 
-
         if (liveEnrollment) {
-
-            // Status messages  write to the camera status text badge
             liveEnrollment.callbacks.onStatus = function(msg, kind) {
                 var el = document.getElementById('cameraStatusText');
                 if (el) el.textContent = msg || '';
             };
 
-            // Liveness bar  update on every frame scan result
             liveEnrollment.callbacks.onLivenessUpdate = function(pct, kind) {
                 var bar = document.getElementById('livenessBar');
                 if (bar) bar.style.width = pct + '%';
@@ -393,32 +346,26 @@
                 if (txt) txt.textContent = pct + '%';
             };
 
-            // Progress  update count, progress bar, angle dots, save button
             liveEnrollment.callbacks.onCaptureProgress = function(current, target) {
                 capturedFrames = liveEnrollment.goodFrames.slice();
                 updateLiveCaptureUI(current, target);
                 updateLiveAngleDots(liveEnrollment.goodFrames);
             };
 
-            // Angle guidance  update prompt text when next angle is needed
             liveEnrollment.callbacks.onAngleUpdate = function(next) {
                 if (!next || next.bucket === 'other') return;
                 var el = document.getElementById('cameraStatusText');
                 if (el && next.prompt) el.textContent = next.prompt;
             };
 
-            // FIX-002 integration: onReadyToConfirm fires instead of
-            // performEnrollment() when auto-capture completes.
-            // We show the same Swal confirmation used by enrollment-ui.js.
             liveEnrollment.callbacks.onReadyToConfirm = function(data) {
-                // Convert top-3 frame blobs to DataURLs for thumbnails
-                var topFrames = data.frames.slice(0, 3);
-                var thumbPromises = topFrames.map(function(frame) {
+                // Show confirmation dialog
+                var thumbPromises = data.frames.slice(0, 3).map(function(frame) {
                     return new Promise(function(resolve) {
                         if (!frame || !frame.blob) { resolve(null); return; }
                         var reader = new FileReader();
-                        reader.onload  = function(e) { resolve(e.target.result); };
-                        reader.onerror = function()  { resolve(null); };
+                        reader.onload = function(e) { resolve(e.target.result); };
+                        reader.onerror = function() { resolve(null); };
                         reader.readAsDataURL(frame.blob);
                     });
                 });
@@ -427,96 +374,65 @@
                     var thumbHtml = '';
                     dataUrls.forEach(function(url) {
                         if (url) {
-                            thumbHtml +=
-                                '<img src="' + url + '" ' +
-                                'style="width:80px;height:80px;object-fit:cover;' +
-                                'border-radius:8px;border:2px solid rgba(255,255,255,0.15);' +
-                                'flex-shrink:0;" />';
+                            thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;" />';
                         }
                     });
 
                     var angleStatusHtml = data.allAngles
-                        ? '<span style="color:#22c55e;"><i class="fa-solid fa-circle-check" ' +
-                          'style="margin-right:6px;"></i>All 5 angles captured</span>'
-                        : '<span style="color:#f59e0b;"><i class="fa-solid fa-triangle-exclamation" ' +
-                          'style="margin-right:6px;"></i>' + data.angleCount + ' / 5 angles captured</span>';
+                        ? '<span style="color:#22c55e;"><i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>All 5 angles captured</span>'
+                        : '<span style="color:#f59e0b;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>' + data.angleCount + ' / 5 angles captured</span>';
 
                     var summaryHtml =
-                        '<div style="display:flex;justify-content:center;gap:8px;' +
-                        'margin-bottom:14px;flex-wrap:wrap;">' + thumbHtml + '</div>' +
-                        '<div style="background:rgba(255,255,255,0.05);border-radius:10px;' +
-                        'padding:12px 16px;text-align:left;font-size:0.875rem;line-height:2;">' +
-                            '<div><i class="fa-solid fa-layer-group" ' +
-                            'style="margin-right:8px;color:#3b82f6;"></i>' +
-                            '<strong>' + data.frameCount + '</strong> frames captured</div>' +
+                        '<div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' + thumbHtml + '</div>' +
+                        '<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px 16px;text-align:left;font-size:0.875rem;line-height:2;">' +
+                            '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i><strong>' + data.frameCount + '</strong> frames captured</div>' +
                             '<div>' + angleStatusHtml + '</div>' +
-                            '<div><i class="fa-solid fa-shield-heart" ' +
-                            'style="margin-right:8px;color:#22c55e;"></i>' +
-                            'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
+                            '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
                         '</div>';
 
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
-                            title:             'Ready to Enroll',
-                            html:              summaryHtml,
-                            icon:              'success',
-                            showCancelButton:  true,
-                            confirmButtonText: '<i class="fa-solid fa-check" ' +
-                                               'style="margin-right:6px;"></i>Confirm Enrollment',
-                            cancelButtonText:  '<i class="fa-solid fa-rotate-left" ' +
-                                               'style="margin-right:6px;"></i>Retake',
-                            confirmButtonColor:'#22c55e',
+                            title: 'Ready to Enroll',
+                            html: summaryHtml,
+                            icon: 'success',
+                            showCancelButton: true,
+                            confirmButtonText: '<i class="fa-solid fa-check" style="margin-right:6px;"></i>Confirm Enrollment',
+                            cancelButtonText: '<i class="fa-solid fa-rotate-left" style="margin-right:6px;"></i>Retake',
+                            confirmButtonColor: '#22c55e',
                             cancelButtonColor: '#475569',
-                            background:        '#0f172a',
-                            color:             '#f8fafc',
+                            background: '#0f172a',
+                            color: '#f8fafc',
                             allowOutsideClick: false,
-                            allowEscapeKey:    false
+                            allowEscapeKey: false
                         }).then(function(result) {
                             if (result.isConfirmed) {
-                                // Show the save button in loading state
                                 var saveBtn = document.getElementById('saveBtn');
                                 if (saveBtn) {
                                     saveBtn.disabled = true;
-                                    saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch ' +
-                                        'fa-spin me-2"></i>Saving...';
+                                    saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Saving...';
                                 }
                                 liveEnrollment.performEnrollment();
                             } else {
-                                // Retake: restart from scratch
                                 liveEnrollment.startAutoEnrollment();
                                 updateLiveCaptureUI(0, minFrames);
                                 updateLiveAngleDots([]);
                                 var saveBtn = document.getElementById('saveBtn');
                                 if (saveBtn) {
                                     saveBtn.disabled = true;
-                                    saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>' +
-                                        'Save Enrollment';
+                                    saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
                                 }
                                 var faceGuide = document.getElementById('faceGuide');
                                 if (faceGuide) faceGuide.classList.remove('enroll-face-guide--good');
-                                var cameraStatus = document.getElementById('cameraStatusText');
-                                if (cameraStatus) cameraStatus.textContent = 'Retaking  look straight ahead';
                             }
                         });
-                    } else {
-                        // Fallback: native confirm
-                        if (window.confirm('Ready to enroll! ' + data.frameCount +
-                            ' frames, ' + data.angleCount + '/5 angles, ' +
-                            data.bestLiveness + '% liveness.\n\nConfirm?')) {
-                            liveEnrollment.performEnrollment();
-                        } else {
-                            liveEnrollment.startAutoEnrollment();
-                        }
                     }
                 });
             };
 
-            // Enrollment complete  advance wizard to Done pane
             liveEnrollment.callbacks.onEnrollmentComplete = function(vecCount) {
                 showSuccess();
             };
 
-            // Enrollment error  re-enable save button, show Swal error
             liveEnrollment.callbacks.onEnrollmentError = function(result) {
                 var saveBtn = document.getElementById('saveBtn');
                 if (saveBtn) {
@@ -530,20 +446,17 @@
 
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
-                        icon:             'error',
-                        title:            'Enrollment Failed',
-                        html:             '<div style="font-size:.9rem;text-align:left;">' +
-                                          msg + '</div>',
+                        icon: 'error',
+                        title: 'Enrollment Failed',
+                        html: '<div style="font-size:.9rem;text-align:left;">' + msg + '</div>',
                         confirmButtonText: 'Try Again',
-                        confirmButtonColor:'#ef4444',
-                        background:       '#0f172a',
-                        color:            '#f8fafc'
+                        confirmButtonColor: '#ef4444',
+                        background: '#0f172a',
+                        color: '#f8fafc'
                     });
                 }
             };
         }
-
-        //  Camera start/stop 
 
         function startCamera() {
             if (!liveEnrollment) {
@@ -552,26 +465,19 @@
             }
             var videoEl = document.getElementById('enrollVideo');
             if (!videoEl) {
-                console.error('[Employees/Enroll] #enrollVideo element not found.');
+                console.error('[Employees/Enroll] video element not found.');
                 return;
             }
 
-            // Reset UI to initial state before starting
             updateLiveCaptureUI(0, minFrames);
             updateLiveAngleDots([]);
             capturedFrames = [];
 
             var cameraStatus = document.getElementById('cameraStatusText');
 
-            // liveEnrollment.startCamera() uses FaceAttend.Camera.start() with
-            // the correct signature: start(videoElement, options, onSuccess, onError).
-            // enrollment-core.js handles this internally  no manual camera call needed.
             liveEnrollment.startCamera(videoEl)
                 .then(function() {
-                    if (cameraStatus) cameraStatus.textContent = 'Camera active  look straight ahead';
-                    // startAutoEnrollment starts the 300ms autoTick interval.
-                    // autoTick handles: sharpness check  captureJpegBlob 
-                    // ScanFrame POST  liveness eval  pushGoodFrame  angle prompt
+                    if (cameraStatus) cameraStatus.textContent = 'Camera active - look straight ahead';
                     liveEnrollment.startAutoEnrollment();
                 })
                 .catch(function(e) {
@@ -579,33 +485,26 @@
                     if (cameraStatus) cameraStatus.textContent = 'Camera error: ' + msg;
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
-                            icon:    'error',
-                            title:   'Camera Error',
-                            text:    msg,
+                            icon: 'error',
+                            title: 'Camera Error',
+                            text: msg,
                             background: '#0f172a',
-                            color:   '#f8fafc'
+                            color: '#f8fafc'
                         });
-                    } else {
-                        alert('Camera error: ' + msg);
                     }
                 });
         }
 
         function stopCamera() {
             if (liveEnrollment) {
-                // stopCamera() stops the stream AND the autoTick interval.
-                // Also clears the 30-second confirm timer (FIX-002).
                 liveEnrollment.stopCamera();
             }
             capturedFrames = [];
         }
 
-        //  Retake and Save handlers (button onclick targets) 
-
         window.retake = function() {
-            // Called by the "Retake" button onclick="retake()"
             if (!liveEnrollment) return;
-            liveEnrollment.startAutoEnrollment();  // resets goodFrames + passHist + timer
+            liveEnrollment.startAutoEnrollment();
             updateLiveCaptureUI(0, minFrames);
             updateLiveAngleDots([]);
             capturedFrames = [];
@@ -616,55 +515,51 @@
                 saveBtn.disabled = true;
                 saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
             }
-            var cameraStatus = document.getElementById('cameraStatusText');
-            if (cameraStatus) cameraStatus.textContent = 'Retaking  follow the angle prompts';
         };
 
         window.saveEnrollment = function() {
-            // FIX-004: saveEnrollment() is now a manual override for edge cases
-            // where the user wants to save before all angles are captured.
-            // Normally the Swal fires automatically via onReadyToConfirm.
-            // This button is only enabled when goodFrames.length >= minFrames
-            // (the onCaptureProgress callback controls its disabled state).
             if (!liveEnrollment) return;
             if (!liveEnrollment.goodFrames || liveEnrollment.goodFrames.length < minFrames) {
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
-                        icon:  'warning',
+                        icon: 'warning',
                         title: 'Not Ready',
-                        text:  'Please wait for at least ' + minFrames + ' frames to be captured.',
+                        text: 'Please wait for at least ' + minFrames + ' frames to be captured.',
                         background: '#0f172a',
                         color: '#f8fafc'
                     });
                 }
                 return;
             }
-            // Manually trigger the Swal confirmation (same as the auto-trigger)
             liveEnrollment.stopAutoEnrollment();
             liveEnrollment._fireReadyToConfirm();
         };
 
-        // Clean up on page unload (stops camera stream and confirm timer)
         window.addEventListener('beforeunload', stopCamera);
 
-        // Upload
+        // Upload handlers
         var dropzone = document.getElementById('dropzone');
         var fileInput = document.getElementById('fileInput');
 
-        dropzone.addEventListener('click', function() { fileInput.click(); });
-        dropzone.addEventListener('dragover', function(e) { 
-            e.preventDefault(); 
-            this.classList.add('is-dragover'); 
-        });
-        dropzone.addEventListener('dragleave', function() { 
-            this.classList.remove('is-dragover'); 
-        });
-        dropzone.addEventListener('drop', function(e) {
-            e.preventDefault();
-            this.classList.remove('is-dragover');
-            handleFiles(e.dataTransfer.files);
-        });
-        fileInput.addEventListener('change', function() { handleFiles(this.files); });
+        if (dropzone) {
+            dropzone.addEventListener('click', function() { fileInput.click(); });
+            dropzone.addEventListener('dragover', function(e) { 
+                e.preventDefault(); 
+                this.classList.add('is-dragover'); 
+            });
+            dropzone.addEventListener('dragleave', function() { 
+                this.classList.remove('is-dragover'); 
+            });
+            dropzone.addEventListener('drop', function(e) {
+                e.preventDefault();
+                this.classList.remove('is-dragover');
+                handleFiles(e.dataTransfer.files);
+            });
+        }
+
+        if (fileInput) {
+            fileInput.addEventListener('change', function() { handleFiles(this.files); });
+        }
 
         function handleFiles(files) {
             Array.from(files).forEach(function(file) {
@@ -673,7 +568,8 @@
                 selectedFiles.push(file);
                 addFileCard(file);
             });
-            document.getElementById('uploadBtn').disabled = selectedFiles.length === 0;
+            var uploadBtn = document.getElementById('uploadBtn');
+            if (uploadBtn) uploadBtn.disabled = selectedFiles.length === 0;
         }
 
         function addFileCard(file) {
@@ -691,21 +587,27 @@
                 '<button type="button" class="enroll-file-card__remove" onclick="removeFile(' + index + ')">' +
                     '<i class="fa-solid fa-times"></i>' +
                 '</button>';
-            document.getElementById('fileGrid').appendChild(card);
+            var fileGrid = document.getElementById('fileGrid');
+            if (fileGrid) fileGrid.appendChild(card);
 
             var reader = new FileReader();
-            reader.onload = function(e) { document.getElementById('preview-' + index).src = e.target.result; };
+            reader.onload = function(e) { 
+                var preview = document.getElementById('preview-' + index);
+                if (preview) preview.src = e.target.result; 
+            };
             reader.readAsDataURL(file);
         }
 
         window.removeFile = function(index) {
             selectedFiles.splice(index, 1);
             renderFiles();
-            document.getElementById('uploadBtn').disabled = selectedFiles.length === 0;
+            var uploadBtn = document.getElementById('uploadBtn');
+            if (uploadBtn) uploadBtn.disabled = selectedFiles.length === 0;
         };
 
         function renderFiles() {
-            document.getElementById('fileGrid').innerHTML = '';
+            var fileGrid = document.getElementById('fileGrid');
+            if (fileGrid) fileGrid.innerHTML = '';
             selectedFiles.forEach(function(file) { addFileCard(file); });
         }
 
@@ -717,47 +619,8 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        // FIX-003: Wire upload pane to the real enrollment API.
-        //
-        // HOW IT WORKS:
-        // 1. A lightweight FaceAttend.Enrollment instance is created here
-        //    specifically for the upload flow. It is NOT the same instance
-        //    used by the live camera (which lives inside _EnrollmentComponent.cshtml
-        //    and is driven by enrollment-ui.js). These are two separate instances
-        //    with separate lifecycles  the upload instance is created fresh on
-        //    each upload attempt and discarded after the API call completes.
-        //
-        // 2. The instance is configured with:
-        //    - empId: the Razor-rendered employee ID string from Model.EmployeeId
-        //    - enrollUrl: /api/enrollment/enroll (EnrollmentController.Enroll)
-        //    - enablePreview: false  no preview modal, we handle UI ourselves
-        //
-        // 3. enrollFromFiles(selectedFiles) sends the selectedFiles array
-        //    (File objects from the dropzone/file input) as a FormData POST.
-        //    The CSRF token is pulled automatically by enrollment-core.js via
-        //    getCsrfToken() which reads the hidden input[name="__RequestVerificationToken"]
-        //    rendered by the @Html.AntiForgeryToken() call in #hiddenForm.
-        //
-        // 4. On success (result.ok === true):
-        //    - The onEnrollmentComplete callback fires with the saved vector count
-        //    - We show a brief Swal success then call showSuccess() to advance
-        //      the wizard to Step 3 (Done pane)
-        //
-        // 5. On error (result.ok === false OR network failure):
-        //    - The onEnrollmentError / catch path fires
-        //    - We show a Swal error with the human-readable error message from
-        //      describeEnrollError()  covers all known error codes:
-        //      NO_GOOD_FRAME, FACE_ALREADY_ENROLLED, EMPLOYEE_NOT_FOUND, etc.
-        //    - The upload button is re-enabled so the user can retry
-        //
-        // 6. During the API call:
-        //    - The upload button shows a spinner and "Uploading..." text
-        //    - The button is disabled to prevent double-submit
-        //    - The wizard stays on Step 2 (upload pane visible)
         window.processUpload = function() {
             var btn = document.getElementById('uploadBtn');
-
-            // Guard: must have files selected
             if (!selectedFiles || selectedFiles.length === 0) {
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
@@ -770,48 +633,27 @@
                 return;
             }
 
-            // Guard: FaceAttend.Enrollment must be available
             if (typeof FaceAttend === 'undefined' || typeof FaceAttend.Enrollment === 'undefined') {
                 console.error('[processUpload] FaceAttend.Enrollment not available.');
                 return;
             }
 
-            // Set button loading state
             var originalBtnHtml = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Uploading...';
 
-            // Create a dedicated upload-only Enrollment instance
             var uploadEnrollment = FaceAttend.Enrollment.create({
-                empId:         '@Model.EmployeeId',
-                enrollUrl:     '/api/enrollment/enroll',
+                empId: '@Model.EmployeeId',
+                enrollUrl: '/api/enrollment/enroll',
                 enablePreview: false
             });
 
-            // Wire success callback
             uploadEnrollment.callbacks.onEnrollmentComplete = function(vecCount) {
                 btn.disabled = false;
                 btn.innerHTML = originalBtnHtml;
-
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({
-                        icon:              'success',
-                        title:             'Enrollment Complete!',
-                        html:              '<b>' + vecCount + '</b> face sample' +
-                                           (vecCount !== 1 ? 's' : '') +
-                                           ' saved successfully.',
-                        timer:             1800,
-                        timerProgressBar:  true,
-                        showConfirmButton: false
-                    }).then(function() {
-                        showSuccess();
-                    });
-                } else {
-                    showSuccess();
-                }
+                showSuccess();
             };
 
-            // Wire error callback
             uploadEnrollment.callbacks.onEnrollmentError = function(result) {
                 btn.disabled = false;
                 btn.innerHTML = originalBtnHtml;
@@ -822,18 +664,15 @@
 
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({
-                        icon:              'error',
-                        title:             'Enrollment Failed',
-                        html:              msg,
+                        icon: 'error',
+                        title: 'Enrollment Failed',
+                        html: msg,
                         confirmButtonText: 'Try Again',
                         confirmButtonColor: '#ef4444'
                     });
-                } else {
-                    alert('Enrollment failed: ' + msg);
                 }
             };
 
-            // Call enrollFromFiles
             uploadEnrollment.enrollFromFiles(selectedFiles, { maxImages: 5 })
                 .catch(function(e) {
                     btn.disabled = false;
@@ -842,14 +681,12 @@
                     var errorMsg = e && e.message ? e.message : 'Upload failed.';
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
-                            icon:              'error',
-                            title:             'Upload Error',
-                            html:              errorMsg,
+                            icon: 'error',
+                            title: 'Upload Error',
+                            html: errorMsg,
                             confirmButtonText: 'OK',
                             confirmButtonColor: '#ef4444'
                         });
-                    } else {
-                        alert('Upload error: ' + errorMsg);
                     }
                 });
         };
