@@ -79,25 +79,59 @@ namespace FaceAttend.Services.Biometrics
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // ── Step 1: Single JPEG decode ────────────────────────────────────
-            Bitmap bitmap;
+            // ── Step 1: Read ALL bytes into array first ─────────────────────
+            // CRITICAL: Never pass a MemoryStream directly to new Bitmap() inside a
+            // using block. Bitmap(Stream) for JPEG keeps a live stream reference and
+            // reads lazily — disposing the stream before pixel access throws
+            // ObjectDisposedException on the very first LockBits call.
+            byte[] rawBytes;
             try
             {
-                using (var ms = new System.IO.MemoryStream())
+                image.InputStream.Position = 0;
+                using (var readMs = new MemoryStream())
                 {
-                    image.InputStream.CopyTo(ms);
-                    ms.Position = 0;
-                    bitmap = new Bitmap(ms);
+                    image.InputStream.CopyTo(readMs);
+                    rawBytes = readMs.ToArray();
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                System.Diagnostics.Trace.TraceError("[EnrollmentScan] Read failed: " + ex.Message);
                 return new EnrollmentScanResult { Ok = false, Error = "IMAGE_LOAD_FAIL" };
+            }
+
+            // ── Step 2: Decode to fully-independent Bitmap ──────────────────
+            // Clone() with an explicit PixelFormat forces a complete pixel data copy.
+            // The resulting Bitmap owns its own memory — no stream reference kept.
+            // This is the standard .NET fix for the "Bitmap from disposed stream" bug.
+            Bitmap bitmap;
+            int imageWidth, imageHeight;
+            try
+            {
+                using (var decodeMs = new MemoryStream(rawBytes))
+                using (var rawBmp = new Bitmap(decodeMs))
+                {
+                    imageWidth  = rawBmp.Width;
+                    imageHeight = rawBmp.Height;
+                    bitmap = rawBmp.Clone(
+                        new Rectangle(0, 0, rawBmp.Width, rawBmp.Height),
+                        System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                }
+                // decodeMs and rawBmp disposed here — bitmap is safe, owns its pixels
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceError("[EnrollmentScan] Bitmap decode failed: " + ex.Message);
+                return new EnrollmentScanResult
+                {
+                    Ok = false, Error = "IMAGE_LOAD_FAIL",
+                    TimingMs = sw.ElapsedMilliseconds
+                };
             }
 
             using (bitmap)
             {
-                // ── Step 2: Detect or trust client box ────────────────────────
+                // ── Step 3: Detect or trust client box ──────────────────────
                 var dlib = new DlibBiometrics();
                 DlibBiometrics.FaceBox faceBox;
                 Location faceLocation;
@@ -109,12 +143,14 @@ namespace FaceAttend.Services.Biometrics
                 {
                     var padX = Math.Max(6, (int)(clientFaceBox.Width  * 0.10));
                     var padY = Math.Max(6, (int)(clientFaceBox.Height * 0.12));
+                    var left = Math.Max(0, clientFaceBox.Left - padX);
+                    var top  = Math.Max(0, clientFaceBox.Top  - padY);
                     faceBox = new DlibBiometrics.FaceBox
                     {
-                        Left   = Math.Max(0, clientFaceBox.Left - padX),
-                        Top    = Math.Max(0, clientFaceBox.Top  - padY),
-                        Width  = clientFaceBox.Width  + padX * 2,
-                        Height = clientFaceBox.Height + padY * 2
+                        Left   = left,
+                        Top    = top,
+                        Width  = Math.Min(imageWidth  - left, clientFaceBox.Width  + padX * 2),
+                        Height = Math.Min(imageHeight - top,  clientFaceBox.Height + padY * 2)
                     };
                     faceLocation = new Location(
                         faceBox.Left, faceBox.Top,
@@ -131,19 +167,44 @@ namespace FaceAttend.Services.Biometrics
                     };
                 }
 
-                // ── Step 3: Sharpness (fast, from Bitmap, ~5ms) ───────────────
+                // ── Step 4: Sharpness — single-threaded, from Bitmap ─────────
                 var sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
                 var sharpTh   = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
 
-                // ── Step 4: THREE-WAY PARALLEL ────────────────────────────────
+                // ── Step 5: Pre-extract RGB bytes (THREAD SAFETY) ───────────
+                // Bitmap.LockBits and Bitmap.Clone are NOT thread-safe when called
+                // concurrently on the same Bitmap instance. Pre-convert to a raw byte
+                // array here (single-threaded), then the encoding thread works only on
+                // the byte array — it never touches the Bitmap at all.
+                // The liveness thread is the only one that then accesses the Bitmap,
+                // so there is no concurrent pixel access.
+                byte[] rgbData;
+                try
+                {
+                    rgbData = DlibBiometrics.ExtractRgbData(bitmap);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceError("[EnrollmentScan] RGB extract failed: " + ex.Message);
+                    return new EnrollmentScanResult
+                    {
+                        Ok = false, Error = "BITMAP_CONVERT_FAIL",
+                        TimingMs = sw.ElapsedMilliseconds
+                    };
+                }
+
+                // ── Step 6: Parallel — liveness (Bitmap) + encode (rgbData) ──
+                // Thread A (liveness): ScoreFromBitmap — does bitmap.Clone() then
+                //   LockBits on the CLONE only. Original bitmap not locked.
+                // Thread B (encoding): TryEncodeWithLandmarksFromRgbData — only
+                //   accesses rgbData byte array. Never calls LockBits on bitmap.
+                // These two are fully independent — zero shared mutable state.
                 double[] encoding   = null;
                 float[]  landmarks5 = null;
                 string   encErr     = null;
                 bool     liveOk     = false;
                 float?   liveProb   = null;
 
-                // Thread A: liveness from Bitmap (ONNX, thread-safe)
-                // Thread B: encoding + landmarks from Bitmap (single pool rent)
                 Parallel.Invoke(
                     () =>
                     {
@@ -154,8 +215,8 @@ namespace FaceAttend.Services.Biometrics
                     },
                     () =>
                     {
-                        dlib.TryEncodeWithLandmarksFromBitmap(
-                            bitmap, faceLocation,
+                        dlib.TryEncodeWithLandmarksFromRgbData(
+                            rgbData, imageWidth, imageHeight, faceLocation,
                             out encoding, out landmarks5, out encErr);
                     }
                 );
@@ -181,8 +242,8 @@ namespace FaceAttend.Services.Biometrics
                     Sharpness      = sharpness,
                     SharpnessThreshold = sharpTh,
                     FaceBox        = faceBox,
-                    ImageWidth     = bitmap.Width,
-                    ImageHeight    = bitmap.Height,
+                    ImageWidth     = imageWidth,
+                    ImageHeight    = imageHeight,
                     TimingMs       = sw.ElapsedMilliseconds
                 };
             }

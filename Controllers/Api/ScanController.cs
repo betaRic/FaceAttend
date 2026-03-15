@@ -86,16 +86,33 @@ namespace FaceAttend.Controllers.Api
                         scan.FaceBox, scan.ImageWidth, scan.ImageHeight);
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
 
-                // Landmarks response: [{x,y},{x,y},{x,y}] = leftEye, rightEye, noseTip
+                // Landmarks response: 3 or 4 points depending on model
+                // 3 points: [leftEye, rightEye, noseTip]
+                // 4 points: [leftEye, rightEye, noseTip, chin] — when 68-point model succeeded
                 object landmarksResponse = null;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
                 {
-                    landmarksResponse = new[]
+                    var lm = scan.Landmarks5;
+                    bool hasChin = lm.Length >= 8 && lm[7] > 0f;
+                    if (hasChin)
                     {
-                        new { x = (int)scan.Landmarks5[0], y = (int)scan.Landmarks5[1] },
-                        new { x = (int)scan.Landmarks5[2], y = (int)scan.Landmarks5[3] },
-                        new { x = (int)scan.Landmarks5[4], y = (int)scan.Landmarks5[5] }
-                    };
+                        landmarksResponse = new object[]
+                        {
+                            new { x = (int)lm[0], y = (int)lm[1] },  // left eye
+                            new { x = (int)lm[2], y = (int)lm[3] },  // right eye
+                            new { x = (int)lm[4], y = (int)lm[5] },  // nose tip
+                            new { x = (int)lm[6], y = (int)lm[7] }   // chin
+                        };
+                    }
+                    else
+                    {
+                        landmarksResponse = new object[]
+                        {
+                            new { x = (int)lm[0], y = (int)lm[1] },
+                            new { x = (int)lm[2], y = (int)lm[3] },
+                            new { x = (int)lm[4], y = (int)lm[5] }
+                        };
+                    }
                 }
 
                 return JsonResponseBuilder.Success(new

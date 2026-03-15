@@ -257,7 +257,11 @@
         (function () {
             'use strict';
 
-            var MAX_FRAMES = 10;
+            // Match CONSTANTS.CAPTURE_TARGET in enrollment-core.js.
+            // Previously 10 — enrollment-core fires onReadyToConfirm at 8
+            // (CAPTURE_TARGET), so requiring 10 here caused an infinite loop
+            // where the component completed at 8 but the wizard rejected it.
+            var MAX_FRAMES = 8;
 
             // Validation rules
             var ValidationRules = {
@@ -406,24 +410,19 @@
                 onCaptureProgress: function(frameCount) {
                     state.capturedFrames = new Array(frameCount);
                     els.btnToReview.disabled = frameCount < MAX_FRAMES;
-                    if (frameCount >= MAX_FRAMES && state.step === 2) {
-                        // Auto-show success notification
-                        if (typeof MobileSwal !== 'undefined') {
-                            MobileSwal.success('Captures Complete', 'Your 10 face samples are ready.');
-                        }
-                    }
+                    // No popup — status bar in the component shows progress already.
+                    // A Swal here interrupts the user mid-capture.
                 },
                 onEnrollmentComplete: function(result) {
                     state.capturedFrames = new Array(result.vectorsSaved || 10);
                     els.btnToReview.disabled = false;
                 },
                 onEnrollmentError: function(error) {
-                    if (typeof MobileSwal !== 'undefined') {
-                        MobileSwal.error('Enrollment Error', error.message || 'Please try again.');
-                    } else if (typeof FaceAttend !== 'undefined' && FaceAttend.Notify) {
-                        FaceAttend.Notify.error(error.message || 'Please try again.', 5000);
-                    } else {
-                        alert('Enrollment Error: ' + (error.message || 'Please try again.'));
+                    // Silent — enrollment-ui.js already writes to the status bar.
+                    // No MobileSwal here; popup interrupts capture and blocks the user.
+                    // The user sees the error in the status bar and capture resumes automatically.
+                    if (typeof FaceAttend !== 'undefined' && FaceAttend.Notify) {
+                        FaceAttend.Notify.toast(error.message || 'Scan error, retrying...', 'warning', 2000);
                     }
                 },
 

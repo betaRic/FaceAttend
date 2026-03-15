@@ -56,6 +56,10 @@
     
     @* New unified core modules *@
     @Scripts.Render("~/bundles/facescan-core")
+
+    @* Enrollment modules (enrollment-core.js + enrollment-ui.js) *@
+    @* Required by _EnrollmentComponent.cshtml on all surfaces that use this layout *@
+    @Scripts.Render("~/bundles/enrollment")
     
     @* Page-specific scripts *@
     @RenderSection("scripts", required: false)

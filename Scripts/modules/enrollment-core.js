@@ -308,45 +308,59 @@ FaceAttend.Enrollment = (function () {
     Enrollment.prototype.estimatePoseBucket = function(landmarks, faceBox, canvasW, canvasH) {
         if (!faceBox || faceBox.w <= 0) return 'center';
 
-        // Use face center offset relative to full frame as yaw proxy
+        // Box-geometry fallback — used only when landmarks are null/empty.
+        // Aspect ratio bias REMOVED: nearly all face boxes are taller than wide
+        // (ratio ~1.3-1.6), so the old "if aspect > 1.4: pitch -= 10" fired on
+        // every frame and permanently biased pitch toward "up".
         var faceCenterX = (faceBox.x + faceBox.w / 2) / (canvasW || 640);
         var faceCenterY = (faceBox.y + faceBox.h / 2) / (canvasH || 480);
+        var yaw   = (faceCenterX - 0.5) * 60;
+        var pitch = (faceCenterY - 0.5) * 40;
 
-        var yaw = (faceCenterX - 0.5) * 60;   // approx degrees, ±30 range
-        var pitch = (faceCenterY - 0.5) * 40; // approx degrees, ±20 range
-
-        // Aspect ratio hint: narrow vertical box = looking up
-        var aspect = faceBox.h / faceBox.w;
-        if (aspect > 1.4) pitch -= 10;
-        if (aspect < 0.8) pitch += 10;
-
-        // Server landmarks: [{x,y},{x,y},{x,y}] = [leftEye, rightEye, noseTip] in PIXELS.
-        // Formula matches FaceQualityAnalyzer.EstimatePoseFromLandmarks (server-side) exactly.
         if (landmarks && landmarks.length >= 3) {
             var lEye = landmarks[0], rEye = landmarks[1], nose = landmarks[2];
+            var chin = landmarks.length >= 4 ? landmarks[3] : null;
+
             if (lEye && rEye && nose) {
                 var eyeMidX  = (lEye.x + rEye.x) / 2;
                 var eyeMidY  = (lEye.y + rEye.y) / 2;
                 var eyeDistX = Math.abs(lEye.x - rEye.x);
+
                 if (eyeDistX > 1) {
-                    yaw   = (nose.x - eyeMidX) / eyeDistX * 90;
-                    pitch = ((nose.y - eyeMidY) / eyeDistX - 1.2) * 40;
+                    // YAW: nose offset from eye midpoint (self-scaling)
+                    yaw = (nose.x - eyeMidX) / eyeDistX * 90;
+
+                    // PITCH: choose formula based on whether chin is available
+                    if (chin && chin.y > 0 && chin.y > nose.y) {
+                        // SELF-CALIBRATING: uses chin point — no fixed baseline
+                        // Matches server: FaceQualityAnalyzer.EstimatePoseFromLandmarks (8-float path)
+                        var faceHeight = chin.y - eyeMidY;
+                        if (faceHeight < 1) faceHeight = 1;
+                        var noseFraction = (nose.y - eyeMidY) / faceHeight;
+                        // noseFraction ~0.45 = frontal. UP = increases, DOWN = decreases
+                        pitch = -(noseFraction - 0.45) * 130;
+                    } else {
+                        // FALLBACK: nose-to-eye ratio with corrected 1.05 baseline
+                        // (was 1.2 which biased every frontal frame to "up")
+                        var normalizedPitch = (nose.y - eyeMidY) / eyeDistX;
+                        pitch = -(normalizedPitch - 1.05) * 50;
+                    }
                 }
             }
         }
 
-        var absYaw = Math.abs(yaw);
+        var absYaw   = Math.abs(yaw);
         var absPitch = Math.abs(pitch);
 
-        if (absYaw > 30 || absPitch > 25) return 'other';
-        if (absYaw < 10 && absPitch < 10) return 'center';
+        if (absYaw > 35 || absPitch > 30) return 'other';
+        if (absYaw < 12 && absPitch < 12) return 'center';
 
         if (absYaw >= absPitch) {
-            if (yaw < -10) return 'left';
-            if (yaw > 10) return 'right';
+            if (yaw < -12) return 'left';
+            if (yaw > 12)  return 'right';
         } else {
-            if (pitch < -10) return 'up';
-            if (pitch > 10) return 'down';
+            if (pitch < -12) return 'up';
+            if (pitch > 12)  return 'down';
         }
 
         return 'center';

@@ -662,7 +662,10 @@ namespace FaceAttend.Services.Biometrics
                     try
                     {
                         // Use FaceLandmark (singular) with Small predictor
-                        var lmSets = fr.FaceLandmark(img, locations, PredictorModel.Small)
+                        // PredictorModel.Large = shape_predictor_68_face_landmarks.dat
+                        // This is reliably loaded by FaceRecognition.Create(modelsDir).
+                        // PredictorModel.Small (5-point) fails silently on many builds.
+                        var lmSets = fr.FaceLandmark(img, locations, PredictorModel.Large)
                                        .FirstOrDefault();
                         if (lmSets != null)
                             landmarks5 = ExtractLandmarks5(lmSets);
@@ -683,6 +686,74 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
+        // ─── Public helper: extract RGB bytes from Bitmap ─────────────────────────
+
+        /// <summary>
+        /// Public wrapper around BitmapToRgb. Converts bitmap to a flat RGB byte array
+        /// [R,G,B, R,G,B, ...] row-major. Called by FastScanPipeline before Parallel.Invoke
+        /// to pre-extract pixel data so encoding thread never touches the original Bitmap.
+        /// </summary>
+        public static byte[] ExtractRgbData(Bitmap bitmap)
+        {
+            return BitmapToRgb(bitmap);
+        }
+
+        /// <summary>
+        /// Encode + landmarks from pre-computed RGB bytes — zero Bitmap access.
+        /// Thread-safe: works on a byte array, never calls LockBits or Clone.
+        /// Used by the parallel encoding thread so it never races with the liveness
+        /// thread which may still be reading the original Bitmap.
+        /// </summary>
+        public bool TryEncodeWithLandmarksFromRgbData(
+            byte[]   rgbData,
+            int      imageWidth,
+            int      imageHeight,
+            Location faceLocation,
+            out double[] embedding,
+            out float[]  landmarks5,
+            out string   error)
+        {
+            embedding  = null;
+            landmarks5 = null;
+            error      = null;
+
+            if (rgbData == null || rgbData.Length == 0) { error = "NO_RGB_DATA"; return false; }
+
+            var fr = RentInstance();
+            if (fr == null) { error = "POOL_TIMEOUT"; return false; }
+
+            try
+            {
+                using (var img = FaceRecognition.LoadImage(
+                    rgbData, imageHeight, imageWidth, imageWidth * 3, Mode.Rgb))
+                {
+                    var locations = new[] { faceLocation };
+
+                    var enc = fr.FaceEncodings(img, locations).FirstOrDefault();
+                    if (enc == null) { error = "ENCODING_FAIL"; return false; }
+                    embedding = enc.GetRawEncoding();
+
+                    try
+                    {
+                        // PredictorModel.Large = shape_predictor_68_face_landmarks.dat
+                        // This is reliably loaded by FaceRecognition.Create(modelsDir).
+                        // PredictorModel.Small (5-point) fails silently on many builds.
+                        var lmSets = fr.FaceLandmark(img, locations, PredictorModel.Large)
+                                       .FirstOrDefault();
+                        if (lmSets != null)
+                            landmarks5 = ExtractLandmarks5(lmSets);
+                    }
+                    catch { landmarks5 = null; }
+
+                    return true;
+                }
+            }
+            finally
+            {
+                ReturnInstance(fr);
+            }
+        }
+
         // ─── Combined encode + landmarks (single file load, one pool rent) ─────────
 
         /// <summary>
@@ -693,7 +764,7 @@ namespace FaceAttend.Services.Biometrics
         /// landmarks5 is null if landmark extraction fails  caller must handle gracefully.
         /// Encoding still succeeds in that case (best-effort landmarks).
         ///
-        /// Uses PredictorModel.Small (5-point)  faster than Large (68-point).
+        /// Uses PredictorModel.Large (68-point) for reliable landmark extraction.
         /// Works with both small and large predictors via FacePart key inspection.
         /// </summary>
         public bool TryEncodeWithLandmarks(
@@ -737,7 +808,10 @@ namespace FaceAttend.Services.Biometrics
                     try
                     {
                         // Use FaceLandmark (singular) with Small predictor — consistent with pool init
-                        var landmarkResult = fr.FaceLandmark(img, locations, PredictorModel.Small)
+                        // PredictorModel.Large = shape_predictor_68_face_landmarks.dat
+                        // This is reliably loaded by FaceRecognition.Create(modelsDir).
+                        // PredictorModel.Small (5-point) fails silently on many builds.
+                        var landmarkResult = fr.FaceLandmark(img, locations, PredictorModel.Large)
                                               .FirstOrDefault();
                         if (landmarkResult != null)
                             landmarks5 = ExtractLandmarks5(landmarkResult);
@@ -758,12 +832,17 @@ namespace FaceAttend.Services.Biometrics
         }
 
         /// <summary>
-        /// Extracts a compact 6-float landmark array from a FaceLandmarks result.
-        /// Works with both Small (5-pt) and Large (68-pt) predictor outputs by
-        /// averaging all available points in each eye group.
+        /// Extracts landmark data from a 68-point (or 5-point) predictor result.
+        /// Returns float[8]: [leftEyeX, leftEyeY, rightEyeX, rightEyeY,
+        ///                    noseTipX, noseTipY, chinX, chinY]
         ///
-        /// Returns float[6]: [leftEyeX, leftEyeY, rightEyeX, rightEyeY, noseTipX, noseTipY]
-        /// All values in image pixel coordinates. Returns null on any failure.
+        /// Chin is extracted from FacePart.Chin (jaw points 0-16 in dlib).
+        /// The chin TIP is the point with the maximum Y value (lowest in image)
+        /// which is the bottom-center of the jaw.
+        ///
+        /// With 68-point model: all 8 values are populated.
+        /// With 5-point model: chinX/chinY may be 0 if FacePart.Chin not available.
+        /// Returns null if eye or nose data is missing.
         /// </summary>
         private static float[] ExtractLandmarks5(
             IDictionary<FacePart, IEnumerable<FacePoint>> parts)
@@ -773,39 +852,61 @@ namespace FaceAttend.Services.Biometrics
             float leX = 0f, leY = 0f, leN = 0f;
             float reX = 0f, reY = 0f, reN = 0f;
             float nX  = 0f, nY  = 0f, nN  = 0f;
+            float chinX = 0f, chinY = 0f;
 
             IEnumerable<FacePoint> pts;
 
-            // Left eye  average all points in the group
+            // Left eye  average all points in group (6 pts for 68-model, 2 for 5-model)
             if (parts.TryGetValue(FacePart.LeftEye, out pts) && pts != null)
                 foreach (var p in pts) { leX += p.Point.X; leY += p.Point.Y; leN++; }
 
-            // Right eye  average all points in the group
+            // Right eye  average all points in group
             if (parts.TryGetValue(FacePart.RightEye, out pts) && pts != null)
                 foreach (var p in pts) { reX += p.Point.X; reY += p.Point.Y; reN++; }
 
-            // Nose tip preferred; bottom of nose bridge as fallback
+            // Nose tip (FacePart.NoseTip = nostrils area, points 31-35 in 68-model)
+            // Average all nose tip points for stability
             if (parts.TryGetValue(FacePart.NoseTip, out pts) && pts != null)
                 foreach (var p in pts) { nX += p.Point.X; nY += p.Point.Y; nN++; }
 
+            // Nose bridge fallback (points 27-30, top of nose near forehead)
             if (nN == 0 && parts.TryGetValue(FacePart.NoseBridge, out pts) && pts != null)
             {
                 var noseList = pts.ToList();
                 if (noseList.Count > 0)
                 {
-                    // Bottom of bridge is closest to nose tip
-                    var last = noseList[noseList.Count - 1];
-                    nX = last.Point.X; nY = last.Point.Y; nN = 1f;
+                    // Use bottom of bridge (closest to nose tip = highest Y value)
+                    var bottomBridge = noseList.OrderByDescending(p => p.Point.Y).First();
+                    nX = bottomBridge.Point.X; nY = bottomBridge.Point.Y; nN = 1f;
                 }
             }
 
             if (leN == 0f || reN == 0f || nN == 0f) return null;
 
+            // Chin  FacePart.Chin contains the full jaw outline (points 0-16 in 68-model)
+            // The chin TIP = maximum Y value (lowest point in image = bottom of chin)
+            if (parts.TryGetValue(FacePart.Chin, out pts) && pts != null)
+            {
+                float maxY = float.MinValue;
+                float bestX = 0f;
+                foreach (var p in pts)
+                {
+                    if (p.Point.Y > maxY)
+                    {
+                        maxY = p.Point.Y;
+                        bestX = p.Point.X;
+                    }
+                }
+                chinX = bestX;
+                chinY = maxY;
+            }
+
             return new float[]
             {
-                leX / leN, leY / leN,   // [0,1] left eye center
-                reX / reN, reY / reN,   // [2,3] right eye center
-                nX  / nN,  nY  / nN    // [4,5] nose tip
+                leX / leN, leY / leN,   // [0,1] left eye center (person's left = image right)
+                reX / reN, reY / reN,   // [2,3] right eye center (person's right = image left)
+                nX  / nN,  nY  / nN,   // [4,5] nose tip
+                chinX,     chinY        // [6,7] chin bottom tip (0,0 if unavailable)
             };
         }
 

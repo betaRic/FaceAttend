@@ -155,41 +155,80 @@ namespace FaceAttend.Services.Biometrics
         // ── Pose ────────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Accurate head pose estimation from 6-point facial landmarks.
-        /// Uses eye positions as reference and nose tip displacement to estimate
-        /// yaw (horizontal rotation) and pitch (vertical tilt).
+        /// Computes yaw and pitch from facial landmarks.
+        /// Accepts either 6-float (eyes + nose) or 8-float (eyes + nose + chin) arrays.
         ///
-        /// Assumes landmarks6 array format: [leftEyeX, leftEyeY, rightEyeX, rightEyeY, noseTipX, noseTipY]
-        /// Returns yaw (clockwise +) and pitch (down +) in degrees.
+        /// YAW: Nose tip horizontal displacement from eye midpoint, normalized by eye
+        ///      distance. Self-scaling — works regardless of face size in frame.
+        ///
+        /// PITCH (8-float path): Nose fraction of face lower half.
+        ///   noseFraction = (noseTip.Y - eyeMid.Y) / (chin.Y - eyeMid.Y)
+        ///   Frontal ≈ 0.45. No fixed baseline — fully self-calibrating.
+        ///   "Looking up" increases noseFraction; "looking down" decreases it.
+        ///
+        /// PITCH (6-float fallback): Uses nose-to-eye distance ratio.
+        ///   Less reliable — baseline 1.05 was calibrated for average camera distance.
+        ///   Use only when chin is not available.
+        ///
+        /// Bucket thresholds: yaw ±12°, pitch ±12° (relaxed from 10° to reduce noise).
         /// </summary>
-        public static (float yaw, float pitch) EstimatePoseFromLandmarks(float[] landmarks6)
+        public static (float yaw, float pitch) EstimatePoseFromLandmarks(float[] landmarks)
         {
-            if (landmarks6 == null || landmarks6.Length < 6)
+            if (landmarks == null || landmarks.Length < 6)
                 return (0f, 0f);
 
-            float leX = landmarks6[0], leY = landmarks6[1];
-            float reX = landmarks6[2], reY = landmarks6[3];
-            float ntX = landmarks6[4], ntY = landmarks6[5];
+            float leX = landmarks[0], leY = landmarks[1];
+            float reX = landmarks[2], reY = landmarks[3];
+            float ntX = landmarks[4], ntY = landmarks[5];
 
-            // Eye midpoint (reference center)
+            // Eye midpoint
             float eyeMidX = (leX + reX) * 0.5f;
             float eyeMidY = (leY + reY) * 0.5f;
 
-            // Eye distance as scale reference
+            // Eye distance (horizontal inter-ocular distance — scale reference)
             float eyeDistX = Math.Abs(reX - leX);
-            if (eyeDistX < 1f) eyeDistX = 1f; // Prevent division by zero
+            if (eyeDistX < 1f) eyeDistX = 1f;
 
-            // Yaw: nose tip horizontal displacement from eye midpoint
-            // Scale: eyeDistX ~ 90 degrees of rotation (nose tip aligned with eye corner)
+            // ── YAW: nose horizontal offset from eye midpoint ──
+            // Positive yaw = nose to image right = face turned to person's left
+            // In mirrored display: yaw > 0 looks like going right → "right" prompt
             float yaw = ((ntX - eyeMidX) / eyeDistX) * 90f;
 
-            // Pitch: nose tip vertical displacement relative to eye level
-            // Typical upright face: nose tip is ~1.2 eye distances below eye midpoint
-            float normalizedPitch = (ntY - eyeMidY) / eyeDistX;
-            float pitch = (normalizedPitch - 1.2f) * 40f; // Scale factor calibrated for typical faces
+            // ── PITCH ──
+            float pitch;
 
-            // Clamp to reasonable ranges
-            yaw = Math.Max(-90f, Math.Min(90f, yaw));
+            bool hasChin = landmarks.Length >= 8
+                        && landmarks[7] > 0f   // chinY > 0 means chin was extracted
+                        && landmarks[7] > ntY; // sanity: chin must be below nose in image
+
+            if (hasChin)
+            {
+                // SELF-CALIBRATING PITCH using chin — no fixed baseline
+                // noseFraction = how far nose is between eyes and chin (0=at eyes, 1=at chin)
+                float chinY      = landmarks[7];
+                float faceHeight = chinY - eyeMidY;
+                if (faceHeight < 10f) faceHeight = 10f; // degenerate face box guard
+
+                float noseFraction = (ntY - eyeMidY) / faceHeight;
+                // Frontal face → noseFraction ≈ 0.45
+                // Looking UP (head tilts back) → noseFraction increases (nose rises relative to chin)
+                // Looking DOWN (head tilts forward) → noseFraction decreases
+                //
+                // pitch sign: negative = looking up, positive = looking down
+                // (0.45 - noseFraction): looking up gives positive result, so negate
+                pitch = -(noseFraction - 0.45f) * 130f;
+            }
+            else
+            {
+                // FALLBACK: nose-to-eye distance ratio (less reliable)
+                // The 1.05 baseline was calibrated at ~60cm camera distance.
+                // Reduced from 1.2 which was too high for close-up webcam footage.
+                float normalizedPitch = (ntY - eyeMidY) / eyeDistX;
+                pitch = -(normalizedPitch - 1.05f) * 50f;
+            }
+
+            // Clamp to realistic head movement range
+            yaw   = Math.Max(-90f, Math.Min(90f, yaw));
             pitch = Math.Max(-90f, Math.Min(90f, pitch));
 
             return (yaw, pitch);
@@ -219,13 +258,11 @@ namespace FaceAttend.Services.Biometrics
             float yaw   = (faceCenterX - 0.5f) * 60f;   // ±30° range
             float pitch = (faceCenterY - 0.5f) * 40f;   // ±20° range
 
-            // Face aspect ratio hint: tall narrow box = looking up/down
-            float aspectRatio = faceBox.Width > 0
-                ? (float)faceBox.Height / faceBox.Width
-                : 1f;
-
-            if (aspectRatio > 1.4f) pitch -= 10f;  // very tall = looking up
-            if (aspectRatio < 0.8f) pitch += 10f;  // very wide = looking down
+            // Aspect ratio hint — REMOVED the -10f bias.
+            // The original rule fired on nearly every face (most boxes are >1.4 ratio)
+            // and permanently biased pitch to -10, causing "up" to dominate every frame
+            // when landmark extraction was unavailable.
+            // Box-geometry pitch is inherently unreliable; don't add a constant offset.
 
             return (yaw, pitch);
         }
