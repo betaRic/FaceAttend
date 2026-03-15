@@ -158,6 +158,42 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "Biometrics:PreprocessJpegQuality",
                 ConfigurationService.GetInt("Biometrics:PreprocessJpegQuality", 85));
 
+            // Attendance — directional gaps and schedule details
+            var inToOut = ConfigurationService.GetInt(db, "Attendance:MinGap:InToOutSeconds",
+                ConfigurationService.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
+            var outToIn = ConfigurationService.GetInt(db, "Attendance:MinGap:OutToInSeconds",
+                ConfigurationService.GetInt("Attendance:MinGap:OutToInSeconds", 300));
+            var grace = ConfigurationService.GetInt(db, "Attendance:GraceMinutes",
+                ConfigurationService.GetInt("Attendance:GraceMinutes", 10));
+            var fullDay = ConfigurationService.GetDouble(db, "Attendance:FullDayHours",
+                ConfigurationService.GetDouble("Attendance:FullDayHours", 8.0));
+            var halfDay = ConfigurationService.GetDouble(db, "Attendance:HalfDayHours",
+                ConfigurationService.GetDouble("Attendance:HalfDayHours", 4.0));
+            var lunchDeductAfter = ConfigurationService.GetDouble(db, "Attendance:LunchDeductAfterHours",
+                ConfigurationService.GetDouble("Attendance:LunchDeductAfterHours", 5.5));
+            var lunchMinutes = ConfigurationService.GetInt(db, "Attendance:LunchMinutes",
+                ConfigurationService.GetInt("Attendance:LunchMinutes", 60));
+
+            // Biometrics — scan and enrollment tolerances, pool
+            var attendTol = ConfigurationService.GetDouble(db, "Biometrics:AttendanceTolerance",
+                ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.65));
+            var strictTol = ConfigurationService.GetDouble(db, "Biometrics:EnrollmentStrictTolerance",
+                ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45));
+            var dlibPool = ConfigurationService.GetInt(db, "Biometrics:DlibPoolSize",
+                ConfigurationService.GetInt("Biometrics:DlibPoolSize", 4));
+            var maxScans = ConfigurationService.GetInt(db, "Kiosk:MaxConcurrentScans",
+                ConfigurationService.GetInt("Kiosk:MaxConcurrentScans", 4));
+            var enrollTarget = ConfigurationService.GetInt(db, "Biometrics:Enroll:CaptureTarget",
+                ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget", 8));
+            var enrollMaxVec = ConfigurationService.GetInt(db, "Biometrics:Enroll:MaxStoredVectors",
+                ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 5));
+            var visitorTol = ConfigurationService.GetDouble(db, "Visitors:DlibTolerance",
+                ConfigurationService.GetDouble("Visitors:DlibTolerance", attendTol));
+            var sharpDesktop = ConfigurationService.GetDouble(db, "Biometrics:Enroll:SharpnessThreshold",
+                ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold", 80.0));
+            var sharpMobile = ConfigurationService.GetDouble(db, "Biometrics:Enroll:SharpnessThreshold:Mobile",
+                ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold:Mobile", 50.0));
+
             // Visitors
             var visMaxRec = ConfigurationService.GetInt(
                 db,
@@ -208,6 +244,26 @@ namespace FaceAttend.Areas.Admin.Helpers
                 LunchEnd = NormalizeTimeOrDefault(lunchEnd, "13:00"),
                 FlexiRequiredHours = flexiRequiredHours,
                 NoGracePeriod = noGracePeriod,
+
+                // Attendance directional gaps
+                MinGapInToOutSeconds = inToOut,
+                MinGapOutToInSeconds = outToIn,
+                GraceMinutes = grace,
+                FullDayHours = fullDay,
+                HalfDayHours = halfDay,
+                LunchDeductAfterHours = lunchDeductAfter,
+                LunchMinutes = lunchMinutes,
+
+                // Biometrics extended
+                AttendanceTolerance = attendTol,
+                EnrollmentStrictTolerance = strictTol,
+                DlibPoolSize = dlibPool,
+                MaxConcurrentScans = maxScans,
+                EnrollCaptureTarget = enrollTarget,
+                EnrollMaxStoredVectors = enrollMaxVec,
+                VisitorDlibTolerance = visitorTol,
+                EnrollSharpnessThreshold = sharpDesktop,
+                EnrollSharpnessThresholdMobile = sharpMobile,
 
                 // Review queue
                 NeedsReviewNearMatchRatio = nearMatch,

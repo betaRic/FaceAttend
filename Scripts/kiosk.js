@@ -214,6 +214,7 @@
         locationSub:     'Please wait while the kiosk verifies the current office location.',
         currentOffice: { id: null, name: null }, lastResolveAt: 0,
         officeVerifiedUntil: 0, officeResolveRetryUntil: 0,
+        lastVerifiedLat: null, lastVerifiedLon: null,  // GPS position at time of last successful resolve
         backoffUntil: 0, lastCaptureAt: 0,
 
         mpMode:          'none',
@@ -1717,8 +1718,40 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
         );
     }
 
-        function resolveOfficeIfNeeded() {
+    // Haversine distance in meters between two GPS coordinates (fast approx for short distances)
+    function gpsDistanceMeters(lat1, lon1, lat2, lon2) {
+        if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return 0;
+        var R = 6371000;
+        var dLat = (lat2 - lat1) * Math.PI / 180;
+        var dLon = (lon2 - lon1) * Math.PI / 180;
+        var a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    function resolveOfficeIfNeeded() {
         var t = Date.now();
+
+        // If location was previously verified, check whether GPS has drifted
+        // more than 60m from the verified position. If so, force a re-resolve.
+        // This catches employees who walk outside the office radius mid-session.
+        // 60m threshold is generous enough to ignore natural GPS noise (~3-15m)
+        // but tight enough to catch someone leaving the building.
+        if (state.locationState === 'allowed' &&
+            state.lastVerifiedLat != null &&
+            state.gps.lat != null)
+        {
+            var drift = gpsDistanceMeters(
+                state.lastVerifiedLat, state.lastVerifiedLon,
+                state.gps.lat, state.gps.lon);
+            if (drift > 60) {
+                // GPS moved significantly -- invalidate cached verification
+                state.officeVerifiedUntil = 0;
+                state.lastVerifiedLat = null;
+                state.lastVerifiedLon = null;
+            }
+        }
 
         if (state.locationState === 'allowed' &&
             state.currentOffice &&
@@ -1809,6 +1842,9 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                 state.currentOffice.name = j.officeName;
                 state.officeVerifiedUntil = Date.now() + (isMobile ? 60 * 1000 : 5 * 60 * 1000);
                 state.officeResolveRetryUntil = 0;
+                // Store GPS position at verification time for drift detection
+                state.lastVerifiedLat = state.gps.lat;
+                state.lastVerifiedLon = state.gps.lon;
 
                 setLocationState(
                     'allowed',
@@ -1867,6 +1903,8 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                     state.currentOffice.name = j.officeName;
                     state.officeVerifiedUntil = Date.now() + (5 * 60 * 1000);
                     state.officeResolveRetryUntil = 0;
+                    state.lastVerifiedLat = state.gps.lat;
+                    state.lastVerifiedLon = state.gps.lon;
 
                     setLocationState(
                         'allowed',

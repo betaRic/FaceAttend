@@ -7,13 +7,26 @@ namespace FaceAttend.Services.Security
     /// ANTI-SPOOFING: Detects fake GPS and location manipulation attempts.
     /// 
     /// DETECTION METHODS:
-    /// 1. TELEPORTATION CHECK - Impossible travel speeds (e.g., Manila to Koronadal in 5 min)
-    /// 2. DEVICE CONSISTENCY - Same device fingerprint expected
-    /// 3. JUMP PATTERN - Sudden large location jumps without travel time
-    /// 4. REPLAY DETECTION - Same coordinates submitted too precisely
+    /// 1. MOCK GPS DETECTION - Null island, Apple HQ, Google HQ coordinates
+    /// 2. REPEAT COORDINATES - GPS spoof apps don't add natural drift
+    /// 3. DEVICE CONSISTENCY - Same device fingerprint expected
     /// </summary>
     public static class LocationAntiSpoof
     {
+        // In-process cache: last seen GPS per device fingerprint.
+        // Key: deviceFingerprint, Value: (lat, lon, seenCount, firstSeenAt)
+        private static readonly System.Runtime.Caching.MemoryCache _gpsCache =
+            System.Runtime.Caching.MemoryCache.Default;
+        private const string GpsCachePrefix = "GPS_LAST::";
+
+        private class GpsEntry
+        {
+            public double Lat { get; set; }
+            public double Lon { get; set; }
+            public int    RepeatCount { get; set; }
+            public DateTime FirstSeenAt { get; set; }
+        }
+
         public class CheckResult
         {
             public bool IsSuspicious { get; set; }
@@ -44,21 +57,88 @@ namespace FaceAttend.Services.Security
 
             try
             {
-                // Only check for mock GPS coordinates - NOT teleportation
-                // Employees may have no internet at home, scan at office,
-                // which appears as "jump" but is legitimate
-                
+                // ── Check 1: Mock GPS coordinates ───────────────────────────
                 if (!LooksLikeRealGps(newLat, newLon, null))
                 {
                     result.IsSuspicious = true;
-                    result.RiskScore = 0.7;
-                    result.Action = "BLOCK";
-                    result.Reason = "MOCK_GPS_DETECTED";
+                    result.RiskScore    = 0.7;
+                    result.Action       = "BLOCK";
+                    result.Reason       = "MOCK_GPS_DETECTED";
+                    return result;
+                }
+
+                if (string.IsNullOrWhiteSpace(deviceFingerprint))
+                    return result;
+
+                var cacheKey = GpsCachePrefix + deviceFingerprint;
+
+                // ── Check 2: Exact coordinate repeat (GPS spoof apps don't add natural drift) ──
+                // Real GPS has 3-15m natural drift between readings -- coordinates are never
+                // bit-for-bit identical across separate scans minutes apart.
+                // Threshold: 6 decimal places = ~0.1m precision. If coordinates match to
+                // 5 decimal places (1m), count as a repeat.
+                var existing = _gpsCache.Get(cacheKey) as GpsEntry;
+
+                if (existing != null)
+                {
+                    // Compare to 5 decimal places (~1m resolution)
+                    bool sameCoord =
+                        Math.Abs(newLat - existing.Lat) < 0.00001 &&
+                        Math.Abs(newLon - existing.Lon) < 0.00001;
+
+                    if (sameCoord)
+                    {
+                        existing.RepeatCount++;
+                        _gpsCache.Set(cacheKey, existing,
+                            new System.Runtime.Caching.CacheItemPolicy
+                            {
+                                AbsoluteExpiration = DateTimeOffset.UtcNow.AddMinutes(30)
+                            });
+
+                        // 3+ identical coordinate reads -> flag as suspicious
+                        // First 2 are allowed (employee may be genuinely stationary at desk)
+                        if (existing.RepeatCount >= 3)
+                        {
+                            result.IsSuspicious = true;
+                            result.RiskScore    = 0.6;
+                            // WARN not BLOCK -- flag for admin review, don't hard-block
+                            // (employee may genuinely be sitting still at their desk)
+                            result.Action  = "WARN";
+                            result.Reason  = $"GPS_REPEAT_COORDS (x{existing.RepeatCount})";
+                        }
+                    }
+                    else
+                    {
+                        // Coordinates changed -- natural drift, reset counter
+                        existing.Lat         = newLat;
+                        existing.Lon         = newLon;
+                        existing.RepeatCount = 1;
+                        existing.FirstSeenAt = newTime;
+                        _gpsCache.Set(cacheKey, existing,
+                            new System.Runtime.Caching.CacheItemPolicy
+                            {
+                                AbsoluteExpiration = DateTimeOffset.UtcNow.AddMinutes(30)
+                            });
+                    }
+                }
+                else
+                {
+                    // First time seeing this device -- store
+                    _gpsCache.Set(cacheKey, new GpsEntry
+                        {
+                            Lat         = newLat,
+                            Lon         = newLon,
+                            RepeatCount = 1,
+                            FirstSeenAt = newTime
+                        },
+                        new System.Runtime.Caching.CacheItemPolicy
+                        {
+                            AbsoluteExpiration = DateTimeOffset.UtcNow.AddMinutes(30)
+                        });
                 }
             }
             catch (Exception ex)
             {
-                // Log but don't block on error
                 System.Diagnostics.Trace.TraceError($"[LocationAntiSpoof] Error: {ex.Message}");
             }
 

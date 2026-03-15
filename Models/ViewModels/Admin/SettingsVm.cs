@@ -16,6 +16,42 @@ namespace FaceAttend.Models.ViewModels.Admin
         [Display(Name = "Liveness threshold")]
         public double LivenessThreshold { get; set; }
 
+        [Range(0.20, 1.00)]
+        [Display(Name = "Attendance match tolerance")]
+        public double AttendanceTolerance { get; set; }
+
+        [Range(0.20, 0.70)]
+        [Display(Name = "Enrollment duplicate check tolerance")]
+        public double EnrollmentStrictTolerance { get; set; }
+
+        [Range(1, 16)]
+        [Display(Name = "Dlib pool size (requires restart)")]
+        public int DlibPoolSize { get; set; }
+
+        [Range(1, 32)]
+        [Display(Name = "Max concurrent scans")]
+        public int MaxConcurrentScans { get; set; }
+
+        [Range(3, 20)]
+        [Display(Name = "Enrollment capture target (frames)")]
+        public int EnrollCaptureTarget { get; set; }
+
+        [Range(1, 10)]
+        [Display(Name = "Enrollment stored vectors per employee")]
+        public int EnrollMaxStoredVectors { get; set; }
+
+        [Range(0.0, 1.00)]
+        [Display(Name = "Visitor match tolerance")]
+        public double VisitorDlibTolerance { get; set; }
+
+        [Range(10, 500)]
+        [Display(Name = "Enrollment sharpness threshold (desktop)")]
+        public double EnrollSharpnessThreshold { get; set; }
+
+        [Range(10, 500)]
+        [Display(Name = "Enrollment sharpness threshold (mobile)")]
+        public double EnrollSharpnessThresholdMobile { get; set; }
+
         // ─── Advanced liveness ─────────────────────────────────────────────────────
 
         [Display(Name = "Liveness decision")]
@@ -95,8 +131,36 @@ namespace FaceAttend.Models.ViewModels.Admin
         // ─── Attendance ────────────────────────────────────────────────────────────
 
         [Range(1, 600)]
-        [Display(Name = "Minimum gap between scans (seconds)")]
+        [Display(Name = "Anti double-tap gap (seconds)")]
         public int MinGapSeconds { get; set; }
+
+        [Range(300, 14400)]
+        [Display(Name = "Minimum time IN → OUT (seconds)")]
+        public int MinGapInToOutSeconds { get; set; }
+
+        [Range(60, 3600)]
+        [Display(Name = "Minimum time OUT → IN (seconds)")]
+        public int MinGapOutToInSeconds { get; set; }
+
+        [Range(0, 60)]
+        [Display(Name = "Grace period (minutes)")]
+        public int GraceMinutes { get; set; }
+
+        [Range(1.0, 24.0)]
+        [Display(Name = "Full day hours")]
+        public double FullDayHours { get; set; }
+
+        [Range(0.5, 12.0)]
+        [Display(Name = "Half day hours")]
+        public double HalfDayHours { get; set; }
+
+        [Range(0.0, 12.0)]
+        [Display(Name = "Lunch deduct after (hours)")]
+        public double LunchDeductAfterHours { get; set; }
+
+        [Range(0, 120)]
+        [Display(Name = "Lunch deduct minutes")]
+        public int LunchMinutes { get; set; }
 
         [Display(Name = "Work start")]
         public string WorkStart { get; set; }

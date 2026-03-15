@@ -130,6 +130,70 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "If true, any time after work start is late.",
                 modifiedBy);
 
+            ConfigurationService.Upsert(db, "Attendance:MinGap:InToOutSeconds",
+                vm.MinGapInToOutSeconds.ToString(CultureInfo.InvariantCulture), "int",
+                "Minimum seconds required between Time-In and next Time-Out.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Attendance:MinGap:OutToInSeconds",
+                vm.MinGapOutToInSeconds.ToString(CultureInfo.InvariantCulture), "int",
+                "Minimum seconds required between Time-Out and next Time-In.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Attendance:GraceMinutes",
+                vm.GraceMinutes.ToString(CultureInfo.InvariantCulture), "int",
+                "Minutes after WorkStart before a scan is considered late.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Attendance:FullDayHours",
+                vm.FullDayHours.ToString(CultureInfo.InvariantCulture), "double",
+                "Required hours for a full-day attendance record.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Attendance:HalfDayHours",
+                vm.HalfDayHours.ToString(CultureInfo.InvariantCulture), "double",
+                "Hours threshold for a half-day attendance record.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Attendance:LunchDeductAfterHours",
+                vm.LunchDeductAfterHours.ToString(CultureInfo.InvariantCulture), "double",
+                "Deduct lunch minutes only when total hours exceed this value.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Attendance:LunchMinutes",
+                vm.LunchMinutes.ToString(CultureInfo.InvariantCulture), "int",
+                "Minutes to deduct for lunch break.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:AttendanceTolerance",
+                vm.AttendanceTolerance.ToString(CultureInfo.InvariantCulture), "double",
+                "Face distance tolerance for attendance scans. Higher = more lenient.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:EnrollmentStrictTolerance",
+                vm.EnrollmentStrictTolerance.ToString(CultureInfo.InvariantCulture), "double",
+                "Strict tolerance for enrollment duplicate detection. Lower = harder to enroll same face twice.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:DlibPoolSize",
+                vm.DlibPoolSize.ToString(CultureInfo.InvariantCulture), "int",
+                "Number of Dlib instances in the pool. Requires app restart to take effect.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Kiosk:MaxConcurrentScans",
+                vm.MaxConcurrentScans.ToString(CultureInfo.InvariantCulture), "int",
+                "Maximum simultaneous scan requests before 503 is returned.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:Enroll:CaptureTarget",
+                vm.EnrollCaptureTarget.ToString(CultureInfo.InvariantCulture), "int",
+                "Target number of frames to collect during enrollment.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:Enroll:MaxStoredVectors",
+                vm.EnrollMaxStoredVectors.ToString(CultureInfo.InvariantCulture), "int",
+                "Maximum face vectors stored per enrolled employee.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Visitors:DlibTolerance",
+                vm.VisitorDlibTolerance.ToString(CultureInfo.InvariantCulture), "double",
+                "Face distance tolerance for visitor recognition at kiosk.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:Enroll:SharpnessThreshold",
+                vm.EnrollSharpnessThreshold.ToString(CultureInfo.InvariantCulture), "double",
+                "Minimum Laplacian variance score for enrollment frames on desktop.", modifiedBy);
+
+            ConfigurationService.Upsert(db, "Biometrics:Enroll:SharpnessThreshold:Mobile",
+                vm.EnrollSharpnessThresholdMobile.ToString(CultureInfo.InvariantCulture), "double",
+                "Minimum Laplacian variance score for enrollment frames on mobile.", modifiedBy);
+
             // ── Review queue ──────────────────────────────────────────────────
 
             ConfigurationService.Upsert(

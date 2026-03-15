@@ -815,12 +815,21 @@ namespace FaceAttend.Controllers
                     {
                         var spoofCheck = LocationAntiSpoof.CheckLocation(
                             emp.Id, lat.Value, lon.Value, DateTime.UtcNow, deviceFp);
-                        
+
                         if (spoofCheck.Action == "BLOCK")
                         {
                             return JsonResponseBuilder.SuspiciousLocation(
                                 "Location verification failed. Please contact admin.",
                                 timings, includePerfTimings);
+                        }
+
+                        if (spoofCheck.Action == "WARN")
+                        {
+                            // GPS repeat coordinates -- flag for admin review but allow the scan.
+                            // Admin sees this in the NeedsReview queue with the reason.
+                            needsReviewFlag = true;
+                            if (reviewNotes.Length > 0) reviewNotes.Append(" ");
+                            reviewNotes.Append("GPS repeat: ").Append(spoofCheck.Reason).Append(".");
                         }
                     }
 

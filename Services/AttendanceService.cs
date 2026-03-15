@@ -72,14 +72,14 @@ namespace FaceAttend.Services
                 ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
 
             // --- Transaction: prevents concurrent duplicate scans ---
-            // OPTIMIZATION: Changed from Serializable to ReadCommitted
-            // 
-            // DATI: Serializable = pinakamabagal, nagdudulot ng deadlocks
-            // NGAYON: ReadCommitted = mas mabilis, acceptable protection
-            // 
-            // ILOKANO: "Ti ReadCommitted ket nasayaat para iti kadawyan a panagusar
-            //           ket saanna a pagsardengen ti sabali a transactions"
-            using (var tx = _db.Database.BeginTransaction(IsolationLevel.ReadCommitted))
+            // RepeatableRead prevents phantom reads within the transaction window.
+            // Two concurrent scans for the same employee can both read lastToday before
+            // either writes — ReadCommitted allowed that. RepeatableRead holds a shared
+            // read lock on the rows read until commit, so the second scan will wait until
+            // the first commits, then re-read and see the new record correctly.
+            // This is lighter than Serializable (no range locks) and sufficient here
+            // because we only query by EmployeeId within a date range.
+            using (var tx = _db.Database.BeginTransaction(IsolationLevel.RepeatableRead))
             {
                 try
                 {
@@ -158,7 +158,34 @@ namespace FaceAttend.Services
                     log.Source    = string.IsNullOrWhiteSpace(log.Source) ? "KIOSK" : log.Source;
 
                     _db.AttendanceLogs.Add(log);
-                    _db.SaveChanges();
+
+                    try
+                    {
+                        _db.SaveChanges();
+                    }
+                    catch (System.Data.Entity.Infrastructure.DbUpdateException dbEx)
+                    {
+                        // Unique index violation -- a concurrent scan for the same employee
+                        // + event type + day already committed. Treat as TOO_SOON.
+                        try { tx.Rollback(); } catch { }
+
+                        var inner = dbEx.InnerException?.InnerException?.Message
+                                 ?? dbEx.InnerException?.Message ?? dbEx.Message;
+
+                        if (inner.IndexOf("UX_AttendanceLogs", StringComparison.OrdinalIgnoreCase) >= 0
+                         || inner.IndexOf("duplicate key", StringComparison.OrdinalIgnoreCase) >= 0
+                         || inner.IndexOf("unique index", StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            return new RecordResult
+                            {
+                                Ok      = false,
+                                Code    = "TOO_SOON",
+                                Message = "Already scanned. Duplicate record prevented.",
+                                TimestampUtc = nowUtc
+                            };
+                        }
+                        throw;
+                    }
 
                     tx.Commit();
 
