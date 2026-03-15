@@ -425,6 +425,38 @@
                     } else {
                         alert('Enrollment Error: ' + (error.message || 'Please try again.'));
                     }
+                },
+
+                // FIX-002: Intercept onReadyToConfirm for the mobile wizard.
+                //
+                // WHY THIS IS NEEDED:
+                // enrollment-ui.js fires a Swal confirmation dialog when capture
+                // completes. On the admin surface, Confirm  performEnrollment()
+                // which hits /api/enrollment/enroll (requires existing employee).
+                // On mobile, there is NO existing employee yet  the employee is
+                // created by MobileRegistrationController.SubmitEnrollment() in
+                // Step 3, which includes all the form fields (name, department etc).
+                //
+                // Calling performEnrollment() on mobile would fail with
+                // EMPLOYEE_NOT_FOUND because no employee record exists yet.
+                //
+                // HOW IT WORKS:
+                // By defining this interceptor, enrollment-ui.js detects it and
+                // returns early WITHOUT showing the Swal. Instead, this function
+                // runs and automatically advances the wizard to Step 3 (review).
+                // setStep(3) calls FaceAttendEnrollment.stop() which stops the
+                // camera stream. The user reviews their details in Step 3 and
+                // submits via submitEnrollment() which posts all form fields +
+                // face encodings to MobileRegistrationController.SubmitEnrollment.
+                //
+                // data.frames contains the captured frames. Encodings are retrieved
+                // later via window.FaceAttendEnrollment.getEncodings() in
+                // submitEnrollment()  they are stored on each goodFrame by
+                // enrollment-core.js after each successful ScanFrame response.
+                onReadyToConfirm: function(data) {
+                    // Capture is complete. Automatically move to review step.
+                    // setStep(3) handles stopping the camera (leaves step 2).
+                    setStep(3);
                 }
             };
 

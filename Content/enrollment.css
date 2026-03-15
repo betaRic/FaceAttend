@@ -344,28 +344,46 @@
 }
 
 /* ==========================================================================
-   Method Cards - Fix Icon Consistency
+   Method Cards - Fixes for alignment and consistency
    ========================================================================== */
 
-/* Ensure method card icons are consistent */
-.fa-method__icon {
-    width: 64px;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--bg-surface);
-    border-radius: var(--radius-lg);
-    margin-bottom: var(--space-4);
-    font-size: 1.5rem;
-    color: var(--color-primary);
-    border: 1px solid var(--border-subtle);
+/* Ensure cards align properly even with badge */
+.fa-method-card {
+    justify-content: flex-start;
+    padding-top: var(--space-8);
 }
 
-.fa-method-card:hover .fa-method__icon {
-    background: var(--color-primary-light);
-    color: white;
-    border-color: var(--color-primary);
+/* Position badge without affecting content */
+.fa-method__badge {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    margin: 0;
+    line-height: 1;
+}
+
+/* Ensure icon is consistently centered */
+.fa-method__icon {
+    margin-top: 0;
+    margin-bottom: var(--space-4);
+    flex-shrink: 0;
+}
+
+/* Fix camera icon in small buttons - prevent zoom/cutoff */
+.btn-sm .fa-camera,
+.btn .fa-camera {
+    font-size: 1em;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+/* Ensure button icons don't overflow */
+.btn i,
+.btn-sm i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1em;
 }
 
 /* ==========================================================================

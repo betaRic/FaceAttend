@@ -57,8 +57,11 @@
         statusMsg:         q('enrollStatus'),
         livenessBar:       q('enrollLivenessBar'),
         livenessVal:       q('enrollLivenessVal'),
-        confirmBtn:        q('enrollConfirmBtn'),
-        retakeBtn:         q('enrollRetakeBtn'),
+        // FIX-002: confirmBtn and retakeBtn REMOVED.
+        // Confirmation and retake are now handled by the automatic Swal
+        // dialog fired via enrollment.callbacks.onReadyToConfirm.
+        // The button elements (#enrollConfirmBtn, #enrollRetakeBtn) have also
+        // been removed from _EnrollmentComponent.cshtml markup.
         processingOverlay: q('enrollProcessing'),
         processingStatus:  q('enrollProcessingStatus')
     };
@@ -126,8 +129,8 @@
         var t = target || 8;
         if (ui.progressText) ui.progressText.textContent = current + ' / ' + t + ' frames';
         if (ui.progressBar)  ui.progressBar.style.width  = Math.round((current / t) * 100) + '%';
-        if (ui.confirmBtn)
-            ui.confirmBtn.classList.toggle('enroll-hidden', current < cfg.minFrames);
+        // FIX-002: confirmBtn toggle removed  button no longer exists in markup.
+        // The Swal confirmation fires automatically via onReadyToConfirm callback.
     }
 
     function updateDots() {
@@ -183,6 +186,25 @@
         }
     }
 
+    //  FIX-002: Internal retake 
+    // Called when the user clicks "Retake" in the Swal confirmation dialog.
+    // Resets all capture state and restarts the auto-capture loop.
+    //
+    // NOTE: enrollment.startAutoEnrollment() already handles resetting
+    // goodFrames, passHist, enrolled, lastFaceBox internally.
+    // The camera stream is still active at this point  only the capture
+    // interval was stopped when _fireReadyToConfirm fired. So we do NOT
+    // need to call startCamera() again  just startAutoEnrollment().
+    function _doRetake() {
+        enrollment.startAutoEnrollment();               // resets state, restarts interval
+        updateProgress(0, cfg.minFrames || 8);          // reset progress bar + text
+        updateDots();                                   // reset angle dots to uncaptured
+        if (typeof enrollment.getNextAnglePrompt === 'function') {
+            showAngle(enrollment.getNextAnglePrompt()); // reset angle guidance to 'center'
+        }
+        setStatus('Retaking  follow the angle prompts.', 'info');
+    }
+
     // ── Camera start / stop - called by view pane controller ──────────────────
     function startCamera() {
         if (_running) return;
@@ -236,6 +258,155 @@
         if (next && next.bucket !== 'other') showAngle(next);
     };
 
+    // FIX-002: onReadyToConfirm  fires when auto-capture completes.
+    // The core has stopped the capture interval. Camera stream is still active.
+    // This callback shows the Swal confirmation dialog with:
+    //   - Thumbnails of the 3 best captured frames (converted from Blob  DataURL)
+    //   - Frame count and angle count summary
+    //   - Best liveness score
+    //   - Confirm button  calls enrollment.performEnrollment()
+    //   - Retake button  calls _doRetake()
+    //
+    // MOBILE SURFACE INTERCEPTION:
+    // If window.enrollCallbacks.onReadyToConfirm is defined (set by the mobile
+    // wizard in Views/MobileRegistration/Enroll.cshtml), this callback delegates
+    // entirely to it and returns early WITHOUT showing the Swal.
+    // The mobile wizard advances to Step 3 (review) instead.
+    // This pattern is consistent with how onCaptureProgress and
+    // onEnrollmentComplete are forwarded to the mobile wizard.
+    enrollment.callbacks.onReadyToConfirm = function (data) {
+        setStatus('Capture complete! Review your frames below.', 'success');
+
+        //  External interceptor check (mobile wizard) 
+        if (typeof window.enrollCallbacks === 'object' &&
+            window.enrollCallbacks !== null &&
+            typeof window.enrollCallbacks.onReadyToConfirm === 'function') {
+            window.enrollCallbacks.onReadyToConfirm(data);
+            return;  // mobile wizard handles everything from here
+        }
+
+        //  Admin / Visitor surface: show Swal confirmation 
+
+        // Step 1: Convert Blob objects to DataURLs for <img> thumbnail previews.
+        // data.frames is sorted by liveness probability descending, so
+        // frames[0] is always the best quality frame. We take the top 3.
+        var topFrames = data.frames.slice(0, 3);
+
+        var thumbPromises = topFrames.map(function (frame) {
+            return new Promise(function (resolve) {
+                // Guard: blob must exist (some frames may have null blob in edge cases)
+                if (!frame || !frame.blob) { resolve(null); return; }
+                var reader = new FileReader();
+                reader.onload  = function (e) { resolve(e.target.result); };
+                reader.onerror = function ()  { resolve(null); };
+                reader.readAsDataURL(frame.blob);
+            });
+        });
+
+        Promise.all(thumbPromises).then(function (dataUrls) {
+
+            // Step 2: Build thumbnail strip HTML.
+            // Each thumbnail is 80x80px, object-fit:cover, with a subtle border.
+            // Null DataURLs (failed reads) are silently skipped.
+            var thumbHtml = '';
+            dataUrls.forEach(function (url) {
+                if (url) {
+                    thumbHtml +=
+                        '<img src="' + url + '" ' +
+                        'style="width:80px;height:80px;object-fit:cover;' +
+                        'border-radius:8px;border:2px solid rgba(255,255,255,0.15);' +
+                        'flex-shrink:0;margin:4px;" />';
+                }
+            });
+
+            // Step 3: Build angle status line.
+            // Green check if all 5 captured, amber warning if partial.
+            var angleStatusHtml = data.allAngles
+                ? '<span style="color:#22c55e;">' +
+                  '<i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>' +
+                  'All 5 angles captured</span>'
+                : '<span style="color:#f59e0b;">' +
+                  '<i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>' +
+                  data.angleCount + ' / 5 angles captured</span>';
+
+            // Step 4: Assemble the full Swal HTML body.
+            var summaryHtml =
+                // Thumbnail row
+                '<div style="display:flex;justify-content:center;gap:8px;' +
+                'margin-bottom:14px;flex-wrap:wrap;">' +
+                    thumbHtml +
+                '</div>' +
+                // Stats card
+                '<div style="background:rgba(255,255,255,0.05);border-radius:10px;' +
+                'padding:12px 16px;text-align:left;font-size:0.875rem;line-height:2;">' +
+                    '<div>' +
+                        '<i class="fa-solid fa-layer-group" ' +
+                        'style="margin-right:8px;color:#3b82f6;"></i>' +
+                        '<strong>' + data.frameCount + '</strong> frames captured' +
+                    '</div>' +
+                    '<div>' + angleStatusHtml + '</div>' +
+                    '<div>' +
+                        '<i class="fa-solid fa-shield-heart" ' +
+                        'style="margin-right:8px;color:#22c55e;"></i>' +
+                        'Best liveness: <strong>' + data.bestLiveness + '%</strong>' +
+                    '</div>' +
+                '</div>';
+
+            // Step 5: Show Swal.
+            // allowOutsideClick and allowEscapeKey are both false  the user
+            // MUST choose Confirm or Retake. We cannot let them dismiss by
+            // accident and leave the enrollment in a limbo state (capture
+            // stopped, no submission, no retake).
+            if (typeof Swal !== 'undefined') {
+                Swal.fire({
+                    title:              'Ready to Enroll',
+                    html:               summaryHtml,
+                    icon:               'success',
+                    showCancelButton:   true,
+                    confirmButtonText:  '<i class="fa-solid fa-check" ' +
+                                        'style="margin-right:6px;"></i>Confirm Enrollment',
+                    cancelButtonText:   '<i class="fa-solid fa-rotate-left" ' +
+                                        'style="margin-right:6px;"></i>Retake',
+                    confirmButtonColor: '#22c55e',
+                    cancelButtonColor:  '#475569',
+                    background:         dark() ? '#0f172a' : '#ffffff',
+                    color:              dark() ? '#f8fafc' : '#0f172a',
+                    allowOutsideClick:  false,
+                    allowEscapeKey:     false,
+                    reverseButtons:     false   // Confirm on left, Retake on right
+                }).then(function (result) {
+                    if (result.isConfirmed) {
+                        // User confirmed  submit frames to server
+                        showProcessing(true, 'Processing enrollment...');
+                        enrollment.performEnrollment();
+                    } else {
+                        // result.isDismissed with dismiss reason 'cancel'
+                        // User wants to retake  restart capture from scratch
+                        _doRetake();
+                    }
+                });
+
+            } else {
+                // Fallback: native browser confirm (Swal bundle not loaded).
+                // This should never happen in production  sweetalert bundle
+                // is always loaded on enrollment pages. Included as a safety net.
+                var confirmed = window.confirm(
+                    'Ready to Enroll!\n\n' +
+                    data.frameCount + ' frames captured\n' +
+                    data.angleCount + '/5 angles\n' +
+                    'Best liveness: ' + data.bestLiveness + '%\n\n' +
+                    'Click OK to confirm, Cancel to retake.'
+                );
+                if (confirmed) {
+                    showProcessing(true, 'Processing enrollment...');
+                    enrollment.performEnrollment();
+                } else {
+                    _doRetake();
+                }
+            }
+        }); // end Promise.all.then
+    };
+
     enrollment.callbacks.onEnrollmentComplete = function (count) {
         showProcessing(false);
         swal({
@@ -265,34 +436,15 @@
     };
 
     // ── Button handlers ────────────────────────────────────────────────────────
-    if (ui.confirmBtn) {
-        ui.confirmBtn.addEventListener('click', function () {
-            if (enrollment.goodFrames.length < cfg.minFrames) return;
-            showProcessing(true, 'Processing enrollment...');
-            enrollment.performEnrollment();
-        });
-    }
-
-    if (ui.retakeBtn) {
-        ui.retakeBtn.addEventListener('click', function () {
-            enrollment.goodFrames = [];
-            enrollment.passHist   = [];
-            enrollment.enrolled   = false;
-            enrollment.enrolling  = false;
-            updateProgress(0, cfg.minFrames || 8);
-            updateDots();
-            if (ui.confirmBtn) ui.confirmBtn.classList.add('enroll-hidden');
-            enrollment.startAutoEnrollment();
-            if (typeof enrollment.getNextAnglePrompt === 'function')
-                showAngle(enrollment.getNextAnglePrompt());
-            setStatus('Retaking - follow the angle prompts.', 'info');
-        });
-    }
+    // FIX-002: confirmBtn and retakeBtn event listeners REMOVED.
+    // Confirmation and retake are now handled by the Swal dialog in the
+    // onReadyToConfirm callback above. The button elements themselves have
+    // also been removed from _EnrollmentComponent.cshtml.
 
     // ── Init - UI state only, camera NOT started ───────────────────────────────
     updateProgress(0, cfg.minFrames || 8);
     setStatus('Waiting for camera...', 'info');
-    if (ui.confirmBtn) ui.confirmBtn.classList.add('enroll-hidden');
+    // FIX-002: confirmBtn init removed  button no longer exists in markup.
     showAngle({ bucket: 'center', prompt: 'Look straight at the camera', icon: 'fa-circle-dot' });
 
     window.addEventListener('beforeunload', stopCamera);

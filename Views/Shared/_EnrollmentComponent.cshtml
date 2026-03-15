@@ -102,20 +102,22 @@
 
     @*
      * ── Controls ─────────────────────────────────────────────────────────
-     * NOTE: enrollStartBtn is a LEGACY button kept for backward compat.
-     * enrollment-ui.js hides it immediately on load.
-     * The camera auto-starts when showLive() calls window.FaceAttendEnrollment.start().
-     * Confirm and Retake are shown/hidden programmatically.
+     * FIX-002: enrollConfirmBtn and enrollRetakeBtn have been REMOVED.
+     *
+     * Confirmation and retake are now handled entirely by the automatic
+     * Swal dialog fired from enrollment.callbacks.onReadyToConfirm in
+     * enrollment-ui.js. The capture flow is fully automatic  no buttons
+     * are needed.
+     *
+     * enrollStartBtn is kept ONLY for backward compatibility. It is hidden
+     * immediately on page load by enrollment-ui.js (style="display:none" is
+     * a pre-hide for before JS runs). The camera starts automatically when
+     * the parent view calls window.FaceAttendEnrollment.start() from showLive().
+     * This button is dead code and will be removed in a future cleanup pass.
      *@
     <div class="enroll-controls">
         <button class="btn btn-primary" id="enrollStartBtn" type="button" style="display:none;">
             <i class="fa-solid fa-camera"></i> Start Enrollment
-        </button>
-        <button class="btn btn-success enroll-hidden" id="enrollConfirmBtn" type="button">
-            <i class="fa-solid fa-check"></i> Save Enrollment
-        </button>
-        <button class="btn btn-secondary enroll-hidden" id="enrollRetakeBtn" type="button">
-            <i class="fa-solid fa-rotate-left"></i> Retake
         </button>
     </div>
 

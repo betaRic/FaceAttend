@@ -38,6 +38,12 @@ FaceAttend.Enrollment = (function () {
         CAPTURE_TARGET:    8,
         MIN_GOOD_FRAMES:   3,
         MAX_KEEP_FRAMES:   8,
+        // FIX-003: MAX_IMAGES was referenced in enrollFromFiles() as
+        // CONSTANTS.MAX_IMAGES but was never defined, causing it to resolve
+        // to undefined. Array.prototype.slice(files, 0, undefined) returned
+        // all files accidentally. Now explicitly defined and equal to
+        // CAPTURE_TARGET (8) so the behavior is consistent and intentional.
+        MAX_IMAGES:        8,
 
         // Image capture
         CAPTURE_WIDTH:  640,
@@ -53,7 +59,14 @@ FaceAttend.Enrollment = (function () {
         ANGLE_SEQUENCE: ['center', 'left', 'right', 'up', 'down'],
 
         // Auto-submit trigger
-        AUTO_SUBMIT_ON_ALL_ANGLES: true
+        AUTO_SUBMIT_ON_ALL_ANGLES: true,
+
+        // FIX-002: Fallback confirmation timer.
+        // If the user cannot complete all 5 angle buckets (poor lighting,
+        // physical limitation, or slow movement), this timer fires the
+        // Swal confirmation automatically once minGoodFrames is first reached.
+        // Value is milliseconds. 30000 = 30 seconds.
+        AUTO_CONFIRM_TIMEOUT_MS: 30000
     };
 
     // =========================================================================
@@ -193,11 +206,12 @@ FaceAttend.Enrollment = (function () {
         this.passHist = [];
         this.goodFrames = [];
         this.lastFaceBox = null;  // Phase 2: Store last face box for sharpness
+        this.confirmTimer = null; // FIX-002: 30-second fallback confirm timer handle
 
         // DOM elements
         this.elements = {};
 
-        // Callbacks (Phase 2: added onAngleUpdate)
+        // Callbacks (Phase 2: added onAngleUpdate; FIX-002: added onReadyToConfirm)
         this.callbacks = {
             onStatus: null,
             onLivenessUpdate: null,
@@ -205,7 +219,11 @@ FaceAttend.Enrollment = (function () {
             onEnrollmentComplete: null,
             onEnrollmentError: null,
             onMultiFaceWarning: null,
-            onAngleUpdate: null     // Phase 2: angle guidance callback
+            onAngleUpdate: null,        // Phase 2: angle guidance callback
+            onReadyToConfirm: null      // FIX-002: fires when auto-capture is complete
+                                        // Payload: { frameCount, angleCount,
+                                        //           bestLiveness, allAngles, frames }
+                                        // enrollment-ui.js wires this to the Swal dialog.
         };
 
         this.captureCanvas = document.createElement('canvas');
@@ -405,6 +423,10 @@ FaceAttend.Enrollment = (function () {
     };
 
     Enrollment.prototype.stopCamera = function () {
+        // FIX-002: Clear the 30-second fallback timer on full camera stop.
+        // This prevents the Swal from firing after the user has navigated
+        // away from the enrollment page or closed the camera pane.
+        this._clearConfirmTimer();
         this.stopAutoEnrollment();
 
         // Use FaceAttend.Camera if we used it
@@ -555,6 +577,11 @@ FaceAttend.Enrollment = (function () {
     // -------------------------------------------------------------------------
 
     Enrollment.prototype.startAutoEnrollment = function () {
+        // FIX-002: Clear any pending 30-second fallback timer from a previous
+        // capture session before starting fresh. Without this, if the user
+        // does a retake, the old timer from the previous session would still
+        // fire and show a stale Swal over the fresh capture in progress.
+        this._clearConfirmTimer();
         this.stopAutoEnrollment();
         this.enrolled = false;
         this.passHist = [];
@@ -569,6 +596,115 @@ FaceAttend.Enrollment = (function () {
         }
         this.autoTimer = null;
         this.enrolling = false;
+    };
+
+    // -------------------------------------------------------------------------
+    // FIX-002: Confirm Timer and Ready-To-Confirm Logic
+    // -------------------------------------------------------------------------
+
+    /**
+     * Prepares the confirmation payload and fires the onReadyToConfirm callback.
+     *
+     * Called by two code paths:
+     *   1. processScanResult  immediate trigger when all angles captured or
+     *      max frames hit
+     *   2. _startConfirmTimer setTimeout  30-second fallback when user cannot
+     *      complete all 5 angles
+     *
+     * Payload sent to callback:
+     *   frameCount   {number}   total good frames collected this session
+     *   angleCount   {number}   distinct pose buckets captured (max 5)
+     *   bestLiveness {number}   highest liveness score as integer 0-100
+     *   allAngles    {boolean}  true if all 5 ANGLE_SEQUENCE buckets captured
+     *   frames       {Array}    shallow copy of goodFrames array (sorted by
+     *                            probability descending, so [0] is best frame)
+     *                            Each frame: { blob, encoding, p, poseBucket,
+     *                            sharpness }
+     *
+     * enrollment-ui.js reads `frames[0..2].blob` to generate thumbnail previews,
+     * `frameCount` and `angleCount` for the summary row, and `bestLiveness`
+     * for the liveness display.
+     */
+    Enrollment.prototype._fireReadyToConfirm = function () {
+        // Always clear the timer first  whether it was running or not.
+        // _clearConfirmTimer is safe to call when confirmTimer is null.
+        this._clearConfirmTimer();
+
+        // Guard: if no callback is wired (e.g. on a page that does not use
+        // enrollment-ui.js), do nothing. performEnrollment() will never be
+        // called in this case, which is intentional  something must listen.
+        if (!this.callbacks.onReadyToConfirm) return;
+
+        // Build the set of distinct captured buckets from goodFrames.
+        // poseBucket values match ANGLE_SEQUENCE: 'center','left','right','up','down'.
+        // Frames with poseBucket === 'other' are discarded frames  never counted.
+        var capturedBuckets = {};
+        for (var i = 0; i < this.goodFrames.length; i++) {
+            var b = this.goodFrames[i].poseBucket;
+            if (b && b !== 'other') capturedBuckets[b] = true;
+        }
+
+        // Find the highest liveness probability across all good frames.
+        // goodFrames is sorted descending by p so goodFrames[0].p is the best,
+        // but we iterate to be safe against any future sort changes.
+        var bestLiveness = 0;
+        for (var j = 0; j < this.goodFrames.length; j++) {
+            if (this.goodFrames[j].p > bestLiveness) {
+                bestLiveness = this.goodFrames[j].p;
+            }
+        }
+
+        this.callbacks.onReadyToConfirm({
+            frameCount:   this.goodFrames.length,
+            angleCount:   Object.keys(capturedBuckets).length,
+            bestLiveness: Math.round(bestLiveness * 100),  // convert 0-1 float  0-100 integer
+            allAngles:    Object.keys(capturedBuckets).length >= CONSTANTS.ANGLE_SEQUENCE.length,
+            frames:       this.goodFrames.slice()  // shallow copy  caller must not mutate
+        });
+    };
+
+    /**
+     * Starts the 30-second fallback confirmation timer.
+     *
+     * Called from processScanResult the FIRST TIME goodFrames.length reaches
+     * minGoodFrames. If the user has not yet captured all 5 angles after 30
+     * seconds, we still fire _fireReadyToConfirm so they are not stuck forever.
+     *
+     * Guards inside the setTimeout callback ensure this is a no-op if:
+     *   - enrollment is already in progress (enrolling === true)
+     *   - enrollment was already completed (enrolled === true)
+     *   - somehow goodFrames dropped below minGoodFrames (defensive)
+     *
+     * The timer handle is stored on this.confirmTimer so it can be cancelled
+     * by _clearConfirmTimer during retake or camera stop.
+     */
+    Enrollment.prototype._startConfirmTimer = function () {
+        var self = this;
+        this.confirmTimer = setTimeout(function () {
+            // These guards prevent the Swal from firing in edge cases where
+            // the state has changed since the timer was started.
+            if (self.enrolled || self.enrolling) return;
+            if (self.goodFrames.length < self.config.minGoodFrames) return;
+
+            self.stopAutoEnrollment();   // stop the capture interval
+            self._fireReadyToConfirm(); // show the Swal
+        }, CONSTANTS.AUTO_CONFIRM_TIMEOUT_MS);
+    };
+
+    /**
+     * Cancels the 30-second fallback timer.
+     * Safe to call when this.confirmTimer is null  does nothing in that case.
+     *
+     * Called from:
+     *   - _fireReadyToConfirm (before firing callback, to prevent double-fire)
+     *   - startAutoEnrollment (fresh retake session)
+     *   - stopCamera (full teardown)
+     */
+    Enrollment.prototype._clearConfirmTimer = function () {
+        if (this.confirmTimer) {
+            clearTimeout(this.confirmTimer);
+            this.confirmTimer = null;
+        }
     };
 
     Enrollment.prototype.pushGoodFrame = function (blob, probability, encoding, poseBucket, sharpness) {
@@ -766,8 +902,29 @@ FaceAttend.Enrollment = (function () {
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
             var hasMaxFrames = this.goodFrames.length >= CONSTANTS.CAPTURE_TARGET;
 
+            // FIX-002: Start the 30-second fallback timer the FIRST TIME
+            // minGoodFrames is reached. The timer is started here (not in
+            // pushGoodFrame) so we have direct access to the enrollment/enrolling
+            // guard flags. The !this.confirmTimer check ensures it only starts
+            // once per capture session  subsequent frames hitting this block
+            // do not reset the timer.
+            if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling) {
+                this._startConfirmTimer();
+            }
+
+            // FIX-002: When all 5 angles are captured (or max frames hit),
+            // STOP the capture interval and fire the onReadyToConfirm callback
+            // instead of calling performEnrollment() directly.
+            //
+            // IMPORTANT: The camera stream is NOT stopped here  only the
+            // auto-tick interval is stopped. The video element keeps showing
+            // the live feed while the Swal dialog is visible.
+            //
+            // performEnrollment() is now called by enrollment-ui.js AFTER
+            // the user clicks "Confirm" in the Swal dialog.
             if ((allAngles && hasEnoughFrames && CONSTANTS.AUTO_SUBMIT_ON_ALL_ANGLES) || hasMaxFrames) {
-                this.performEnrollment();
+                this.stopAutoEnrollment();   // stops setInterval; camera stream stays alive
+                this._fireReadyToConfirm();  // clears timer, fires onReadyToConfirm callback
                 return;
             }
 

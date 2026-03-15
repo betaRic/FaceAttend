@@ -20,14 +20,14 @@
     var statusId = Model.Id + "Status";
 }
 
-<div class="camera @(Model.IsActive ? "camera--active" : "") @(Model.CssClass)" 
+<div class="fa-camera @(Model.IsActive ? "fa-camera--active" : "") @(Model.Mirror ? "fa-camera--mirror" : "") @(Model.CssClass)" 
      id="@containerId"
      data-autostart="@(Model.AutoStart ? "true" : "false")"
      data-camera-options="@Model.CameraOptionsJson">
     
     @* Video Element *@
     <video id="@videoId" 
-           class="camera__video" 
+           class="fa-camera__video" 
            autoplay 
            playsinline 
            muted
@@ -38,18 +38,18 @@
     @* Guide Overlay *@
     @if (Model.ShowGuide)
     {
-        <div class="camera__overlay">
+        <div class="fa-camera__overlay">
             @if (Model.GuideType == "circle")
             {
-                <div class="camera__guide" id="@guideId"></div>
+                <div class="fa-camera__guide" id="@guideId"></div>
             }
             else if (Model.GuideType == "oval")
             {
-                <div class="camera__guide camera__guide--oval" id="@guideId"></div>
+                <div class="fa-camera__guide fa-camera__guide--oval" id="@guideId"></div>
             }
             else if (Model.GuideType == "rectangle")
             {
-                <div class="camera__guide camera__guide--rect" id="@guideId"></div>
+                <div class="fa-camera__guide fa-camera__guide--rect" id="@guideId"></div>
             }
         </div>
     }
@@ -57,30 +57,30 @@
     @* Status Text *@
     @if (Model.ShowStatus)
     {
-        <div class="camera__status" id="@statusId">
+        <div class="fa-camera__status" id="@statusId">
             @Model.InitialStatus
         </div>
     }
     
     @* Capture Flash Effect *@
-    <div class="camera__flash" id="@containerId-flash"></div>
+    <div class="fa-camera__flash" id="@containerId-flash"></div>
 </div>
 
 @* Component Styles (inline for portability) *@
 <style>
-#@containerId .camera__guide--oval {
+#@containerId .fa-camera__guide--oval {
     border-radius: 50%;
     width: 50%;
     height: 65%;
 }
 
-#@containerId .camera__guide--rect {
+#@containerId .fa-camera__guide--rect {
     border-radius: var(--radius);
     width: 60%;
     height: 70%;
 }
 
-#@containerId .camera__flash {
+#@containerId .fa-camera__flash {
     position: absolute;
     inset: 0;
     background: white;
@@ -89,7 +89,7 @@
     transition: opacity 0.1s;
 }
 
-#@containerId .camera__flash--active {
+#@containerId .fa-camera__flash--active {
     opacity: 0.8;
 }
 </style>
@@ -153,7 +153,7 @@
                 opts,
                 function(stream) {
                     cameraState.isActive = true;
-                    container.classList.add('camera--active');
+                    container.classList.add('fa-camera--active');
                     resolve(stream);
                 },
                 function(err) {
@@ -168,7 +168,7 @@
             window.FaceAttend.Camera.stop();
         }
         cameraState.isActive = false;
-        container.classList.remove('camera--active');
+        container.classList.remove('fa-camera--active');
     }
     
     function captureFrame(width, height) {
@@ -182,13 +182,13 @@
         if (!guide) return;
         
         guide.classList.remove(
-            'camera__guide--active',
-            'camera__guide--success',
-            'camera__guide--warning'
+            'fa-camera__guide--active',
+            'fa-camera__guide--success',
+            'fa-camera__guide--warning'
         );
         
         if (state) {
-            guide.classList.add('camera__guide--' + state);
+            guide.classList.add('fa-camera__guide--' + state);
         }
     }
     
@@ -196,19 +196,19 @@
         if (!status) return;
         
         status.textContent = text;
-        status.className = 'camera__status';
+        status.className = 'fa-camera__status';
         
         if (type) {
-            status.classList.add('camera__status--' + type);
+            status.classList.add('fa-camera__status--' + type);
         }
     }
     
     function triggerFlash() {
         if (!flash) return;
         
-        flash.classList.add('camera__flash--active');
+        flash.classList.add('fa-camera__flash--active');
         setTimeout(function() {
-            flash.classList.remove('camera__flash--active');
+            flash.classList.remove('fa-camera__flash--active');
         }, 150);
     }
     

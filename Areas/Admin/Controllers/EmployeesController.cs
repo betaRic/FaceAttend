@@ -93,7 +93,12 @@ namespace FaceAttend.Areas.Admin.Controllers
                     FirstName = vm.FirstName,
                     MiddleName = string.IsNullOrWhiteSpace(vm.MiddleName) ? null : vm.MiddleName,
                     LastName = vm.LastName,
-                    Position = string.IsNullOrWhiteSpace(vm.Position) ? "-" : vm.Position.Trim(),
+                    // FIX-004: Use null (not "-") when Position is blank.
+                    // Previously stored a literal dash string which displayed
+                    // as "-" in the UI, exports, and attendance reports.
+                    // Consistent with MiddleName and Department which use null.
+                    // The Edit action already uses this same null pattern.
+                    Position = string.IsNullOrWhiteSpace(vm.Position) ? null : vm.Position.Trim(),
                     Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim(),
                     OfficeId = vm.OfficeId,
                     IsFlexi = vm.IsFlexi,
@@ -224,7 +229,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                 emp.FirstName = vm.FirstName;
                 emp.MiddleName = string.IsNullOrWhiteSpace(vm.MiddleName) ? null : vm.MiddleName;
                 emp.LastName = vm.LastName;
-                emp.Position = string.IsNullOrWhiteSpace(vm.Position) ? "-" : vm.Position.Trim();
+                // FIX-004: Consistent null handling for blank Position in Edit action.
+                emp.Position = string.IsNullOrWhiteSpace(vm.Position) ? null : vm.Position.Trim();
                 emp.Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim();
                 emp.OfficeId = vm.OfficeId;
                 emp.IsFlexi = vm.IsFlexi;
