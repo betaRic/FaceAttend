@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -616,6 +617,130 @@ namespace FaceAttend.Services.Biometrics
             {
                 ReturnInstance(fr);
             }
+        }
+
+        //  Combined encode + landmarks (single file load, one pool rent) 
+
+        /// <summary>
+        /// Loads the image file ONCE and calls both FaceEncodings() and FaceLandmarks()
+        /// inside a single pool rent. Returns the 128d embedding plus a 6-float array
+        /// [leftEyeX, leftEyeY, rightEyeX, rightEyeY, noseTipX, noseTipY] in pixel coords.
+        ///
+        /// landmarks5 is null if landmark extraction fails  caller must handle gracefully.
+        /// Encoding still succeeds in that case (best-effort landmarks).
+        ///
+        /// Uses PredictorModel.Small (5-point)  faster than Large (68-point).
+        /// Works with both small and large predictors via FacePart key inspection.
+        /// </summary>
+        public bool TryEncodeWithLandmarks(
+            string       imagePath,
+            Location     faceLocation,
+            out double[] embedding,
+            out float[]  landmarks5,
+            out string   error)
+        {
+            embedding  = null;
+            landmarks5 = null;
+            error      = null;
+
+            if (string.IsNullOrWhiteSpace(imagePath))
+            {
+                error = "BAD_IMAGE_PATH";
+                return false;
+            }
+
+            var fr = RentInstance();
+            if (fr == null)
+            {
+                error = "POOL_TIMEOUT";
+                return false;
+            }
+
+            try
+            {
+                using (var img = FaceRecognition.LoadImageFile(imagePath))
+                {
+                    var locations = new[] { faceLocation };
+
+                    // Encoding (must succeed  this is the primary output)
+                    var enc = fr.FaceEncodings(img, locations).FirstOrDefault();
+                    if (enc == null) { error = "ENCODING_FAIL"; return false; }
+                    embedding = enc.GetRawEncoding();
+
+                    // Landmarks (best-effort  failure does not abort encoding)
+                    // NOTE: FaceLandmark requires shape_predictor_5_face_landmarks.dat model.
+                    // If the model is not present, this will throw an exception which we catch.
+                    try
+                    {
+                        var landmarkResult = fr.FaceLandmark(img, locations, PredictorModel.Small, Model.Cnn).FirstOrDefault();
+                        if (landmarkResult != null)
+                            landmarks5 = ExtractLandmarks5(landmarkResult);
+                    }
+                    catch
+                    {
+                        // Model file not present or other error - landmarks5 stays null
+                        landmarks5 = null;
+                    }
+
+                    return true;
+                }
+            }
+            finally
+            {
+                ReturnInstance(fr);
+            }
+        }
+
+        /// <summary>
+        /// Extracts a compact 6-float landmark array from a FaceLandmarks result.
+        /// Works with both Small (5-pt) and Large (68-pt) predictor outputs by
+        /// averaging all available points in each eye group.
+        ///
+        /// Returns float[6]: [leftEyeX, leftEyeY, rightEyeX, rightEyeY, noseTipX, noseTipY]
+        /// All values in image pixel coordinates. Returns null on any failure.
+        /// </summary>
+        private static float[] ExtractLandmarks5(
+            IDictionary<FacePart, IEnumerable<FacePoint>> parts)
+        {
+            if (parts == null) return null;
+
+            float leX = 0f, leY = 0f, leN = 0f;
+            float reX = 0f, reY = 0f, reN = 0f;
+            float nX  = 0f, nY  = 0f, nN  = 0f;
+
+            IEnumerable<FacePoint> pts;
+
+            // Left eye  average all points in the group
+            if (parts.TryGetValue(FacePart.LeftEye, out pts) && pts != null)
+                foreach (var p in pts) { leX += p.Point.X; leY += p.Point.Y; leN++; }
+
+            // Right eye  average all points in the group
+            if (parts.TryGetValue(FacePart.RightEye, out pts) && pts != null)
+                foreach (var p in pts) { reX += p.Point.X; reY += p.Point.Y; reN++; }
+
+            // Nose tip preferred; bottom of nose bridge as fallback
+            if (parts.TryGetValue(FacePart.NoseTip, out pts) && pts != null)
+                foreach (var p in pts) { nX += p.Point.X; nY += p.Point.Y; nN++; }
+
+            if (nN == 0 && parts.TryGetValue(FacePart.NoseBridge, out pts) && pts != null)
+            {
+                var noseList = pts.ToList();
+                if (noseList.Count > 0)
+                {
+                    // Bottom of bridge is closest to nose tip
+                    var last = noseList[noseList.Count - 1];
+                    nX = last.Point.X; nY = last.Point.Y; nN = 1f;
+                }
+            }
+
+            if (leN == 0f || reN == 0f || nN == 0f) return null;
+
+            return new float[]
+            {
+                leX / leN, leY / leN,   // [0,1] left eye center
+                reX / reN, reY / reN,   // [2,3] right eye center
+                nX  / nN,  nY  / nN    // [4,5] nose tip
+            };
         }
 
         // ─── Disposal ─────────────────────────────────────────────────────────────

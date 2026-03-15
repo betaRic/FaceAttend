@@ -107,20 +107,54 @@ namespace FaceAttend.Controllers.Api
                 var livenessResult = liveness.ScoreFromFile(processedPath, detectedBox);
                 var livenessThreshold = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
 
-                // Encode face
+                // Encode face + extract landmarks in single operation
                 double[] encoding;
+                float[] landmarks6;
                 string encodeError;
                 string base64Encoding = null;
 
-                if (dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out encoding, out encodeError) 
-                    && encoding != null)
+                bool encodeOk = dlib.TryEncodeWithLandmarks(processedPath, faceLoc, out encoding, out landmarks6, out encodeError);
+                if (encodeOk && encoding != null)
                 {
                     base64Encoding = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(encoding));
                 }
 
-                // Estimate pose
-                var (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(detectedBox, 640, 480);
+                // Get actual image dimensions for accurate pose estimation
+                int imgWidth = 640, imgHeight = 480;
+                try
+                {
+                    if (!string.IsNullOrEmpty(processedPath) && System.IO.File.Exists(processedPath))
+                        using (var img = System.Drawing.Image.FromFile(processedPath))
+                        {
+                            imgWidth = img.Width;
+                            imgHeight = img.Height;
+                        }
+                }
+                catch { /* Use fallback */ }
+
+                // Estimate pose from landmarks (accurate) or fall back to box geometry
+                float yaw = 0f, pitch = 0f;
+                if (landmarks6 != null && landmarks6.Length >= 6)
+                {
+                    (yaw, pitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(landmarks6);
+                }
+                else
+                {
+                    (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(detectedBox, imgWidth, imgHeight);
+                }
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
+
+                // Convert landmarks6 to response format [{x,y}, {x,y}, {x,y}]
+                object[] landmarksResponse = null;
+                if (landmarks6 != null && landmarks6.Length >= 6)
+                {
+                    landmarksResponse = new[]
+                    {
+                        new { x = landmarks6[0], y = landmarks6[1] }, // left eye
+                        new { x = landmarks6[2], y = landmarks6[3] }, // right eye
+                        new { x = landmarks6[4], y = landmarks6[5] }  // nose tip
+                    };
+                }
 
                 // Build response
                 return JsonResponseBuilder.Success(new
@@ -137,6 +171,7 @@ namespace FaceAttend.Controllers.Api
                     poseYaw = yaw,
                     posePitch = pitch,
                     poseBucket = poseBucket,
+                    landmarks = landmarksResponse,
                     faceBox = new
                     {
                         x = detectedBox.Left,

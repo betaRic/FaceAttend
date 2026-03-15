@@ -46,9 +46,11 @@ FaceAttend.Enrollment = (function () {
         MAX_IMAGES:        8,
 
         // Image capture
+        // CAPTURE_WIDTH/HEIGHT now used for sharpness calculation canvas only
+        // Actual capture uses native camera resolution (1280x720 ideal)
         CAPTURE_WIDTH:  640,
         CAPTURE_HEIGHT: 480,
-        UPLOAD_QUALITY: 0.80,
+        UPLOAD_QUALITY: 0.90,  // Higher quality for enrollment (was 0.80)
 
         // Quality thresholds
         SHARPNESS_THRESHOLD_DESKTOP: 80,
@@ -317,13 +319,18 @@ FaceAttend.Enrollment = (function () {
         if (aspect > 1.4) pitch -= 10;
         if (aspect < 0.8) pitch += 10;
 
-        // If MediaPipe 6-point landmarks available, use nose offset for better yaw
+        // Server landmarks: [{x,y},{x,y},{x,y}] = [leftEye, rightEye, noseTip] in PIXELS.
+        // Formula matches FaceQualityAnalyzer.EstimatePoseFromLandmarks (server-side) exactly.
         if (landmarks && landmarks.length >= 3) {
-            var rEye = landmarks[0], lEye = landmarks[1], nose = landmarks[2];
-            if (rEye && lEye && nose) {
-                var eyeMidX = (rEye.x + lEye.x) / 2;
-                var noseDeltaX = (nose.x - eyeMidX) * 100;
-                yaw = noseDeltaX * 1.5; // scale to degrees
+            var lEye = landmarks[0], rEye = landmarks[1], nose = landmarks[2];
+            if (lEye && rEye && nose) {
+                var eyeMidX  = (lEye.x + rEye.x) / 2;
+                var eyeMidY  = (lEye.y + rEye.y) / 2;
+                var eyeDistX = Math.abs(lEye.x - rEye.x);
+                if (eyeDistX > 1) {
+                    yaw   = (nose.x - eyeMidX) / eyeDistX * 90;
+                    pitch = ((nose.y - eyeMidY) / eyeDistX - 1.2) * 40;
+                }
             }
         }
 
@@ -385,11 +392,18 @@ FaceAttend.Enrollment = (function () {
         this.elements.cam = videoElement || this.elements.cam;
 
         // Use FaceAttend.Camera if available
+        // Request 1280x720 for sharp enrollment images
+        var videoConstraints = {
+            facingMode: 'user',
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+        };
+
         if (FaceAttend.Camera) {
             return new Promise(function (resolve, reject) {
                 FaceAttend.Camera.start(
                     self.elements.cam,
-                    { facingMode: 'user' },
+                    videoConstraints,
                     function (stream) {
                         self.stream = stream;
                         resolve(stream);
@@ -409,7 +423,7 @@ FaceAttend.Enrollment = (function () {
             }
 
             navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user' },
+                video: videoConstraints,
                 audio: false
             }).then(function (stream) {
                 self.stream = stream;
@@ -459,8 +473,9 @@ FaceAttend.Enrollment = (function () {
             return Promise.reject(new Error('Camera not ready'));
         }
 
-        var w = CONSTANTS.CAPTURE_WIDTH;
-        var h = CONSTANTS.CAPTURE_HEIGHT;
+        // Use native video resolution for sharp capture (1280x720 or camera native)
+        var w = cam.videoWidth || CONSTANTS.CAPTURE_WIDTH;
+        var h = cam.videoHeight || CONSTANTS.CAPTURE_HEIGHT;
 
         canvas.width = w;
         canvas.height = h;
@@ -743,12 +758,48 @@ FaceAttend.Enrollment = (function () {
     Enrollment.prototype.autoTick = function () {
         var self = this;
 
-        if (this.enrolled || !this.stream || this.busy) return;
+        // DEBUG: Log why autoTick might return early (call this from browser console to enable)
+        if (this._debugAutoTick) {
+            console.log('[Enrollment] autoTick called:', {
+                enrolled: this.enrolled,
+                hasStream: !!this.stream,
+                busy: this.busy,
+                hasCam: !!this.elements.cam,
+                videoWidth: this.elements.cam && this.elements.cam.videoWidth,
+                autoTimer: this.autoTimer,
+                time: new Date().toISOString()
+            });
+        }
+
+        if (this.enrolled || !this.stream || this.busy) {
+            if (this._debugAutoTick) {
+                console.log('[Enrollment] autoTick returning early:', {
+                    reason: this.enrolled ? 'enrolled' : !this.stream ? 'no stream' : 'busy',
+                    enrolled: this.enrolled,
+                    hasStream: !!this.stream,
+                    busy: this.busy
+                });
+            }
+            return;
+        }
 
         var cam = this.elements.cam;
-        if (!cam || !cam.videoWidth) return;
+        if (!cam || !cam.videoWidth) {
+            if (this._debugAutoTick) {
+                console.log('[Enrollment] autoTick returning - no cam or videoWidth');
+            }
+            return;
+        }
 
         this.busy = true;
+
+        // SAFETY: Ensure busy is reset even if synchronous error occurs
+        var safetyTimeout = setTimeout(function() {
+            if (self.busy) {
+                console.warn('[Enrollment] Forcing busy reset after timeout');
+                self.busy = false;
+            }
+        }, 5000); // 5 second safety timeout
 
         var capturedBlob = null;
 
@@ -757,19 +808,36 @@ FaceAttend.Enrollment = (function () {
         var sharpness = 0;
         if (cam.videoWidth > 0) {
             var tmpCanvas = document.createElement('canvas');
-            tmpCanvas.width = CONSTANTS.CAPTURE_WIDTH;
-            tmpCanvas.height = CONSTANTS.CAPTURE_HEIGHT;
+            // Scale down for performance, but maintain aspect ratio
+            var videoW = cam.videoWidth;
+            var videoH = cam.videoHeight;
+            var scale = Math.min(1, CONSTANTS.SHARPNESS_SAMPLE_SIZE / Math.max(videoW, videoH));
+            tmpCanvas.width = Math.floor(videoW * scale);
+            tmpCanvas.height = Math.floor(videoH * scale);
             var tmpCtx = tmpCanvas.getContext('2d');
-            tmpCtx.drawImage(cam, 0, 0, CONSTANTS.CAPTURE_WIDTH, CONSTANTS.CAPTURE_HEIGHT);
+            tmpCtx.drawImage(cam, 0, 0, tmpCanvas.width, tmpCanvas.height);
 
-            var threshold = isMobileDevice()
+            // Adaptive threshold: scale down for lower resolution cameras
+            // Base threshold calibrated for 1280x720; scale proportionally
+            var baseThreshold = isMobileDevice()
                 ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE
                 : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
+            var resolutionScale = Math.min(1, Math.max(videoW, videoH) / 720);
+            var threshold = baseThreshold * resolutionScale;
+
             sharpness = this.calculateSharpness(tmpCanvas, this.lastFaceBox);
 
             if (sharpness < threshold) {
                 sharpnessOk = false;
                 this.busy = false;
+                if (this._debugAutoTick) {
+                    console.log('[Enrollment] Sharpness check failed:', {
+                        sharpness: sharpness,
+                        threshold: threshold,
+                        videoW: videoW,
+                        videoH: videoH
+                    });
+                }
                 if (this.callbacks.onStatus) {
                     this.callbacks.onStatus(
                         'Image blurry (score: ' + Math.round(sharpness) +
@@ -797,6 +865,7 @@ FaceAttend.Enrollment = (function () {
                 self.goodFrames = [];
             })
             .finally(function () {
+                clearTimeout(safetyTimeout);
                 self.busy = false;
             });
     };
@@ -807,6 +876,14 @@ FaceAttend.Enrollment = (function () {
     Enrollment.prototype.processScanResult = function (r) {
         if (!r || r.ok !== true) {
             var errorCode = r && r.error;
+            if (this._debugAutoTick) {
+                console.log('[Enrollment] processScanResult error:', {
+                    errorCode: errorCode,
+                    message: r && r.message,
+                    liveness: r && r.liveness,
+                    livenessOk: r && r.livenessOk
+                });
+            }
             if (errorCode === 'NO_FACE' || errorCode === 'NO_IMAGE') {
                 this.handleStatus('No face detected.', 'warning');
                 if (this.callbacks.onLivenessUpdate) {
@@ -879,7 +956,12 @@ FaceAttend.Enrollment = (function () {
 
         if (pass) {
             // Phase 2: Calculate pose bucket and store with frame
-            var poseBucket = this.estimatePoseBucket(null, r.faceBox, CONSTANTS.CAPTURE_WIDTH, CONSTANTS.CAPTURE_HEIGHT);
+            // Pass server landmarks and actual canvas dimensions.
+            // r.landmarks = [{x,y},{x,y},{x,y}] (leftEye, rightEye, noseTip) in pixel coords.
+            var cam = this.elements.cam;
+            var canvasW = (cam && cam.videoWidth)  || CONSTANTS.CAPTURE_WIDTH;
+            var canvasH = (cam && cam.videoHeight) || CONSTANTS.CAPTURE_HEIGHT;
+            var poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
             var sharpness = r.sharpness || r.clientSharpness || 0;
             
             this.pushGoodFrame(r.lastBlob || null, p, r.encoding || null, poseBucket, sharpness);
@@ -1135,6 +1217,34 @@ FaceAttend.Enrollment = (function () {
         }
 
         return (r.error || 'Enrollment failed') + ' [step: ' + step + ']' + timeInfo;
+    };
+
+    // -------------------------------------------------------------------------
+    // Debug utilities
+    // -------------------------------------------------------------------------
+    
+    Enrollment.prototype.enableDebug = function() {
+        this._debugAutoTick = true;
+        console.log('[Enrollment] Debug enabled. autoTick logging is now active.');
+    };
+    
+    Enrollment.prototype.disableDebug = function() {
+        this._debugAutoTick = false;
+        console.log('[Enrollment] Debug disabled.');
+    };
+    
+    Enrollment.prototype.getState = function() {
+        return {
+            enrolled: this.enrolled,
+            enrolling: this.enrolling,
+            busy: this.busy,
+            hasStream: !!this.stream,
+            hasAutoTimer: !!this.autoTimer,
+            goodFramesCount: this.goodFrames.length,
+            passHistLength: this.passHist.length,
+            videoWidth: this.elements.cam && this.elements.cam.videoWidth,
+            videoHeight: this.elements.cam && this.elements.cam.videoHeight
+        };
     };
 
     // -------------------------------------------------------------------------

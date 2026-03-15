@@ -113,8 +113,21 @@ namespace FaceAttend.Services.Biometrics
                     base64Encoding = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(encoding));
                 }
 
+                // Get actual image dimensions for accurate pose estimation
+                int imgWidth = 640, imgHeight = 480;
+                try
+                {
+                    if (!string.IsNullOrEmpty(processedPath) && System.IO.File.Exists(processedPath))
+                        using (var img = System.Drawing.Image.FromFile(processedPath))
+                        {
+                            imgWidth = img.Width;
+                            imgHeight = img.Height;
+                        }
+                }
+                catch { /* Use fallback */ }
+
                 // Estimate pose
-                var (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(faceBox, 640, 480);
+                var (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(faceBox, imgWidth, imgHeight);
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
 
                 return new ScanResult

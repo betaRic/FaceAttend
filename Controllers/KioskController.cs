@@ -220,24 +220,8 @@ namespace FaceAttend.Controllers
                 var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.65);
                 attendanceTol = Math.Max(0.55, Math.Min(0.75, attendanceTol));
 
-                // FIX-04: Angle-aware tolerance adjustment for profile faces
-                // When face is offset from center (indicating turn/angle), relax tolerance slightly
-                if (clientFaceBox != null)
-                {
-                    // Estimate yaw from horizontal offset of face center in frame
-                    // Assuming 1280x720 capture resolution (matches CAPTURE_W/H in kiosk.js)
-                    float imageCenterX = 1280f / 2f;
-                    float faceCenterX = clientFaceBox.Left + clientFaceBox.Width / 2f;
-                    float normalizedOffset = Math.Abs(faceCenterX - imageCenterX) / imageCenterX;
-                    
-                    // normalizedOffset: 0 = frontal, 1 = at edge (extreme angle)
-                    // Relax tolerance for angled faces (max +0.08, still capped at 0.75)
-                    if (normalizedOffset > 0.15f)
-                    {
-                        var angleRelax = Math.Min(normalizedOffset * 0.10, 0.08);
-                        attendanceTol = Math.Min(attendanceTol + angleRelax, 0.75);
-                    }
-                }
+                // FIX-04 (comment only): Angle-aware tolerance adjustment happens inside the loop
+                // using actualImageWidth from each frame's scan result.
 
                 if (!FastFaceMatcher.IsInitialized)
                     FastFaceMatcher.Initialize();
@@ -255,6 +239,33 @@ namespace FaceAttend.Controllers
                         
                         if (result == null)
                             return;
+
+                        // FIX-04 (moved): Angle-aware tolerance using ACTUAL image width from scan result
+                        if (clientFaceBox != null && result.ImageWidth > 0)
+                        {
+                            float actualImageCenterX = result.ImageWidth / 2f;
+                            float faceCenterX = clientFaceBox.Left + clientFaceBox.Width / 2f;
+                            float normalizedOffset = Math.Abs(faceCenterX - actualImageCenterX) / actualImageCenterX;
+
+                            if (normalizedOffset > 0.15f)
+                            {
+                                var angleRelax = Math.Min(normalizedOffset * 0.10, 0.08);
+                                var adjustedTol = Math.Min(attendanceTol + angleRelax, 0.75);
+                                
+                                // Re-match with relaxed tolerance if the original match was borderline
+                                if (!result.IsMatch && result.FaceEncoding != null)
+                                {
+                                    var relaxedMatch = FastFaceMatcher.FindBestMatch(result.FaceEncoding, adjustedTol);
+                                    if (relaxedMatch?.IsMatch == true)
+                                    {
+                                        result.EmployeeId = relaxedMatch.Employee?.EmployeeId;
+                                        result.Confidence = relaxedMatch.Confidence;
+                                        result.Distance = relaxedMatch.Distance;
+                                        result.IsMatch = true;
+                                    }
+                                }
+                            }
+                        }
 
                         concurrentResults.Add(new BurstFrameResult
                         {
@@ -475,6 +486,9 @@ namespace FaceAttend.Controllers
                         "Biometrics:LivenessThreshold",
                         ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
                     
+                    // Variables for FIX-04 (angle-aware tolerance)
+                    int actualImageWidth = 1280; // fallback, will be updated from scan result
+                    
                     if (!usedClientBox && ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
                     {
                         // Reset stream for FastScanPipeline
@@ -495,6 +509,7 @@ namespace FaceAttend.Controllers
                         
                         vec = fastResult.FaceEncoding;
                         p = fastResult.LivenessScore;
+                        actualImageWidth = fastResult.ImageWidth; // FIX-04: capture actual width
                         mark("fast_pipeline_ms");
                     }
                     else
@@ -527,6 +542,15 @@ namespace FaceAttend.Controllers
                             return JsonResponseBuilder.EncodingFail(encErr, timings, includePerfTimings, debug);
                         }
 
+                        // For legacy path, get image width from processed file
+                        try
+                        {
+                            if (!string.IsNullOrEmpty(processedPath) && System.IO.File.Exists(processedPath))
+                                using (var img = System.Drawing.Image.FromFile(processedPath))
+                                    actualImageWidth = img.Width;
+                        }
+                        catch { }
+
                         mark("dlib_encode_ms");
                     }
                     
@@ -542,18 +566,13 @@ namespace FaceAttend.Controllers
                     // Clamp between 0.55 (strict) and 0.75 (very lenient)
                     attendanceTol = Math.Max(0.55, Math.Min(0.75, attendanceTol));
                     
-                    // FIX-04: Angle-aware tolerance adjustment for profile faces
-                    // When face is offset from center (indicating turn/angle), relax tolerance slightly
+                    // FIX-04 (moved): Angle-aware tolerance using ACTUAL image width from scan result
                     if (clientFaceBox != null)
                     {
-                        // Estimate yaw from horizontal offset of face center in frame
-                        // CAPTURE_W is 1280 based on kiosk.js constants
-                        float imageCenterX = 1280f / 2f;
+                        float actualImageCenterX = actualImageWidth / 2f;
                         float faceCenterX = clientFaceBox.Left + clientFaceBox.Width / 2f;
-                        float normalizedOffset = Math.Abs(faceCenterX - imageCenterX) / imageCenterX;
-                        
-                        // normalizedOffset: 0 = frontal, 1 = at edge (extreme angle)
-                        // Relax tolerance for angled faces (max +0.08, still capped at 0.75)
+                        float normalizedOffset = Math.Abs(faceCenterX - actualImageCenterX) / actualImageCenterX;
+
                         if (normalizedOffset > 0.15f)
                         {
                             var angleRelax = Math.Min(normalizedOffset * 0.10, 0.08);

@@ -37,6 +37,7 @@ namespace FaceAttend.Services.Biometrics
             public bool LivenessOk { get; set; }
             public DlibBiometrics.FaceBox FaceBox { get; set; }
             public float Sharpness { get; set; }          // NEW: Phase 1 - sharpness score
+            public int ImageWidth { get; set; }           // NEW: For angle-aware tolerance in KioskController
             public long TimingMs { get; set; }
             public Dictionary<string, long> Timings { get; set; }
         }
@@ -104,10 +105,8 @@ namespace FaceAttend.Services.Biometrics
                     }
                     RecordTiming(timings, "detect", sw);
 
-                    // Compute sharpness on face ROI (fast — runs on 160×160 crop)
-                    // For in-memory path, we need to save temporarily for sharpness calculation
-                    // or compute it directly from bitmap. Using file-based calculation for consistency.
-                    float sharpness = 0f;
+                    // Compute sharpness on face ROI using bitmap (no temp file needed)
+                    float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
                     RecordTiming(timings, "sharpness_ms", sw);
 
                     // STEP 3: PARALLEL - Liveness + Encoding (both reuse same bitmap)
@@ -159,6 +158,7 @@ namespace FaceAttend.Services.Biometrics
                         LivenessOk = livenessPassed,
                         FaceBox = faceBox,
                         Sharpness = sharpness,
+                        ImageWidth = bitmap.Width,  // For angle-aware tolerance
                         Timings = timings,
                         TimingMs = sw.ElapsedMilliseconds
                     };
@@ -408,7 +408,8 @@ namespace FaceAttend.Services.Biometrics
                     IsMatch = matchResult.IsMatch,
                     LivenessScore = scored.Probability ?? 0,
                     UsedClientBox = usedClientBox,
-                    FaceEncoding = vec
+                    FaceEncoding = vec,
+                    ImageWidth = bitmap.Width  // FIX-04: for angle-aware tolerance
                 };
             }
         }
@@ -425,6 +426,7 @@ namespace FaceAttend.Services.Biometrics
             public double LivenessScore { get; set; }
             public bool UsedClientBox { get; set; }
             public double[] FaceEncoding { get; set; }
+            public int ImageWidth { get; set; }  // FIX-04: Actual image width for angle-aware tolerance
         }
 
         private static void RecordTiming(Dictionary<string, long> timings, string key, Stopwatch sw)

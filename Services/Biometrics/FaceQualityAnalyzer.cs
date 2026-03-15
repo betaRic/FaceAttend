@@ -30,6 +30,67 @@ namespace FaceAttend.Services.Biometrics
         // ── Sharpness ────────────────────────────────────────────────────────────
 
         /// <summary>
+        /// Computes Laplacian variance on a face region in a Bitmap.
+        /// Used by FastScanPipeline for in-memory scanning without file I/O.
+        ///
+        /// Higher = sharper. Typical good value: 80–300. Below 60 is blurry.
+        /// Returns 0 on any error (treat as failed frame).
+        /// </summary>
+        /// <param name="bitmap">Source bitmap (already loaded in memory).</param>
+        /// <param name="faceBox">Bounding box of the detected face.</param>
+        public static float CalculateSharpnessFromBitmap(Bitmap bitmap, DlibBiometrics.FaceBox faceBox)
+        {
+            if (bitmap == null || faceBox == null) return 0f;
+
+            try
+            {
+                // Clamp ROI to image bounds
+                int x = Math.Max(0, faceBox.Left);
+                int y = Math.Max(0, faceBox.Top);
+                int w = Math.Min(faceBox.Width, bitmap.Width - x);
+                int h = Math.Min(faceBox.Height, bitmap.Height - y);
+
+                if (w <= 0 || h <= 0) return 0f;
+
+                // Crop to face ROI and downscale to 160×160 for speed
+                using (var roi = bitmap.Clone(new Rectangle(x, y, w, h), bitmap.PixelFormat))
+                using (var small = new Bitmap(roi, 160, 160))
+                {
+                    // Convert to grayscale float array
+                    var gray = new float[160 * 160];
+                    for (int py = 0; py < 160; py++)
+                    for (int px = 0; px < 160; px++)
+                    {
+                        var c = small.GetPixel(px, py);
+                        gray[py * 160 + px] = 0.299f * c.R + 0.587f * c.G + 0.114f * c.B;
+                    }
+
+                    // Laplacian variance
+                    float sum = 0f, sumSq = 0f;
+                    int count = 0;
+                    for (int py = 1; py < 159; py++)
+                    for (int px = 1; px < 159; px++)
+                    {
+                        int i = py * 160 + px;
+                        float lap = -4f * gray[i]
+                            + gray[i - 1] + gray[i + 1]
+                            + gray[i - 160] + gray[i + 160];
+                        sum += lap;
+                        sumSq += lap * lap;
+                        count++;
+                    }
+                    if (count == 0) return 0f;
+                    float mean = sum / count;
+                    return (sumSq / count) - (mean * mean); // Variance
+                }
+            }
+            catch
+            {
+                return 0f;
+            }
+        }
+
+        /// <summary>
         /// Computes Laplacian variance on the face ROI (cropped + downscaled to 160×160).
         /// Higher = sharper. Typical good value: 80–300. Below 60 is blurry.
         /// Returns 0 on any error (treat as failed frame).
@@ -92,6 +153,47 @@ namespace FaceAttend.Services.Biometrics
         }
 
         // ── Pose ────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Accurate head pose estimation from 6-point facial landmarks.
+        /// Uses eye positions as reference and nose tip displacement to estimate
+        /// yaw (horizontal rotation) and pitch (vertical tilt).
+        ///
+        /// Assumes landmarks6 array format: [leftEyeX, leftEyeY, rightEyeX, rightEyeY, noseTipX, noseTipY]
+        /// Returns yaw (clockwise +) and pitch (down +) in degrees.
+        /// </summary>
+        public static (float yaw, float pitch) EstimatePoseFromLandmarks(float[] landmarks6)
+        {
+            if (landmarks6 == null || landmarks6.Length < 6)
+                return (0f, 0f);
+
+            float leX = landmarks6[0], leY = landmarks6[1];
+            float reX = landmarks6[2], reY = landmarks6[3];
+            float ntX = landmarks6[4], ntY = landmarks6[5];
+
+            // Eye midpoint (reference center)
+            float eyeMidX = (leX + reX) * 0.5f;
+            float eyeMidY = (leY + reY) * 0.5f;
+
+            // Eye distance as scale reference
+            float eyeDistX = Math.Abs(reX - leX);
+            if (eyeDistX < 1f) eyeDistX = 1f; // Prevent division by zero
+
+            // Yaw: nose tip horizontal displacement from eye midpoint
+            // Scale: eyeDistX ~ 90 degrees of rotation (nose tip aligned with eye corner)
+            float yaw = ((ntX - eyeMidX) / eyeDistX) * 90f;
+
+            // Pitch: nose tip vertical displacement relative to eye level
+            // Typical upright face: nose tip is ~1.2 eye distances below eye midpoint
+            float normalizedPitch = (ntY - eyeMidY) / eyeDistX;
+            float pitch = (normalizedPitch - 1.2f) * 40f; // Scale factor calibrated for typical faces
+
+            // Clamp to reasonable ranges
+            yaw = Math.Max(-90f, Math.Min(90f, yaw));
+            pitch = Math.Max(-90f, Math.Min(90f, pitch));
+
+            return (yaw, pitch);
+        }
 
         /// <summary>
         /// Estimates yaw and pitch from FaceBox geometry.
