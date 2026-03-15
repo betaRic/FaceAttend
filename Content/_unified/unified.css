@@ -1,16 +1,14 @@
 /**
  * FaceAttend Unified Design System
- * Version: 2.0
+ * Version: 2.0 (DEPRECATED - DO NOT USE IN NEW CODE)
  * 
- * This is the main entry point for the unified design system.
- * Import this file to get all components and utilities.
+ * ⚠️  WARNING: DO NOT ADD THIS FILE TO ANY ASP.NET BUNDLE DIRECTLY.
+ * This file uses @import which does not work in ASP.NET Web Optimization.
+ * It also uses v2 variable naming that conflicts with fa-design-system.css v3.
  * 
- * Usage:
- *   @Styles.Render("~/Content/unified")
- * 
- * Or import individual files:
- *   @Styles.Render("~/Content/unified/tokens")
- *   @Styles.Render("~/Content/unified/components/wizard")
+ * Use ~/Content/fa-system bundle (fa-design-system.css) instead.
+ * Use ~/Content/fa-components bundle for components.
+ * This file is kept for legacy reference only.
  */
 
 /* ========================================

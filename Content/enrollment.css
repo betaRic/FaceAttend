@@ -4,15 +4,14 @@
  *
  * Covers ALL enrollment surfaces: Admin (Employee/Visitor), Mobile self-enrollment.
  * Uses CSS variables from fa-design-system.css.
- *
- * NEVER add enrollment-specific styles to admin.css, fa-mobile.css, or kiosk.css.
- * NEVER add <style> blocks to enrollment views.
  */
 
-/* ── Layout ──────────────────────────────────────────────────────────────── */
+/* ==========================================================================
+   Layout
+   ========================================================================== */
 
 .enroll-container {
-    max-width: 640px;
+    max-width: 1000px;
     margin: 0 auto;
     padding: 0 1rem;
 }
@@ -21,496 +20,375 @@
     display: none !important;
 }
 
-/* ── Camera ──────────────────────────────────────────────────────────────── */
+/* ==========================================================================
+   Wizard Steps - Minimalist
+   ========================================================================== */
+
+.enroll-wizard-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+}
+
+.enroll-wizard-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.5rem;
+    background: var(--bg-surface);
+    border: 2px solid var(--border-default);
+    border-radius: 50px;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.enroll-wizard-step.is-active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: white;
+}
+
+.enroll-wizard-step.is-complete {
+    background: var(--color-success-light);
+    border-color: var(--color-success);
+    color: var(--color-success);
+}
+
+.enroll-wizard-step__num {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: currentColor;
+    color: inherit;
+    border-radius: 50%;
+    font-size: 0.75rem;
+}
+
+.enroll-wizard-step.is-active .enroll-wizard-step__num,
+.enroll-wizard-step.is-complete .enroll-wizard-step__num {
+    background: rgba(255, 255, 255, 0.3);
+}
+
+.enroll-wizard-step__line {
+    width: 40px;
+    height: 2px;
+    background: var(--border-default);
+}
+
+/* ==========================================================================
+   Camera Section - 2 Column Layout
+   ========================================================================== */
 
 .enroll-camera-wrap {
     position: relative;
     width: 100%;
     aspect-ratio: 4 / 3;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     overflow: hidden;
     background: #000;
-    border: 2px solid var(--border-default);
 }
 
-[data-theme="kiosk"] .enroll-camera-wrap,
-.mobile-surface .enroll-camera-wrap {
-    border-color: var(--border-subtle);
-}
-
-.enroll-video,
-#enrollVideo {
+.enroll-video {
     width: 100%;
     height: 100%;
     object-fit: cover;
-    transform: scaleX(-1); /* Mirror for selfie UX */
+    transform: scaleX(-1);
 }
 
-.enroll-face-overlay {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-}
-
-/* Face guide circle */
+/* Face Guide with Corner Brackets */
 .enroll-face-guide {
     position: absolute;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    width: 55%;
-    aspect-ratio: 1;
-    border: 2px dashed rgba(255,255,255,0.3);
+    width: 240px;
+    height: 300px;
+    border: 2px dashed rgba(255, 255, 255, 0.4);
     border-radius: 50%;
-    transition: border-color 0.3s ease, border-style 0.3s ease;
     pointer-events: none;
+    transition: all 0.3s ease;
 }
 
 .enroll-face-guide--good {
     border-color: var(--color-success);
     border-style: solid;
+    box-shadow: 0 0 30px rgba(16, 185, 129, 0.4);
 }
 
-.enroll-face-guide--warning {
-    border-color: var(--color-warning);
-    border-style: dashed;
-}
-
-.enroll-face-guide--error {
-    border-color: var(--color-error);
-    border-style: solid;
-}
-
-/* ── Angle Guidance ──────────────────────────────────────────────────────── */
-
-.enroll-angle-guidance {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm);
-    margin-top: 12px;
-}
-
-[data-theme="kiosk"] .enroll-angle-guidance,
-.mobile-surface .enroll-angle-guidance {
-    background: rgba(255,255,255,0.05);
-    border-color: rgba(255,255,255,0.1);
-}
-
-.enroll-angle-icon {
-    font-size: 20px;
-    color: var(--primary-500, #3b82f6);
-    width: 28px;
-    text-align: center;
-    flex-shrink: 0;
-}
-
-.enroll-angle-prompt {
-    font-size: 0.9375rem;
-    font-weight: 500;
-    color: var(--text-primary, #0f172a);
-}
-
-[data-theme="kiosk"] .enroll-angle-prompt,
-.mobile-surface .enroll-angle-prompt {
-    color: var(--text-primary, #f8fafc);
-}
-
-/* ── Diversity Dots ──────────────────────────────────────────────────────── */
-
-.enroll-diversity {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-}
-
-.enroll-diversity-label {
-    font-size: 0.8125rem;
-    color: var(--text-secondary, #475569);
-    white-space: nowrap;
-}
-
-.enroll-diversity-dots {
-    display: flex;
-    gap: 6px;
-}
-
-.enroll-diversity-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--gray-200, #e2e8f0);
-    border: 1.5px solid var(--gray-300, #cbd5e1);
-    transition: background 0.25s ease, border-color 0.25s ease, transform 0.15s ease;
-    position: relative;
-}
-
-.enroll-diversity-dot[title]::after {
-    content: attr(title);
+.enroll-face-guide__corner {
     position: absolute;
-    bottom: 14px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 10px;
-    background: rgba(0,0,0,0.7);
-    color: #fff;
-    padding: 2px 5px;
-    border-radius: 3px;
-    white-space: nowrap;
-    opacity: 0;
-    pointer-events: none;
-    transition: opacity 0.15s;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(255, 255, 255, 0.8);
 }
 
-.enroll-diversity-dot:hover::after {
-    opacity: 1;
+.enroll-face-guide__corner--tl { top: -3px; left: -3px; border-right: 0; border-bottom: 0; border-radius: 20px 0 0 0; }
+.enroll-face-guide__corner--tr { top: -3px; right: -3px; border-left: 0; border-bottom: 0; border-radius: 0 20px 0 0; }
+.enroll-face-guide__corner--bl { bottom: -3px; left: -3px; border-right: 0; border-top: 0; border-radius: 0 0 0 20px; }
+.enroll-face-guide__corner--br { bottom: -3px; right: -3px; border-left: 0; border-top: 0; border-radius: 0 0 20px 0; }
+
+/* Camera Status Badge */
+.enroll-camera-status {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(10px);
+    border-radius: 20px;
+    color: white;
+    font-size: 0.8125rem;
+    font-weight: 500;
 }
 
-.enroll-diversity-dot--captured {
+.enroll-camera-status__dot {
+    width: 8px;
+    height: 8px;
     background: var(--color-success);
-    border-color: var(--success-600, #16a34a);
-    transform: scale(1.2);
+    border-radius: 50%;
+    animation: pulse 2s ease-in-out infinite;
 }
 
-/* ── Progress ────────────────────────────────────────────────────────────── */
-
-.enroll-progress-wrap {
-    margin-top: 12px;
-}
-
-.enroll-progress-label {
-    display: flex;
-    justify-content: space-between;
-    font-size: 0.8125rem;
-    color: var(--text-secondary, #475569);
-    margin-bottom: 4px;
-}
-
-.enroll-progress-track {
-    height: 6px;
-    background: var(--gray-200, #e2e8f0);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-[data-theme="kiosk"] .enroll-progress-track,
-.mobile-surface .enroll-progress-track {
-    background: rgba(255,255,255,0.1);
-}
-
-.enroll-progress-fill {
-    height: 100%;
-    background: var(--primary-500, #3b82f6);
-    border-radius: 3px;
-    transition: width 0.3s ease;
-    width: 0%;
-}
-
-/* ── Liveness Bar ────────────────────────────────────────────────────────── */
-
-.enroll-liveness-wrap {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-top: 10px;
-}
-
-.enroll-liveness-label {
-    font-size: 0.8125rem;
-    color: var(--text-secondary, #475569);
-    white-space: nowrap;
-    min-width: 60px;
-}
-
-.enroll-liveness-track {
-    flex: 1;
-    height: 6px;
-    background: var(--gray-200, #e2e8f0);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.enroll-liveness-fill {
-    height: 100%;
-    border-radius: 3px;
-    transition: width 0.2s ease, background 0.2s ease;
-    width: 0%;
-    background: var(--gray-400, #94a3b8);
-}
-
-.enroll-liveness-fill--pass { background: var(--color-success); }
-.enroll-liveness-fill--warn { background: var(--color-warning); }
-.enroll-liveness-fill--fail { background: var(--color-error); }
-
-.enroll-liveness-val {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    min-width: 36px;
-    text-align: right;
-    color: var(--text-primary, #0f172a);
-}
-
-/* ── Status Message ──────────────────────────────────────────────────────── */
-
-.enroll-status {
-    padding: 10px 14px;
-    border-radius: var(--radius-sm);
-    font-size: 0.9rem;
-    margin-top: 12px;
-    border: 1px solid transparent;
-}
-
-.enroll-status--info    { background: var(--info-50, #f0f9ff);    border-color: #bae6fd; color: #0c4a6e; }
-.enroll-status--success { background: var(--success-50, #f0fdf4); border-color: #bbf7d0; color: #14532d; }
-.enroll-status--warning { background: var(--warning-50, #fffbeb); border-color: #fde68a; color: #78350f; }
-.enroll-status--danger  { background: var(--danger-50, #fef2f2);  border-color: #fecaca; color: #7f1d1d; }
-
-[data-theme="kiosk"] .enroll-status--info,
-.mobile-surface .enroll-status--info {
-    background: rgba(59,130,246,0.1);
-    border-color: rgba(59,130,246,0.2);
-    color: #93c5fd;
-}
-
-[data-theme="kiosk"] .enroll-status--success,
-.mobile-surface .enroll-status--success {
-    background: rgba(34,197,94,0.1);
-    border-color: rgba(34,197,94,0.2);
-    color: #86efac;
-}
-
-[data-theme="kiosk"] .enroll-status--warning,
-.mobile-surface .enroll-status--warning {
-    background: rgba(245,158,11,0.1);
-    border-color: rgba(245,158,11,0.2);
-    color: #fcd34d;
-}
-
-[data-theme="kiosk"] .enroll-status--danger,
-.mobile-surface .enroll-status--danger {
-    background: rgba(239,68,68,0.1);
-    border-color: rgba(239,68,68,0.2);
-    color: #fca5a5;
-}
-
-/* ── Controls ────────────────────────────────────────────────────────────── */
-
-.enroll-controls {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 16px;
-}
-
-.enroll-controls .btn {
-    flex: 1;
-    min-width: 120px;
-}
-
-/* ── Processing Overlay ──────────────────────────────────────────────────── */
-
-.enroll-processing-overlay {
-    position: absolute;
-    inset: 0;
-    background: rgba(0,0,0,0.65);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    border-radius: inherit;
-    gap: 12px;
-    z-index: 10;
-}
-
-.enroll-processing-overlay.enroll-hidden {
-    display: none !important;
-}
-
-.enroll-processing-spinner {
-    font-size: 2rem;
-    color: #fff;
-    animation: fa-spin 0.8s linear infinite;
-}
-
-.enroll-processing-text {
-    color: #fff;
-    font-size: 0.9375rem;
-    font-weight: 500;
-}
-
-/* ── Wizard Step Pills ───────────────────────────────────────────────────── */
-
-.enroll-steps {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 20px;
-}
-
-.enroll-step {
-    flex: 1;
-    text-align: center;
-    padding: 8px 6px;
-    border-radius: 10px;
-    border: 1px solid var(--border-default);
-    background: var(--bg-surface);
-    color: var(--text-secondary, #475569);
-    font-size: 0.8125rem;
-    font-weight: 600;
-    transition: background 0.2s, border-color 0.2s, color 0.2s;
-}
-
-[data-theme="kiosk"] .enroll-step,
-.mobile-surface .enroll-step {
-    border-color: rgba(255,255,255,0.12);
-    background: rgba(255,255,255,0.04);
-    color: var(--text-muted, #64748b);
-}
-
-.enroll-step.active {
-    background: rgba(59,130,246,0.12);
-    border-color: rgba(59,130,246,0.4);
-    color: var(--primary-600, #2563eb);
-}
-
-[data-theme="kiosk"] .enroll-step.active,
-.mobile-surface .enroll-step.active {
-    color: #93c5fd;
-}
-
-.enroll-step.done {
-    background: rgba(34,197,94,0.1);
-    border-color: rgba(34,197,94,0.35);
-    color: var(--success-600, #16a34a);
-}
-
-[data-theme="kiosk"] .enroll-step.done,
-.mobile-surface .enroll-step.done {
-    color: #86efac;
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
 }
 
 /* ==========================================================================
-   Enrollment Layout Styles (migrated from _EnrollmentLayout.cshtml)
+   Stats Panel - Compact
    ========================================================================== */
 
-.enrollment-layout {
-    min-height: 100vh;
-    background: linear-gradient(180deg, var(--bg-page) 0%, var(--bg-surface) 100%);
-    color: var(--text-primary);
-    font-family: var(--font-sans);
+.enroll-stats-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 1.5rem;
 }
 
-.enrollment-header {
-    padding: var(--space-4) var(--space-6);
-    border-bottom: 1px solid var(--border-subtle);
-    background: rgba(0,0,0,0.2);
-}
-
-.enrollment-header__brand {
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-}
-
-.enrollment-header__logo {
-    width: 40px;
-    height: 40px;
-    background: linear-gradient(135deg, var(--color-primary), var(--color-info));
-    border-radius: var(--radius-md);
+/* Angles Grid - 5 items in row */
+.enroll-angles-grid {
     display: grid;
-    place-items: center;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 0.5rem;
+    margin: 1rem 0;
 }
 
-.enrollment-header__title {
-    font-size: var(--text-xl);
-    font-weight: var(--font-bold);
-    margin: 0;
-}
-
-.enrollment-header__subtitle {
-    font-size: var(--text-sm);
-    color: var(--text-muted);
-}
-
-.enrollment-main {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: var(--space-6) var(--space-4);
-}
-
-.enrollment-footer {
-    text-align: center;
-    padding: var(--space-6);
-    color: var(--text-muted);
-    font-size: var(--text-sm);
-    border-top: 1px solid var(--border-subtle);
-}
-
-/* Wizard steps */
-.wizard-steps {
+.enroll-angle-item {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: center;
-    gap: var(--space-4);
-    margin-bottom: var(--space-6);
-}
-
-.wizard-step {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    padding: var(--space-2) var(--space-4);
-    border-radius: var(--radius-full);
-    font-size: var(--text-sm);
-    font-weight: var(--font-semibold);
-    background: rgba(255,255,255,0.05);
+    gap: 0.25rem;
+    padding: 0.75rem 0.25rem;
+    background: var(--bg-page);
+    border: 2px solid transparent;
+    border-radius: var(--radius);
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
     color: var(--text-muted);
-    border: 1px solid var(--border-subtle);
+    transition: all 0.2s ease;
 }
 
-.wizard-step--active {
-    background: rgba(59, 130, 246, 0.2);
-    border-color: var(--color-primary);
-    color: var(--color-primary);
+.enroll-angle-item i {
+    font-size: 1rem;
 }
 
-.wizard-step--complete {
-    background: rgba(16, 185, 129, 0.2);
+.enroll-angle-item.is-captured {
+    background: var(--color-success-light);
     border-color: var(--color-success);
     color: var(--color-success);
 }
 
-.wizard-step__number {
-    width: 24px;
-    height: 24px;
-    border-radius: var(--radius-full);
-    background: rgba(0,0,0,0.3);
-    display: grid;
-    place-items: center;
-    font-size: var(--text-xs);
+/* Liveness Mini */
+.enroll-liveness-mini {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: var(--warning-50);
+    border-radius: var(--radius);
 }
 
-/* Responsive */
-@media (max-width: 640px) {
-    .enrollment-main {
-        padding: var(--space-4);
+/* ==========================================================================
+   Upload Section
+   ========================================================================== */
+
+.enroll-dropzone {
+    border: 2px dashed var(--border-default);
+    border-radius: var(--radius-lg);
+    padding: 3rem 2rem;
+    text-align: center;
+    background: var(--bg-page);
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.enroll-dropzone:hover,
+.enroll-dropzone.is-dragover {
+    border-color: var(--color-primary);
+    background: var(--primary-50);
+}
+
+.enroll-dropzone__icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 1rem;
+    background: var(--bg-elevated);
+    border-radius: var(--radius-lg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.5rem;
+    color: var(--color-primary);
+}
+
+/* File Grid */
+.enroll-file-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-top: 1.5rem;
+}
+
+.enroll-file-card {
+    position: relative;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius);
+    overflow: hidden;
+}
+
+.enroll-file-card__thumb {
+    aspect-ratio: 1;
+    background: var(--bg-page);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+}
+
+.enroll-file-card__thumb img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.enroll-file-card__info {
+    padding: 0.5rem;
+}
+
+.enroll-file-card__name {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.enroll-file-card__size {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+}
+
+.enroll-file-card__remove {
+    position: absolute;
+    top: 0.25rem;
+    right: 0.25rem;
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--color-error);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    font-size: 0.625rem;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+}
+
+.enroll-file-card:hover .enroll-file-card__remove {
+    opacity: 1;
+}
+
+/* ==========================================================================
+   Success State
+   ========================================================================== */
+
+.enroll-success-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto;
+    background: var(--color-success-light);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.5rem;
+    color: var(--color-success);
+    animation: success-pop 0.5s ease;
+}
+
+@keyframes success-pop {
+    0% { transform: scale(0); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}
+
+/* ==========================================================================
+   Method Cards - Fix Icon Consistency
+   ========================================================================== */
+
+/* Ensure method card icons are consistent */
+.fa-method__icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-surface);
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-4);
+    font-size: 1.5rem;
+    color: var(--color-primary);
+    border: 1px solid var(--border-subtle);
+}
+
+.fa-method-card:hover .fa-method__icon {
+    background: var(--color-primary-light);
+    color: white;
+    border-color: var(--color-primary);
+}
+
+/* ==========================================================================
+   Responsive
+   ========================================================================== */
+
+@media (max-width: 992px) {
+    .enroll-angles-grid {
+        grid-template-columns: repeat(3, 1fr);
+    }
+}
+
+@media (max-width: 576px) {
+    .enroll-wizard-step {
+        padding: 0.5rem 1rem;
+        font-size: 0.8125rem;
     }
     
-    .wizard-steps {
-        gap: var(--space-2);
+    .enroll-wizard-step__line {
+        width: 20px;
     }
     
-    .wizard-step {
-        padding: var(--space-2) var(--space-3);
-        font-size: var(--text-xs);
-    }
-    
-    .wizard-step__label {
-        display: none;
+    .enroll-file-grid {
+        grid-template-columns: repeat(2, 1fr);
     }
 }

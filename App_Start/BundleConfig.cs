@@ -226,6 +226,14 @@ namespace FaceAttend
             bundles.Add(new NonMinifiedStyleBundle("~/Content/enrollment")
                 .Include("~/Content/enrollment.css"));
 
+            // Component CSS (Method Selector, Uploader, Wizard, Camera, Modal)
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/fa-components")
+                .Include("~/Content/_unified/components/method-selector.css")
+                .Include("~/Content/_unified/components/uploader.css")
+                .Include("~/Content/_unified/components/wizard.css")
+                .Include("~/Content/_unified/components/camera.css")
+                .Include("~/Content/_unified/components/modal.css"));
+
             // =================================================================
             // BUNDLE OPTIMIZATION
             // =================================================================

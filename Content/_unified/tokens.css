@@ -1,9 +1,13 @@
 /**
  * FaceAttend Unified Design System - Tokens
- * Version: 2.0
+ * Version: 2.0 (DEPRECATED - DO NOT USE IN NEW CODE)
  * 
- * This file contains all design tokens for the unified system.
- * Use CSS custom properties for theming and consistency.
+ * ⚠️  WARNING: DO NOT ADD THIS FILE TO ANY ASP.NET BUNDLE DIRECTLY.
+ * This file uses v2 variable naming (--color-brand-primary) that conflicts
+ * with fa-design-system.css v3 (--color-primary).
+ * 
+ * Use ~/Content/fa-system bundle (fa-design-system.css) instead.
+ * This file is kept for legacy reference only.
  */
 
 :root {

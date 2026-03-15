@@ -54,6 +54,8 @@
   --bg-surface:           #f8fafc;
   --bg-elevated:          #ffffff;
   --bg-overlay:           rgba(15, 23, 42, 0.5);
+  --bg-glass:             rgba(255, 255, 255, 0.6);
+  --bg-elevated-glass:    rgba(255, 255, 255, 0.8);
   
   /* ── Text ──────────────────────────────────────────────── */
   --text-primary:         #0f172a;
@@ -131,6 +133,22 @@
   --z-popover:    1060;
   --z-tooltip:    1070;
   --z-toast:      1080;
+  
+  /* ── Line Heights ──────────────────────────────────────── */
+  --leading-tight:    1.25;
+  --leading-normal:   1.5;
+  --leading-relaxed:  1.75;
+  
+  /* ── Legacy Aliases (for backward compatibility) ───────── */
+  --primary-100:  var(--color-primary-light);
+  --primary-500:  var(--color-primary);
+  --primary-600:  var(--color-primary-hover);
+  --success-500:  var(--color-success);
+  --success-600:  var(--color-success-hover);
+  --danger-500:   var(--color-error);
+  --danger-600:   var(--color-error-hover);
+  --warning-500:  var(--color-warning);
+  --warning-600:  var(--color-warning-hover);
 }
 
 /* ============================================================
@@ -141,7 +159,8 @@
   --bg-page:              #020617;
   --bg-surface:           #0f172a;
   --bg-elevated:          #1e293b;
-  --bg-elevated-glass:    rgba(17, 24, 39, 0.85);  /* Semi-transparent for glassmorphism */
+  --bg-glass:             rgba(255, 255, 255, 0.04);
+  --bg-elevated-glass:    rgba(255, 255, 255, 0.07);
   --bg-overlay:           rgba(0, 0, 0, 0.7);
   
   --text-primary:         #f8fafc;
@@ -171,6 +190,8 @@
   --bg-page:              #020617;
   --bg-surface:           #0f172a;
   --bg-elevated:          #1e293b;
+  --bg-glass:             rgba(255, 255, 255, 0.03);
+  --bg-elevated-glass:    rgba(255, 255, 255, 0.06);
   
   /* Mobile-specific values */
   --mobile-safe-top:      env(safe-area-inset-top, 0px);
@@ -187,7 +208,10 @@
    Used by 2+ surfaces — enrollment, wizard, camera, etc.
    ============================================================ */
 
-/* ── Wizard Steps ────────────────────────────────────────── */
+/* ── Wizard Steps ──────────────────────────────────────────
+   Class names must match _Wizard.cshtml and facescan-ui.js
+   Uses .is-active / .is-done state classes (not BEM modifiers)
+*/
 .fa-wizard {
   display: flex;
   align-items: center;
@@ -198,65 +222,75 @@
 
 .fa-wizard__step {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: var(--space-1);
-  opacity: 0.5;
-  transition: opacity var(--transition);
-}
-
-.fa-wizard__step--active,
-.fa-wizard__step--completed {
-  opacity: 1;
-}
-
-.fa-wizard__step-number {
-  width: 2rem;
-  height: 2rem;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-radius: var(--radius-full);
-  background: var(--bg-surface);
-  border: 2px solid var(--border-default);
-  display: flex;
-  align-items: center;
-  justify-content: center;
   font-size: var(--text-sm);
   font-weight: var(--font-semibold);
-  color: var(--text-secondary);
-}
-
-.fa-wizard__step--active .fa-wizard__step-number {
-  background: var(--color-primary);
-  border-color: var(--color-primary);
-  color: white;
-}
-
-.fa-wizard__step--completed .fa-wizard__step-number {
-  background: var(--color-success);
-  border-color: var(--color-success);
-  color: white;
-}
-
-.fa-wizard__step-label {
-  font-size: var(--text-xs);
+  background: var(--bg-elevated);
   color: var(--text-muted);
+  border: 1px solid var(--border-default);
+  transition: all var(--transition);
+  cursor: default;
+}
+
+.fa-wizard__step.is-active {
+  background: rgba(59, 130, 246, 0.12);
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  animation: wizard-step-active var(--transition-slow) ease-out;
+}
+
+.fa-wizard__step.is-done {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.fa-wizard__number {
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-full);
+  background: rgba(0, 0, 0, 0.08);
+  display: grid;
+  place-items: center;
+  font-size: var(--text-xs);
+  font-weight: var(--font-bold);
+  flex-shrink: 0;
+}
+
+.fa-wizard__step.is-active .fa-wizard__number {
+  background: var(--color-primary);
+  color: white;
+}
+
+.fa-wizard__step.is-done .fa-wizard__number {
+  background: var(--color-success);
+  color: white;
+}
+
+.fa-wizard__label {
   white-space: nowrap;
 }
 
-.fa-wizard__step--active .fa-wizard__step-label {
-  color: var(--text-primary);
-  font-weight: var(--font-medium);
-}
-
-.fa-wizard__connector {
-  flex: 1;
+.fa-wizard__divider {
+  width: 32px;
   height: 2px;
-  max-width: 3rem;
   background: var(--border-default);
-  position: relative;
+  border-radius: 1px;
+  transition: background var(--transition);
+  flex-shrink: 0;
 }
 
-.fa-wizard__connector--completed {
+.fa-wizard__divider.is-done {
   background: var(--color-success);
+}
+
+@keyframes wizard-step-active {
+  0%   { transform: scale(0.95); opacity: 0.8; }
+  50%  { transform: scale(1.02); }
+  100% { transform: scale(1);    opacity: 1; }
 }
 
 /* ── Camera Components ──────────────────────────────────── */

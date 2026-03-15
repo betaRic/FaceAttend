@@ -1,0 +1,260 @@
+{{!--
+    ENROLL.CSHTML @SECTION SCRIPTS PATCHES
+    =======================================
+    Apply these changes to BOTH:
+      Areas/Admin/Views/Employees/Enroll.cshtml
+      Areas/Admin/Views/Visitors/Enroll.cshtml
+--}}
+
+
+=============================================================================
+FIX 1: Add ~/bundles/enrollment to @section scripts (BOTH files)
+=============================================================================
+FIND in @section scripts{...}:
+
+    @Scripts.Render("~/bundles/facescan-core")
+    @Scripts.Render("~/bundles/facescan-ui")
+
+REPLACE WITH:
+
+    @Scripts.Render("~/bundles/facescan-core")
+    @Scripts.Render("~/bundles/enrollment")       ← ADD THIS — loads enrollment-ui.js
+    @Scripts.Render("~/bundles/facescan-ui")
+
+WHY: Without ~/bundles/enrollment, enrollment-ui.js never loads, the Start
+button is never hidden, and the auto-start/auto-save behavior is missing.
+The inline script in _EnrollmentComponent.cshtml (now removed) was the
+only thing running before, and it had the camera ID mismatch bug.
+
+
+=============================================================================
+FIX 2: showLive() and auto-start (verify this is present in BOTH files)
+=============================================================================
+The showLive() function should look like this — it calls start() which
+triggers enrollment-ui.js's startCamera() automatically:
+
+    function showLive() {
+        wizardPane.classList.add('d-none');
+        livePane.classList.remove('d-none');
+        uploadPane.classList.add('d-none');
+        FaceAttend.UI.Wizard.goTo('enrollWizard', 2);  // 'visitorWizard' in Visitors
+
+        // This calls enrollment-ui.js's startCamera() automatically
+        if (window.FaceAttendEnrollment) {
+            window.FaceAttendEnrollment.start();
+        }
+    }
+
+NO CHANGES NEEDED if this is already correct. Just verify.
+
+
+=============================================================================
+FIX 3: Upload pane — add upload-submit-area wrapper for the button (BOTH files)
+=============================================================================
+In the upload pane HTML section, change the button div from:
+
+    @* OLD — no wrapper class *@
+    <div class="text-center mt-3">
+        <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
+            <i class="fa-solid fa-upload me-2"></i>Upload &amp; Enroll
+        </button>
+    </div>
+
+TO:
+
+    @* NEW — uses upload-submit-area class for consistent spacing *@
+    <div class="upload-submit-area mt-4">
+        <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
+            <i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload &amp; Enroll
+        </button>
+    </div>
+
+
+=============================================================================
+FIX 4: Uploader init — remove onError console.error, add UI feedback (BOTH)
+=============================================================================
+In @section scripts, the uploader init:
+
+    // OLD (no user-visible error handling)
+    var uploader = FaceAttend.UI.Uploader.init('employeeUploader', {
+        maxFiles: 5,
+        maxSize: 10 * 1024 * 1024,
+        allowedTypes: ['image/jpeg', 'image/png', 'image/jpg'],
+        onFilesSelected: function(files) {
+            selectedUploadFiles = files;
+            uploadBtn.disabled = files.length === 0;
+        },
+        onError: function(errors) {
+            console.error('[Uploader] Errors:', errors);
+        }
+    });
+
+    // NEW (show errors in upStatus div)
+    var uploader = FaceAttend.UI.Uploader.init('employeeUploader', {  // 'visitorUploader' in Visitors
+        maxFiles: 5,
+        maxSize: 10 * 1024 * 1024,
+        allowedTypes: ['image/jpeg', 'image/png', 'image/jpg'],
+        onFilesSelected: function(files) {
+            selectedUploadFiles = files;
+            uploadBtn.disabled = files.length === 0;
+        },
+        onError: function(errors) {
+            var upStatus = document.getElementById('upStatus');
+            if (upStatus && errors && errors.length > 0) {
+                upStatus.className = 'alert alert-danger mt-3';
+                upStatus.textContent = errors.join('. ');
+            }
+        }
+    });
+
+
+=============================================================================
+FIX 5: Add upStatus div if missing (BOTH files)
+=============================================================================
+In the upload pane HTML (after the _FileUploader partial, before the button):
+
+    @* upStatus shows upload validation messages — starts empty (hidden by CSS) *@
+    <div id="upStatus" class="mt-3"></div>
+
+    <div class="upload-submit-area mt-4">
+        <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
+            <i class="fa-solid fa-cloud-arrow-up me-2"></i>Upload &amp; Enroll
+        </button>
+    </div>
+
+The enrollment.css now has: #upStatus:empty { display: none; }
+This means an empty upStatus is invisible, and only shows when JS writes content.
+
+
+=============================================================================
+COMPLETE CORRECTED @section scripts BLOCK — Employees/Enroll.cshtml
+=============================================================================
+Replace the ENTIRE @section scripts{} block with:
+
+@section scripts{
+    @Scripts.Render("~/bundles/facescan-core")
+    @Scripts.Render("~/bundles/enrollment")
+    @Scripts.Render("~/bundles/facescan-ui")
+
+    <script>
+    (function() {
+        'use strict';
+
+        var wizardPane        = document.getElementById('enrollWizardPane');
+        var livePane          = document.getElementById('livePane');
+        var uploadPane        = document.getElementById('uploadPane');
+        var uploadBtn         = document.getElementById('uploadBtn');
+        var selectedUploadFiles = [];
+
+        // Initialize Wizard
+        var wizard = FaceAttend.UI.Wizard.init('enrollWizard', {
+            steps: ['Method', 'Capture', 'Done'],
+            allowBack: true
+        });
+
+        // Initialize Uploader
+        var uploader = FaceAttend.UI.Uploader.init('employeeUploader', {
+            maxFiles: 5,
+            maxSize: 10 * 1024 * 1024,
+            allowedTypes: ['image/jpeg', 'image/png', 'image/jpg'],
+            onFilesSelected: function(files) {
+                selectedUploadFiles = files;
+                if (uploadBtn) uploadBtn.disabled = files.length === 0;
+            },
+            onError: function(errors) {
+                var upStatus = document.getElementById('upStatus');
+                if (upStatus && errors && errors.length > 0) {
+                    upStatus.className = 'alert alert-danger mt-2';
+                    upStatus.textContent = errors.join('. ');
+                }
+            }
+        });
+
+        // Method selection
+        window.onMethodSelect = function(methodId) {
+            if (methodId === 'live') {
+                showLive();
+            } else if (methodId === 'upload') {
+                showUpload();
+            }
+        };
+
+        function showWizard() {
+            wizardPane.classList.remove('d-none');
+            livePane.classList.add('d-none');
+            uploadPane.classList.add('d-none');
+            FaceAttend.UI.Wizard.goTo('enrollWizard', 1);
+            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.stop();
+        }
+
+        function showLive() {
+            wizardPane.classList.add('d-none');
+            livePane.classList.remove('d-none');
+            uploadPane.classList.add('d-none');
+            FaceAttend.UI.Wizard.goTo('enrollWizard', 2);
+            // enrollment-ui.js handles auto-start via this call:
+            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.start();
+        }
+
+        function showUpload() {
+            wizardPane.classList.add('d-none');
+            livePane.classList.add('d-none');
+            uploadPane.classList.remove('d-none');
+            FaceAttend.UI.Wizard.goTo('enrollWizard', 2);
+            if (window.FaceAttendEnrollment) window.FaceAttendEnrollment.stop();
+        }
+
+        function showSuccess(details) {
+            FaceAttend.UI.Wizard.goTo('enrollWizard', 3);
+            var successDetails = document.getElementById('successDetails');
+            if (successDetails) successDetails.textContent = details || '';
+            var successOverlay = document.getElementById('successOverlay');
+            if (successOverlay) {
+                successOverlay.classList.remove('d-none');
+                successOverlay.classList.add('is-open');
+            }
+        }
+
+        // Back buttons
+        var backFromLive   = document.getElementById('backFromLive');
+        var backFromUpload = document.getElementById('backFromUpload');
+        if (backFromLive)   backFromLive.addEventListener('click', showWizard);
+        if (backFromUpload) backFromUpload.addEventListener('click', showWizard);
+
+        // Enrollment callbacks (called by enrollment-ui.js)
+        window.enrollCallbacks = {
+            onEnrollmentComplete: function(result) {
+                showSuccess((result.vectorsSaved || 0) + ' face sample(s) saved');
+            },
+            onEnrollmentError: function(error) {
+                // enrollment-ui.js already shows the SweetAlert
+            }
+        };
+
+        // Upload submit
+        if (uploadBtn) {
+            uploadBtn.addEventListener('click', function() {
+                if (!selectedUploadFiles || selectedUploadFiles.length === 0) {
+                    var upStatus = document.getElementById('upStatus');
+                    if (upStatus) {
+                        upStatus.className = 'alert alert-warning mt-2';
+                        upStatus.textContent = 'Please select at least one photo.';
+                    }
+                    return;
+                }
+                // TODO: submit upload files to enrollment API
+                // FaceAttend.API.enroll(employeeId, selectedUploadFiles, ...)
+            });
+        }
+
+    })();
+    </script>
+}
+
+
+=============================================================================
+SAME CHANGES FOR Visitors/Enroll.cshtml — diff is:
+  'enrollWizard' → 'visitorWizard'
+  'employeeUploader' → 'visitorUploader'
+  window.enrollCallbacks logic may differ
+=============================================================================

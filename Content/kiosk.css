@@ -11,8 +11,6 @@
    Kiosk-specific: --glow-* effects, kiosk overrides
    ========================================================================== */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
-
 /* Kiosk-specific glow effects (not in design system) */
 :root {
     --glow-primary: rgba(59, 130, 246, 0.4);

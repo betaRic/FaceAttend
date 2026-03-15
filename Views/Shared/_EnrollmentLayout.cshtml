@@ -20,10 +20,10 @@
     
     @* FaceAttend Design System v3 *@
     @Styles.Render("~/Content/fa-system")      @* Design System Tokens (v3) *@
-    @Styles.Render("~/Content/facescan-v2")    @* DEPRECATED: migrating to fa-system *@
     
-    @* Enrollment styles moved to ~/Content/enrollment.css *@
+    @* Enrollment and Component styles *@
     @Styles.Render("~/Content/enrollment")
+    @Styles.Render("~/Content/fa-components")
     @RenderSection("styles", required: false)
 </head>
 <body class="enrollment-layout" data-app-base="@Url.Content("~/")">

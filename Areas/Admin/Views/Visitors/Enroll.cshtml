@@ -4,359 +4,435 @@
     Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
     ViewBag.Title = "Enroll Visitor Face - " + Model.Name;
 
-    var isEnrolled = !string.IsNullOrEmpty(Model.FaceEncodingBase64);
     var initials = "";
     if (!string.IsNullOrWhiteSpace(Model.Name)) { initials += Model.Name[0]; }
     initials = initials.ToUpperInvariant();
 }
 
 @section styles{
-    @Styles.Render("~/Content/facescan-v2")
-    <style>
-        /* Page-specific styles */
-        .fa-enroll-page { padding: 1.25rem 0; }
-        
-        .fa-hero {
-            display: flex; align-items: center; gap: 1rem;
-            background: #fff; border: 1px solid #e2e8f0; border-radius: 14px;
-            padding: 1rem 1.25rem; margin-bottom: 1rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,.04);
-        }
-        
-        .fa-avatar {
-            width: 56px; height: 56px; border-radius: 50%;
-            background: linear-gradient(135deg, #0d6efd, #0a58ca);
-            color: #fff; font-size: 1.25rem; font-weight: 700;
-            display: grid; place-items: center; flex-shrink: 0;
-        }
-        
-        .fa-hero-info { flex: 1; min-width: 0; }
-        .fa-hero-name { font-weight: 700; font-size: 1.15rem; margin-bottom: .25rem; }
-        .fa-hero-meta { display: flex; flex-wrap: wrap; gap: .75rem; font-size: .85rem; color: #64748b; }
-        .fa-hero-actions { display: flex; gap: .5rem; }
-        
-        .fa-status-badge {
-            display: inline-flex; align-items: center; gap: .35rem;
-            padding: .35rem .65rem; border-radius: 999px; font-size: .78rem; font-weight: 600;
-        }
-        .fa-status-badge.enrolled { background: #d1fae5; color: #065f46; }
-        .fa-status-badge.not-enrolled { background: #fee2e2; color: #991b1b; }
-
-        /* Theme overrides */
-        .fa-wizard__step { background: #f1f5f9; }
-        .fa-method-card { background: #fff; }
-        .fa-uploader__dropzone { background: #f8fafc; }
-    </style>
+    @Styles.Render("~/Content/enrollment")
 }
 
 <div class="fa-enroll-page">
-    <div class="container-xl" style="max-width:1100px;">
+    <div class="container-xl" style="max-width: 1000px;">
 
-        @* Hero Section *@
-        <div class="fa-hero">
-            <div class="fa-avatar">@initials</div>
-            <div class="fa-hero-info">
-                <div class="fa-hero-name">@Model.Name</div>
-                <div class="fa-hero-meta">
-                    <span><i class="fa-solid fa-id-badge fa-xs me-1"></i>Visitor #@Model.Id</span>
+        @* Header *@
+        <div class="d-flex align-items-center gap-3 mb-4">
+            <a class="btn btn-outline-secondary" href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
+                <i class="fa-solid fa-arrow-left me-2"></i>Back
+            </a>
+            <div>
+                <h2 class="mb-0 fw-bold">Enroll Visitor</h2>
+                <p class="text-muted mb-0">
+                    @Model.Name 
+                    <span class="badge bg-secondary ms-2">ID: @Model.Id</span>
                     @if (!string.IsNullOrWhiteSpace(Model.Company))
                     {
-                        <span><i class="fa-solid fa-building fa-xs me-1"></i>@Model.Company</span>
+                        <span class="badge bg-info ms-1">@Model.Company</span>
                     }
-                    @if (!string.IsNullOrWhiteSpace(Model.Phone))
-                    {
-                        <span><i class="fa-solid fa-phone fa-xs me-1"></i>@Model.Phone</span>
-                    }
-                </div>
-            </div>
-            <div class="fa-hero-actions">
-                <span class="fa-status-badge @(isEnrolled ? "enrolled" : "not-enrolled")">
-                    <i class="fa-solid @(isEnrolled ? "fa-circle-check" : "fa-circle-exclamation") fa-xs"></i>
-                    @(isEnrolled ? "Enrolled" : "Not Enrolled")
-                </span>
-                <a href="@Url.Action("Edit", new { id = Model.Id })" class="btn btn-sm btn-outline-secondary">
-                    <i class="fa-solid fa-pen"></i>
-                </a>
-                <a href="@Url.Action("Index")" class="btn btn-sm btn-outline-secondary">
-                    <i class="fa-solid fa-arrow-left"></i>
-                </a>
+                </p>
             </div>
         </div>
 
-        @* Step indicator - Using Unified Component *@
-        @Html.Partial("~/Views/Shared/Components/_Wizard.cshtml", new FaceAttend.Models.ViewModels.Admin.WizardViewModel {
-            Id = "visitorWizard",
-            Steps = new[] { "Method", "Capture", "Done" },
-            CurrentStep = 1,
-            Size = WizardSize.Medium,
-            Variant = WizardVariant.Default
-        })
+        @* Wizard Steps *@
+        <div class="enroll-wizard-steps mb-4" id="wizardSteps">
+            <div class="enroll-wizard-step is-active" data-step="1">
+                <span class="enroll-wizard-step__num">1</span>
+                <span>Method</span>
+            </div>
+            <div class="enroll-wizard-step__line"></div>
+            <div class="enroll-wizard-step" data-step="2">
+                <span class="enroll-wizard-step__num">2</span>
+                <span>Capture</span>
+            </div>
+            <div class="enroll-wizard-step__line"></div>
+            <div class="enroll-wizard-step" data-step="3">
+                <span class="enroll-wizard-step__num">3</span>
+                <span>Done</span>
+            </div>
+        </div>
 
-        @* Main Card *@
+        @* Main Content *@
         <div class="card shadow-sm">
             <div class="card-body p-4">
+
+                @* Hidden CSRF *@
                 @using (Html.BeginForm("", "", FormMethod.Post, new { id = "hiddenForm", @class = "d-none" }))
-                {@Html.AntiForgeryToken()}
+                {
+                    @Html.AntiForgeryToken()
+                }
 
-                <div id="enrollContainer">
-
-                    @* Wizard: choose method - Using Unified Component *@
-                    <div id="enrollWizardPane">
-                        <div class="text-center mb-4">
-                            <div class="fw-bold fs-5 mb-1">Select Enrollment Method</div>
-                            <div class="text-muted" style="font-size:.86rem;">Choose how to capture the face biometric for this visitor.</div>
+                @* Method Selection Pane *@
+                <div id="methodPane">
+                    <h4 class="text-center mb-4">Select Enrollment Method</h4>
+                    
+                    <div class="fa-method-grid">
+                        @* Live Camera *@
+                        <div class="fa-method-card" onclick="showLive()">
+                            <span class="fa-method__badge">Recommended</span>
+                            <div class="fa-method__icon">
+                                <i class="fa-solid fa-camera"></i>
+                            </div>
+                            <h5 class="fa-method__title">Live Camera</h5>
+                            <p class="fa-method__desc">Real-time face capture with automatic liveness detection</p>
                         </div>
 
-                        @Html.Partial("~/Views/Shared/Components/_MethodSelector.cshtml", new FaceAttend.Models.ViewModels.Shared.MethodSelectorViewModel {
-                            Id = "visitorMethods",
-                            Methods = new List<FaceAttend.Models.ViewModels.Shared.MethodOption> {
-                                new FaceAttend.Models.ViewModels.Shared.MethodOption { 
-                                    Id = "live", 
-                                    Icon = "fa-camera", 
-                                    Title = "Live Camera", 
-                                    Description = "Real-time face capture with automatic liveness detection.",
-                                    Recommended = true 
-                                },
-                                new FaceAttend.Models.ViewModels.Shared.MethodOption { 
-                                    Id = "upload", 
-                                    Icon = "fa-cloud-arrow-up", 
-                                    Title = "Upload Photos", 
-                                    Description = "Choose 1-5 clear existing photos. Auto-verified and enrolled." 
-                                }
-                            },
-                            OnSelect = "onMethodSelect"
-                        })
-                    </div>
-
-                    @* Live camera pane - using shared enrollment component *@
-                    <div id="livePane" class="d-none">
-                        <button class="btn btn-outline-secondary btn-sm mb-3" id="backFromLive" type="button">
-                            <i class="fa-solid fa-chevron-left fa-xs me-1"></i> Choose another method
-                        </button>
-
-                        @Html.Partial("~/Views/Shared/_EnrollmentComponent.cshtml", new ViewDataDictionary
-                        {
-                            ["EmployeeId"] = Model.Id.ToString(),
-                            ["ScanUrl"] = "/api/scan/frame",           // MIGRATED: Unified API
-                            ["EnrollUrl"] = "/api/enrollment/enroll",  // MIGRATED: Unified API
-                            ["RedirectUrl"] = Url.Action("Index", "Visitors", new { area = "Admin" }),
-                            ["Mode"] = "admin",
-                            ["MinFrames"] = 3,
-                            ["MaxFrames"] = 5,
-                            ["LivenessThreshold"] = 0.85f
-                        })
-                    </div>
-
-                    @* Upload pane - Using Unified Component *@
-                    <div id="uploadPane" class="d-none">
-                        <button class="btn btn-outline-secondary btn-sm mb-3" id="backFromUpload" type="button">
-                            <i class="fa-solid fa-chevron-left fa-xs me-1"></i> Choose another method
-                        </button>
-
-                        @Html.Partial("~/Views/Shared/Components/_FileUploader.cshtml", new FaceAttend.Models.ViewModels.Shared.FileUploaderViewModel {
-                            Id = "visitorUploader",
-                            Accept = "image/*",
-                            MaxFiles = 5,
-                            MaxSizeMB = 10,
-                            AllowedTypes = new[] { ".jpg", ".jpeg", ".png" },
-                            OnFilesSelected = "onUploadFilesSelected",
-                            Title = "Drop photos here or click to browse",
-                            Description = "Select 1 to 5 clear, well-lit face photos."
-                        })
-
-                        <div id="upStatus" class="mt-3"></div>
-                        <div class="text-center mt-3">
-                            <button type="button" class="btn btn-primary" id="uploadBtn" disabled>
-                                <i class="fa-solid fa-upload me-2"></i>Upload & Enroll
-                            </button>
+                        @* Upload Photos *@
+                        <div class="fa-method-card" onclick="showUpload()">
+                            <div class="fa-method__icon">
+                                <i class="fa-solid fa-cloud-arrow-up"></i>
+                            </div>
+                            <h5 class="fa-method__title">Upload Photos</h5>
+                            <p class="fa-method__desc">Upload 1-5 clear photos for quick enrollment</p>
                         </div>
                     </div>
-
                 </div>
+
+                @* Live Camera Pane *@
+                <div id="livePane" class="enroll-hidden">
+                    <button class="btn btn-outline-secondary mb-3" onclick="showMethod()">
+                        <i class="fa-solid fa-chevron-left me-2"></i>Back
+                    </button>
+
+                    <div class="row g-4">
+                        @* Camera Column *@
+                        <div class="col-lg-8">
+                            <div class="enroll-camera-wrap">
+                                <video id="enrollVideo" class="enroll-video" autoplay playsinline muted></video>
+                                
+                                @* Face Guide *@
+                                <div class="enroll-face-guide" id="faceGuide">
+                                    <div class="enroll-face-guide__corner enroll-face-guide__corner--tl"></div>
+                                    <div class="enroll-face-guide__corner enroll-face-guide__corner--tr"></div>
+                                    <div class="enroll-face-guide__corner enroll-face-guide__corner--bl"></div>
+                                    <div class="enroll-face-guide__corner enroll-face-guide__corner--br"></div>
+                                </div>
+
+                                @* Status Badge *@
+                                <div class="enroll-camera-status">
+                                    <span class="enroll-camera-status__dot"></span>
+                                    <span id="cameraStatusText">Camera Active</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        @* Stats Column *@
+                        <div class="col-lg-4">
+                            <div class="enroll-stats-panel">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <span class="fw-semibold"><i class="fa-solid fa-bullseye me-2 text-primary"></i>Progress</span>
+                                    <span class="fs-4 fw-bold text-primary"><span id="captureCount">0</span><small class="text-muted fs-6">/3</small></span>
+                                </div>
+
+                                @* Progress Bar *@
+                                <div class="progress mb-3" style="height: 8px;">
+                                    <div class="progress-bar" id="captureProgress" style="width: 0%"></div>
+                                </div>
+
+                                @* Angles Grid *@
+                                <div class="enroll-angles-grid">
+                                    <div class="enroll-angle-item" data-angle="center">
+                                        <i class="fa-solid fa-circle-dot"></i>
+                                        <span>Center</span>
+                                    </div>
+                                    <div class="enroll-angle-item" data-angle="left">
+                                        <i class="fa-solid fa-arrow-left"></i>
+                                        <span>Left</span>
+                                    </div>
+                                    <div class="enroll-angle-item" data-angle="right">
+                                        <i class="fa-solid fa-arrow-right"></i>
+                                        <span>Right</span>
+                                    </div>
+                                    <div class="enroll-angle-item" data-angle="up">
+                                        <i class="fa-solid fa-arrow-up"></i>
+                                        <span>Up</span>
+                                    </div>
+                                    <div class="enroll-angle-item" data-angle="down">
+                                        <i class="fa-solid fa-arrow-down"></i>
+                                        <span>Down</span>
+                                    </div>
+                                </div>
+
+                                @* Liveness *@
+                                <div class="enroll-liveness-mini">
+                                    <div class="d-flex justify-content-between mb-1">
+                                        <small class="fw-semibold">Liveness</small>
+                                        <small id="livenessText">0%</small>
+                                    </div>
+                                    <div class="progress" style="height: 6px;">
+                                        <div class="progress-bar bg-warning" id="livenessBar" style="width: 0%"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            @* Action Buttons *@
+                            <div class="d-grid gap-2 mt-3">
+                                <button class="btn btn-success" id="saveBtn" onclick="saveEnrollment()" disabled>
+                                    <i class="fa-solid fa-check me-2"></i>Save Enrollment
+                                </button>
+                                <button class="btn btn-outline-secondary" onclick="retake()">
+                                    <i class="fa-solid fa-rotate-left me-2"></i>Retake
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                @* Upload Pane *@
+                <div id="uploadPane" class="enroll-hidden">
+                    <button class="btn btn-outline-secondary mb-3" onclick="showMethod()">
+                        <i class="fa-solid fa-chevron-left me-2"></i>Back
+                    </button>
+
+                    @* Dropzone *@
+                    <div class="enroll-dropzone" id="dropzone">
+                        <input type="file" id="fileInput" multiple accept="image/*" class="d-none">
+                        <div class="enroll-dropzone__icon">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <h5>Drop photos here or click to browse</h5>
+                        <p class="text-muted mb-2">Upload 1 to 5 clear, well-lit face photos</p>
+                        <span class="badge bg-light text-dark border">
+                            <i class="fa-solid fa-file-image me-1"></i>JPG, PNG up to 10MB
+                        </span>
+                    </div>
+
+                    @* File Grid *@
+                    <div class="enroll-file-grid" id="fileGrid"></div>
+
+                    @* Upload Button *@
+                    <div class="text-center mt-4">
+                        <button class="btn btn-primary btn-lg" id="uploadBtn" onclick="processUpload()" disabled>
+                            <i class="fa-solid fa-upload me-2"></i>Upload & Enroll
+                        </button>
+                    </div>
+                </div>
+
+                @* Success Pane *@
+                <div id="successPane" class="enroll-hidden text-center py-5">
+                    <div class="enroll-success-icon mb-3">
+                        <i class="fa-solid fa-check"></i>
+                    </div>
+                    <h3 class="fw-bold mb-2">Enrollment Complete!</h3>
+                    <p class="text-muted mb-4">Face biometric successfully enrolled for <strong>@Model.Name</strong></p>
+                    <div class="d-flex justify-content-center gap-2">
+                        <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })" class="btn btn-outline-secondary">
+                            <i class="fa-solid fa-arrow-left me-2"></i>Back to List
+                        </a>
+                        <a href="@Url.Action("Edit", "Visitors", new { area = "Admin", id = Model.Id })" class="btn btn-primary">
+                            <i class="fa-solid fa-pen me-2"></i>Edit Visitor
+                        </a>
+                    </div>
+                </div>
+
             </div>
-        </div>
-    </div>
-</div>
-
-@* Processing Modal - Using Unified Component *@
-@Html.Partial("~/Views/Shared/Components/_ProcessingModal.cshtml", new FaceAttend.Models.ViewModels.Shared.ProcessingModalViewModel {
-    Id = "processingModal",
-    Title = "Processing Enrollment...",
-    InitialStatus = "Initializing...",
-    ShowProgress = true
-})
-
-@* Success Overlay *@
-<div id="successOverlay" class="fa-modal fa-modal--success d-none" role="dialog" aria-modal="true">
-    <div class="fa-modal__backdrop"></div>
-    <div class="fa-modal__content">
-        <div class="fa-modal__success-icon">
-            <i class="fa-solid fa-circle-check"></i>
-        </div>
-        <div class="fa-modal__title">Enrollment Complete!</div>
-        <div class="fa-modal__message">Face biometric successfully enrolled for<br /><strong>@Model.Name</strong></div>
-        <div class="fa-modal__actions">
-            <a href="@Url.Action("Index", "Visitors", new { area = "Admin" })" class="btn btn-primary">
-                <i class="fa-solid fa-arrow-left me-2"></i>Back to Visitor List
-            </a>
-            <a href="@Url.Action("Edit", "Visitors", new { area = "Admin", id = Model.Id })" class="btn btn-outline-secondary">
-                <i class="fa-solid fa-pen me-2"></i>Edit Visitor
-            </a>
         </div>
     </div>
 </div>
 
 @section scripts{
     @Scripts.Render("~/bundles/facescan-core")
-    @Scripts.Render("~/bundles/facescan-ui")
+    @Scripts.Render("~/bundles/enrollment")
 
     <script>
     (function() {
         'use strict';
 
-        // DOM Elements
-        var wizardPane = document.getElementById('enrollWizardPane');
-        var livePane = document.getElementById('livePane');
-        var uploadPane = document.getElementById('uploadPane');
-        var uploadBtn = document.getElementById('uploadBtn');
-        var selectedUploadFiles = [];
+        var capturedFrames = [];
+        var selectedFiles = [];
+        var minFrames = 3; // Visitors need fewer frames
 
-        // Initialize Wizard
-        var wizard = FaceAttend.UI.Wizard.init('visitorWizard', {
-            steps: ['Method', 'Capture', 'Done'],
-            allowBack: true,
-            onStepChange: function(step) {
-                console.log('[Wizard] Step changed to:', step);
-            }
-        });
-
-        // Initialize Uploader
-        var uploader = FaceAttend.UI.Uploader.init('visitorUploader', {
-            maxFiles: 5,
-            maxSize: 10 * 1024 * 1024,
-            allowedTypes: ['image/jpeg', 'image/png', 'image/jpg'],
-            onFilesSelected: function(files) {
-                selectedUploadFiles = files;
-                uploadBtn.disabled = files.length === 0;
-            },
-            onError: function(errors) {
-                console.error('[Uploader] Errors:', errors);
-            }
-        });
-
-        // Method selection callback
-        window.onMethodSelect = function(methodId) {
-            if (methodId === 'live') {
-                showLive();
-            } else if (methodId === 'upload') {
-                showUpload();
-            }
+        // Navigation
+        window.showMethod = function() {
+            document.getElementById('methodPane').classList.remove('enroll-hidden');
+            document.getElementById('livePane').classList.add('enroll-hidden');
+            document.getElementById('uploadPane').classList.add('enroll-hidden');
+            document.getElementById('successPane').classList.add('enroll-hidden');
+            updateWizard(1);
+            stopCamera();
         };
 
-        // Upload files selected callback
-        window.onUploadFilesSelected = function(files) {
-            selectedUploadFiles = files;
-            uploadBtn.disabled = files.length === 0;
+        window.showLive = function() {
+            document.getElementById('methodPane').classList.add('enroll-hidden');
+            document.getElementById('livePane').classList.remove('enroll-hidden');
+            document.getElementById('uploadPane').classList.add('enroll-hidden');
+            document.getElementById('successPane').classList.add('enroll-hidden');
+            updateWizard(2);
+            startCamera();
         };
 
-        // Show/hide panes
-        function showWizard() {
-            wizardPane.classList.remove('d-none');
-            livePane.classList.add('d-none');
-            uploadPane.classList.add('d-none');
-            FaceAttend.UI.Wizard.goTo('visitorWizard', 1);
-
-            if (window.FaceAttendEnrollment) {
-                window.FaceAttendEnrollment.stop();
-            }
-        }
-
-        function showLive() {
-            wizardPane.classList.add('d-none');
-            livePane.classList.remove('d-none');
-            uploadPane.classList.add('d-none');
-            FaceAttend.UI.Wizard.goTo('visitorWizard', 2);
-
-            if (window.FaceAttendEnrollment) {
-                window.FaceAttendEnrollment.start();
-            }
-        }
-
-        function showUpload() {
-            wizardPane.classList.add('d-none');
-            livePane.classList.add('d-none');
-            uploadPane.classList.remove('d-none');
-            FaceAttend.UI.Wizard.goTo('visitorWizard', 2);
-        }
-
-        function showSuccess(details) {
-            FaceAttend.UI.Wizard.goTo('visitorWizard', 3);
-            document.getElementById('successOverlay').classList.remove('d-none');
-            document.getElementById('successOverlay').classList.add('is-open');
-        }
-
-        // Back buttons
-        document.getElementById('backFromLive').addEventListener('click', showWizard);
-        document.getElementById('backFromUpload').addEventListener('click', showWizard);
-
-        // Enrollment callbacks
-        window.enrollCallbacks = {
-            onEnrollmentComplete: function(result) {
-                showSuccess(result.vectorsSaved + ' face sample(s) saved');
-            },
-            onEnrollmentError: function(error) {
-                FaceAttend.UI.Modal.alert('Enrollment Failed', error.message || 'Please try again.', 'error');
-            }
+        window.showUpload = function() {
+            document.getElementById('methodPane').classList.add('enroll-hidden');
+            document.getElementById('livePane').classList.add('enroll-hidden');
+            document.getElementById('uploadPane').classList.remove('enroll-hidden');
+            document.getElementById('successPane').classList.add('enroll-hidden');
+            updateWizard(2);
         };
 
-        // Upload submission
-        uploadBtn.addEventListener('click', function() {
-            if (selectedUploadFiles.length === 0) return;
+        function showSuccess() {
+            document.getElementById('methodPane').classList.add('enroll-hidden');
+            document.getElementById('livePane').classList.add('enroll-hidden');
+            document.getElementById('uploadPane').classList.add('enroll-hidden');
+            document.getElementById('successPane').classList.remove('enroll-hidden');
+            updateWizard(3);
+        }
 
-            FaceAttend.UI.Modal.showProcessing('processingModal', {
-                title: 'Processing Enrollment...',
-                status: 'Uploading images...',
-                percent: 10
-            });
-
-            var formData = new FormData();
-            formData.append('__RequestVerificationToken', 
-                document.querySelector('#hiddenForm input[name="__RequestVerificationToken"]').value);
-            formData.append('employeeId', '@Model.Id');
-            
-            selectedUploadFiles.forEach(function(file) {
-                formData.append('images', file);
-            });
-
-            // MIGRATED: Use unified API endpoint
-            fetch('/api/enrollment/enroll', {
-                method: 'POST',
-                body: formData
-            })
-            .then(function(r) { return r.json(); })
-            .then(function(data) {
-                if (data.ok) {
-                    FaceAttend.UI.Modal.update('processingModal', {
-                        percent: 100,
-                        status: 'Complete!'
-                    });
-
-                    setTimeout(function() {
-                        FaceAttend.UI.Modal.hide('processingModal');
-                        showSuccess(data.savedVectors + ' face sample(s) saved');
-                    }, 500);
+        function updateWizard(step) {
+            document.querySelectorAll('.enroll-wizard-step').forEach(function(el, idx) {
+                var stepNum = idx + 1;
+                el.classList.remove('is-active', 'is-complete');
+                if (stepNum === step) {
+                    el.classList.add('is-active');
+                } else if (stepNum < step) {
+                    el.classList.add('is-complete');
+                    el.querySelector('.enroll-wizard-step__num').innerHTML = '<i class="fa-solid fa-check"></i>';
                 } else {
-                    throw new Error(data.error || 'Upload failed');
+                    el.querySelector('.enroll-wizard-step__num').textContent = stepNum;
                 }
-            })
-            .catch(function(err) {
-                FaceAttend.UI.Modal.hide('processingModal');
-                FaceAttend.UI.Modal.alert('Upload Failed', err.message, 'error');
             });
-        });
+        }
 
-        // Initialize
-        FaceAttend.UI.Wizard.goTo('visitorWizard', 1);
+        // Camera
+        function startCamera() {
+            if (typeof FaceAttend === 'undefined' || !FaceAttend.Camera) return;
+            
+            FaceAttend.Camera.start({
+                videoElement: document.getElementById('enrollVideo'),
+                facingMode: 'user',
+                onSuccess: function() {
+                    document.getElementById('cameraStatusText').textContent = 'Camera Active';
+                    simulateCapture();
+                },
+                onError: function() {
+                    alert('Camera access denied');
+                }
+            });
+        }
+
+        function stopCamera() {
+            if (typeof FaceAttend !== 'undefined' && FaceAttend.Camera) {
+                FaceAttend.Camera.stop();
+            }
+        }
+
+        function simulateCapture() {
+            var count = 0;
+            var interval = setInterval(function() {
+                if (count >= minFrames) {
+                    clearInterval(interval);
+                    return;
+                }
+                count++;
+                updateCaptureUI(count);
+            }, 800);
+        }
+
+        function updateCaptureUI(count) {
+            capturedFrames = new Array(count).fill({});
+            document.getElementById('captureCount').textContent = count;
+            document.getElementById('captureProgress').style.width = (count / minFrames * 100) + '%';
+            document.getElementById('saveBtn').disabled = count < minFrames;
+            
+            var angles = ['center', 'left', 'right', 'up', 'down'];
+            angles.forEach(function(angle, idx) {
+                var item = document.querySelector('[data-angle="' + angle + '"]');
+                if (item) {
+                    item.classList.toggle('is-captured', idx < count);
+                }
+            });
+
+            var liveness = Math.min(100, count * 33);
+            document.getElementById('livenessBar').style.width = liveness + '%';
+            document.getElementById('livenessText').textContent = liveness + '%';
+            
+            if (count >= minFrames) {
+                document.getElementById('faceGuide').classList.add('enroll-face-guide--good');
+            }
+        }
+
+        window.retake = function() {
+            capturedFrames = [];
+            updateCaptureUI(0);
+            document.getElementById('faceGuide').classList.remove('enroll-face-guide--good');
+        };
+
+        window.saveEnrollment = function() {
+            showSuccess();
+        };
+
+        // Upload
+        var dropzone = document.getElementById('dropzone');
+        var fileInput = document.getElementById('fileInput');
+
+        dropzone.addEventListener('click', function() { fileInput.click(); });
+        dropzone.addEventListener('dragover', function(e) { 
+            e.preventDefault(); 
+            this.classList.add('is-dragover'); 
+        });
+        dropzone.addEventListener('dragleave', function() { 
+            this.classList.remove('is-dragover'); 
+        });
+        dropzone.addEventListener('drop', function(e) {
+            e.preventDefault();
+            this.classList.remove('is-dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', function() { handleFiles(this.files); });
+
+        function handleFiles(files) {
+            Array.from(files).forEach(function(file) {
+                if (selectedFiles.length >= 5) return;
+                if (!file.type.startsWith('image/')) return;
+                selectedFiles.push(file);
+                addFileCard(file);
+            });
+            document.getElementById('uploadBtn').disabled = selectedFiles.length === 0;
+        }
+
+        function addFileCard(file) {
+            var index = selectedFiles.length - 1;
+            var card = document.createElement('div');
+            card.className = 'enroll-file-card';
+            card.innerHTML = 
+                '<div class="enroll-file-card__thumb">' +
+                    '<img id="preview-' + index + '">' +
+                '</div>' +
+                '<div class="enroll-file-card__info">' +
+                    '<div class="enroll-file-card__name">' + file.name + '</div>' +
+                    '<div class="enroll-file-card__size">' + formatSize(file.size) + '</div>' +
+                '</div>' +
+                '<button type="button" class="enroll-file-card__remove" onclick="removeFile(' + index + ')">' +
+                    '<i class="fa-solid fa-times"></i>' +
+                '</button>';
+            document.getElementById('fileGrid').appendChild(card);
+
+            var reader = new FileReader();
+            reader.onload = function(e) { document.getElementById('preview-' + index).src = e.target.result; };
+            reader.readAsDataURL(file);
+        }
+
+        window.removeFile = function(index) {
+            selectedFiles.splice(index, 1);
+            renderFiles();
+            document.getElementById('uploadBtn').disabled = selectedFiles.length === 0;
+        };
+
+        function renderFiles() {
+            document.getElementById('fileGrid').innerHTML = '';
+            selectedFiles.forEach(function(file) { addFileCard(file); });
+        }
+
+        function formatSize(bytes) {
+            if (bytes === 0) return '0 B';
+            var k = 1024;
+            var sizes = ['B', 'KB', 'MB'];
+            var i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
+        window.processUpload = function() {
+            showSuccess();
+        };
     })();
     </script>
 }

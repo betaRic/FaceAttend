@@ -1,104 +1,74 @@
-/**
- * File Uploader Component
- * Drag-and-drop file upload with validation
- * 
- * Usage:
- *   <div class="fa-uploader">
- *     <div class="fa-uploader__dropzone">
- *       <input type="file" class="fa-uploader__input" />
- *       ...
- *     </div>
- *     <div class="fa-uploader__files"></div>
- *   </div>
- */
+/* ==========================================================================
+   File Uploader Component
+   Drag-and-drop file upload with visual feedback
+   ========================================================================== */
 
 .fa-uploader {
   width: 100%;
 }
 
-/* Dropzone */
 .fa-uploader__dropzone {
   position: relative;
-  border: 2px dashed var(--color-border-strong);
-  border-radius: var(--radius-2xl);
-  padding: var(--space-8);
+  padding: var(--space-8) var(--space-6);
+  background: var(--bg-surface);
+  border: 2px dashed var(--border-default);
+  border-radius: var(--radius-xl);
   text-align: center;
-  cursor: pointer;
-  transition: all var(--transition);
-  background: var(--color-bg-secondary);
+  transition: all var(--transition-fast);
 }
 
 .fa-uploader__dropzone:hover {
-  border-color: var(--color-brand-primary);
-  background: var(--color-bg-tertiary);
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
 }
 
-.fa-uploader__dropzone.is-dragover,
-.fa-uploader__dropzone.drag-over {
-  border-color: var(--color-brand-primary);
-  background: rgba(59, 130, 246, 0.05);
-  transform: scale(1.01);
+.fa-uploader__dropzone.is-dragover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
 }
 
-.fa-uploader__dropzone.is-error {
-  border-color: var(--color-error);
-  background: var(--color-error-bg);
-}
-
-.fa-uploader__dropzone.is-disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* File Input (Hidden) */
 .fa-uploader__input {
   position: absolute;
   inset: 0;
-  opacity: 0;
-  cursor: pointer;
   width: 100%;
   height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
-.fa-uploader__dropzone.is-disabled .fa-uploader__input {
-  cursor: not-allowed;
-}
-
-/* Icon */
 .fa-uploader__icon {
-  font-size: 3rem;
-  color: var(--color-text-muted);
-  margin-bottom: var(--space-4);
-  transition: color var(--transition);
+  width: 64px;
+  height: 64px;
+  margin: 0 auto var(--space-4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-lg);
+  font-size: 1.5rem;
+  color: var(--color-primary);
 }
 
-.fa-uploader__dropzone:hover .fa-uploader__icon,
-.fa-uploader__dropzone.is-dragover .fa-uploader__icon {
-  color: var(--color-brand-primary);
-}
-
-/* Text */
 .fa-uploader__title {
+  font-size: 1.125rem;
   font-weight: var(--font-semibold);
-  font-size: var(--text-lg);
-  color: var(--color-text-primary);
+  color: var(--text-primary);
   margin-bottom: var(--space-2);
 }
 
 .fa-uploader__desc {
-  color: var(--color-text-secondary);
-  font-size: var(--text-sm);
+  font-size: 0.875rem;
+  color: var(--text-secondary);
   margin-bottom: var(--space-4);
 }
 
-/* Rules/Badges */
 .fa-uploader__rules {
   display: flex;
-  gap: var(--space-4);
-  justify-content: center;
   flex-wrap: wrap;
-  font-size: var(--text-xs);
-  color: var(--color-text-muted);
+  justify-content: center;
+  gap: var(--space-3);
+  font-size: 0.75rem;
+  color: var(--text-muted);
 }
 
 .fa-uploader__rules span {
@@ -107,138 +77,100 @@
   gap: var(--space-1);
 }
 
-.fa-uploader__rules i {
-  font-size: 0.875em;
-}
-
-/* File List */
+/* File list */
 .fa-uploader__files {
-  display: flex;
-  gap: var(--space-2);
-  flex-wrap: wrap;
   margin-top: var(--space-4);
-}
-
-/* File Chip */
-.fa-uploader__chip {
-  display: inline-flex;
-  align-items: center;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-2);
-  background: var(--color-bg-tertiary);
-  border: 1px solid var(--color-border-default);
+}
+
+.fa-uploader__file {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
-  padding: var(--space-2) var(--space-3);
-  font-size: var(--text-sm);
-  color: var(--color-text-secondary);
-  transition: all var(--transition);
 }
 
-.fa-uploader__chip:hover {
-  border-color: var(--color-border-strong);
-  background: var(--color-bg-secondary);
+.fa-uploader__file-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-surface);
+  border-radius: var(--radius-md);
+  color: var(--color-primary);
+  font-size: 1.25rem;
 }
 
-.fa-uploader__chip i {
-  color: var(--color-brand-primary);
+.fa-uploader__file-info {
+  flex: 1;
+  min-width: 0;
 }
 
-/* Remove Button */
-.fa-uploader__chip-remove {
-  background: none;
+.fa-uploader__file-name {
+  font-size: 0.875rem;
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fa-uploader__file-size {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.fa-uploader__file-remove {
+  padding: var(--space-2);
+  background: transparent;
   border: none;
-  color: var(--color-text-muted);
+  color: var(--text-muted);
   cursor: pointer;
-  padding: 0;
-  margin-left: var(--space-1);
-  font-size: var(--text-xs);
-  transition: color var(--transition-fast);
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
 }
 
-.fa-uploader__chip-remove:hover {
+.fa-uploader__file-remove:hover {
+  background: var(--color-error-light);
   color: var(--color-error);
 }
 
-/* Error Message */
+/* Error state */
 .fa-uploader__error {
   margin-top: var(--space-3);
   padding: var(--space-3);
-  background: var(--color-error-bg);
-  border: 1px solid var(--color-error-border);
+  background: var(--color-error-light);
+  border: 1px solid var(--color-error);
   border-radius: var(--radius-lg);
-  color: var(--color-error-dark);
-  font-size: var(--text-sm);
-  display: none;
+  color: var(--color-error);
+  font-size: 0.875rem;
 }
 
-.fa-uploader__error.is-visible {
-  display: block;
-}
-
-/* Progress Bar */
-.fa-uploader__progress {
-  margin-top: var(--space-4);
-  height: 6px;
-  background: var(--color-bg-tertiary);
-  border-radius: var(--radius-full);
-  overflow: hidden;
-  display: none;
-}
-
-.fa-uploader__progress.is-visible {
-  display: block;
-}
-
-.fa-uploader__progress-bar {
-  height: 100%;
-  background: var(--color-brand-gradient);
-  width: 0;
-  transition: width var(--transition-slow);
-}
-
-/* Size Variants */
-.fa-uploader--sm .fa-uploader__dropzone {
-  padding: var(--space-4);
-}
-
-.fa-uploader--sm .fa-uploader__icon {
-  font-size: 2rem;
-  margin-bottom: var(--space-2);
-}
-
-.fa-uploader--sm .fa-uploader__title {
-  font-size: var(--text-base);
-}
-
+/* Compact variant */
 .fa-uploader--compact .fa-uploader__dropzone {
   padding: var(--space-4);
-  display: flex;
-  align-items: center;
-  gap: var(--space-4);
-  text-align: left;
 }
 
 .fa-uploader--compact .fa-uploader__icon {
-  margin: 0;
+  width: 48px;
+  height: 48px;
+  font-size: 1.25rem;
 }
 
-/* Theme Variants */
+/* Borderless variant */
 .fa-uploader--borderless .fa-uploader__dropzone {
-  border-style: solid;
-  border-width: 1px;
+  border: none;
+  background: transparent;
+  padding: var(--space-4) 0;
 }
 
-/* Loading State */
-.fa-uploader.is-loading .fa-uploader__dropzone {
-  opacity: 0.7;
-  pointer-events: none;
-}
-
-.fa-uploader.is-loading .fa-uploader__icon::before {
-  content: "\f110"; /* fa-spinner */
-  animation: fa-spin 1s linear infinite;
-}
-
-/* Responsive */
+/* Mobile adjustments */
 @media (max-width: 640px) {
   .fa-uploader__dropzone {
     padding: var(--space-6) var(--space-4);
@@ -246,25 +178,6 @@
   
   .fa-uploader__rules {
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-1);
   }
-  
-  .fa-uploader--compact .fa-uploader__dropzone {
-    flex-direction: column;
-    text-align: center;
-  }
-}
-
-/* Animation */
-@keyframes fa-uploader-pulse {
-  0%, 100% {
-    border-color: var(--color-border-strong);
-  }
-  50% {
-    border-color: var(--color-brand-primary);
-  }
-}
-
-.fa-uploader__dropzone.is-dragover {
-  animation: fa-uploader-pulse 1s ease-in-out infinite;
 }
