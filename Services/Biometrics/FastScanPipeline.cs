@@ -137,10 +137,20 @@ namespace FaceAttend.Services.Biometrics
                 Location faceLocation;
                 string detectErr;
 
+                // reportedFaceBox = what we return to the client (stable, no padding)
+                // faceBox         = padded box used internally for encoding accuracy
+                DlibBiometrics.FaceBox reportedFaceBox;
+
                 if (clientFaceBox != null
                     && clientFaceBox.Width > 20
                     && clientFaceBox.Height > 20)
                 {
+                    // Return the CLIENT box as-is — client already knows this position.
+                    // Returning the padded box caused a feedback loop: padded box sent
+                    // back next frame → padded again → box grew ~20% per scan cycle.
+                    reportedFaceBox = clientFaceBox;
+
+                    // Padding used ONLY for encoding context — wider crop = better embedding
                     var padX = Math.Max(6, (int)(clientFaceBox.Width  * 0.10));
                     var padY = Math.Max(6, (int)(clientFaceBox.Height * 0.12));
                     var left = Math.Max(0, clientFaceBox.Left - padX);
@@ -165,6 +175,11 @@ namespace FaceAttend.Services.Biometrics
                         Ok = false, Error = detectErr ?? "NO_FACE",
                         TimingMs = sw.ElapsedMilliseconds
                     };
+                }
+                else
+                {
+                    // Server-detected box — return this directly (no padding applied)
+                    reportedFaceBox = faceBox;
                 }
 
                 // ── Step 4: Sharpness — single-threaded, from Bitmap ─────────
@@ -241,7 +256,7 @@ namespace FaceAttend.Services.Biometrics
                     LivenessOk     = liveOk && liveScore >= liveTh,
                     Sharpness      = sharpness,
                     SharpnessThreshold = sharpTh,
-                    FaceBox        = faceBox,
+                    FaceBox        = reportedFaceBox,  // original — not padded, no feedback loop
                     ImageWidth     = imageWidth,
                     ImageHeight    = imageHeight,
                     TimingMs       = sw.ElapsedMilliseconds
