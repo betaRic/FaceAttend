@@ -4,7 +4,7 @@ using System.Data.Entity;
 using System.Linq;
 using System.Text;
 using System.Web.Mvc;
-using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Filters;
 using FaceAttend.Services;
@@ -174,7 +174,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                     if (todayInRange)
                     {
-                        vm.TotalActiveEmployees = db.Employees.Count(e => e.IsActive);
+                        vm.TotalActiveEmployees = db.Employees.Count(e => e.Status == "ACTIVE");
 
                         if (vm.TotalActiveEmployees > 0)
                         {

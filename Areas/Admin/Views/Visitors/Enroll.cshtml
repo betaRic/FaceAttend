@@ -84,7 +84,7 @@
         </div>
 
         @* Step indicator - Using Unified Component *@
-        @Html.Partial("~/Views/Shared/Components/_Wizard.cshtml", new FaceAttend.ViewModels.WizardViewModel {
+        @Html.Partial("~/Views/Shared/Components/_Wizard.cshtml", new FaceAttend.Models.ViewModels.Admin.WizardViewModel {
             Id = "visitorWizard",
             Steps = new[] { "Method", "Capture", "Done" },
             CurrentStep = 1,
@@ -107,17 +107,17 @@
                             <div class="text-muted" style="font-size:.86rem;">Choose how to capture the face biometric for this visitor.</div>
                         </div>
 
-                        @Html.Partial("~/Views/Shared/Components/_MethodSelector.cshtml", new FaceAttend.ViewModels.MethodSelectorViewModel {
+                        @Html.Partial("~/Views/Shared/Components/_MethodSelector.cshtml", new FaceAttend.Models.ViewModels.Shared.MethodSelectorViewModel {
                             Id = "visitorMethods",
-                            Methods = new List<FaceAttend.ViewModels.MethodOption> {
-                                new FaceAttend.ViewModels.MethodOption { 
+                            Methods = new List<FaceAttend.Models.ViewModels.Shared.MethodOption> {
+                                new FaceAttend.Models.ViewModels.Shared.MethodOption { 
                                     Id = "live", 
                                     Icon = "fa-camera", 
                                     Title = "Live Camera", 
                                     Description = "Real-time face capture with automatic liveness detection.",
                                     Recommended = true 
                                 },
-                                new FaceAttend.ViewModels.MethodOption { 
+                                new FaceAttend.Models.ViewModels.Shared.MethodOption { 
                                     Id = "upload", 
                                     Icon = "fa-cloud-arrow-up", 
                                     Title = "Upload Photos", 
@@ -153,7 +153,7 @@
                             <i class="fa-solid fa-chevron-left fa-xs me-1"></i> Choose another method
                         </button>
 
-                        @Html.Partial("~/Views/Shared/Components/_FileUploader.cshtml", new FaceAttend.ViewModels.FileUploaderViewModel {
+                        @Html.Partial("~/Views/Shared/Components/_FileUploader.cshtml", new FaceAttend.Models.ViewModels.Shared.FileUploaderViewModel {
                             Id = "visitorUploader",
                             Accept = "image/*",
                             MaxFiles = 5,
@@ -179,7 +179,7 @@
 </div>
 
 @* Processing Modal - Using Unified Component *@
-@Html.Partial("~/Views/Shared/Components/_ProcessingModal.cshtml", new FaceAttend.ViewModels.ProcessingModalViewModel {
+@Html.Partial("~/Views/Shared/Components/_ProcessingModal.cshtml", new FaceAttend.Models.ViewModels.Shared.ProcessingModalViewModel {
     Id = "processingModal",
     Title = "Processing Enrollment...",
     InitialStatus = "Initializing...",

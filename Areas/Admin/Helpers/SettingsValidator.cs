@@ -2,7 +2,7 @@ using System;
 using System.Globalization;
 using System.Linq;
 using System.Web.Mvc;
-using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Models.ViewModels.Admin;
 
 namespace FaceAttend.Areas.Admin.Helpers
 {

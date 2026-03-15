@@ -1,0 +1,450 @@
+/* ==========================================================================
+   Mobile Kiosk Shared Styles
+   Unified design system for mobile registration and kiosk flows
+   ========================================================================== */
+
+/* ==========================================================================
+   FaceAttend Mobile Styles
+   Uses fa-design-system.css for tokens (loaded before this file)
+   Mobile-specific: --mobile-* overrides for touch-optimized UI
+   ========================================================================== */
+
+/* Base Layout */
+.mobile-app {
+    background: linear-gradient(180deg, var(--bg-page) 0%, var(--bg-surface) 100%);
+    color: var(--text-primary);
+    min-height: 100vh;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+.mobile-shell {
+    display: grid;
+    gap: var(--space-4);
+    padding-bottom: calc(var(--space-6) + env(safe-area-inset-bottom));
+}
+
+/* Cards */
+.mobile-card {
+    background: var(--bg-elevated-glass);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
+}
+
+.mobile-card .card-body {
+    padding: var(--space-4);
+}
+
+.mobile-card .card-header {
+    padding: var(--space-4);
+    border-bottom: 1px solid var(--border-default);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.mobile-card .card-footer {
+    padding: var(--space-4);
+    border-top: 1px solid var(--border-default);
+    background: rgba(255, 255, 255, 0.02);
+}
+
+/* Typography */
+.mobile-title {
+    font-size: 1.25rem;
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+    color: var(--text-primary);
+}
+
+.mobile-subtitle {
+    color: var(--text-muted);
+    font-size: 0.92rem;
+    margin-bottom: 0;
+}
+
+.mobile-section-title {
+    font-size: 1.1rem;
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+}
+
+/* Buttons */
+.mobile-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    width: 100%;
+    padding: var(--space-4);
+    border: none;
+    border-radius: var(--radius-md);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-decoration: none;
+}
+
+.mobile-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.mobile-btn-primary {
+    background: linear-gradient(135deg, var(--color-primary) 0%, #2563eb 100%);
+    color: white;
+}
+
+.mobile-btn-success {
+    background: linear-gradient(135deg, var(--color-success) 0%, #16a34a 100%);
+    color: white;
+}
+
+.mobile-btn-secondary {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-primary);
+}
+
+.mobile-btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-default);
+    color: var(--text-secondary);
+}
+
+/* Forms */
+.mobile-form-group {
+    margin-bottom: var(--space-4);
+}
+
+.mobile-form-group label {
+    display: block;
+    margin-bottom: var(--space-2);
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mobile-form-control {
+    width: 100%;
+    padding: var(--space-4);
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-md);
+    color: var(--text-primary);
+    font-size: 1rem;
+    transition: border-color 0.2s;
+}
+
+.mobile-form-control:focus {
+    outline: none;
+    border-color: var(--color-primary);
+}
+
+.mobile-form-control.uppercase {
+    text-transform: uppercase;
+}
+
+/* Alerts */
+.mobile-alert {
+    padding: var(--space-4);
+    border-radius: var(--radius-md);
+    border-left: 3px solid transparent;
+    margin-bottom: var(--space-4);
+}
+
+.mobile-alert-warning {
+    background: rgba(245, 158, 11, 0.1);
+    border-left-color: var(--color-warning);
+    color: var(--text-secondary);
+}
+
+.mobile-alert-info {
+    background: rgba(59, 130, 246, 0.1);
+    border-left-color: var(--color-primary);
+    color: var(--text-secondary);
+}
+
+.mobile-alert-success {
+    background: rgba(34, 197, 94, 0.1);
+    border-left-color: var(--color-success);
+    color: var(--text-secondary);
+}
+
+/* Status Badges */
+.mobile-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.mobile-badge-pending {
+    background: rgba(245, 158, 11, 0.2);
+    color: var(--color-warning);
+}
+
+.mobile-badge-success {
+    background: rgba(34, 197, 94, 0.2);
+    color: var(--color-success);
+}
+
+.mobile-badge-error {
+    background: rgba(239, 68, 68, 0.2);
+    color: var(--color-error);
+}
+
+/* Progress */
+.mobile-progress {
+    display: flex;
+    gap: var(--space-2);
+    margin: var(--space-4) 0;
+}
+
+.mobile-progress-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    transition: background 0.3s;
+}
+
+.mobile-progress-dot.active {
+    background: var(--color-primary);
+}
+
+.mobile-progress-dot.completed {
+    background: var(--color-success);
+}
+
+/* Sticky Action Bar */
+.mobile-action-bar {
+    position: sticky;
+    bottom: 0;
+    z-index: 20;
+    padding: var(--space-4) 0;
+    background: linear-gradient(
+        180deg,
+        rgba(2, 6, 23, 0) 0%,
+        rgba(2, 6, 23, 0.92) 38%,
+        rgba(2, 6, 23, 0.98) 100%
+    );
+    margin-top: auto;
+}
+
+/* Camera Section */
+.mobile-camera-container {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 3/4;
+    max-width: 360px;
+    margin: 0 auto;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: #000;
+    border: 2px solid var(--border-default);
+}
+
+.mobile-camera-container video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+}
+
+.mobile-camera-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+}
+
+.mobile-camera-frame {
+    width: 70%;
+    aspect-ratio: 1;
+    border: 2px dashed rgba(255, 255, 255, 0.3);
+    border-radius: 50%;
+    transition: border-color 0.3s;
+}
+
+.mobile-camera-container.scanning .mobile-camera-frame {
+    border-color: var(--color-primary);
+    border-style: solid;
+}
+
+.mobile-camera-container.success .mobile-camera-frame {
+    border-color: var(--color-success);
+}
+
+/* Employee Info */
+.mobile-employee-info {
+    text-align: center;
+}
+
+.mobile-employee-avatar {
+    width: 72px;
+    height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--color-primary), #2563eb);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto var(--space-3);
+    font-size: 28px;
+}
+
+.mobile-employee-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin-bottom: var(--space-2);
+}
+
+/* Meta Rows */
+.mobile-meta-row {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--text-muted);
+    font-size: 0.875rem;
+    padding: var(--space-1) 0;
+}
+
+.mobile-meta-row i {
+    color: var(--color-primary);
+    width: 16px;
+    text-align: center;
+}
+
+/* Back Link */
+.mobile-back-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    color: var(--text-muted);
+    text-decoration: none;
+    font-size: 0.875rem;
+    margin-top: var(--space-4);
+}
+
+/* Choice Cards (for Index page) */
+.mobile-choice-grid {
+    display: grid;
+    gap: var(--space-4);
+}
+
+.mobile-choice-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: var(--space-6) var(--space-4);
+    background: var(--bg-elevated-glass);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-lg);
+    text-decoration: none;
+    color: var(--text-primary);
+    transition: all 0.2s;
+}
+
+.mobile-choice-card:hover {
+    border-color: var(--color-primary);
+    transform: translateY(-2px);
+}
+
+.mobile-choice-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    background: rgba(59, 130, 246, 0.15);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    color: var(--color-primary);
+    margin-bottom: var(--space-3);
+}
+
+.mobile-choice-title {
+    font-size: 1rem;
+    font-weight: 600;
+    margin-bottom: var(--space-1);
+}
+
+.mobile-choice-desc {
+    font-size: 0.8125rem;
+    color: var(--text-muted);
+}
+
+/* Wizard Steps */
+.mobile-wizard-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-bottom: var(--space-5);
+}
+
+.mobile-wizard-step {
+    padding: var(--space-2) var(--space-3);
+    border-radius: 9999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    border: 1px solid var(--border-default);
+}
+
+.mobile-wizard-step.active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.mobile-wizard-step.completed {
+    background: rgba(34, 197, 94, 0.15);
+    border-color: var(--color-success);
+    color: var(--color-success);
+}
+
+/* Preview Grid */
+.mobile-preview-grid {
+    display: flex;
+    gap: var(--space-2);
+    overflow-x: auto;
+    padding: var(--space-2) 0;
+    margin-top: var(--space-3);
+}
+
+.mobile-preview-thumb {
+    width: 56px;
+    height: 56px;
+    border-radius: var(--radius-md);
+    object-fit: cover;
+    border: 2px solid transparent;
+    flex-shrink: 0;
+}
+
+.mobile-preview-thumb.captured {
+    border-color: var(--color-success);
+}
+
+/* Safe Area */
+@supports (padding-top: env(safe-area-inset-top)) {
+    .mobile-app {
+        padding-top: env(safe-area-inset-top);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+    }
+}

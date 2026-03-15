@@ -2,6 +2,8 @@
 using System.Data;
 using System.Linq;
 
+using FaceAttend.Services.Interfaces;
+
 namespace FaceAttend.Services
 {
     /// <summary>
@@ -34,8 +36,15 @@ namespace FaceAttend.Services
     ///   Note: Para sa high-volume, magdagdag ng unique filtered index sa DB:
     ///   (EmployeeId, CAST(Timestamp AS DATE), EventType)
     /// </summary>
-    public static class AttendanceService
+    public class AttendanceService : IAttendanceService
     {
+        private readonly FaceAttendDBEntities _db;
+
+        public AttendanceService(FaceAttendDBEntities db)
+        {
+            _db = db ?? throw new ArgumentNullException(nameof(db));
+        }
+
         public class RecordResult
         {
             public bool Ok { get; set; }
@@ -45,9 +54,8 @@ namespace FaceAttend.Services
             public DateTime TimestampUtc { get; set; }
         }
 
-        public static RecordResult Record(FaceAttendDBEntities db, AttendanceLog log, DateTime? attemptedAtUtc = null)
+        public RecordResult Record(AttendanceLog log, DateTime? attemptedAtUtc = null)
         {
-            if (db == null) throw new ArgumentNullException(nameof(db));
             if (log == null) throw new ArgumentNullException(nameof(log));
 
             var nowUtc = attemptedAtUtc ?? DateTime.UtcNow;
@@ -60,7 +68,7 @@ namespace FaceAttend.Services
             var endUtc     = todayRange.toUtcExclusive;
 
             int minGapSeconds = ConfigurationService.GetInt(
-                db, "Attendance:MinGapSeconds",
+                _db, "Attendance:MinGapSeconds",
                 ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
 
             // --- Transaction: prevents concurrent duplicate scans ---
@@ -71,11 +79,11 @@ namespace FaceAttend.Services
             // 
             // ILOKANO: "Ti ReadCommitted ket nasayaat para iti kadawyan a panagusar
             //           ket saanna a pagsardengen ti sabali a transactions"
-            using (var tx = db.Database.BeginTransaction(IsolationLevel.ReadCommitted))
+            using (var tx = _db.Database.BeginTransaction(IsolationLevel.ReadCommitted))
             {
                 try
                 {
-                    var lastToday = db.AttendanceLogs
+                    var lastToday = _db.AttendanceLogs
                         .Where(x =>
                             x.EmployeeId == log.EmployeeId &&
                             x.Timestamp >= startUtc &&
@@ -110,7 +118,7 @@ namespace FaceAttend.Services
                         {
                             // IN -> OUT transition: mag-apply ng InToOut minimum gap
                             applicableGap = ConfigurationService.GetInt(
-                                db, "Attendance:MinGap:InToOutSeconds",
+                                _db, "Attendance:MinGap:InToOutSeconds",
                                 ConfigurationService.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
                             var minsNeeded = (int)Math.Ceiling(applicableGap / 60.0);
                             gapMessage = "You just timed in. Please wait at least "
@@ -120,7 +128,7 @@ namespace FaceAttend.Services
                         {
                             // OUT -> IN transition: mag-apply ng OutToIn minimum gap
                             applicableGap = ConfigurationService.GetInt(
-                                db, "Attendance:MinGap:OutToInSeconds",
+                                _db, "Attendance:MinGap:OutToInSeconds",
                                 ConfigurationService.GetInt("Attendance:MinGap:OutToInSeconds", 300));
                             var minsNeeded = (int)Math.Ceiling(applicableGap / 60.0);
                             gapMessage = "Please wait at least "
@@ -149,8 +157,8 @@ namespace FaceAttend.Services
                     log.EventType = next;
                     log.Source    = string.IsNullOrWhiteSpace(log.Source) ? "KIOSK" : log.Source;
 
-                    db.AttendanceLogs.Add(log);
-                    db.SaveChanges();
+                    _db.AttendanceLogs.Add(log);
+                    _db.SaveChanges();
 
                     tx.Commit();
 

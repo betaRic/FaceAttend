@@ -12,6 +12,8 @@ namespace FaceAttend
     using System;
     using System.Data.Entity;
     using System.Data.Entity.Infrastructure;
+    using System.Data.Entity.Core.Objects;
+    using System.Linq;
     
     public partial class FaceAttendDBEntities : DbContext
     {
@@ -33,5 +35,18 @@ namespace FaceAttend
         public virtual DbSet<SystemConfiguration> SystemConfigurations { get; set; }
         public virtual DbSet<VisitorLog> VisitorLogs { get; set; }
         public virtual DbSet<Visitor> Visitors { get; set; }
+    
+        public virtual ObjectResult<sp_CheckDuplicateFace_Result> sp_CheckDuplicateFace(string excludeEmployeeId, Nullable<double> tolerance)
+        {
+            var excludeEmployeeIdParameter = excludeEmployeeId != null ?
+                new ObjectParameter("ExcludeEmployeeId", excludeEmployeeId) :
+                new ObjectParameter("ExcludeEmployeeId", typeof(string));
+    
+            var toleranceParameter = tolerance.HasValue ?
+                new ObjectParameter("Tolerance", tolerance) :
+                new ObjectParameter("Tolerance", typeof(double));
+    
+            return ((IObjectContextAdapter)this).ObjectContext.ExecuteFunction<sp_CheckDuplicateFace_Result>("sp_CheckDuplicateFace", excludeEmployeeIdParameter, toleranceParameter);
+        }
     }
 }

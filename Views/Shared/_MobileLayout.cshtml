@@ -2,7 +2,7 @@
     Layout = null;
 }
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
@@ -13,182 +13,11 @@
     <title>@ViewBag.Title - FaceAttend</title>
     
     <!-- Bootstrap CSS -->
-    @Styles.Render("~/Content/kiosk-base")
+    @Styles.Render("~/Content/css")
     
-    <!-- FaceAttend v2 Unified Design System -->
-    @Styles.Render("~/Content/facescan-v2")
-    
-    <!-- Mobile-specific CSS Variables (MIGRATED: extracted from mobile-kiosk.css) -->
-    <style>
-        /* Mobile CSS Variables - Migrated from mobile-kiosk.css */
-        :root {
-            /* Mobile-specific semantic tokens */
-            --mobile-bg-primary: #0f172a;
-            --mobile-bg-secondary: rgba(15, 23, 42, 0.6);
-            --mobile-bg-card: rgba(255, 255, 255, 0.04);
-            
-            --mobile-text-primary: #f8fafc;
-            --mobile-text-secondary: #cbd5e1;
-            --mobile-text-muted: #94a3b8;
-            
-            --mobile-border: rgba(255, 255, 255, 0.08);
-            --mobile-border-subtle: rgba(255, 255, 255, 0.06);
-            
-            --mobile-accent: #3b82f6;
-            --mobile-accent-success: #22c55e;
-            --mobile-accent-error: #ef4444;
-            --mobile-accent-warning: #f59e0b;
-            
-            --mobile-radius: 12px;
-            --mobile-radius-lg: 16px;
-            --mobile-radius-xl: 20px;
-            
-            --mobile-space-1: 0.25rem;
-            --mobile-space-2: 0.5rem;
-            --mobile-space-3: 0.75rem;
-            --mobile-space-4: 1rem;
-            --mobile-space-5: 1.25rem;
-        }
-        
-        /* Mobile App Base Styles */
-        .mobile-app {
-            background: var(--mobile-bg-primary);
-            color: var(--mobile-text-primary);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            min-height: 100vh;
-            -webkit-font-smoothing: antialiased;
-        }
-        
-        /* Mobile Shell */
-        .mobile-shell {
-            background: var(--mobile-bg-card);
-            border: 1px solid var(--mobile-border);
-            border-radius: var(--mobile-radius-lg);
-            padding: 1.5rem;
-            backdrop-filter: blur(10px);
-        }
-        
-        /* Mobile Card */
-        .mobile-card {
-            background: var(--mobile-bg-secondary);
-            border: 1px solid var(--mobile-border-subtle);
-            border-radius: var(--mobile-radius);
-            overflow: hidden;
-        }
-        
-        .mobile-card .card-body {
-            padding: 1.25rem;
-        }
-        
-        /* Mobile Employee Info */
-        .mobile-employee-info {
-            text-align: center;
-        }
-        
-        .mobile-employee-avatar {
-            width: 80px;
-            height: 80px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--mobile-accent), #2563eb);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin: 0 auto 1rem;
-            font-size: 2rem;
-            color: white;
-        }
-        
-        .mobile-employee-name {
-            font-size: 1.25rem;
-            font-weight: 700;
-            color: var(--mobile-text-primary);
-            margin-bottom: 0.5rem;
-        }
-        
-        /* Mobile Meta Row */
-        .mobile-meta-row {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            color: var(--mobile-text-secondary);
-            font-size: 0.9375rem;
-        }
-        
-        .mobile-meta-row i {
-            color: var(--mobile-accent);
-            width: 1.25rem;
-            text-align: center;
-        }
-        
-        /* Mobile Alert */
-        .mobile-alert {
-            padding: 0.875rem 1rem;
-            border-radius: var(--mobile-radius);
-            display: flex;
-            align-items: center;
-            gap: 0.625rem;
-        }
-        
-        .mobile-alert-warning {
-            background: rgba(245, 158, 11, 0.1);
-            border: 1px solid rgba(245, 158, 11, 0.2);
-            color: var(--mobile-accent-warning);
-        }
-        
-        /* Mobile Buttons */
-        .mobile-btn {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            padding: 0.875rem 1.25rem;
-            border-radius: var(--mobile-radius);
-            font-weight: 600;
-            font-size: 1rem;
-            border: none;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            width: 100%;
-        }
-        
-        .mobile-btn-success {
-            background: var(--color-success);
-            color: white;
-        }
-        
-        .mobile-btn-secondary {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--mobile-text-primary);
-            border: 1px solid var(--mobile-border);
-        }
-        
-        /* Mobile Back Link */
-        .mobile-back-link {
-            color: var(--mobile-text-muted);
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            font-size: 0.9375rem;
-        }
-        
-        .mobile-back-link:hover {
-            color: var(--mobile-accent);
-        }
-        
-        /* Mobile Title/Subtitle */
-        .mobile-title {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--mobile-text-primary);
-            margin-bottom: 0.5rem;
-        }
-        
-        .mobile-subtitle {
-            color: var(--mobile-text-muted);
-            font-size: 1rem;
-        }
-    </style>
+    <!-- FaceAttend Design System v3 -->
+    @Styles.Render("~/Content/fa-system")      @* Design System Tokens (v3) *@
+    @Styles.Render("~/Content/fa-mobile")      @* Mobile component styles (migrated from inline) *@
     
     <!-- Local Font Awesome -->
     <link rel="stylesheet" href="@Url.Content("~/Content/vendor/fontawesome/css/all.min.css")" />

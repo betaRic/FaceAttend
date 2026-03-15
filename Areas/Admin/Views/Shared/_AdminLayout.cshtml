@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -11,6 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 
     @Styles.Render("~/Content/css")
+    @Styles.Render("~/Content/fa-system")      @* Design System Tokens (v3) *@
     @Styles.Render("~/bundles/vendor-css")
     @Styles.Render("~/Content/admin")
     @RenderSection("head", required: false)

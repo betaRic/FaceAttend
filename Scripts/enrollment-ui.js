@@ -42,7 +42,10 @@
     };
 
     // ── DOM ────────────────────────────────────────────────────────────────────
-    function q(id) { return document.getElementById(id); }
+    // Use FaceAttend.Utils.el if available, fallback to native
+    function q(id) { 
+        return FaceAttend.Utils ? FaceAttend.Utils.el(id) : document.getElementById(id); 
+    }
 
     var ui = {
         video:             q('enrollVideo'),
@@ -96,7 +99,11 @@
     };
 
     // ── UI helpers ─────────────────────────────────────────────────────────────
+    // Use FaceAttend.Utils.isDark if available
     function dark() {
+        if (FaceAttend.Utils && FaceAttend.Utils.isDark) {
+            return FaceAttend.Utils.isDark();
+        }
         return cfg.mode === 'mobile'
             || document.documentElement.getAttribute('data-theme') === 'kiosk';
     }
@@ -152,7 +159,22 @@
             ui.processingStatus.textContent = status;
     }
 
+    // Wrapper for notifications (uses FaceAttend.Notify if available)
     function swal(opts) {
+        // Use FaceAttend.Notify if available
+        if (FaceAttend.Notify) {
+            if (opts.icon === 'error') {
+                FaceAttend.Notify.errorModal(opts.title, opts.text);
+            } else if (opts.icon === 'success') {
+                FaceAttend.Notify.successModal(opts.title, opts.text, opts.onConfirm);
+            } else {
+                // Default to error modal for other types
+                FaceAttend.Notify.errorModal(opts.title || 'Notice', opts.text);
+            }
+            return;
+        }
+        
+        // Fallback to native Swal
         if (typeof Swal !== 'undefined') {
             Swal.fire(Object.assign({
                 background: dark() ? '#0f172a' : '#fff',

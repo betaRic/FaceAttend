@@ -1,7 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Web.Mvc;
-using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
@@ -21,7 +21,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 {
                     using (var db = new FaceAttendDBEntities())
                     {
-                        vm.TotalEmployees = db.Employees.Count(e => e.IsActive);
+                        vm.TotalEmployees = db.Employees.Count(e => e.Status == "ACTIVE");
 
                         var todayLocal = TimeZoneHelper.TodayLocalDate();
                         var todayRange = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
@@ -122,7 +122,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     var todayUtc = todayRange.fromUtc;
                     var tomorrowUtc = todayRange.toUtcExclusive;
 
-                    var totalEmployees = db.Employees.Count(e => e.IsActive);
+                    var totalEmployees = db.Employees.Count(e => e.Status == "ACTIVE");
                     var todayIns = db.AttendanceLogs.Count(l =>
                         l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "IN");
                     var todayOuts = db.AttendanceLogs.Count(l =>

@@ -1,0 +1,667 @@
+/* ============================================================
+   FaceAttend Design System v3.0
+   THE SINGLE SOURCE OF TRUTH for all CSS variables
+   ============================================================
+   
+   Rules:
+   1. This is the ONLY file with a :root {} block
+   2. Surface files (admin.css, kiosk.css, etc.) import this first
+   3. Theming via data-theme="kiosk|dark|light" on <html>
+   4. No --admin-*, --kiosk-*, --mobile-* prefixes — semantic only
+   
+   ============================================================ */
+
+/* ============================================================
+   Section 1: Design Tokens — Light Theme (default for Admin)
+   ============================================================ */
+:root {
+  /* ── Brand Colors ───────────────────────────────────────── */
+  --color-primary:        #3b82f6;
+  --color-primary-hover:  #2563eb;
+  --color-primary-light:  #eff6ff;
+  
+  --color-success:        #22c55e;
+  --color-success-hover:  #16a34a;
+  --color-success-light:  #f0fdf4;
+  
+  --color-error:          #ef4444;
+  --color-error-hover:    #dc2626;
+  --color-error-light:    #fef2f2;
+  
+  --color-warning:        #f59e0b;
+  --color-warning-hover:  #d97706;
+  --color-warning-light:  #fffbeb;
+  
+  --color-info:           #0ea5e9;
+  --color-info-hover:     #0284c7;
+  --color-info-light:     #f0f9ff;
+  
+  /* ── Neutral Scale ──────────────────────────────────────── */
+  --neutral-50:  #f8fafc;
+  --neutral-100: #f1f5f9;
+  --neutral-200: #e2e8f0;
+  --neutral-300: #cbd5e1;
+  --neutral-400: #94a3b8;
+  --neutral-500: #64748b;
+  --neutral-600: #475569;
+  --neutral-700: #334155;
+  --neutral-800: #1e293b;
+  --neutral-900: #0f172a;
+  --neutral-950: #020617;
+  
+  /* ── Backgrounds ────────────────────────────────────────── */
+  --bg-page:              #ffffff;
+  --bg-surface:           #f8fafc;
+  --bg-elevated:          #ffffff;
+  --bg-overlay:           rgba(15, 23, 42, 0.5);
+  
+  /* ── Text ──────────────────────────────────────────────── */
+  --text-primary:         #0f172a;
+  --text-secondary:       #475569;
+  --text-muted:           #64748b;
+  --text-inverted:        #f8fafc;
+  
+  /* ── Borders ───────────────────────────────────────────── */
+  --border-subtle:        #e2e8f0;
+  --border-default:       #cbd5e1;
+  --border-strong:        #94a3b8;
+  
+  /* ── Spacing Scale (0.25rem = 4px base) ────────────────── */
+  --space-0:  0;
+  --space-1:  0.25rem;   /* 4px  */
+  --space-2:  0.5rem;    /* 8px  */
+  --space-3:  0.75rem;   /* 12px */
+  --space-4:  1rem;      /* 16px */
+  --space-5:  1.25rem;   /* 20px */
+  --space-6:  1.5rem;    /* 24px */
+  --space-8:  2rem;      /* 32px */
+  --space-10: 2.5rem;    /* 40px */
+  --space-12: 3rem;      /* 48px */
+  --space-16: 4rem;      /* 64px */
+  --space-20: 5rem;      /* 80px */
+  --space-24: 6rem;      /* 96px */
+  
+  /* ── Border Radius ─────────────────────────────────────── */
+  --radius-sm:  0.25rem;   /* 4px  */
+  --radius-md:  0.5rem;    /* 8px  */
+  --radius-lg:  0.75rem;   /* 12px */
+  --radius-xl:  1rem;      /* 16px */
+  --radius-2xl: 1.5rem;    /* 24px */
+  --radius-full: 9999px;
+  
+  /* ── Shadows ───────────────────────────────────────────── */
+  --shadow-sm:   0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow:      0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px -1px rgba(0, 0, 0, 0.1);
+  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+  --shadow-lg:   0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -4px rgba(0, 0, 0, 0.1);
+  --shadow-xl:   0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+  --shadow-glow: 0 0 20px rgba(59, 130, 246, 0.5);
+  
+  /* ── Typography ────────────────────────────────────────── */
+  --font-sans:   -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono:   "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+  
+  --text-xs:   0.75rem;    /* 12px */
+  --text-sm:   0.875rem;   /* 14px */
+  --text-base: 1rem;       /* 16px */
+  --text-lg:   1.125rem;   /* 18px */
+  --text-xl:   1.25rem;    /* 20px */
+  --text-2xl:  1.5rem;     /* 24px */
+  --text-3xl:  1.875rem;   /* 30px */
+  --text-4xl:  2.25rem;    /* 36px */
+  --text-5xl:  3rem;       /* 48px */
+  
+  --font-normal:   400;
+  --font-medium:   500;
+  --font-semibold: 600;
+  --font-bold:     700;
+  
+  /* ── Transitions ───────────────────────────────────────── */
+  --transition-fast:   150ms ease;
+  --transition:        250ms ease;
+  --transition-slow:   350ms ease;
+  --transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  
+  /* ── Z-Index Scale ─────────────────────────────────────── */
+  --z-dropdown:   1000;
+  --z-sticky:     1020;
+  --z-fixed:      1030;
+  --z-modal-back: 1040;
+  --z-modal:      1050;
+  --z-popover:    1060;
+  --z-tooltip:    1070;
+  --z-toast:      1080;
+}
+
+/* ============================================================
+   Section 2: Dark Theme Override (Kiosk)
+   ============================================================ */
+[data-theme="kiosk"],
+[data-theme="dark"] {
+  --bg-page:              #020617;
+  --bg-surface:           #0f172a;
+  --bg-elevated:          #1e293b;
+  --bg-elevated-glass:    rgba(17, 24, 39, 0.85);  /* Semi-transparent for glassmorphism */
+  --bg-overlay:           rgba(0, 0, 0, 0.7);
+  
+  --text-primary:         #f8fafc;
+  --text-secondary:       #cbd5e1;
+  --text-muted:           #64748b;
+  --text-inverted:        #0f172a;
+  
+  --border-subtle:        rgba(255, 255, 255, 0.1);
+  --border-default:       rgba(255, 255, 255, 0.15);
+  --border-strong:        rgba(255, 255, 255, 0.25);
+  
+  --shadow-sm:   0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  --shadow:      0 1px 3px 0 rgba(0, 0, 0, 0.4), 0 1px 2px -1px rgba(0, 0, 0, 0.4);
+  --shadow-md:   0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -2px rgba(0, 0, 0, 0.4);
+  --shadow-lg:   0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-xl:   0 20px 25px -5px rgba(0, 0, 0, 0.5), 0 8px 10px -6px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 30px rgba(59, 130, 246, 0.6);
+}
+
+/* ============================================================
+   Section 3: Mobile Surface Override
+   ============================================================ */
+.mobile-app,
+.mobile-surface,
+[data-theme="mobile"] {
+  /* Mobile uses dark theme as base */
+  --bg-page:              #020617;
+  --bg-surface:           #0f172a;
+  --bg-elevated:          #1e293b;
+  
+  /* Mobile-specific values */
+  --mobile-safe-top:      env(safe-area-inset-top, 0px);
+  --mobile-safe-bottom:   env(safe-area-inset-bottom, 0px);
+  --mobile-safe-left:     env(safe-area-inset-left, 0px);
+  --mobile-safe-right:    env(safe-area-inset-right, 0px);
+  
+  /* Mobile-optimized spacing */
+  --space-touch: 44px;  /* Minimum touch target size */
+}
+
+/* ============================================================
+   Section 4: Shared Micro-Components
+   Used by 2+ surfaces — enrollment, wizard, camera, etc.
+   ============================================================ */
+
+/* ── Wizard Steps ────────────────────────────────────────── */
+.fa-wizard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-6);
+}
+
+.fa-wizard__step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  opacity: 0.5;
+  transition: opacity var(--transition);
+}
+
+.fa-wizard__step--active,
+.fa-wizard__step--completed {
+  opacity: 1;
+}
+
+.fa-wizard__step-number {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-full);
+  background: var(--bg-surface);
+  border: 2px solid var(--border-default);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-secondary);
+}
+
+.fa-wizard__step--active .fa-wizard__step-number {
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+  color: white;
+}
+
+.fa-wizard__step--completed .fa-wizard__step-number {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: white;
+}
+
+.fa-wizard__step-label {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.fa-wizard__step--active .fa-wizard__step-label {
+  color: var(--text-primary);
+  font-weight: var(--font-medium);
+}
+
+.fa-wizard__connector {
+  flex: 1;
+  height: 2px;
+  max-width: 3rem;
+  background: var(--border-default);
+  position: relative;
+}
+
+.fa-wizard__connector--completed {
+  background: var(--color-success);
+}
+
+/* ── Camera Components ──────────────────────────────────── */
+.fa-camera-wrap {
+  position: relative;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+}
+
+.fa-camera-wrap video {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 4/3;
+  object-fit: cover;
+}
+
+.fa-face-guide {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 60%;
+  aspect-ratio: 1;
+  border: 3px dashed var(--border-default);
+  border-radius: 50%;
+  pointer-events: none;
+  transition: border-color var(--transition);
+}
+
+.fa-face-guide--detected {
+  border-color: var(--color-success);
+  border-style: solid;
+}
+
+.fa-face-guide--capturing {
+  border-color: var(--color-primary);
+  animation: pulse-border 1s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* ── Status Indicators ──────────────────────────────────── */
+.fa-status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+}
+
+.fa-status::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: var(--radius-full);
+}
+
+.fa-status--success {
+  background: var(--color-success-light);
+  color: var(--color-success);
+}
+
+.fa-status--success::before {
+  background: var(--color-success);
+}
+
+.fa-status--error {
+  background: var(--color-error-light);
+  color: var(--color-error);
+}
+
+.fa-status--error::before {
+  background: var(--color-error);
+}
+
+.fa-status--warning {
+  background: var(--color-warning-light);
+  color: var(--color-warning);
+}
+
+.fa-status--warning::before {
+  background: var(--color-warning);
+}
+
+.fa-status--info {
+  background: var(--color-info-light);
+  color: var(--color-info);
+}
+
+.fa-status--info::before {
+  background: var(--color-info);
+}
+
+/* ── Progress Components ────────────────────────────────── */
+.fa-progress {
+  width: 100%;
+  height: 0.5rem;
+  background: var(--bg-surface);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.fa-progress__bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width var(--transition-slow) ease-out;
+}
+
+.fa-progress__bar--success {
+  background: var(--color-success);
+}
+
+.fa-progress-dots {
+  display: flex;
+  gap: var(--space-2);
+  justify-content: center;
+}
+
+.fa-progress-dot {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: var(--radius-full);
+  background: var(--border-default);
+  transition: all var(--transition);
+}
+
+.fa-progress-dot--filled {
+  background: var(--color-primary);
+  transform: scale(1.2);
+}
+
+.fa-progress-dot--success {
+  background: var(--color-success);
+}
+
+/* ── Button Base Styles ─────────────────────────────────── */
+.fa-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  text-decoration: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+
+.fa-btn:disabled,
+.fa-btn--disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.fa-btn--primary {
+  background: var(--color-primary);
+  color: white;
+}
+
+.fa-btn--primary:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+  box-shadow: var(--shadow-md);
+}
+
+.fa-btn--secondary {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  border-color: var(--border-default);
+}
+
+.fa-btn--secondary:hover:not(:disabled) {
+  background: var(--bg-elevated);
+  border-color: var(--border-strong);
+}
+
+.fa-btn--ghost {
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.fa-btn--ghost:hover:not(:disabled) {
+  background: var(--bg-surface);
+  color: var(--text-primary);
+}
+
+.fa-btn--danger {
+  background: var(--color-error);
+  color: white;
+}
+
+.fa-btn--danger:hover:not(:disabled) {
+  background: var(--color-error-hover);
+}
+
+.fa-btn--lg {
+  padding: var(--space-3) var(--space-6);
+  font-size: var(--text-base);
+}
+
+.fa-btn--sm {
+  padding: var(--space-1) var(--space-2);
+  font-size: var(--text-xs);
+}
+
+/* ── Card Component ─────────────────────────────────────── */
+.fa-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.fa-card__header {
+  padding: var(--space-4) var(--space-6);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+.fa-card__body {
+  padding: var(--space-6);
+}
+
+.fa-card__footer {
+  padding: var(--space-4) var(--space-6);
+  border-top: 1px solid var(--border-subtle);
+  background: var(--bg-surface);
+}
+
+/* ── Form Components ────────────────────────────────────── */
+.fa-form-group {
+  margin-bottom: var(--space-4);
+}
+
+.fa-form-label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  color: var(--text-primary);
+}
+
+.fa-form-label--required::after {
+  content: ' *';
+  color: var(--color-error);
+}
+
+.fa-form-input,
+.fa-form-select,
+.fa-form-textarea {
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.fa-form-input:focus,
+.fa-form-select:focus,
+.fa-form-textarea:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-light);
+}
+
+.fa-form-input:disabled,
+.fa-form-select:disabled,
+.fa-form-textarea:disabled {
+  background: var(--bg-surface);
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fa-form-error {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--color-error);
+}
+
+.fa-form-hint {
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+/* ── Hint Box ───────────────────────────────────────────── */
+.fa-hint-box {
+  padding: var(--space-4);
+  background: var(--color-info-light);
+  border: 1px solid var(--color-info);
+  border-radius: var(--radius-md);
+  color: var(--color-info);
+  font-size: var(--text-sm);
+}
+
+.fa-hint-box--success {
+  background: var(--color-success-light);
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.fa-hint-box--warning {
+  background: var(--color-warning-light);
+  border-color: var(--color-warning);
+  color: var(--color-warning);
+}
+
+.fa-hint-box--error {
+  background: var(--color-error-light);
+  border-color: var(--color-error);
+  color: var(--color-error);
+}
+
+/* ── Utility Classes ───────────────────────────────────── */
+.fa-text-center   { text-align: center; }
+.fa-text-right    { text-align: right; }
+.fa-text-left     { text-align: left; }
+
+.fa-mt-0 { margin-top: 0; }
+.fa-mt-2 { margin-top: var(--space-2); }
+.fa-mt-4 { margin-top: var(--space-4); }
+.fa-mt-6 { margin-top: var(--space-6); }
+
+.fa-mb-0 { margin-bottom: 0; }
+.fa-mb-2 { margin-bottom: var(--space-2); }
+.fa-mb-4 { margin-bottom: var(--space-4); }
+.fa-mb-6 { margin-bottom: var(--space-6); }
+
+.fa-p-0 { padding: 0; }
+.fa-p-4 { padding: var(--space-4); }
+.fa-p-6 { padding: var(--space-6); }
+
+.fa-d-flex       { display: flex; }
+.fa-d-block      { display: block; }
+.fa-d-none       { display: none; }
+.fa-d-grid       { display: grid; }
+
+.fa-justify-center { justify-content: center; }
+.fa-align-center   { align-items: center; }
+.fa-flex-column    { flex-direction: column; }
+.fa-gap-2          { gap: var(--space-2); }
+.fa-gap-4          { gap: var(--space-4); }
+
+.fa-w-100 { width: 100%; }
+.fa-h-100 { height: 100%; }
+
+.fa-rounded       { border-radius: var(--radius-md); }
+.fa-rounded-lg    { border-radius: var(--radius-lg); }
+.fa-rounded-full  { border-radius: var(--radius-full); }
+
+.fa-shadow-sm     { box-shadow: var(--shadow-sm); }
+.fa-shadow        { box-shadow: var(--shadow); }
+.fa-shadow-lg     { box-shadow: var(--shadow-lg); }
+
+/* ── Animation Utilities ───────────────────────────────── */
+.fa-fade-in {
+  animation: fadeIn var(--transition) ease-out;
+}
+
+.fa-fade-in-up {
+  animation: fadeInUp var(--transition) ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* ── Screen Reader Only ────────────────────────────────── */
+.fa-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

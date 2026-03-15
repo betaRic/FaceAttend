@@ -26,7 +26,6 @@ namespace FaceAttend
         public string Department { get; set; }
         public int OfficeId { get; set; }
         public bool IsFlexi { get; set; }
-        public bool IsActive { get; set; }
         public string FaceEncodingBase64 { get; set; }
         public Nullable<System.DateTime> EnrolledDate { get; set; }
         public Nullable<System.DateTime> LastModifiedDate { get; set; }
@@ -38,9 +37,6 @@ namespace FaceAttend
         public string FaceEncodingsJson { get; set; }
         public System.DateTime CreatedDate { get; set; }
         public string Status { get; set; }
-        public string DeviceFingerprint { get; set; }
-        public string DeviceName { get; set; }
-        public string RegisteredFromIp { get; set; }
     
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
         public virtual ICollection<AttendanceLog> AttendanceLogs { get; set; }

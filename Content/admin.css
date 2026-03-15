@@ -2,92 +2,13 @@
    FaceAttend Admin Styles - Modern Minimal
    ========================================================================== */
 
-/* --------------------------------------------------------------------------
-   1. CSS Variables (Design Tokens) - Modern Minimal
-   -------------------------------------------------------------------------- */
-:root {
-    /* Primary Colors */
-    --primary-50: #eff6ff;
-    --primary-100: #dbeafe;
-    --primary-500: #3b82f6;
-    --primary-600: #2563eb;
-    --primary-700: #1d4ed8;
-    --primary-900: #1e3a8a;
-    
-    /* Neutral Colors */
-    --gray-0: #ffffff;
-    --gray-50: #f8fafc;
-    --gray-100: #f1f5f9;
-    --gray-200: #e2e8f0;
-    --gray-300: #cbd5e1;
-    --gray-400: #94a3b8;
-    --gray-500: #64748b;
-    --gray-600: #475569;
-    --gray-700: #334155;
-    --gray-800: #1e293b;
-    --gray-900: #0f172a;
-    
-    /* Semantic Colors */
-    --success-500: #22c55e;
-    --success-100: #dcfce7;
-    --warning-500: #f59e0b;
-    --warning-100: #fef3c7;
-    --danger-500: #ef4444;
-    --danger-100: #fee2e2;
-    --info-500: #06b6d4;
-    --info-100: #cffafe;
-    
-    /* Admin Aliases */
-    --admin-primary: var(--primary-600);
-    --admin-primary-rgb: 37, 99, 235;
-    --admin-success: var(--success-500);
-    --admin-success-rgb: 34, 197, 94;
-    --admin-danger: var(--danger-500);
-    --admin-danger-rgb: 239, 68, 68;
-    --admin-warning: var(--warning-500);
-    --admin-warning-rgb: 245, 158, 11;
-    --admin-info: var(--info-500);
-    --admin-text: var(--gray-800);
-    --admin-muted: var(--gray-500);
-    --admin-bg: var(--gray-50);
-    --admin-surface: var(--gray-0);
-    --admin-surface-2: var(--gray-50);
-    --admin-border: var(--gray-200);
-    
-    /* Spacing Scale */
-    --space-1: 0.25rem;
-    --space-2: 0.5rem;
-    --space-3: 0.75rem;
-    --space-4: 1rem;
-    --space-5: 1.25rem;
-    --space-6: 1.5rem;
-    --space-8: 2rem;
-    --space-10: 2.5rem;
-    --space-12: 3rem;
-    
-    /* Effects */
-    --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-    --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
-    --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
-    --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-    --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
-    
-    /* Radius */
-    --radius-sm: 0.375rem;
-    --radius: 0.5rem;
-    --radius-md: 0.625rem;
-    --radius-lg: 0.75rem;
-    --radius-xl: 1rem;
-    --radius-2xl: 1.25rem;
-    
-    /* Transitions */
-    --transition-fast: 150ms cubic-bezier(0.4, 0, 0.2, 1);
-    --transition: 200ms cubic-bezier(0.4, 0, 0.2, 1);
-    --transition-slow: 300ms cubic-bezier(0.4, 0, 0.2, 1);
-}
+/* ==========================================================================
+   FaceAttend Admin Styles - Modern Minimal
+   Uses fa-design-system.css for all CSS tokens
+   ========================================================================== */
 
 /* --------------------------------------------------------------------------
-   2. Base & Layout
+   1. Base & Layout
    -------------------------------------------------------------------------- */
 html { 
     scroll-behavior: smooth;
@@ -96,8 +17,8 @@ html {
 }
 
 body.admin-body {
-    background: var(--admin-bg);
-    color: var(--admin-text);
+    background: var(--bg-page);
+    color: var(--text-primary);
     font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     font-size: 0.875rem;
     line-height: 1.5;
@@ -159,14 +80,14 @@ body.admin-body {
 
 .admin-brand i {
     font-size: 1.25rem;
-    color: var(--primary-400);
+    color: var(--color-primary);
 }
 
 /* Sidebar */
 .admin-sidebar {
     grid-area: sidebar;
-    background: var(--admin-surface);
-    border-right: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border-right: 1px solid var(--border-default);
     height: calc(100vh - 56px);
     position: sticky;
     top: 56px;
@@ -195,15 +116,15 @@ body.admin-body {
    We need sticky positioning and the correct background. */
 @media (min-width: 992px) {
     .offcanvas-lg.admin-sidebar {
-        --bs-offcanvas-bg: var(--admin-surface);
-        background-color: var(--admin-surface) !important;
+        --bs-offcanvas-bg: var(--bg-elevated);
+        background-color: var(--bg-elevated) !important;
         position: sticky !important;
         top: 56px !important;
         height: calc(100vh - 56px) !important;
         visibility: visible !important;
         transform: none !important;
         z-index: auto !important;
-        border-right: 1px solid var(--admin-border);
+        border-right: 1px solid var(--border-default);
     }
 
     /* offcanvas-lg wraps content in offcanvas-body - restore normal overflow */
@@ -219,7 +140,7 @@ body.admin-body {
 .admin-main {
     grid-area: main;
     min-width: 0;
-    background: var(--admin-bg);
+    background: var(--bg-page);
 }
 
 .admin-content {
@@ -246,7 +167,7 @@ body.admin-body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--gray-400);
+    color: var(--neutral-400);
     padding: var(--space-2) var(--space-3);
     margin-bottom: var(--space-1);
 }
@@ -257,7 +178,7 @@ body.admin-body {
     gap: var(--space-3);
     padding: var(--space-2) var(--space-3);
     border-radius: var(--radius-md);
-    color: var(--gray-600);
+    color: var(--text-secondary);
     font-size: 0.8125rem;
     font-weight: 500;
     text-decoration: none;
@@ -266,13 +187,13 @@ body.admin-body {
 }
 
 .admin-nav-link:hover {
-    background: var(--gray-100);
-    color: var(--gray-900);
+    background: var(--neutral-100);
+    color: var(--neutral-900);
 }
 
 .admin-nav-link.active {
-    background: var(--primary-50);
-    color: var(--admin-primary);
+    background: var(--color-primary-light);
+    color: var(--color-primary);
     font-weight: 600;
 }
 
@@ -290,7 +211,7 @@ body.admin-body {
 
 .admin-nav-sep {
     margin: var(--space-4) var(--space-3);
-    border-top: 1px solid var(--admin-border);
+    border-top: 1px solid var(--border-default);
 }
 
 /* --------------------------------------------------------------------------
@@ -321,14 +242,14 @@ body.admin-body {
     gap: var(--space-4);
     flex-wrap: wrap;
     padding-bottom: var(--space-2);
-    border-bottom: 1px solid var(--admin-border);
+    border-bottom: 1px solid var(--border-default);
 }
 
 .ea-page-title {
     font-size: 1.5rem;
     font-weight: 700;
     letter-spacing: -0.02em;
-    color: var(--gray-900);
+    color: var(--neutral-900);
     margin: 0;
     display: flex;
     align-items: center;
@@ -336,13 +257,13 @@ body.admin-body {
 }
 
 .ea-page-title i {
-    color: var(--admin-primary);
+    color: var(--color-primary);
     font-size: 1.125rem;
 }
 
 .ea-page-subtitle {
     font-size: 0.8125rem;
-    color: var(--admin-muted);
+    color: var(--text-muted);
     margin-top: var(--space-1);
 }
 
@@ -406,8 +327,8 @@ body.admin-body {
    -------------------------------------------------------------------------- */
 .ea-card,
 .admin-card {
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
     transition: box-shadow var(--transition-fast);
@@ -428,15 +349,15 @@ body.admin-body {
     align-items: center;
     justify-content: space-between;
     padding: var(--space-4) var(--space-6);
-    border-bottom: 1px solid var(--admin-border);
-    background: var(--gray-50);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--neutral-100);
     border-radius: var(--radius-xl) var(--radius-xl) 0 0;
 }
 
 .ea-card-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--gray-900);
+    color: var(--neutral-900);
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -444,8 +365,8 @@ body.admin-body {
 
 .ea-card-footer {
     padding: var(--space-4) var(--space-6);
-    border-top: 1px solid var(--admin-border);
-    background: var(--gray-50);
+    border-top: 1px solid var(--border-default);
+    background: var(--neutral-100);
     border-radius: 0 0 var(--radius-xl) var(--radius-xl);
 }
 
@@ -462,8 +383,8 @@ body.admin-body {
     display: flex;
     align-items: flex-start;
     gap: var(--space-4);
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     padding: var(--space-5);
     text-decoration: none;
@@ -492,23 +413,23 @@ body.admin-body {
 
 .ea-kpi-icon.primary { 
     background: var(--primary-100); 
-    color: var(--admin-primary); 
+    color: var(--color-primary); 
 }
 .ea-kpi-icon.success { 
-    background: var(--success-100); 
-    color: var(--admin-success); 
+    background: var(--color-success-light); 
+    color: var(--color-success); 
 }
 .ea-kpi-icon.warning { 
-    background: var(--warning-100); 
-    color: var(--admin-warning); 
+    background: var(--color-warning-light); 
+    color: var(--color-warning); 
 }
 .ea-kpi-icon.danger { 
-    background: var(--danger-100); 
-    color: var(--admin-danger); 
+    background: var(--color-error-light); 
+    color: var(--color-error); 
 }
 .ea-kpi-icon.info {
-    background: var(--info-100);
-    color: var(--admin-info);
+    background: var(--color-info-light);
+    color: var(--color-info);
 }
 
 .ea-kpi-body { 
@@ -520,21 +441,21 @@ body.admin-body {
     font-size: 1.75rem;
     font-weight: 700;
     line-height: 1.2;
-    color: var(--gray-900);
+    color: var(--neutral-900);
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.02em;
 }
 
 .ea-kpi-label {
     font-size: 0.8125rem;
-    color: var(--admin-muted);
+    color: var(--text-muted);
     margin-top: var(--space-1);
     font-weight: 500;
 }
 
 .ea-kpi-sub {
     font-size: 0.75rem;
-    color: var(--gray-400);
+    color: var(--neutral-400);
     margin-top: var(--space-1);
 }
 
@@ -542,8 +463,8 @@ body.admin-body {
    9. Filter Card
    -------------------------------------------------------------------------- */
 .ea-filter-card {
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     padding: var(--space-5);
     box-shadow: var(--shadow-sm);
@@ -562,7 +483,7 @@ body.admin-body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--gray-500);
+    color: var(--neutral-500);
     margin-bottom: var(--space-2);
 }
 
@@ -570,8 +491,8 @@ body.admin-body {
    10. Tables (Modern Minimal)
    -------------------------------------------------------------------------- */
 .ea-table-card {
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
@@ -584,14 +505,14 @@ body.admin-body {
     flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-4) var(--space-6);
-    border-bottom: 1px solid var(--admin-border);
-    background: var(--gray-50);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--neutral-100);
 }
 
 .ea-table-title {
     font-size: 0.9375rem;
     font-weight: 600;
-    color: var(--gray-900);
+    color: var(--neutral-900);
     display: flex;
     align-items: center;
     gap: var(--space-2);
@@ -605,14 +526,14 @@ body.admin-body {
 }
 
 .ea-table thead th {
-    background: var(--gray-50);
+    background: var(--neutral-100);
     font-size: 0.6875rem;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--gray-500);
+    color: var(--neutral-500);
     padding: var(--space-3) var(--space-4);
-    border-bottom: 1px solid var(--admin-border);
+    border-bottom: 1px solid var(--border-default);
     white-space: nowrap;
 }
 
@@ -621,7 +542,7 @@ body.admin-body {
 }
 
 .ea-table tbody tr:hover {
-    background: var(--gray-50);
+    background: var(--neutral-100);
 }
 
 .ea-table tbody tr:last-child td {
@@ -632,7 +553,7 @@ body.admin-body {
     padding: var(--space-3) var(--space-4);
     font-size: 0.8125rem;
     vertical-align: middle;
-    border-bottom: 1px solid var(--admin-border);
+    border-bottom: 1px solid var(--border-default);
 }
 
 .ea-table-footer {
@@ -642,17 +563,17 @@ body.admin-body {
     flex-wrap: wrap;
     gap: var(--space-3);
     padding: var(--space-3) var(--space-6);
-    border-top: 1px solid var(--admin-border);
-    background: var(--gray-50);
+    border-top: 1px solid var(--border-default);
+    background: var(--neutral-100);
 }
 
 .ea-table-info {
     font-size: 0.8125rem;
-    color: var(--gray-500);
+    color: var(--neutral-500);
 }
 
 .ea-cell-muted {
-    color: var(--gray-500);
+    color: var(--neutral-500);
     font-size: 0.75rem;
 }
 
@@ -672,34 +593,34 @@ body.admin-body {
 }
 
 .ea-badge.success {
-    background: var(--success-100);
+    background: var(--color-success-light);
     color: #166534;
 }
 
 .ea-badge.active {
-    background: var(--success-100);
+    background: var(--color-success-light);
     color: #166534;
 }
 
 .ea-badge.inactive,
 .ea-badge.secondary {
-    background: var(--gray-100);
-    color: var(--gray-600);
+    background: var(--neutral-100);
+    color: var(--text-secondary);
 }
 
 .ea-badge.enrolled {
     background: var(--primary-100);
-    color: var(--primary-900);
+    color: #1e3a8a;
 }
 
 .ea-badge.not-enrolled,
 .ea-badge.warning {
-    background: var(--warning-100);
+    background: var(--color-warning-light);
     color: #92400e;
 }
 
 .ea-badge.review {
-    background: var(--danger-100);
+    background: var(--color-error-light);
     color: #991b1b;
 }
 
@@ -710,7 +631,7 @@ body.admin-body {
 
 .ea-badge.time-out {
     background: var(--primary-100);
-    color: var(--primary-900);
+    color: #1e3a8a;
 }
 
 /* --------------------------------------------------------------------------
@@ -720,7 +641,7 @@ body.admin-body {
     width: 2.25rem;
     height: 2.25rem;
     border-radius: 50%;
-    background: linear-gradient(135deg, var(--admin-primary) 0%, var(--primary-700) 100%);
+    background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-hover) 100%);
     color: #fff;
     font-size: 0.6875rem;
     font-weight: 600;
@@ -747,8 +668,8 @@ body.admin-body {
    13. Forms (CSS Grid Layout)
    -------------------------------------------------------------------------- */
 .ea-form-card {
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-sm);
     overflow: hidden;
@@ -757,22 +678,22 @@ body.admin-body {
 .ea-form-header {
     padding: var(--space-5) var(--space-6) 0;
     padding-bottom: var(--space-4);
-    border-bottom: 1px solid var(--admin-border);
-    background: var(--gray-50);
+    border-bottom: 1px solid var(--border-default);
+    background: var(--neutral-100);
 }
 
 .ea-form-title {
     font-size: 1rem;
     font-weight: 600;
     margin: 0;
-    color: var(--gray-900);
+    color: var(--neutral-900);
     display: flex;
     align-items: center;
     gap: var(--space-2);
 }
 
 .ea-form-title i { 
-    color: var(--admin-primary); 
+    color: var(--color-primary); 
 }
 
 .ea-form-body {
@@ -799,8 +720,8 @@ body.admin-body {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--gray-500);
-    border-bottom: 1px solid var(--admin-border);
+    color: var(--neutral-500);
+    border-bottom: 1px solid var(--border-default);
     padding-bottom: var(--space-2);
     margin-bottom: var(--space-4);
     display: flex;
@@ -810,8 +731,8 @@ body.admin-body {
 
 .ea-form-footer {
     padding: var(--space-4) var(--space-6);
-    background: var(--gray-50);
-    border-top: 1px solid var(--admin-border);
+    background: var(--neutral-100);
+    border-top: 1px solid var(--border-default);
     display: flex;
     gap: var(--space-3);
     flex-wrap: wrap;
@@ -822,7 +743,7 @@ body.admin-body {
 .ea-form-body .form-control,
 .ea-form-body .form-select {
     border-radius: var(--radius-md);
-    border-color: var(--admin-border);
+    border-color: var(--border-default);
     padding: var(--space-2) var(--space-3);
     font-size: 0.8125rem;
     transition: all var(--transition-fast);
@@ -830,14 +751,14 @@ body.admin-body {
 
 .ea-form-body .form-control:focus,
 .ea-form-body .form-select:focus {
-    border-color: var(--admin-primary);
-    box-shadow: 0 0 0 3px rgba(var(--admin-primary-rgb), 0.1);
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
 .ea-form-body .form-label {
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--gray-700);
+    color: var(--neutral-700);
     margin-bottom: var(--space-2);
 }
 
@@ -856,27 +777,27 @@ body.admin-body {
 }
 
 .ea-alert.success {
-    background: var(--success-100);
+    background: var(--color-success-light);
     border-color: #bbf7d0;
     color: #166534;
 }
 
 .ea-alert.warning {
-    background: var(--warning-100);
+    background: var(--color-warning-light);
     border-color: #fde68a;
     color: #92400e;
 }
 
 .ea-alert.danger {
-    background: var(--danger-100);
+    background: var(--color-error-light);
     border-color: #fecaca;
     color: #991b1b;
 }
 
 .ea-alert.info {
-    background: var(--primary-50);
+    background: var(--color-primary-light);
     border-color: #bfdbfe;
-    color: var(--primary-900);
+    color: #1e3a8a;
 }
 
 /* --------------------------------------------------------------------------
@@ -885,7 +806,7 @@ body.admin-body {
 .ea-tabs {
     display: flex;
     gap: 0;
-    border-bottom: 1px solid var(--admin-border);
+    border-bottom: 1px solid var(--border-default);
     margin-bottom: var(--space-6);
     overflow-x: auto;
     scrollbar-width: none;
@@ -902,7 +823,7 @@ body.admin-body {
     padding: var(--space-3) var(--space-4);
     font-size: 0.8125rem;
     font-weight: 500;
-    color: var(--gray-500);
+    color: var(--neutral-500);
     text-decoration: none;
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
@@ -911,21 +832,21 @@ body.admin-body {
 }
 
 .ea-tab:hover {
-    color: var(--gray-700);
+    color: var(--neutral-700);
     text-decoration: none;
 }
 
 .ea-tab.active {
-    color: var(--admin-primary);
-    border-bottom-color: var(--admin-primary);
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
 }
 
 /* --------------------------------------------------------------------------
    16. Settings Sections
    -------------------------------------------------------------------------- */
 .ea-settings-section {
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     overflow: hidden;
     margin-bottom: var(--space-6);
@@ -936,15 +857,15 @@ body.admin-body {
     align-items: center;
     gap: var(--space-2);
     padding: var(--space-4) var(--space-5);
-    background: var(--gray-50);
-    border-bottom: 1px solid var(--admin-border);
+    background: var(--neutral-100);
+    border-bottom: 1px solid var(--border-default);
     font-weight: 600;
     font-size: 0.8125rem;
-    color: var(--gray-700);
+    color: var(--neutral-700);
 }
 
 .ea-settings-section-head i { 
-    color: var(--admin-primary); 
+    color: var(--color-primary); 
 }
 
 .ea-settings-section-body {
@@ -964,7 +885,7 @@ body.admin-body {
 .ea-empty {
     text-align: center;
     padding: var(--space-12) var(--space-6);
-    color: var(--gray-500);
+    color: var(--neutral-500);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -975,7 +896,7 @@ body.admin-body {
     font-size: 2.5rem;
     margin-bottom: var(--space-4);
     display: block;
-    color: var(--gray-300);
+    color: var(--neutral-300);
     text-align: center;
     margin-left: auto;
     margin-right: auto;
@@ -985,12 +906,12 @@ body.admin-body {
     font-size: 0.9375rem;
     font-weight: 600;
     margin-bottom: var(--space-2);
-    color: var(--gray-700);
+    color: var(--neutral-700);
 }
 
 .ea-empty-desc {
     font-size: 0.8125rem;
-    color: var(--gray-500);
+    color: var(--neutral-500);
 }
 
 /* --------------------------------------------------------------------------
@@ -1029,8 +950,8 @@ body.admin-body {
 
 .idle-card {
     width: min(420px, calc(100% - 32px));
-    background: var(--admin-surface);
-    border: 1px solid var(--admin-border);
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-default);
     border-radius: var(--radius-xl);
     box-shadow: var(--shadow-xl);
     padding: var(--space-6);
@@ -1041,11 +962,11 @@ body.admin-body {
     font-weight: 700;
     font-size: 1.125rem;
     margin-bottom: var(--space-2);
-    color: var(--gray-900);
+    color: var(--neutral-900);
 }
 
 .idle-text { 
-    color: var(--gray-500);
+    color: var(--neutral-500);
     font-size: 0.875rem;
 }
 
@@ -1053,18 +974,18 @@ body.admin-body {
    20. Footer
    -------------------------------------------------------------------------- */
 .admin-footer {
-    border-top: 1px solid var(--admin-border);
+    border-top: 1px solid var(--border-default);
     padding-top: var(--space-4);
     margin-top: var(--space-8);
     font-size: 0.75rem;
-    color: var(--gray-400);
+    color: var(--neutral-400);
 }
 
 /* --------------------------------------------------------------------------
    21. Utilities
    -------------------------------------------------------------------------- */
 .text-muted { 
-    color: var(--admin-muted) !important; 
+    color: var(--text-muted) !important; 
 }
 
 /* Animation */

@@ -38,7 +38,6 @@ namespace FaceAttend.Services.Biometrics
             public string LastName { get; set; }
             public string MiddleName { get; set; }
             public string Department { get; set; }
-            public bool IsActive { get; set; }
             
             public string DisplayName => string.IsNullOrWhiteSpace(LastName) ? EmployeeId : 
                 $"{LastName}, {FirstName}" + (string.IsNullOrWhiteSpace(MiddleName) ? "" : $" {MiddleName}");
@@ -101,7 +100,7 @@ namespace FaceAttend.Services.Biometrics
                             LastName = emp.LastName,
                             MiddleName = emp.MiddleName,
                             Department = emp.Department,
-                            IsActive = emp.IsActive
+
                         };
                     }
                 }
@@ -195,42 +194,61 @@ namespace FaceAttend.Services.Biometrics
         /// <summary>
         /// Add or update an employee in the cache (call after enrollment).
         /// Uses FaceEncodingHelper for consistent decoding.
+        /// 
+        /// FIX: Also accepts DbContext to ensure transactional consistency.
+        /// If null, creates new context (backward compatible).
         /// </summary>
-        public static void UpdateEmployee(string employeeId)
+        public static void UpdateEmployee(string employeeId, FaceAttendDBEntities db = null)
         {
             _lock.EnterWriteLock();
             try
             {
-                using (var db = new FaceAttendDBEntities())
+                // If no context provided, create one (but this may have visibility issues)
+                if (db == null)
                 {
-                    var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
-                    var emp = FaceEncodingHelper.LoadEmployeeById(db, employeeId, maxPerEmployee);
-
-                    if (emp == null || !emp.IsActive)
+                    db = new FaceAttendDBEntities();
+                    using (db)
                     {
-                        // Remove if exists
-                        _employeeFaces.TryRemove(employeeId, out _);
-                        _employeeInfo.TryRemove(employeeId, out _);
-                        return;
+                        UpdateEmployeeInternal(db, employeeId);
                     }
-
-                    _employeeFaces[emp.EmployeeId] = emp.FaceVectors;
-                    _employeeInfo[emp.EmployeeId] = new EmployeeInfo
-                    {
-                        Id = emp.Id,
-                        EmployeeId = emp.EmployeeId,
-                        FirstName = emp.FirstName,
-                        LastName = emp.LastName,
-                        MiddleName = emp.MiddleName,
-                        Department = emp.Department,
-                        IsActive = emp.IsActive
-                    };
+                }
+                else
+                {
+                    // Use provided context (ensures transactional consistency)
+                    UpdateEmployeeInternal(db, employeeId);
                 }
             }
             finally
             {
                 _lock.ExitWriteLock();
             }
+        }
+        
+        private static void UpdateEmployeeInternal(FaceAttendDBEntities db, string employeeId)
+        {
+            var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+            var emp = FaceEncodingHelper.LoadEmployeeById(db, employeeId, maxPerEmployee);
+
+            if (emp == null)
+            {
+                // Remove if exists
+                _employeeFaces.TryRemove(employeeId, out _);
+                _employeeInfo.TryRemove(employeeId, out _);
+                return;
+            }
+
+            _employeeFaces[emp.EmployeeId] = emp.FaceVectors;
+            _employeeInfo[emp.EmployeeId] = new EmployeeInfo
+            {
+                Id = emp.Id,
+                EmployeeId = emp.EmployeeId,
+                FirstName = emp.FirstName,
+                LastName = emp.LastName,
+                MiddleName = emp.MiddleName,
+                Department = emp.Department,
+            };
+            
+            System.Diagnostics.Trace.TraceInformation($"[FastFaceMatcher] Updated employee {employeeId} with {emp.FaceVectors.Count} vectors");
         }
     }
 }

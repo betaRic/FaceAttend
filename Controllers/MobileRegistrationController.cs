@@ -236,14 +236,6 @@ namespace FaceAttend.Controllers
 
                         // self-enrollment flow
                         Status = "PENDING",
-                        IsActive = false,
-
-                        // pending device info only
-                        DeviceFingerprint = fingerprint,
-                        DeviceName = string.IsNullOrWhiteSpace(vm.DeviceName)
-                            ? "Personal Mobile Device"
-                            : vm.DeviceName.Trim(),
-                        RegisteredFromIp = Request.UserHostAddress,
 
                         CreatedDate = DateTime.UtcNow,
                         EnrolledDate = DateTime.UtcNow,
@@ -397,7 +389,7 @@ namespace FaceAttend.Controllers
                         }
 
                         // IMPORTANT: Only allow ACTIVE employees to identify themselves
-                        var employeeStatus = employee.Status ?? (employee.IsActive ? "ACTIVE" : "INACTIVE");
+                        var employeeStatus = employee.Status ?? "INACTIVE";
                         if (!string.Equals(employeeStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
                         {
                             return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
@@ -574,7 +566,7 @@ namespace FaceAttend.Controllers
                         return JsonResponseBuilder.NotFound("Employee");
 
                     // Only allow ACTIVE employees
-                    var employeeStatus = employee.Status ?? (employee.IsActive ? "ACTIVE" : "INACTIVE");
+                    var employeeStatus = employee.Status ?? "INACTIVE";
                     if (!string.Equals(employeeStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
                         return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
 
@@ -706,7 +698,7 @@ namespace FaceAttend.Controllers
                         return JsonResponseBuilder.Error("INVALID_STATUS", "This enrollment is no longer pending.");
                     }
 
-                    DeviceService.UpdateEmployeePendingDeviceInfo(db, employee.Id, fingerprint, vm.DeviceName, Request.UserHostAddress);
+                    DeviceService.CreatePendingDevice(db, employee.Id, fingerprint, vm.DeviceName, Request.UserHostAddress);
                     
                     // Generate and set device token for persistent identification
                     var deviceToken = DeviceService.GenerateDeviceToken();
@@ -983,7 +975,7 @@ namespace FaceAttend.Controllers
                 }
                 
                 var employee = device.Employee;
-                if (employee == null || !employee.IsActive || employee.Status != "ACTIVE")
+                if (employee == null || employee.Status != "ACTIVE")
                 {
                     return RedirectToAction("Identify");
                 }

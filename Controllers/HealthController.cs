@@ -177,7 +177,7 @@ namespace FaceAttend.Controllers
                         cmd.CommandText = "SELECT @@VERSION";
                         var version = cmd.ExecuteScalar()?.ToString();
                         
-                        cmd.CommandText = "SELECT COUNT(*) FROM Employees WHERE IsActive = 1";
+                        cmd.CommandText = "SELECT COUNT(*) FROM Employees WHERE [Status] = 'ACTIVE'";
                         var empCount = Convert.ToInt32(cmd.ExecuteScalar());
                         
                         cmd.CommandText = "SELECT COUNT(*) FROM Visitors WHERE IsActive = 1";

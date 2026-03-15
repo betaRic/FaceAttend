@@ -7,7 +7,7 @@ using System.Text;
 using System.Web;
 using System.Web.Mvc;
 using FaceAttend.Filters;
-using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Areas.Admin.Helpers;
 using FaceAttend.Services;
 using FaceAttend.Services.Security;
@@ -183,140 +183,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (v == null) return HttpNotFound();
                 return View(v);
             }
-        }
-
-        /// <summary>
-        /// DEPRECATED: Use /api/scan/frame instead.
-        /// This endpoint is kept for backward compatibility but will be removed in a future version.
-        /// </summary>
-        [Obsolete("Use /api/scan/frame instead. This endpoint will be removed in v3.0.")]
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult ScanFrame(HttpPostedFileBase image)
-        {
-            // Redirect to unified API
-            var result = ScanFramePipeline.Run(image, "v_");
-            return Json(result);
-        }
-
-        /// <summary>
-        /// DEPRECATED: Use /api/enrollment/enroll instead.
-        /// This endpoint is kept for backward compatibility but will be removed in a future version.
-        /// </summary>
-        [Obsolete("Use /api/enrollment/enroll instead. This endpoint will be removed in v3.0.")]
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult EnrollFace(int id, HttpPostedFileBase image)
-        {
-            if (image == null || image.ContentLength <= 0)
-                return Json(new { ok = false, error = "NO_IMAGE" });
-
-            var max = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            if (image.ContentLength > max)
-                return Json(new { ok = false, error = "TOO_LARGE" });
-
-            string path = null;
-            string processedPath = null;
-
-            try
-            {
-                path = FileSecurityService.SaveTemp(image, "v_", max);
-
-                bool isProcessed;
-                processedPath = ImagePreprocessor.PreprocessForDetection(path, "v_", out isProcessed);
-
-                var dlib = new DlibBiometrics();
-                DlibBiometrics.FaceBox faceBox;
-                Location faceLocation;
-                string detectErr;
-                if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLocation, out detectErr))
-                    return Json(new { ok = false, error = detectErr ?? "DETECT_FAIL" });
-
-                var live = new OnnxLiveness();
-                var scored = live.ScoreFromFile(processedPath, faceBox);
-                if (!scored.Ok)
-                    return Json(new { ok = false, error = scored.Error });
-
-                var th = (float)ConfigurationService.GetDoubleCached(
-                    "Biometrics:LivenessThreshold",
-                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
-                var p = scored.Probability ?? 0f;
-                if (p < th)
-                    return Json(new { ok = false, error = "LIVENESS_FAIL", liveness = p });
-
-                string encErr;
-                double[] vec;
-                if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLocation, out vec, out encErr) || vec == null)
-                {
-                    var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
-                    if (debug)
-                        return Json(new { ok = false, error = encErr ?? "ENCODING_FAIL", detail = encErr });
-
-                    return Json(new { ok = false, error = encErr ?? "ENCODING_FAIL" });
-                }
-
-                var tol = ConfigurationService.GetDouble("Visitors:DlibTolerance",
-                    ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
-
-                using (var db = new FaceAttendDBEntities())
-                {
-                    var v = db.Visitors.FirstOrDefault(x => x.Id == id);
-                    if (v == null) return Json(new { ok = false, error = "VISITOR_NOT_FOUND" });
-
-                    var entries = VisitorFaceIndex.GetEntries(db);
-                    foreach (var e in entries)
-                    {
-                        if (e.VisitorId == id) continue;
-                        var dist = DlibBiometrics.Distance(vec, e.Vec);
-                        if (dist <= tol)
-                        {
-                            return Json(new
-                            {
-                                ok = false,
-                                error = "FACE_ALREADY_ENROLLED",
-                                matchVisitorId = e.VisitorId,
-                                matchName = e.Name,
-                                distance = dist
-                            });
-                        }
-                    }
-
-                    var bytes = DlibBiometrics.EncodeToBytes(vec);
-                    v.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(bytes);
-                    db.SaveChanges();
-
-                    VisitorFaceIndex.Invalidate();
-                }
-
-                return Json(new { ok = true, liveness = p });
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError("[Visitors.EnrollFace] Enrollment failed: " + ex);
-                var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
-                if (debug)
-                    return Json(new { ok = false, error = "ENROLL_ERROR", detail = ex.Message });
-
-                return Json(new { ok = false, error = "ENROLL_ERROR" });
-            }
-            finally
-            {
-                ImagePreprocessor.Cleanup(processedPath, path);
-                FileSecurityService.TryDelete(path);
-            }
-        }
-
-        /// <summary>
-        /// DEPRECATED: Use /api/enrollment/enroll instead.
-        /// This endpoint is kept for backward compatibility but will be removed in a future version.
-        /// </summary>
-        [Obsolete("Use /api/enrollment/enroll instead. This endpoint will be removed in v3.0.")]
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult EnrollWizard(string employeeId, HttpPostedFileBase image)
-        {
-            // Redirect logic to unified API
-            return RedirectToAction("Enroll", "Enrollment", new { area = "", employeeId });
         }
 
         [HttpGet]

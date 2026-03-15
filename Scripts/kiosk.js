@@ -2,9 +2,11 @@
     'use strict';
 
     // =========
-    // dom refs
+    // dom refs (using FaceAttend.Utils if available)
     // =========
-    var el = function (id) { return document.getElementById(id); };
+    var el = function (id) { 
+        return FaceAttend.Utils ? FaceAttend.Utils.el(id) : document.getElementById(id); 
+    };
 
     var video  = el('kioskVideo');
     var canvas = el('overlayCanvas');
@@ -15,6 +17,7 @@
         timeLine:          el('timeLine'),
         dateLine:          el('dateLine'),
         livenessLine:      el('livenessLine'),
+        livenessBarFill:   el('livenessBarFill'),
         scanEtaLine:       el('scanEtaLine'),
 
         unlockBackdrop:    el('unlockBackdrop'),
@@ -51,7 +54,8 @@
         subPrompt:         el('subPrompt'),
     };
 
-    var token        = (document.querySelector('input[name="__RequestVerificationToken"]') || {}).value || '';
+    var token        = FaceAttend.Utils ? FaceAttend.Utils.getCsrfToken() : 
+                       ((document.querySelector('input[name="__RequestVerificationToken"]') || {}).value || '');
     var appBase      = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
     var nextGenEnabled = (document.body.getAttribute('data-nextgen') || 'false').toLowerCase() === 'true';
 
@@ -395,13 +399,19 @@
     }
 
     // =========
-    // toast
+    // toast (delegates to FaceAttend.Notify if available)
     // =========
     function toast(type, text) {
         var msg = (text || '').toString().trim();
         if (!msg) return;
         
-        // Use SweetAlert2 for better visibility with auto-close
+        // Use FaceAttend.Notify if available
+        if (FaceAttend.Notify) {
+            FaceAttend.Notify.toast(msg, { type: type, duration: type === 'success' ? 3000 : 4000 });
+            return;
+        }
+        
+        // Fallback to SweetAlert2
         if (window.Swal) {
             var isSuccess = type === 'success';
             var isError = type === 'error';
@@ -415,15 +425,12 @@
                 toast: true,
                 position: 'top-end',
                 showConfirmButton: false,
-                timer: isSuccess ? 3000 : 4000,  // Auto-close faster for success
+                timer: isSuccess ? 3000 : 4000,
                 timerProgressBar: true,
                 background: isSuccess ? '#f0fdf4' : (isError ? '#fef2f2' : '#eff6ff'),
                 color: isSuccess ? '#166534' : (isError ? '#991b1b' : '#1e40af'),
-                customClass: {
-                    popup: 'kiosk-toast-popup'
-                },
+                customClass: { popup: 'kiosk-toast-popup' },
                 didOpen: function(popup) {
-                    // Add custom styling
                     popup.style.borderRadius = '12px';
                     popup.style.boxShadow = '0 10px 40px rgba(0,0,0,0.2)';
                 }
@@ -439,8 +446,6 @@
                 stopOnFocus: true,
                 style:       { background: bg },
             }).showToast();
-        } else {
-
         }
     }
 
@@ -858,6 +863,14 @@
         ui.livenessLine.textContent = statusText;
         ui.livenessLine.classList.remove('live-pass','live-near','live-fail','live-unk');
         ui.livenessLine.classList.add(cls || 'live-unk');
+        
+        // Update liveness bar visual (interactive bar that fills left to right)
+        if (ui.livenessBarFill) {
+            var barWidth = hasP ? Math.round(p * 100) + '%' : '0%';
+            ui.livenessBarFill.style.width = barWidth;
+            ui.livenessBarFill.classList.remove('live-pass','live-near','live-fail','live-unk');
+            ui.livenessBarFill.classList.add(cls || 'live-unk');
+        }
     }
 
     // =========
@@ -2721,8 +2734,8 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
         wireVisitorUi();
 
         setIdleUi(true);
-        setPrompt('Preparing kiosk.', 'Please wait while the location is verified.');
-        setEta('ETA: locating');
+        setPrompt('Initializing...', 'Loading face detection models (this may take 15 seconds).');
+        setEta('ETA: loading');
         setLiveness(null, null, 'live-unk');
         applyLocationUi();
 
@@ -2768,6 +2781,55 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
 
                 setEta('ETA: blocked');
             });
+    })();
+
+    // =========================================================================
+    // HANDLE PAGE VISIBILITY - Resume camera when returning from admin
+    // =========================================================================
+    (function initVisibilityHandling() {
+        // When navigating back from admin, the page may be restored from cache
+        // but the video stream is paused/frozen. We need to resume it.
+        
+        function resumeCameraIfNeeded() {
+            if (video.paused || video.ended) {
+                log('Resuming camera after page restore');
+                video.play().catch(function(e) {
+                    log('Failed to resume video', e);
+                    // If play fails, try restarting camera entirely
+                    startCamera().catch(function(e2) {
+                        log('Camera restart failed', e2);
+                    });
+                });
+            }
+            
+            // Reset the local sense data to avoid false motion readings
+            lastSenseData = null;
+            state.localSeenAt = Date.now();
+        }
+        
+        // Handle visibility change (when user switches back to this tab)
+        document.addEventListener('visibilitychange', function() {
+            if (!document.hidden) {
+                log('Page became visible, resuming camera');
+                resumeCameraIfNeeded();
+            }
+        });
+        
+        // Handle pageshow - fires when page is restored from bfcache (back button)
+        window.addEventListener('pageshow', function(e) {
+            if (e.persisted) {
+                log('Page restored from cache, resuming camera');
+                resumeCameraIfNeeded();
+            }
+        });
+        
+        // Also handle focus events as a fallback
+        window.addEventListener('focus', function() {
+            if (video.paused) {
+                log('Window focused, resuming camera');
+                resumeCameraIfNeeded();
+            }
+        });
     })();
     
     // =========================================================================

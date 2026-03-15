@@ -97,11 +97,11 @@
                     <div class="row g-3">
                         <div class="col-md-6">
                             <label class="form-label">Position</label>
-                            @Html.TextBoxFor(m => m.Position, new { @class = "form-control" })
+                            @Html.TextBoxFor(m => m.Position, new { @class = "form-control", style = "text-transform:uppercase;" })
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Department</label>
-                            @Html.TextBoxFor(m => m.Department, new { @class = "form-control" })
+                            @Html.TextBoxFor(m => m.Department, new { @class = "form-control", style = "text-transform:uppercase;" })
                         </div>
                         <div class="col-md-8">
                             <label class="form-label">Assigned Office <span class="text-danger">*</span></label>
@@ -165,7 +165,7 @@
 @section scripts {
     @Scripts.Render("~/bundles/jqueryval")
     <script>
-    ['EmployeeId','FirstName','MiddleName','LastName'].forEach(function(id) {
+    ['EmployeeId','FirstName','MiddleName','LastName','Position','Department'].forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('input', function () {

@@ -4,7 +4,7 @@
     Response.Cache.SetNoStore();
 }
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="kiosk">
 <head>
     <meta charset="utf-8" />
     <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0" />
@@ -12,9 +12,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>DILG Region XII Face Attendance Kiosk</title>
 
-    @Styles.Render("~/Content/kiosk-base")
+    @Styles.Render("~/Content/css")
+    @Styles.Render("~/Content/fa-system")      @* Design System Tokens (v3) *@
     @Styles.Render("~/Content/kiosk-vendor")
-    @Styles.Render("~/Content/facescan-v2")
     @Styles.Render("~/Content/kiosk")
 </head>
 <body
@@ -116,7 +116,9 @@
         <!-- HUD: Top Right -->
         <div id="topRight" class="hud-panel">
             <div id="livenessLine" class="live-unk">Waiting</div>
-            <div id="livenessBar" style="width:100%;height:3px;margin-top:8px;border-radius:2px;background:#6b7280;transition:all 0.2s"></div>
+            <div id="livenessBarWrap">
+                <div id="livenessBarFill" class="liveness-bar-fill"></div>
+            </div>
         </div>
 
         <!-- Center: Status Messages -->
@@ -224,6 +226,7 @@
     @Scripts.Render("~/bundles/jquery")
     <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
     @Scripts.Render("~/bundles/kiosk-vendor")
+    @Scripts.Render("~/bundles/fa-core")
     @Scripts.Render("~/bundles/kiosk")
     
     <!-- Audio Manager for Success Sounds -->

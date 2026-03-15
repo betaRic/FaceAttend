@@ -580,12 +580,13 @@
         var links = $$('.admin-nav-link');
         if (!links.length) return;
 
+        // Skip if server-side Razor already marked any link as active
+        var hasServerActive = links.some(function(l) { return l.classList.contains('active'); });
+        if (hasServerActive) return;
+
         var path = location.pathname.toLowerCase().replace(/\/$/, '');
 
         links.forEach(function (link) {
-            // Skip if already marked by server-side Razor
-            if (link.classList.contains('active')) return;
-
             var href = (link.getAttribute('href') || '').toLowerCase().replace(/\/$/, '');
             if (!href || href === '#') return;
 

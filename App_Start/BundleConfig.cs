@@ -6,23 +6,47 @@ using FaceAttend.Services.Helpers;
 namespace FaceAttend
 {
     /// <summary>
-    /// Unified Bundle Configuration for FaceAttend v2
+    /// Unified Bundle Configuration for FaceAttend v3 (Unification)
+    /// 
+    /// DESIGN SYSTEM PRINCIPLE:
+    ///   fa-design-system.css is THE SINGLE SOURCE OF TRUTH for all CSS tokens.
+    ///   All surface files (admin.css, kiosk.css) load this first, then add only
+    ///   their component styles. No :root {} blocks in surface files.
     /// 
     /// BUNDLE STRUCTURE:
+    ///   VENDOR JS:
     ///   ~/bundles/jquery           - jQuery core
     ///   ~/bundles/jqueryval        - jQuery validation
     ///   ~/bundles/bootstrap        - Bootstrap JS
-    ///   ~/bundles/vendor           - Third-party plugins
-    ///   ~/bundles/facescan-core    - Core face scanning modules
-    ///   ~/bundles/facescan-ui      - UI components (v2 simplified)
+    ///   ~/bundles/toastr           - Toastr notifications
+    ///   ~/bundles/vendor           - DataTables + SweetAlert2
+    ///   ~/bundles/kiosk-vendor     - Toastify + Leaflet + SweetAlert2
+    ///   ~/bundles/sweetalert       - SweetAlert2 standalone
+    ///   
+    ///   FACEATTEND CORE (all surfaces use this):
+    ///   ~/bundles/fa-core          - Utils + Camera + API + Notify + FaceScan
+    ///   ~/bundles/facescan-core    - ALIAS for fa-core (backward compat)
+    ///   
+    ///   SURFACE JS:
     ///   ~/bundles/admin            - Admin scripts
     ///   ~/bundles/kiosk            - Kiosk scripts
+    ///   ~/bundles/enrollment       - Enrollment core + UI
+    ///   ~/bundles/facescan-ui      - Camera/progress UI components
     ///   
-    ///   ~/Content/css              - Base CSS (Bootstrap, Toastr)
-    ///   ~/bundles/vendor-css       - Third-party CSS
-    ///   ~/Content/facescan-v2      - Unified design system (v2 - USE THIS)
-    ///   ~/Content/admin            - Admin styles
-    ///   ~/Content/kiosk            - Kiosk styles
+    ///   VENDOR CSS:
+    ///   ~/Content/css              - Bootstrap + Toastr (admin base)
+    ///   ~/bundles/vendor-css       - FontAwesome + DataTables + SweetAlert2
+    ///   ~/Content/kiosk-vendor     - Toastify + Leaflet + SweetAlert2
+    ///   
+    ///   DESIGN SYSTEM CSS (all surfaces use this):
+    ///   ~/Content/fa-system        - fa-design-system.css (THE TOKENS)
+    ///   ~/Content/facescan-v2      - DEPRECATED: will be removed (use fa-system)
+    ///   
+    ///   SURFACE CSS:
+    ///   ~/Content/admin            - Admin component styles
+    ///   ~/Content/kiosk            - Kiosk component styles
+    ///   ~/Content/fa-mobile        - Mobile component styles (was mobile-kiosk)
+    ///   ~/Content/enrollment       - Enrollment component styles
     /// </summary>
     public class BundleConfig
     {
@@ -88,8 +112,19 @@ namespace FaceAttend
             }
             bundles.Add(kioskVendor);
 
-            // FaceAttend Core Modules (Camera, API, Notify, FaceScan)
+            // FaceAttend Core — Single source of truth for all surfaces
+            // Provides: FaceAttend.Utils, FaceAttend.Camera, FaceAttend.API, FaceAttend.Notify, FaceAttend.FaceScan
+            var faCore = new ScriptBundle("~/bundles/fa-core")
+                .Include("~/Scripts/core/fa-helpers.js")   // FaceAttend.Utils ($, $$, el, debounce, getCsrfToken, ready)
+                .Include("~/Scripts/core/camera.js")       // FaceAttend.Camera
+                .Include("~/Scripts/core/api.js")          // FaceAttend.API
+                .Include("~/Scripts/core/notify.js")       // FaceAttend.Notify (toast, confirm, alert)
+                .Include("~/Scripts/core/facescan.js");    // FaceAttend.FaceScan
+            bundles.Add(faCore);
+            
+            // Alias for backward compatibility (layouts that reference ~/bundles/facescan-core)
             bundles.Add(new ScriptBundle("~/bundles/facescan-core")
+                .Include("~/Scripts/core/fa-helpers.js")
                 .Include("~/Scripts/core/camera.js")
                 .Include("~/Scripts/core/api.js")
                 .Include("~/Scripts/core/notify.js")
@@ -107,14 +142,15 @@ namespace FaceAttend
             bundles.Add(new ScriptBundle("~/bundles/kiosk")
                 .Include("~/Scripts/kiosk.js"));
 
-            // Enrollment Bundle (Core + UI + Enrollment logic)
+            // Enrollment Bundle (Core + Enrollment logic)
+            // Order matters: fa-helpers must be first (provides Utils for other modules)
             bundles.Add(new ScriptBundle("~/bundles/enrollment")
+                .Include("~/Scripts/core/fa-helpers.js")
                 .Include("~/Scripts/core/camera.js")
                 .Include("~/Scripts/core/api.js")
                 .Include("~/Scripts/core/notify.js")
                 .Include("~/Scripts/core/facescan.js")
-                .Include("~/Scripts/facescan-ui.js")
-                .Include("~/Scripts/modules/enrollment-core-refactored.js")
+                .Include("~/Scripts/modules/enrollment-core.js")
                 .Include("~/Scripts/enrollment-ui.js"));
 
             // =================================================================
@@ -158,26 +194,33 @@ namespace FaceAttend
             }
             bundles.Add(kioskVendorCss);
 
-            // Kiosk Base
-            bundles.Add(new StyleBundle("~/Content/kiosk-base")
-                .Include("~/Content/bootstrap.min.css"));
-
-            // FaceAttend v2 - Unified Design System (SIMPLIFIED - USE THIS)
+            // FaceAttend Design System — THE SINGLE SOURCE OF TRUTH for CSS tokens
+            // All surfaces must load this BEFORE their surface-specific CSS
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/fa-system")
+                .Include("~/Content/fa-design-system.css"));
+            
+            // NOTE: ~/Content/kiosk-base removed - use ~/Content/bootstrap directly
+            // Kiosk pages should load: ~/Content/bootstrap → ~/Content/fa-system → ~/Content/kiosk
+            
+            // DEPRECATED: Will be removed in Phase 3. Use ~/Content/fa-system instead.
             bundles.Add(new NonMinifiedStyleBundle("~/Content/facescan-v2")
                 .Include("~/Content/facescan-v2.css"));
 
-            // Legacy bundles (for backward compatibility)
-            bundles.Add(new NonMinifiedStyleBundle("~/Content/facescan")
-                .Include("~/Content/_tokens.css")
-                .Include("~/Content/_components.css"));
+            // NOTE: Legacy bundles removed in Phase 3
+            // ~/Content/facescan, ~/Content/facescan-v2, ~/Content/kiosk-base
+            // All tokens now in ~/Content/fa-system (fa-design-system.css)
 
-            // Admin CSS
-            bundles.Add(new StyleBundle("~/Content/admin")
+            // Admin CSS - Use NonMinifiedStyleBundle to preserve CSS custom properties
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/admin")
                 .Include("~/Content/admin.css"));
 
-            // Kiosk CSS
-            bundles.Add(new StyleBundle("~/Content/kiosk")
+            // Kiosk CSS - Use NonMinifiedStyleBundle to preserve CSS custom properties
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/kiosk")
                 .Include("~/Content/kiosk.css"));
+            
+            // Mobile CSS - Use NonMinifiedStyleBundle to preserve CSS custom properties
+            bundles.Add(new NonMinifiedStyleBundle("~/Content/fa-mobile")
+                .Include("~/Content/fa-mobile.css"));
 
             // Enrollment CSS
             bundles.Add(new NonMinifiedStyleBundle("~/Content/enrollment")

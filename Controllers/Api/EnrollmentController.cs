@@ -269,11 +269,12 @@ namespace FaceAttend.Controllers.Api
                 emp.Status = "ACTIVE";
 
                 db.SaveChanges();
+                
+                // Cache invalidation - PASS DB CONTEXT to ensure transactional consistency
+                // This ensures the cache sees the just-committed data
+                FastFaceMatcher.UpdateEmployee(employeeId, db);
+                EmployeeFaceIndex.Invalidate();
             }
-
-            // Cache invalidation
-            FastFaceMatcher.UpdateEmployee(employeeId);
-            EmployeeFaceIndex.Invalidate();
 
             return JsonResponseBuilder.Success(new
             {

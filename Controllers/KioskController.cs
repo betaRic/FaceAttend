@@ -582,6 +582,20 @@ namespace FaceAttend.Controllers
                         bestEmpId = matchResult.Employee?.EmployeeId;
                         bestDist = matchResult.Distance;
                         mark("match_fast_ms");
+                        
+                        // SAFETY CHECK: If confidence is borderline (0.6-0.85), verify with DB
+                        // This prevents cache-related misidentification
+                        if (matchResult.Confidence < 0.85)
+                        {
+                            var dbEmpId = EmployeeFaceIndex.FindNearest(db, vec, attendanceTol, out var dbDist);
+                            if (dbEmpId != bestEmpId || dbDist > attendanceTol)
+                            {
+                                // Cache and DB disagree - use DB result (more reliable)
+                                System.Diagnostics.Trace.TraceWarning($"[Kiosk] Cache/DB mismatch: cache={bestEmpId}({bestDist:F3}), db={dbEmpId}({dbDist:F3})");
+                                bestEmpId = dbEmpId;
+                                bestDist = dbDist;
+                            }
+                        }
                     }
                     else
                     {
@@ -662,7 +676,7 @@ namespace FaceAttend.Controllers
                             timings, includePerfTimings);
                     }
 
-                    var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == bestEmpId && x.IsActive);
+                    var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == bestEmpId && x.Status == "ACTIVE");
                     if (emp == null)
                         return JsonResponseBuilder.ErrorWithTimings("EMPLOYEE_NOT_FOUND", timings, includePerfTimings);
 
@@ -822,7 +836,8 @@ namespace FaceAttend.Controllers
 
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                    var rec = AttendanceService.Record(db, log, requestedAtUtc);
+                    var svc = new AttendanceService(db);
+                    var rec = svc.Record(log, requestedAtUtc);
                     mark("db_ms");
 
                     if (!rec.Ok)

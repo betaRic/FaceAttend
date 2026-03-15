@@ -4,7 +4,7 @@
    Main admin dashboard view for FaceAttend.
    
    DEPENDENCIES (ViewModel):
-     FaceAttend.Areas.Admin.Models.DashboardViewModel
+     FaceAttend.Models.ViewModels.Admin.DashboardViewModel
      - KPI counts, recent logs, system health flags, circuit breaker flags
    
    SECTIONS:
@@ -18,7 +18,7 @@
      patched in-place.  Element IDs must match kpiMap in the scripts section.
    ============================================================================ *@
 
-@model FaceAttend.Areas.Admin.Models.DashboardViewModel
+@model FaceAttend.Models.ViewModels.Admin.DashboardViewModel
 @{
     ViewBag.Title = "Dashboard";
 }

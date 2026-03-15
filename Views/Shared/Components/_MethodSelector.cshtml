@@ -1,4 +1,5 @@
-@model FaceAttend.ViewModels.MethodSelectorViewModel
+@using FaceAttend.Models.ViewModels.Shared
+@model FaceAttend.Models.ViewModels.Shared.MethodSelectorViewModel
 @*
     MethodSelector Component - Selection cards for enrollment methods
     
@@ -40,8 +41,8 @@
              role="button"
              tabindex="0"
              data-method="@method.Id"
-             onclick="@Model.OnSelect('@method.Id')"
-             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();@Model.OnSelect('@method.Id')}">
+             onclick="@(Model.OnSelect)(this.getAttribute('data-method'))"
+             onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();@(Model.OnSelect)(this.getAttribute('data-method'));}">
             
             <div class="fa-method__icon">
                 <i class="fa-solid @method.Icon"></i>

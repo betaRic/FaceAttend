@@ -5,7 +5,8 @@ using System.Data.SqlClient;
 using System.Globalization;
 using System.Linq;
 using System.Web.Mvc;
-using FaceAttend.Areas.Admin.Models;
+using FaceAttend.Models.ViewModels.Admin;
+using FaceAttend.Models.Dtos;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
@@ -54,7 +55,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 SetOffices(db, null);
                 return View(new EmployeeEditVm
                 {
-                    IsActive = true,
                     Status = "ACTIVE"
                 });
             }
@@ -70,7 +70,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.LastName = (vm.LastName ?? "").Trim();
             vm.Position = (vm.Position ?? "").Trim();
             vm.Status = "ACTIVE";
-            vm.IsActive = true;
 
             using (var db = new FaceAttendDBEntities())
             {
@@ -98,7 +97,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                     Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim(),
                     OfficeId = vm.OfficeId,
                     IsFlexi = vm.IsFlexi,
-                    IsActive = true,
                     Status = "ACTIVE",
                     CreatedDate = DateTime.UtcNow,
                     LastModifiedDate = DateTime.UtcNow,
@@ -142,7 +140,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                         emp.Department,
                         emp.OfficeId,
                         emp.IsFlexi,
-                        emp.IsActive,
                         Status = "ACTIVE"
                     });
 
@@ -171,7 +168,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     Department = emp.Department,
                     OfficeId = emp.OfficeId,
                     IsFlexi = emp.IsFlexi,
-                    IsActive = emp.IsActive,
+
                     Status = DeviceService.GetEmployeeStatus(db, emp.Id)
                 };
 
@@ -189,7 +186,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.LastName = (vm.LastName ?? "").Trim();
             vm.Position = (vm.Position ?? "").Trim();
             vm.Status = NormalizeStatus(vm.Status);
-            vm.IsActive = string.Equals(vm.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase);
+
 
             using (var db = new FaceAttendDBEntities())
             {
@@ -220,7 +217,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                     emp.Department,
                     emp.OfficeId,
                     emp.IsFlexi,
-                    emp.IsActive,
                     Status = oldStatus
                 };
 
@@ -232,7 +228,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 emp.Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim();
                 emp.OfficeId = vm.OfficeId;
                 emp.IsFlexi = vm.IsFlexi;
-                emp.IsActive = vm.IsActive;
+
                 emp.LastModifiedDate = DateTime.UtcNow;
                 emp.ModifiedBy = AuditHelper.GetActorIp(Request);
                 
@@ -300,7 +296,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                         emp.Department,
                         emp.OfficeId,
                         emp.IsFlexi,
-                        emp.IsActive,
                         Status = vm.Status
                     });
 
@@ -356,7 +351,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (emp == null) return HttpNotFound();
 
                 var oldStatus = DeviceService.GetEmployeeStatus(db, emp.Id);
-                emp.IsActive = false;
+
                 emp.LastModifiedDate = DateTime.UtcNow;
                 emp.ModifiedBy = AuditHelper.GetActorIp(Request);
                 db.SaveChanges();
@@ -369,8 +364,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                     "Employee",
                     emp.EmployeeId,
                     $"Set employee inactive: {emp.FirstName} {emp.LastName}",
-                    new { Status = oldStatus, emp.IsActive },
-                    new { Status = "INACTIVE", IsActive = false });
+                    new { Status = oldStatus },
+                    new { Status = "INACTIVE" });
 
                 EmployeeFaceIndex.Invalidate();
                 FastFaceMatcher.ReloadFromDatabase();
@@ -508,9 +503,8 @@ SELECT e.Id,
        e.OfficeId,
        ISNULL(o.Name, '-') AS OfficeName,
        e.IsFlexi,
-       e.IsActive,
        CASE WHEN e.FaceEncodingBase64 IS NOT NULL OR e.FaceEncodingsJson IS NOT NULL THEN CAST(1 AS bit) ELSE CAST(0 AS bit) END AS HasFace,
-       ISNULL(e.[Status], CASE WHEN e.IsActive = 1 THEN 'ACTIVE' ELSE 'INACTIVE' END) AS [Status],
+       ISNULL(e.[Status], 'INACTIVE') AS [Status],
        e.CreatedDate
 FROM dbo.Employees e
 LEFT JOIN dbo.Offices o ON o.Id = e.OfficeId
@@ -522,8 +516,8 @@ WHERE (@term = ''
        OR ISNULL(e.Department, '') LIKE @like
        OR ISNULL(e.Position, '') LIKE @like)
   AND (@status = 'ALL'
-       OR ISNULL(e.[Status], CASE WHEN e.IsActive = 1 THEN 'ACTIVE' ELSE 'INACTIVE' END) = @status)
-ORDER BY CASE WHEN ISNULL(e.[Status], CASE WHEN e.IsActive = 1 THEN 'ACTIVE' ELSE 'INACTIVE' END) = 'PENDING' THEN 0 ELSE 1 END,
+       OR ISNULL(e.[Status], 'INACTIVE') = @status)
+ORDER BY CASE WHEN ISNULL(e.[Status], 'INACTIVE') = 'PENDING' THEN 0 ELSE 1 END,
          e.LastName,
          e.FirstName,
          e.EmployeeId",
@@ -542,23 +536,4 @@ ORDER BY CASE WHEN ISNULL(e.[Status], CASE WHEN e.IsActive = 1 THEN 'ACTIVE' ELS
             return normalized;
         }
     }
-
-    public class EmployeeListRowVm
-    {
-        public int Id { get; set; }
-        public string EmployeeId { get; set; }
-        public string FirstName { get; set; }
-        public string MiddleName { get; set; }
-        public string LastName { get; set; }
-        public string Position { get; set; }
-        public string Department { get; set; }
-        public int OfficeId { get; set; }
-        public string OfficeName { get; set; }
-        public bool IsFlexi { get; set; }
-        public bool IsActive { get; set; }
-        public bool HasFace { get; set; }
-        public string Status { get; set; }
-        public DateTime CreatedDate { get; set; }
-    }
-
 }

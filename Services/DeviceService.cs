@@ -475,26 +475,22 @@ namespace FaceAttend.Services
                 return OperationResult<int>.Fail("INVALID_STATUS", "Employee is not pending approval.");
             }
 
-            var pendingInfo = db.Database.SqlQuery<PendingEmployeeData>(
-                @"SELECT DeviceFingerprint, DeviceName, RegisteredFromIp
-                  FROM dbo.Employees
-                  WHERE Id = @id",
-                new SqlParameter("@id", employee.Id))
-                .FirstOrDefault();
+            // Get pending device info from Devices table (not Employees table - columns removed in schema update)
+            var pendingDevice = db.Devices
+                .FirstOrDefault(d => d.EmployeeId == employee.Id && d.Status == "PENDING");
 
             // FIX: Always activate employee regardless of device info
-            employee.IsActive = true;
             employee.LastModifiedDate = DateTime.UtcNow;
             employee.ModifiedBy = adminId.ToString();
             db.SaveChanges();
 
             SetEmployeeStatus(db, employee.Id, "ACTIVE", adminId.ToString());
 
-            // FIX: Create device record if we have fingerprint, but don't fail if missing
+            // FIX: Approve pending device if exists, but don't fail if missing
             // (device can be registered later via self-enrollment flow)
-            if (pendingInfo != null && !string.IsNullOrWhiteSpace(pendingInfo.DeviceFingerprint))
+            if (pendingDevice != null && !string.IsNullOrWhiteSpace(pendingDevice.Fingerprint))
             {
-                var fingerprintDevice = db.Devices.FirstOrDefault(d => d.Fingerprint == pendingInfo.DeviceFingerprint);
+                var fingerprintDevice = db.Devices.FirstOrDefault(d => d.Fingerprint == pendingDevice.Fingerprint);
                 if (fingerprintDevice != null && fingerprintDevice.EmployeeId != employee.Id)
                 {
                     return OperationResult<int>.Fail("DEVICE_REGISTERED_TO_OTHER",
@@ -502,7 +498,7 @@ namespace FaceAttend.Services
                 }
 
                 var activeDevices = db.Devices
-                    .Where(d => d.EmployeeId == employee.Id && d.Status == "ACTIVE" && d.Fingerprint != pendingInfo.DeviceFingerprint)
+                    .Where(d => d.EmployeeId == employee.Id && d.Status == "ACTIVE" && d.Fingerprint != pendingDevice.Fingerprint)
                     .ToList();
 
                 foreach (var oldDevice in activeDevices)
@@ -516,14 +512,14 @@ namespace FaceAttend.Services
                     db.Devices.Add(new Device
                     {
                         EmployeeId = employee.Id,
-                        Fingerprint = pendingInfo.DeviceFingerprint,
-                        DeviceName = SanitizeDeviceName(pendingInfo.DeviceName),
+                        Fingerprint = pendingDevice.Fingerprint,
+                        DeviceName = SanitizeDeviceName(pendingDevice.DeviceName),
                         DeviceType = "MOBILE",
                         Status = "ACTIVE",
                         RegisteredAt = DateTime.UtcNow,
                         ApprovedAt = DateTime.UtcNow,
                         ApprovedBy = adminId,
-                        RegisteredFromIp = pendingInfo.RegisteredFromIp,
+                        RegisteredFromIp = pendingDevice.RegisteredFromIp,
                         // FIX: Also set device token for persistent identification
                         DeviceToken = GenerateDeviceToken(),
                         TokenExpiresAt = DateTime.UtcNow.AddDays(DeviceTokenExpiryDays)
@@ -532,12 +528,12 @@ namespace FaceAttend.Services
                 else
                 {
                     fingerprintDevice.EmployeeId = employee.Id;
-                    fingerprintDevice.DeviceName = SanitizeDeviceName(pendingInfo.DeviceName);
+                    fingerprintDevice.DeviceName = SanitizeDeviceName(pendingDevice.DeviceName);
                     fingerprintDevice.DeviceType = "MOBILE";
                     fingerprintDevice.Status = "ACTIVE";
                     fingerprintDevice.ApprovedAt = DateTime.UtcNow;
                     fingerprintDevice.ApprovedBy = adminId;
-                    fingerprintDevice.RegisteredFromIp = pendingInfo.RegisteredFromIp;
+                    fingerprintDevice.RegisteredFromIp = pendingDevice.RegisteredFromIp;
                     // FIX: Ensure device has token
                     if (string.IsNullOrEmpty(fingerprintDevice.DeviceToken))
                     {
@@ -549,14 +545,7 @@ namespace FaceAttend.Services
                 db.SaveChanges();
             }
 
-            db.Database.ExecuteSqlCommand(
-                @"UPDATE dbo.Employees
-                  SET DeviceFingerprint = NULL,
-                      DeviceName = NULL,
-                      RegisteredFromIp = NULL
-                  WHERE Id = @id",
-                new SqlParameter("@id", employee.Id));
-
+            // Device info is now stored in Devices table only (columns removed from Employees)
             Services.Biometrics.EmployeeFaceIndex.Invalidate();
             global::FaceAttend.Services.Biometrics.FastFaceMatcher.ReloadFromDatabase();
 
@@ -586,7 +575,6 @@ namespace FaceAttend.Services
             if (!string.Equals(currentStatus, "PENDING", StringComparison.OrdinalIgnoreCase))
                 return OperationResult.Fail("INVALID_STATUS", "Employee is not pending");
 
-            employee.IsActive = false;
             employee.LastModifiedDate = DateTime.UtcNow;
             employee.ModifiedBy = adminId.ToString();
             db.SaveChanges();
@@ -634,20 +622,33 @@ namespace FaceAttend.Services
                 new SqlParameter("@id", employeeId));
         }
 
-        public static void UpdateEmployeePendingDeviceInfo(FaceAttendDBEntities db, int employeeId, string fingerprint, string deviceName, string ipAddress)
+        /// <summary>
+        /// Creates a pending device record for a new employee enrollment.
+        /// Device info is stored in the Devices table (columns removed from Employees in schema update).
+        /// </summary>
+        public static void CreatePendingDevice(FaceAttendDBEntities db, int employeeId, string fingerprint, string deviceName, string ipAddress)
         {
-            db.Database.ExecuteSqlCommand(
-                @"UPDATE dbo.Employees
-                  SET DeviceFingerprint = @fingerprint,
-                      DeviceName = @deviceName,
-                      RegisteredFromIp = @ip,
-                      LastModifiedDate = @modifiedAt
-                  WHERE Id = @id",
-                new SqlParameter("@fingerprint", (object)(fingerprint ?? "") ?? DBNull.Value),
-                new SqlParameter("@deviceName", (object)SanitizeDeviceName(deviceName) ?? DBNull.Value),
-                new SqlParameter("@ip", (object)ipAddress ?? DBNull.Value),
-                new SqlParameter("@modifiedAt", DateTime.UtcNow),
-                new SqlParameter("@id", employeeId));
+            // Remove any existing pending devices for this employee
+            var existingPending = db.Devices.Where(d => d.EmployeeId == employeeId && d.Status == "PENDING").ToList();
+            foreach (var d in existingPending)
+            {
+                d.Status = "REPLACED";
+            }
+            
+            db.Devices.Add(new Device
+            {
+                EmployeeId = employeeId,
+                Fingerprint = fingerprint,
+                DeviceName = SanitizeDeviceName(deviceName),
+                DeviceType = "MOBILE",
+                Status = "PENDING",
+                RegisteredAt = DateTime.UtcNow,
+                RegisteredFromIp = ipAddress,
+                DeviceToken = GenerateDeviceToken(),
+                TokenExpiresAt = DateTime.UtcNow.AddDays(DeviceTokenExpiryDays)
+            });
+            
+            db.SaveChanges();
         }
 
         private static string NormalizeEmployeeStatus(string status)
@@ -658,13 +659,6 @@ namespace FaceAttend.Services
                 normalized = "ACTIVE";
             }
             return normalized;
-        }
-
-        private class PendingEmployeeData
-        {
-            public string DeviceFingerprint { get; set; }
-            public string DeviceName { get; set; }
-            public string RegisteredFromIp { get; set; }
         }
 
         #endregion

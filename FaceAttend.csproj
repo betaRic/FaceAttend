@@ -233,7 +233,6 @@
     <Compile Include="App_Start\FilterConfig.cs" />
     <Compile Include="App_Start\RouteConfig.cs" />
     <Compile Include="Areas\Admin\AdminAreaRegistration.cs" />
-    <Compile Include="Areas\Admin\Filters\HandleAdminErrorAttribute.cs" />
     <Compile Include="Areas\Admin\Controllers\AttendanceController.cs" />
     <Compile Include="Areas\Admin\Controllers\DashboardController.cs" />
     <Compile Include="Areas\Admin\Controllers\EmployeesController.cs" />
@@ -241,21 +240,16 @@
     <Compile Include="Areas\Admin\Controllers\OfficesController.cs" />
     <Compile Include="Areas\Admin\Controllers\SettingsController.cs" />
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
+    <Compile Include="Areas\Admin\Filters\HandleAdminErrorAttribute.cs" />
     <Compile Include="Areas\Admin\Helpers\AdminQueryHelper.cs" />
-    <Compile Include="Areas\Admin\Helpers\SettingsViewModelBuilder.cs" />
-    <Compile Include="Areas\Admin\Helpers\SettingsValidator.cs" />
     <Compile Include="Areas\Admin\Helpers\SettingsSaver.cs" />
-    <Compile Include="Areas\Admin\Models\AttendanceDetailsVm.cs" />
-    <Compile Include="Areas\Admin\Models\AttendanceIndexVm.cs" />
-    <Compile Include="Areas\Admin\Models\DashboardViewModel.cs" />
-    <Compile Include="Areas\Admin\Models\EmployeeEditVm.cs" />
-    <Compile Include="Areas\Admin\Models\OfficeEditVm.cs" />
-    <Compile Include="Areas\Admin\Models\SettingsVm.cs" />
-    <Compile Include="Areas\Admin\Models\VisitorLogRowVm.cs" />
+    <Compile Include="Areas\Admin\Helpers\SettingsValidator.cs" />
+    <Compile Include="Areas\Admin\Helpers\SettingsViewModelBuilder.cs" />
     <Compile Include="AttendanceLog.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
-    <Compile Include="Controllers\BiometricsController.cs" />
+    <Compile Include="Controllers\Api\EnrollmentController.cs" />
+    <Compile Include="Controllers\Api\ScanController.cs" />
     <Compile Include="Controllers\ErrorController.cs" />
     <Compile Include="Controllers\HealthController.cs" />
     <Compile Include="Controllers\KioskController.cs" />
@@ -288,12 +282,30 @@
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
+    <Compile Include="Models\Dtos\EmployeeListRowVm.cs" />
+    <Compile Include="Models\Dtos\OfficeDto.cs" />
+    <Compile Include="Models\ViewModels\Admin\AttendanceDetailsVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\AttendanceIndexVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\DashboardViewModel.cs" />
+    <Compile Include="Models\ViewModels\Admin\EmployeeEditVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\OfficeEditVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\SettingsVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\VisitorLogRowVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\WizardViewModel.cs" />
+    <Compile Include="Models\ViewModels\Mobile\MobileEnrollmentViewModel.cs" />
+    <Compile Include="Models\ViewModels\Shared\CameraViewModel.cs" />
+    <Compile Include="Models\ViewModels\Shared\FaceProgressViewModel.cs" />
+    <Compile Include="Models\ViewModels\Shared\FileUploaderViewModel.cs" />
+    <Compile Include="Models\ViewModels\Shared\MethodSelectorViewModel.cs" />
+    <Compile Include="Models\ViewModels\Shared\ProcessingModalViewModel.cs" />
     <Compile Include="Office.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
     <Compile Include="Properties\AssemblyInfo.cs" />
-    <Compile Include="Services\ApiResponse.cs" />
     <!-- NOTE: AppConfig.cs and AppSettings.cs removed - use ConfigurationService instead -->
+    <!-- NOTE: GeoUtil.cs merged into OfficeLocationService -->
+    <!-- NOTE: KioskSessionService.cs merged into DeviceService -->
+    <!-- NOTE: SystemConfigService.cs removed - use ConfigurationService instead -->
     <Compile Include="Services\AttendanceService.cs" />
     <Compile Include="Services\AudioManager.cs" />
     <Compile Include="Services\AuditHelper.cs" />
@@ -307,30 +319,32 @@
     <Compile Include="Services\Biometrics\FaceEncodingHelper.cs" />
     <Compile Include="Services\Biometrics\FaceIndexBase.cs" />
     <Compile Include="Services\Biometrics\FaceQualityAnalyzer.cs" />
+    <Compile Include="Services\Biometrics\FaceScanner.cs" />
     <Compile Include="Services\Biometrics\FastFaceMatcher.cs" />
+    <Compile Include="Services\Biometrics\FastScanPipeline.cs" />
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
-    <Compile Include="Services\Biometrics\ScanFramePipeline.cs" />
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
-    <Compile Include="Services\Biometrics\FastScanPipeline.cs" />
     <Compile Include="Services\ConfigurationService.cs" />
     <Compile Include="Services\DeviceService.cs" />
-    <Compile Include="Services\OperationResult.cs" />
-    <Compile Include="Services\JsonResponseBuilder.cs" />
-    <!-- NOTE: GeoUtil.cs merged into OfficeLocationService -->
     <Compile Include="Services\HealthProbe.cs" />
     <Compile Include="Services\Helpers\CsvHelper.cs" />
     <Compile Include="Services\Helpers\FileSystemHelper.cs" />
     <Compile Include="Services\Helpers\StringHelper.cs" />
     <Compile Include="Services\Helpers\ValidationHelper.cs" />
-    <!-- NOTE: KioskSessionService.cs merged into DeviceService -->
+    <Compile Include="Services\Interfaces\IAttendanceService.cs" />
+    <Compile Include="Services\Interfaces\IConfigurationService.cs" />
+    <Compile Include="Services\JsonResponseBuilder.cs" />
     <Compile Include="Services\OfficeLocationService.cs" />
+    <Compile Include="Services\OperationResult.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
     <Compile Include="Services\Security\FileSecurityService.cs" />
     <Compile Include="Services\Security\LocationAntiSpoof.cs" />
-    <!-- NOTE: SystemConfigService.cs removed - use ConfigurationService instead -->
     <Compile Include="Services\TimeZoneHelper.cs" />
     <Compile Include="Services\VisitorService.cs" />
+    <Compile Include="sp_CheckDuplicateFace_Result.cs">
+      <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
+    </Compile>
     <Compile Include="SystemConfiguration.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
@@ -343,15 +357,35 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include=".tools\nuget.exe" />
+    <Content Include="App_Data\models\dlib\dlib_face_recognition_resnet_model_v1.dat" />
+    <Content Include="App_Data\models\dlib\mmod_human_face_detector.dat" />
+    <Content Include="App_Data\models\dlib\shape_predictor_5_face_landmarks.dat" />
+    <Content Include="App_Data\models\dlib\shape_predictor_68_face_landmarks.dat" />
+    <Content Include="App_Data\models\liveness\minifasnet.onnx" />
+    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
+    <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\Devices.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Edit.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\PendingDevices.cshtml" />
+    <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="Areas\Admin\Views\Settings\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Shared\ErrorPage.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminLayout.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminNav.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Create.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Edit.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Visitors\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Visitors\Logs.cshtml" />
     <Content Include="Areas\Admin\Views\web.config" />
     <Content Include="Areas\Admin\Views\_ViewStart.cshtml" />
     <Content Include="Content\admin.css" />
@@ -387,13 +421,14 @@
     <Content Include="Content\bootstrap.rtl.min.css.map" />
     <Content Include="Content\enrollment.css" />
     <Content Include="Content\error.css" />
+    <Content Include="Content\error.css" />
+    <Content Include="Content\fa-design-system.css" />
+    <Content Include="Content\fa-mobile.css" />
     <Content Include="Content\favicon.ico" />
     <Content Include="Content\images\dilg-logo.svg" />
     <Content Include="Content\kiosk-responsive-fixes.css" />
     <Content Include="Content\kiosk.css" />
-    <Content Include="Content\error.css" />
     <Content Include="Content\kiosk.css" />
-    <Content Include="Content\mobile-kiosk.css" />
     <Content Include="Content\toastr.css" />
     <Content Include="Content\toastr.less" />
     <Content Include="Content\toastr.min.css" />
@@ -418,6 +453,10 @@
     <Content Include="Content\vendor\fontawesome\css\v4-shims.min.css" />
     <Content Include="Content\vendor\fontawesome\css\v5-font-face.css" />
     <Content Include="Content\vendor\fontawesome\css\v5-font-face.min.css" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-brands-400.woff2" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-regular-400.woff2" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-solid-900.woff2" />
+    <Content Include="Content\vendor\fontawesome\webfonts\fa-v4compatibility.woff2" />
     <Content Include="Content\vendor\leaflet\images\layers-2x.png" />
     <Content Include="Content\vendor\leaflet\images\layers.png" />
     <Content Include="Content\vendor\leaflet\images\marker-icon-2x.png" />
@@ -425,7 +464,13 @@
     <Content Include="Content\vendor\leaflet\images\marker-shadow.png" />
     <Content Include="Content\vendor\leaflet\leaflet.css" />
     <Content Include="Content\_animations.css" />
-    <Content Include="Content\_variables.css" />
+    <Content Include="Content\_unified\components\camera.css" />
+    <Content Include="Content\_unified\components\method-selector.css" />
+    <Content Include="Content\_unified\components\modal.css" />
+    <Content Include="Content\_unified\components\uploader.css" />
+    <Content Include="Content\_unified\components\wizard.css" />
+    <Content Include="Content\_unified\tokens.css" />
+    <Content Include="Content\_unified\unified.css" />
     <Content Include="FaceAttendDBEntities.Context.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
@@ -438,11 +483,6 @@
     </Content>
     <Content Include="favicon.ico" />
     <Content Include="Global.asax" />
-    <Content Include="App_Data\models\dlib\dlib_face_recognition_resnet_model_v1.dat" />
-    <Content Include="App_Data\models\dlib\mmod_human_face_detector.dat" />
-    <Content Include="App_Data\models\dlib\shape_predictor_5_face_landmarks.dat" />
-    <Content Include="App_Data\models\dlib\shape_predictor_68_face_landmarks.dat" />
-    <Content Include="App_Data\models\liveness\minifasnet.onnx" />
     <EntityDeploy Include="FaceAttendDBEntities.edmx">
       <Generator>EntityModelCodeGenerator</Generator>
       <LastGenOutput>FaceAttendDBEntities.Designer.cs</LastGenOutput>
@@ -463,7 +503,13 @@
     <Content Include="Scripts\bootstrap.js.map" />
     <Content Include="Scripts\bootstrap.min.js" />
     <Content Include="Scripts\bootstrap.min.js.map" />
+    <Content Include="Scripts\core\api.js" />
+    <Content Include="Scripts\core\camera.js" />
+    <Content Include="Scripts\core\fa-helpers.js" />
+    <Content Include="Scripts\core\facescan.js" />
+    <Content Include="Scripts\core\notify.js" />
     <Content Include="Scripts\enrollment-ui.js" />
+    <Content Include="Scripts\facescan-ui.js" />
     <Content Include="Scripts\jquery-3.7.1.js" />
     <Content Include="Scripts\jquery-3.7.1.min.js" />
     <Content Include="Scripts\jquery-3.7.1.min.map" />
@@ -484,26 +530,46 @@
     <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\dataTables.bootstrap5.min.js" />
     <Content Include="Scripts\vendor\datatables\dataTables.min.js" />
+    <Content Include="Scripts\vendor\datatables\dataTables.responsive.min.js" />
     <Content Include="Scripts\vendor\datatables\js\buttons.html5.min.js" />
     <Content Include="Scripts\vendor\datatables\js\buttons.print.min.js" />
     <Content Include="Scripts\vendor\datatables\js\dataTables.buttons.min.js" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.css" />
     <Content Include="Scripts\vendor\datatables\responsive.bootstrap5.min.js" />
+    <Content Include="Scripts\vendor\datatables\responsive.dataTables.min.css" />
+    <Content Include="Scripts\vendor\datatables\responsive.dataTables.min.js" />
     <Content Include="Scripts\vendor\leaflet\leaflet.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\models\blaze_face_short_range.tflite" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs.map" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_loader.mjs" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
     <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.js" />
+    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.all.min.js" />
     <Content Include="Scripts\vendor\sweetalert2\sweetalert2.min.css" />
     <Content Include="Scripts\vendor\toastify\toastify.min.css" />
     <Content Include="Scripts\vendor\toastify\toastify.min.js" />
+    <Content Include="Views\Error\ErrorPage.cshtml" />
     <Content Include="Views\Kiosk\Index.cshtml" />
     <Content Include="Views\MobileRegistration\Device.cshtml" />
+    <Content Include="Views\MobileRegistration\DeviceNotRecognized.cshtml" />
+    <Content Include="Views\MobileRegistration\Employee.cshtml" />
     <Content Include="Views\MobileRegistration\Enroll.cshtml" />
     <Content Include="Views\MobileRegistration\Identify.cshtml" />
     <Content Include="Views\MobileRegistration\Index.cshtml" />
     <Content Include="Views\MobileRegistration\Success.cshtml" />
+    <Content Include="Views\Shared\Components\_Camera.cshtml" />
+    <Content Include="Views\Shared\Components\_FaceProgress.cshtml" />
+    <Content Include="Views\Shared\Components\_FileUploader.cshtml" />
+    <Content Include="Views\Shared\Components\_MethodSelector.cshtml" />
+    <Content Include="Views\Shared\Components\_ProcessingModal.cshtml" />
+    <Content Include="Views\Shared\Components\_Wizard.cshtml" />
+    <Content Include="Views\Shared\ErrorPage.cshtml" />
+    <Content Include="Views\Shared\_EnrollmentComponent.cshtml" />
+    <Content Include="Views\Shared\_EnrollmentLayout.cshtml" />
+    <Content Include="Views\Shared\_MobileLayout.cshtml" />
     <Content Include="Views\Web.config" />
     <Content Include="Views\_ViewStart.cshtml" />
     <Content Include="Web.config" />
@@ -515,44 +581,15 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="Areas\Admin\Views\Unlock\" />
-    <Folder Include="Models\" />
+    <Folder Include="App_Data\tmp\" />
+    <Folder Include="Content\_unified\themes\" />
     <Folder Include="Vendor\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
     <Content Include="libman.json" />
-    <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
-    <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Edit.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Enroll.cshtml" />
-    <Content Include="Areas\Admin\Views\Visitors\Logs.cshtml" />
-    <Content Include="Areas\Admin\Views\Shared\ErrorPage.cshtml" />
-    <Content Include="Content\vendor\fontawesome\webfonts\fa-brands-400.woff2" />
-    <Content Include="Content\vendor\fontawesome\webfonts\fa-regular-400.woff2" />
-    <Content Include="Content\vendor\fontawesome\webfonts\fa-solid-900.woff2" />
-    <Content Include="Content\vendor\fontawesome\webfonts\fa-v4compatibility.woff2" />
-    <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
-    <Content Include="Areas\Admin\Views\Employees\PendingDevices.cshtml" />
-    <Content Include="Areas\Admin\Views\Employees\Devices.cshtml" />
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\models\blaze_face_short_range.tflite" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\vision_bundle.mjs.map" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_internal.wasm" />
-    <Content Include="Scripts\vendor\mediapipe\tasks-vision\wasm\vision_wasm_nosimd_internal.wasm" />
-    <Content Include="Views\Shared\ErrorPage.cshtml" />
-    <Content Include="Views\Shared\_MobileLayout.cshtml" />
-    <Content Include="Views\Error\ErrorPage.cshtml" />
-    <Content Include="Views\MobileRegistration\Employee.cshtml" />
-    <Content Include="Views\MobileRegistration\DeviceNotRecognized.cshtml" />
-    <Content Include="Views\Shared\_EnrollmentComponent.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{4A0DDDB5-7A95-4FBF-97CC-616D07737A77}" />

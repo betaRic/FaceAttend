@@ -1,11 +1,11 @@
 /*
- * FaceAttend - Enrollment UI Styles (Phase 3)
+ * FaceAttend - Enrollment UI Styles
  * Content/enrollment.css
  *
  * Covers ALL enrollment surfaces: Admin (Employee/Visitor), Mobile self-enrollment.
- * Uses CSS variables from _variables.css.
+ * Uses CSS variables from fa-design-system.css.
  *
- * NEVER add enrollment-specific styles to admin.css, mobile-kiosk.css, or kiosk.css.
+ * NEVER add enrollment-specific styles to admin.css, fa-mobile.css, or kiosk.css.
  * NEVER add <style> blocks to enrollment views.
  */
 
@@ -27,15 +27,15 @@
     position: relative;
     width: 100%;
     aspect-ratio: 4 / 3;
-    border-radius: var(--radius-md, 12px);
+    border-radius: var(--radius-md);
     overflow: hidden;
     background: #000;
-    border: 2px solid var(--border-light, #e2e8f0);
+    border: 2px solid var(--border-default);
 }
 
 [data-theme="kiosk"] .enroll-camera-wrap,
 .mobile-surface .enroll-camera-wrap {
-    border-color: var(--border-subtle, rgba(255,255,255,0.1));
+    border-color: var(--border-subtle);
 }
 
 .enroll-video,
@@ -67,17 +67,17 @@
 }
 
 .enroll-face-guide--good {
-    border-color: var(--success-500, #22c55e);
+    border-color: var(--color-success);
     border-style: solid;
 }
 
 .enroll-face-guide--warning {
-    border-color: var(--warning-500, #f59e0b);
+    border-color: var(--color-warning);
     border-style: dashed;
 }
 
 .enroll-face-guide--error {
-    border-color: var(--danger-500, #ef4444);
+    border-color: var(--color-error);
     border-style: solid;
 }
 
@@ -88,9 +88,9 @@
     align-items: center;
     gap: 12px;
     padding: 12px 16px;
-    background: var(--surface-secondary, #f8fafc);
-    border: 1px solid var(--border-light, #e2e8f0);
-    border-radius: var(--radius-sm, 8px);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-default);
+    border-radius: var(--radius-sm);
     margin-top: 12px;
 }
 
@@ -172,7 +172,7 @@
 }
 
 .enroll-diversity-dot--captured {
-    background: var(--success-500, #22c55e);
+    background: var(--color-success);
     border-color: var(--success-600, #16a34a);
     transform: scale(1.2);
 }
@@ -243,9 +243,9 @@
     background: var(--gray-400, #94a3b8);
 }
 
-.enroll-liveness-fill--pass { background: var(--success-500, #22c55e); }
-.enroll-liveness-fill--warn { background: var(--warning-500, #f59e0b); }
-.enroll-liveness-fill--fail { background: var(--danger-500, #ef4444); }
+.enroll-liveness-fill--pass { background: var(--color-success); }
+.enroll-liveness-fill--warn { background: var(--color-warning); }
+.enroll-liveness-fill--fail { background: var(--color-error); }
 
 .enroll-liveness-val {
     font-size: 0.8125rem;
@@ -259,7 +259,7 @@
 
 .enroll-status {
     padding: 10px 14px;
-    border-radius: var(--radius-sm, 8px);
+    border-radius: var(--radius-sm);
     font-size: 0.9rem;
     margin-top: 12px;
     border: 1px solid transparent;
@@ -357,8 +357,8 @@
     text-align: center;
     padding: 8px 6px;
     border-radius: 10px;
-    border: 1px solid var(--border-light, #e2e8f0);
-    background: var(--surface-secondary, #f8fafc);
+    border: 1px solid var(--border-default);
+    background: var(--bg-surface);
     color: var(--text-secondary, #475569);
     font-size: 0.8125rem;
     font-weight: 600;
@@ -392,4 +392,125 @@
 [data-theme="kiosk"] .enroll-step.done,
 .mobile-surface .enroll-step.done {
     color: #86efac;
+}
+
+/* ==========================================================================
+   Enrollment Layout Styles (migrated from _EnrollmentLayout.cshtml)
+   ========================================================================== */
+
+.enrollment-layout {
+    min-height: 100vh;
+    background: linear-gradient(180deg, var(--bg-page) 0%, var(--bg-surface) 100%);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
+}
+
+.enrollment-header {
+    padding: var(--space-4) var(--space-6);
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(0,0,0,0.2);
+}
+
+.enrollment-header__brand {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+}
+
+.enrollment-header__logo {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--color-primary), var(--color-info));
+    border-radius: var(--radius-md);
+    display: grid;
+    place-items: center;
+}
+
+.enrollment-header__title {
+    font-size: var(--text-xl);
+    font-weight: var(--font-bold);
+    margin: 0;
+}
+
+.enrollment-header__subtitle {
+    font-size: var(--text-sm);
+    color: var(--text-muted);
+}
+
+.enrollment-main {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: var(--space-6) var(--space-4);
+}
+
+.enrollment-footer {
+    text-align: center;
+    padding: var(--space-6);
+    color: var(--text-muted);
+    font-size: var(--text-sm);
+    border-top: 1px solid var(--border-subtle);
+}
+
+/* Wizard steps */
+.wizard-steps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-4);
+    margin-bottom: var(--space-6);
+}
+
+.wizard-step {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: var(--radius-full);
+    font-size: var(--text-sm);
+    font-weight: var(--font-semibold);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-muted);
+    border: 1px solid var(--border-subtle);
+}
+
+.wizard-step--active {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+}
+
+.wizard-step--complete {
+    background: rgba(16, 185, 129, 0.2);
+    border-color: var(--color-success);
+    color: var(--color-success);
+}
+
+.wizard-step__number {
+    width: 24px;
+    height: 24px;
+    border-radius: var(--radius-full);
+    background: rgba(0,0,0,0.3);
+    display: grid;
+    place-items: center;
+    font-size: var(--text-xs);
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+    .enrollment-main {
+        padding: var(--space-4);
+    }
+    
+    .wizard-steps {
+        gap: var(--space-2);
+    }
+    
+    .wizard-step {
+        padding: var(--space-2) var(--space-3);
+        font-size: var(--text-xs);
+    }
+    
+    .wizard-step__label {
+        display: none;
+    }
 }

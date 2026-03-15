@@ -4,7 +4,7 @@
 *@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -18,131 +18,13 @@
     @* Base styles *@
     @Styles.Render("~/Content/css")
     
-    @* FaceAttend v2 Unified Design System *@
-    @Styles.Render("~/Content/facescan-v2")
+    @* FaceAttend Design System v3 *@
+    @Styles.Render("~/Content/fa-system")      @* Design System Tokens (v3) *@
+    @Styles.Render("~/Content/facescan-v2")    @* DEPRECATED: migrating to fa-system *@
     
-    @* Page-specific styles *@
+    @* Enrollment styles moved to ~/Content/enrollment.css *@
+    @Styles.Render("~/Content/enrollment")
     @RenderSection("styles", required: false)
-    
-    <style>
-        /* Enrollment layout specific styles */
-        .enrollment-layout {
-            min-height: 100vh;
-            background: linear-gradient(180deg, var(--color-bg-primary) 0%, var(--color-bg-secondary) 100%);
-            color: var(--color-text-primary);
-            font-family: var(--font-sans);
-        }
-        
-        .enrollment-header {
-            padding: var(--space-4) var(--space-6);
-            border-bottom: 1px solid var(--color-border-subtle);
-            background: rgba(0,0,0,0.2);
-        }
-        
-        .enrollment-header__brand {
-            display: flex;
-            align-items: center;
-            gap: var(--space-3);
-        }
-        
-        .enrollment-header__logo {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-secondary));
-            border-radius: var(--radius);
-            display: grid;
-            place-items: center;
-        }
-        
-        .enrollment-header__title {
-            font-size: var(--text-xl);
-            font-weight: var(--font-bold);
-            margin: 0;
-        }
-        
-        .enrollment-header__subtitle {
-            font-size: var(--text-sm);
-            color: var(--color-text-muted);
-        }
-        
-        .enrollment-main {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: var(--space-6) var(--space-4);
-        }
-        
-        .enrollment-footer {
-            text-align: center;
-            padding: var(--space-6);
-            color: var(--color-text-muted);
-            font-size: var(--text-sm);
-            border-top: 1px solid var(--color-border-subtle);
-        }
-        
-        /* Wizard steps */
-        .wizard-steps {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: var(--space-4);
-            margin-bottom: var(--space-6);
-        }
-        
-        .wizard-step {
-            display: flex;
-            align-items: center;
-            gap: var(--space-2);
-            padding: var(--space-2) var(--space-4);
-            border-radius: var(--radius-full);
-            font-size: var(--text-sm);
-            font-weight: var(--font-semibold);
-            background: rgba(255,255,255,0.05);
-            color: var(--color-text-muted);
-            border: 1px solid var(--color-border-subtle);
-        }
-        
-        .wizard-step--active {
-            background: rgba(59, 130, 246, 0.2);
-            border-color: var(--color-accent-primary);
-            color: var(--color-accent-primary);
-        }
-        
-        .wizard-step--complete {
-            background: rgba(16, 185, 129, 0.2);
-            border-color: var(--color-accent-success);
-            color: var(--color-accent-success);
-        }
-        
-        .wizard-step__number {
-            width: 24px;
-            height: 24px;
-            border-radius: var(--radius-full);
-            background: rgba(0,0,0,0.3);
-            display: grid;
-            place-items: center;
-            font-size: var(--text-xs);
-        }
-        
-        /* Responsive */
-        @media (max-width: 640px) {
-            .enrollment-main {
-                padding: var(--space-4);
-            }
-            
-            .wizard-steps {
-                gap: var(--space-2);
-            }
-            
-            .wizard-step {
-                padding: var(--space-2) var(--space-3);
-                font-size: var(--text-xs);
-            }
-            
-            .wizard-step__label {
-                display: none;
-            }
-        }
-    </style>
 </head>
 <body class="enrollment-layout" data-app-base="@Url.Content("~/")">
     

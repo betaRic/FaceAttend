@@ -95,14 +95,16 @@
                             <label class="form-label">Position</label>
                             @Html.TextBoxFor(m => m.Position, new {
                                 @class = "form-control",
-                                placeholder = "e.g. Administrative Officer"
+                                placeholder = "e.g. Administrative Officer",
+                                style = "text-transform:uppercase;"
                             })
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Department</label>
                             @Html.TextBoxFor(m => m.Department, new {
                                 @class = "form-control",
-                                placeholder = "e.g. ICT Unit"
+                                placeholder = "e.g. ICT Unit",
+                                style = "text-transform:uppercase;"
                             })
                         </div>
                         <div class="col-md-8">
@@ -168,8 +170,8 @@
 @section scripts {
     @Scripts.Render("~/bundles/jqueryval")
     <script>
-    /* Auto-uppercase identity fields */
-    ['EmployeeId','FirstName','MiddleName','LastName'].forEach(function(id) {
+    /* Auto-uppercase all text fields */
+    ['EmployeeId','FirstName','MiddleName','LastName','Position','Department'].forEach(function(id) {
         var el = document.getElementById(id);
         if (!el) return;
         el.addEventListener('input', function () {

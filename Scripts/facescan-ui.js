@@ -232,6 +232,7 @@ FaceAttend.UI.Uploader = {
 
 /**
  * Modal Component - Overlay dialogs
+ * @deprecated Use FaceAttend.Notify.confirm(), successModal(), errorModal() instead
  */
 FaceAttend.UI.Modal = {
     show: function(modalId, options) {

@@ -18,12 +18,12 @@ namespace FaceAttend.Services.Biometrics
         /// <summary>
         /// Scan a single frame for face detection
         /// </summary>
-        ScanResult Scan(Stream imageStream, FaceBox clientBox = null, bool isMobile = false);
+        ScanResult Scan(Stream imageStream, DlibBiometrics.FaceBox clientBox = null, bool isMobile = false);
 
         /// <summary>
         /// Scan with async preprocessing
         /// </summary>
-        Task<ScanResult> ScanAsync(Stream imageStream, FaceBox clientBox = null, bool isMobile = false);
+        Task<ScanResult> ScanAsync(Stream imageStream, DlibBiometrics.FaceBox clientBox = null, bool isMobile = false);
 
         /// <summary>
         /// Enroll multiple frames for an employee
@@ -46,19 +46,17 @@ namespace FaceAttend.Services.Biometrics
     /// </summary>
     public class FaceScanner : IFaceScanner
     {
-        private readonly IDlibBiometrics _dlib;
-        private readonly IOnnxLiveness _liveness;
-        private readonly IFaceQualityAnalyzer _quality;
+        private readonly DlibBiometrics _dlib;
+        private readonly OnnxLiveness _liveness;
 
         public FaceScanner()
         {
             _dlib = new DlibBiometrics();
             _liveness = new OnnxLiveness();
-            // Quality analyzer uses static methods, no instance needed
         }
 
         /// <inheritdoc />
-        public ScanResult Scan(Stream imageStream, FaceBox clientBox = null, bool isMobile = false)
+        public ScanResult Scan(Stream imageStream, DlibBiometrics.FaceBox clientBox = null, bool isMobile = false)
         {
             if (imageStream == null || imageStream.Length == 0)
             {
@@ -148,7 +146,7 @@ namespace FaceAttend.Services.Biometrics
         }
 
         /// <inheritdoc />
-        public Task<ScanResult> ScanAsync(Stream imageStream, FaceBox clientBox = null, bool isMobile = false)
+        public Task<ScanResult> ScanAsync(Stream imageStream, DlibBiometrics.FaceBox clientBox = null, bool isMobile = false)
         {
             return Task.Run(() => Scan(imageStream, clientBox, isMobile));
         }
@@ -564,7 +562,7 @@ namespace FaceAttend.Services.Biometrics
         public bool Ok { get; set; }
         public string Error { get; set; }
         public bool IsMatch { get; set; }
-        public FastFaceMatcher.MatchResult Employee { get; set; }
+        public FastFaceMatcher.EmployeeInfo Employee { get; set; }
         public double Confidence { get; set; }
         public double Distance { get; set; }
 

@@ -84,7 +84,6 @@
           <Property Name="Department" Type="nvarchar" MaxLength="100" />
           <Property Name="OfficeId" Type="int" Nullable="false" />
           <Property Name="IsFlexi" Type="bit" Nullable="false" />
-          <Property Name="IsActive" Type="bit" Nullable="false" />
           <Property Name="FaceEncodingBase64" Type="nvarchar(max)" />
           <Property Name="EnrolledDate" Type="datetime2" Precision="7" />
           <Property Name="LastModifiedDate" Type="datetime2" Precision="7" />
@@ -96,9 +95,6 @@
           <Property Name="FaceEncodingsJson" Type="nvarchar(max)" />
           <Property Name="CreatedDate" Type="datetime2" Precision="7" Nullable="false" />
           <Property Name="Status" Type="nvarchar" MaxLength="20" Nullable="false" />
-          <Property Name="DeviceFingerprint" Type="nvarchar" MaxLength="64" />
-          <Property Name="DeviceName" Type="nvarchar" MaxLength="100" />
-          <Property Name="RegisteredFromIp" Type="nvarchar" MaxLength="45" />
         </EntityType>
         <EntityType Name="Offices">
           <Key>
@@ -229,6 +225,10 @@
             </Dependent>
           </ReferentialConstraint>
         </Association>
+        <Function Name="sp_CheckDuplicateFace" Aggregate="false" BuiltIn="false" NiladicFunction="false" IsComposable="false" ParameterTypeSemantics="AllowImplicitConversion" Schema="dbo">
+          <Parameter Name="ExcludeEmployeeId" Type="nvarchar" Mode="In" />
+          <Parameter Name="Tolerance" Type="float" Mode="In" />
+        </Function>
         <EntityContainer Name="FaceAttendDBModelStoreContainer">
           <EntitySet Name="AdminAuditLogs" EntityType="Self.AdminAuditLogs" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLogs" Schema="dbo" store:Type="Tables" />
@@ -268,6 +268,10 @@
     <edmx:ConceptualModels>
       <Schema Namespace="FaceAttendDBModel" Alias="Self" annotation:UseStrongSpatialTypes="false" xmlns:annotation="http://schemas.microsoft.com/ado/2009/02/edm/annotation" xmlns:customannotation="http://schemas.microsoft.com/ado/2013/11/edm/customannotation" xmlns="http://schemas.microsoft.com/ado/2009/11/edm">
         <EntityContainer Name="FaceAttendDBEntities" annotation:LazyLoadingEnabled="true">
+          <FunctionImport Name="sp_CheckDuplicateFace" ReturnType="Collection(FaceAttendDBModel.sp_CheckDuplicateFace_Result)">
+            <Parameter Name="ExcludeEmployeeId" Mode="In" Type="String" />
+            <Parameter Name="Tolerance" Mode="In" Type="Double" />
+          </FunctionImport>
           <EntitySet Name="AdminAuditLogs" EntityType="FaceAttendDBModel.AdminAuditLog" />
           <EntitySet Name="AttendanceLogs" EntityType="FaceAttendDBModel.AttendanceLog" />
           <EntitySet Name="Devices" EntityType="FaceAttendDBModel.Device" />
@@ -301,6 +305,11 @@
             <End Role="VisitorLog" EntitySet="VisitorLogs" />
           </AssociationSet>
         </EntityContainer>
+        <ComplexType Name="sp_CheckDuplicateFace_Result">
+          <Property Type="String" Name="EmployeeId" Nullable="false" MaxLength="20" />
+          <Property Type="String" Name="FaceEncodingBase64" Nullable="true" />
+          <Property Type="String" Name="FaceEncodingsJson" Nullable="true" />
+        </ComplexType>
         <EntityType Name="AdminAuditLog">
           <Key>
             <PropertyRef Name="Id" />
@@ -383,7 +392,6 @@
           <Property Name="Department" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="OfficeId" Type="Int32" Nullable="false" />
           <Property Name="IsFlexi" Type="Boolean" Nullable="false" />
-          <Property Name="IsActive" Type="Boolean" Nullable="false" />
           <Property Name="FaceEncodingBase64" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
           <Property Name="EnrolledDate" Type="DateTime" Precision="7" />
           <Property Name="LastModifiedDate" Type="DateTime" Precision="7" />
@@ -395,9 +403,6 @@
           <Property Name="FaceEncodingsJson" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
           <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
           <Property Name="Status" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
-          <Property Name="DeviceFingerprint" Type="String" MaxLength="64" FixedLength="false" Unicode="true" />
-          <Property Name="DeviceName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
-          <Property Name="RegisteredFromIp" Type="String" MaxLength="45" FixedLength="false" Unicode="true" />
           <NavigationProperty Name="AttendanceLogs" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="Employee" ToRole="AttendanceLog" />
           <NavigationProperty Name="Devices" Relationship="FaceAttendDBModel.FK_Devices_Employees" FromRole="Employee" ToRole="Device" />
           <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_Employees_Offices" FromRole="Employee" ToRole="Office" />
@@ -543,6 +548,15 @@
     <edmx:Mappings>
       <Mapping Space="C-S" xmlns="http://schemas.microsoft.com/ado/2009/11/mapping/cs">
         <EntityContainerMapping StorageEntityContainer="FaceAttendDBModelStoreContainer" CdmEntityContainer="FaceAttendDBEntities">
+          <FunctionImportMapping FunctionImportName="sp_CheckDuplicateFace" FunctionName="FaceAttendDBModel.Store.sp_CheckDuplicateFace">
+            <ResultMapping>
+              <ComplexTypeMapping TypeName="FaceAttendDBModel.sp_CheckDuplicateFace_Result">
+                <ScalarProperty Name="EmployeeId" ColumnName="EmployeeId" />
+                <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
+                <ScalarProperty Name="FaceEncodingsJson" ColumnName="FaceEncodingsJson" />
+              </ComplexTypeMapping>
+            </ResultMapping>
+          </FunctionImportMapping>
           <EntitySetMapping Name="AdminAuditLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AdminAuditLog">
               <MappingFragment StoreEntitySet="AdminAuditLogs">
@@ -619,9 +633,6 @@
           <EntitySetMapping Name="Employees">
             <EntityTypeMapping TypeName="FaceAttendDBModel.Employee">
               <MappingFragment StoreEntitySet="Employees">
-                <ScalarProperty Name="RegisteredFromIp" ColumnName="RegisteredFromIp" />
-                <ScalarProperty Name="DeviceName" ColumnName="DeviceName" />
-                <ScalarProperty Name="DeviceFingerprint" ColumnName="DeviceFingerprint" />
                 <ScalarProperty Name="Status" ColumnName="Status" />
                 <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
                 <ScalarProperty Name="FaceEncodingsJson" ColumnName="FaceEncodingsJson" />
@@ -633,7 +644,6 @@
                 <ScalarProperty Name="LastModifiedDate" ColumnName="LastModifiedDate" />
                 <ScalarProperty Name="EnrolledDate" ColumnName="EnrolledDate" />
                 <ScalarProperty Name="FaceEncodingBase64" ColumnName="FaceEncodingBase64" />
-                <ScalarProperty Name="IsActive" ColumnName="IsActive" />
                 <ScalarProperty Name="IsFlexi" ColumnName="IsFlexi" />
                 <ScalarProperty Name="OfficeId" ColumnName="OfficeId" />
                 <ScalarProperty Name="Department" ColumnName="Department" />

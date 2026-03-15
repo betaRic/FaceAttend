@@ -1,13 +1,19 @@
 /**
- * FaceAttend - Enrollment Core Module (Phase 2 - Diversity-Aware)
- * Consolidated enrollment logic shared between admin and mobile enrollment flows
+ * FaceAttend - Enrollment Core Module (Unified v3)
+ * Consolidated enrollment logic using FaceAttend.Core modules
  * 
- * PHASE 2 CHANGES:
- * - Sharpness pre-filter (client-side Laplacian)
- * - Pose bucketing (center/left/right/up/down)
- * - Angle guidance prompts
- * - Diversity-aware frame collection
- * - Auto-submit on all angles captured
+ * @version 3.0.0
+ * @requires FaceAttend.Utils
+ * @requires FaceAttend.Camera
+ * @requires FaceAttend.API
+ * @requires FaceAttend.Notify
+ * 
+ * PHASE 3 CHANGES (Unification):
+ * - Uses FaceAttend.Utils for utilities (getCsrfToken, debounce, isMobileDevice)
+ * - Uses FaceAttend.Camera for camera operations
+ * - Uses FaceAttend.API for server communication (scanFrame, enroll)
+ * - Uses FaceAttend.Notify for user feedback
+ * - Preserves all Phase 2 features: sharpness filter, pose bucketing, diversity collection
  * 
  * Usage:
  *   var enrollment = FaceAttend.Enrollment.create(config);
@@ -20,43 +26,42 @@ FaceAttend.Enrollment = (function () {
     'use strict';
 
     // =========================================================================
-    // CONSTANTS (Phase 2 Updated)
+    // CONSTANTS
     // =========================================================================
     var CONSTANTS = {
         // Capture timing
-        AUTO_INTERVAL_MS: 300,        // Was 250. 300ms gives pose-change time between frames.
+        AUTO_INTERVAL_MS: 300,
         PASS_WINDOW:      3,
         PASS_REQUIRED:    1,
 
         // Frame targets
-        CAPTURE_TARGET:    8,         // Collect up to 8 frames before submitting
-        MIN_GOOD_FRAMES:   3,         // Minimum to allow manual submit
-        MAX_KEEP_FRAMES:   8,         // Keep best 8 in goodFrames array
+        CAPTURE_TARGET:    8,
+        MIN_GOOD_FRAMES:   3,
+        MAX_KEEP_FRAMES:   8,
 
         // Image capture
-        CAPTURE_WIDTH:  640,          // Was 480. Larger = better dlib encoding quality.
-        CAPTURE_HEIGHT: 480,          // Was 360.
-        UPLOAD_QUALITY: 0.80,         // Was 0.65. Higher quality for diverse-angle enrollment.
+        CAPTURE_WIDTH:  640,
+        CAPTURE_HEIGHT: 480,
+        UPLOAD_QUALITY: 0.80,
 
-        // Quality thresholds (matched by server)
+        // Quality thresholds
         SHARPNESS_THRESHOLD_DESKTOP: 80,
         SHARPNESS_THRESHOLD_MOBILE:  50,
-        SHARPNESS_SAMPLE_SIZE:       160,  // Resize ROI to 160×160 before Laplacian
+        SHARPNESS_SAMPLE_SIZE:       160,
 
         // Angle buckets
         ANGLE_SEQUENCE: ['center', 'left', 'right', 'up', 'down'],
 
         // Auto-submit trigger
-        AUTO_SUBMIT_ON_ALL_ANGLES: true  // Submit early if all 5 angle buckets captured
+        AUTO_SUBMIT_ON_ALL_ANGLES: true
     };
 
     // =========================================================================
-    // UTILITY FUNCTIONS
+    // UTILITY FUNCTIONS (delegated to FaceAttend.Utils)
     // =========================================================================
-
+    
     function getCsrfToken() {
-        var token = document.querySelector('input[name="__RequestVerificationToken"]');
-        return token ? token.value : '';
+        return FaceAttend.Utils ? FaceAttend.Utils.getCsrfToken() : '';
     }
 
     function escapeHtml(text) {
@@ -67,21 +72,12 @@ FaceAttend.Enrollment = (function () {
     }
 
     function debounce(fn, delay) {
-        var timer = null;
-        return function () {
-            var context = this, args = arguments;
-            clearTimeout(timer);
-            timer = setTimeout(function () {
-                fn.apply(context, args);
-            }, delay);
-        };
+        return FaceAttend.Utils ? FaceAttend.Utils.debounce(fn, delay) : fn;
     }
 
-    /**
-     * Phase 2: Detect mobile device for sharpness threshold
-     */
     function isMobileDevice() {
-        return /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
+        return FaceAttend.Utils ? FaceAttend.Utils.isMobile() : 
+            /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
     }
 
     // =========================================================================
@@ -362,10 +358,32 @@ FaceAttend.Enrollment = (function () {
     // Camera Operations
     // -------------------------------------------------------------------------
 
+    // -------------------------------------------------------------------------
+    // Camera Operations (using FaceAttend.Camera)
+    // -------------------------------------------------------------------------
+    
     Enrollment.prototype.startCamera = function (videoElement) {
         var self = this;
         this.elements.cam = videoElement || this.elements.cam;
 
+        // Use FaceAttend.Camera if available
+        if (FaceAttend.Camera) {
+            return new Promise(function (resolve, reject) {
+                FaceAttend.Camera.start(
+                    self.elements.cam,
+                    { facingMode: 'user' },
+                    function (stream) {
+                        self.stream = stream;
+                        resolve(stream);
+                    },
+                    function (err) {
+                        reject(err);
+                    }
+                );
+            });
+        }
+
+        // Fallback to native getUserMedia
         return new Promise(function (resolve, reject) {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 reject(new Error('Camera API not available'));
@@ -389,7 +407,10 @@ FaceAttend.Enrollment = (function () {
     Enrollment.prototype.stopCamera = function () {
         this.stopAutoEnrollment();
 
-        if (this.stream) {
+        // Use FaceAttend.Camera if we used it
+        if (FaceAttend.Camera) {
+            FaceAttend.Camera.stop();
+        } else if (this.stream) {
             try {
                 this.stream.getTracks().forEach(function (t) { t.stop(); });
             } catch (e) { }
@@ -448,8 +469,28 @@ FaceAttend.Enrollment = (function () {
         return result;
     };
 
+    // -------------------------------------------------------------------------
+    // API Operations (using FaceAttend.API with Promise wrappers)
+    // -------------------------------------------------------------------------
+    
     Enrollment.prototype.postScanFrame = function (blob) {
         var self = this;
+        
+        // Use FaceAttend.API if available
+        if (FaceAttend.API && FaceAttend.API.scanFrame) {
+            return new Promise(function (resolve, reject) {
+                FaceAttend.API.scanFrame(blob, {}, 
+                    function (result) {
+                        resolve(self.normalizeSuccessResult(result));
+                    },
+                    function (error) {
+                        reject(error);
+                    }
+                );
+            });
+        }
+        
+        // Fallback to raw fetch
         var fd = new FormData();
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('image', blob, 'frame.jpg');
@@ -467,7 +508,26 @@ FaceAttend.Enrollment = (function () {
         }
 
         var startTime = Date.now();
+        
+        // Use FaceAttend.API if available
+        if (FaceAttend.API && FaceAttend.API.enroll) {
+            return new Promise(function (resolve, reject) {
+                FaceAttend.API.enroll(self.config.empId, blobs, {},
+                    function (result) {
+                        result = self.normalizeSuccessResult(result) || result;
+                        if (result) {
+                            result.timeMs = Date.now() - startTime;
+                        }
+                        resolve(result);
+                    },
+                    function (error) {
+                        reject(error);
+                    }
+                );
+            });
+        }
 
+        // Fallback to raw fetch
         var fd = new FormData();
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('employeeId', this.config.empId);

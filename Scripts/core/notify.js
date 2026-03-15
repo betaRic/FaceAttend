@@ -376,7 +376,145 @@
         }
     };
 
-    // Expose to global namespace
+    // ============================================================================
+    // Theme-aware helpers
+    // ============================================================================
+    
+    /**
+     * Get theme colors based on current theme
+     * @private
+     */
+    Notify._getTheme = function() {
+        var theme = document.documentElement.getAttribute('data-theme');
+        var isDark = theme === 'kiosk' || theme === 'dark' || document.body.classList.contains('mobile-app');
+        
+        if (isDark) {
+            return {
+                bg: '#0f172a',
+                color: '#f8fafc',
+                confirmColor: '#3b82f6',
+                cancelColor: '#64748b'
+            };
+        }
+        return {
+            bg: '#ffffff',
+            color: '#0f172a',
+            confirmColor: '#3b82f6',
+            cancelColor: '#6b7280'
+        };
+    };
+    
+    /**
+     * Theme-aware confirm dialog (replaces admin.js confirmDialog)
+     * @param {Object} options - Options object
+     * @param {string} options.title - Dialog title
+     * @param {string} options.text - Dialog text
+     * @param {string} options.icon - Icon type ('warning', 'info', 'question', etc.)
+     * @param {string} options.confirmText - Confirm button text
+     * @param {string} options.cancelText - Cancel button text
+     * @returns {Promise<boolean>} - Resolves to true if confirmed
+     */
+    Notify.confirmDialog = function(options) {
+        var theme = this._getTheme();
+        
+        if (window.Swal) {
+            return window.Swal.fire({
+                title: options.title || 'Confirm',
+                text: options.text || '',
+                icon: options.icon || 'question',
+                showCancelButton: true,
+                confirmButtonText: options.confirmText || 'Continue',
+                cancelButtonText: options.cancelText || 'Cancel',
+                confirmButtonColor: theme.confirmColor,
+                cancelButtonColor: theme.cancelColor,
+                background: theme.bg,
+                color: theme.color,
+                customClass: {
+                    popup: 'facescan-modal'
+                }
+            }).then(function(result) {
+                return !!(result && result.isConfirmed);
+            });
+        }
+        
+        // Fallback to native confirm
+        var message = options.text ? options.title + '\n\n' + options.text : options.title;
+        return Promise.resolve(window.confirm(message));
+    };
+    
+    /**
+     * Theme-aware toast with automatic theme detection
+     * @param {string} message - Toast message
+     * @param {string} type - Toast type ('success', 'error', 'warning', 'info')
+     * @param {number} duration - Duration in milliseconds
+     */
+    Notify.toastTheme = function(message, type, duration) {
+        var theme = this._getTheme();
+        type = type || 'info';
+        duration = duration || (type === 'success' ? 3000 : type === 'error' ? 5000 : 4000);
+        
+        // Theme-aware colors
+        var colors = {
+            success: { bg: theme.isDark ? '#064e3b' : '#f0fdf4', text: theme.isDark ? '#6ee7b7' : '#166534' },
+            error: { bg: theme.isDark ? '#7f1d1d' : '#fef2f2', text: theme.isDark ? '#fca5a5' : '#991b1b' },
+            warning: { bg: theme.isDark ? '#78350f' : '#fffbeb', text: theme.isDark ? '#fcd34d' : '#92400e' },
+            info: { bg: theme.isDark ? '#1e3a8a' : '#eff6ff', text: theme.isDark ? '#93c5fd' : '#1e40af' }
+        };
+        
+        var color = colors[type] || colors.info;
+        
+        if (window.Swal) {
+            window.Swal.fire({
+                title: message,
+                icon: type,
+                toast: true,
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: duration,
+                timerProgressBar: true,
+                background: color.bg,
+                color: color.text,
+                customClass: {
+                    popup: 'facescan-toast'
+                }
+            });
+        } else if (window.Toastify) {
+            window.Toastify({
+                text: message,
+                duration: duration,
+                gravity: 'bottom',
+                position: 'right',
+                style: {
+                    background: color.bg,
+                    color: color.text,
+                    borderRadius: '8px'
+                }
+            }).showToast();
+        } else {
+            console.log('[' + type.toUpperCase() + ']', message);
+        }
+    };
+
+    // ============================================================================
+    // Backward compatibility: window.ui bindings (used by admin.js)
+    // ============================================================================
+    window.ui = window.ui || {};
+    window.ui.toast = Notify.toast.bind(Notify);
+    window.ui.toastSuccess = Notify.success.bind(Notify);
+    window.ui.toastError = Notify.error.bind(Notify);
+    window.ui.toastWarning = Notify.warning.bind(Notify);
+    window.ui.toastInfo = Notify.info.bind(Notify);
+    window.ui.confirm = Notify.confirmDialog.bind(Notify);
+    window.ui.confirmDialog = Notify.confirmDialog.bind(Notify);
+    window.ui.loading = Notify.loading.bind(Notify);
+    window.ui.close = Notify.close.bind(Notify);
+    window.ui.successModal = Notify.successModal.bind(Notify);
+    window.ui.errorModal = Notify.errorModal.bind(Notify);
+    window.ui.prompt = Notify.prompt.bind(Notify);
+
+    // ============================================================================
+    // Expose to FaceAttend namespace
+    // ============================================================================
     window.FaceAttend = window.FaceAttend || {};
     window.FaceAttend.Notify = Notify;
 

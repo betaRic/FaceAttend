@@ -113,7 +113,7 @@ namespace FaceAttend.Services.Biometrics
             {
                 // Try raw SQL first for performance (supports multi-encoding)
                 var rows = db.Database.SqlQuery<EmployeeEncodingRow>(
-                    @"SELECT Id, EmployeeId, FirstName, LastName, MiddleName, Department, IsActive,
+                    @"SELECT Id, EmployeeId, FirstName, LastName, MiddleName, Department,
                              FaceEncodingBase64, FaceEncodingsJson
                       FROM Employees
                       WHERE Status = 'ACTIVE'
@@ -137,7 +137,7 @@ namespace FaceAttend.Services.Biometrics
                             LastName = row.LastName,
                             MiddleName = row.MiddleName,
                             Department = row.Department,
-                            IsActive = row.IsActive,
+
                             FaceVectors = vectors
                         });
                     }
@@ -172,7 +172,7 @@ namespace FaceAttend.Services.Biometrics
                     e.LastName,
                     e.MiddleName,
                     e.Department,
-                    e.IsActive,
+
                     e.FaceEncodingBase64,
                     e.FaceEncodingsJson
                 })
@@ -195,7 +195,6 @@ namespace FaceAttend.Services.Biometrics
                         LastName = emp.LastName,
                         MiddleName = emp.MiddleName,
                         Department = emp.Department,
-                        IsActive = emp.IsActive,
                         FaceVectors = vectors
                     });
                 }
@@ -219,13 +218,13 @@ namespace FaceAttend.Services.Biometrics
                     e.LastName,
                     e.MiddleName,
                     e.Department,
-                    e.IsActive,
+
                     e.FaceEncodingBase64,
                     e.FaceEncodingsJson
                 })
                 .FirstOrDefault();
 
-            if (emp == null || !emp.IsActive)
+            if (emp == null)
                 return null;
 
             var vectors = LoadEmployeeVectors(
@@ -244,7 +243,6 @@ namespace FaceAttend.Services.Biometrics
                 LastName = emp.LastName,
                 MiddleName = emp.MiddleName,
                 Department = emp.Department,
-                IsActive = emp.IsActive,
                 FaceVectors = vectors
             };
         }
@@ -262,7 +260,6 @@ namespace FaceAttend.Services.Biometrics
             public string LastName { get; set; }
             public string MiddleName { get; set; }
             public string Department { get; set; }
-            public bool IsActive { get; set; }
             public List<double[]> FaceVectors { get; set; }
 
             public string DisplayName => string.IsNullOrWhiteSpace(LastName) ? EmployeeId :
@@ -280,7 +277,6 @@ namespace FaceAttend.Services.Biometrics
             public string LastName { get; set; }
             public string MiddleName { get; set; }
             public string Department { get; set; }
-            public bool IsActive { get; set; }
             public string FaceEncodingBase64 { get; set; }
             public string FaceEncodingsJson { get; set; }
         }
