@@ -101,13 +101,20 @@ body.admin-body {
         top: 56px;
         left: 0;
         bottom: 0;
-        z-index: 1020;
+        width: 260px;           /* match desktop width (Bug 4 fix) */
+        z-index: 1025;          /* above sticky(1020), BELOW topbar(1030) (Bug 1 fix) */
         transform: translateX(-100%);
-        transition: transform var(--transition);
+        /* transition removed - Bootstrap owns this (Bug 3 fix) */
     }
     
     .admin-sidebar.show {
         transform: translateX(0);
+    }
+    
+    /* Pull backdrop BELOW the topbar so the hamburger stays clickable (Bug 1 fix) */
+    .offcanvas-backdrop {
+        z-index: 1024 !important;
+        top: 56px !important;   /* don't cover the topbar row */
     }
 }
 
@@ -1051,4 +1058,33 @@ body.admin-body {
     .ea-page-title {
         font-size: 1.25rem;
     }
+}
+
+/* --------------------------------------------------------------------------
+   Action button icons - consistent sizing across employee/visitor list tables
+   -------------------------------------------------------------------------- */
+.ea-table .btn-sm i,
+.ea-table .btn i {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1em;
+    font-size: 1em;
+    line-height: 1;
+    vertical-align: middle;
+}
+
+/* camera icon specifically - prevents the wider glyph from clipping */
+.ea-table .btn-sm .fa-camera,
+.ea-table .btn-sm .fa-camera-slash {
+    font-size: 0.9375em; /* slightly tighter than pen/check to match visual weight */
+}
+
+/* normalize <a> and <button> heights in the same btn-group */
+.ea-table td .d-flex.gap-1 > .btn-sm,
+.ea-table td .d-flex.gap-1 > a.btn-sm {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    line-height: 1;
 }

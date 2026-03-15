@@ -17,28 +17,6 @@
     @Styles.Render("~/Content/fa-components")  @* Component CSS *@
     @RenderSection("head", required: false)
     @RenderSection("styles", required: false)
-    
-    <!-- Sidebar/backdrop fixes for Bootstrap offcanvas-lg -->
-    <style>
-        /* Desktop sidebar: override Bootstrap's transparent background on offcanvas-lg */
-        @@media (min-width: 992px) {
-            .admin-sidebar {
-                background-color: var(--admin-surface, #fff) !important;
-                visibility: visible !important;
-                transform: none !important;
-                position: sticky !important;
-                top: 56px;
-                height: calc(100vh - 56px);
-            }
-        }
-
-        /* Mobile: only hide backdrop when sidebar is not open */
-        @@media (max-width: 991.98px) {
-            .offcanvas-backdrop {
-                transition: opacity 0.15s linear;
-            }
-        }
-    </style>
 </head>
 <body class="admin-body">
 

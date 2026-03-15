@@ -1,4 +1,9 @@
 @{
+    // CRITICAL FIX: Layout must be null for partials to prevent nested layout rendering.
+    // Without this, the partial inherits Layout from _ViewStart, causing infinite recursion
+    // or "Section blocks cannot be nested" errors when the layout tries to render itself.
+    Layout = null;
+
     // Using route values avoids false "active" matches.
     // Example: Url.Action for Dashboard often returns /Admin, which is a prefix of every Admin route.
 

@@ -596,8 +596,9 @@ namespace FaceAttend.Services
 
         public static string GetEmployeeStatus(FaceAttendDBEntities db, int employeeId)
         {
+            // FIXED: Removed IsActive reference - Employee table only has Status column
             var status = db.Database.SqlQuery<string>(
-                @"SELECT TOP 1 ISNULL([Status], CASE WHEN IsActive = 1 THEN 'ACTIVE' ELSE 'INACTIVE' END)
+                @"SELECT TOP 1 ISNULL([Status], 'INACTIVE')
                   FROM dbo.Employees
                   WHERE Id = @id",
                 new SqlParameter("@id", employeeId))

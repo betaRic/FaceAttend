@@ -88,6 +88,171 @@
 
     enrollment.elements.cam = ui.video;
 
+    // ── Camera Component Initialization ───────────────────────────────────────
+    // The _Camera.cshtml partial now outputs data-* attributes instead of inline
+    // <script> blocks (which cause Razor "nested sections" error when rendered
+    // from inside @section scripts). We initialize the camera component here.
+    (function initCameraComponent() {
+        var cameraContainer = root.querySelector('.fa-camera');
+        if (!cameraContainer) return;
+
+        var containerId = cameraContainer.dataset.containerId;
+        var videoId     = cameraContainer.dataset.videoId;
+        var guideId     = cameraContainer.dataset.guideId;
+        var statusId    = cameraContainer.dataset.statusId;
+
+        var container = document.getElementById(containerId);
+        var video     = document.getElementById(videoId);
+        var guide     = document.getElementById(guideId);
+        var statusEl  = document.getElementById(statusId);
+        var flash     = document.getElementById(containerId + '-flash');
+
+        if (!container) return;
+
+        // Camera state
+        var cameraState = { isActive: false };
+
+        function startCameraComponent(options) {
+            if (!window.FaceAttend || !window.FaceAttend.Camera) {
+                console.error('[Camera Component] FaceAttend.Camera not available');
+                return Promise.reject('Camera module not loaded');
+            }
+
+            var opts = {};
+            try {
+                opts = JSON.parse(container.dataset.cameraOptions || '{}');
+            } catch(e) {}
+
+            if (options) Object.assign(opts, options);
+
+            return new Promise(function(resolve, reject) {
+                window.FaceAttend.Camera.start(
+                    video,
+                    opts,
+                    function(stream) {
+                        cameraState.isActive = true;
+                        container.classList.add('fa-camera--active');
+                        resolve(stream);
+                    },
+                    function(err) { reject(err); }
+                );
+            });
+        }
+
+        function stopCameraComponent() {
+            if (window.FaceAttend && window.FaceAttend.Camera) {
+                window.FaceAttend.Camera.stop();
+            }
+            cameraState.isActive = false;
+            container.classList.remove('fa-camera--active');
+        }
+
+        function setGuideState(state) {
+            if (!guide) return;
+            guide.classList.remove(
+                'fa-camera__guide--active',
+                'fa-camera__guide--success',
+                'fa-camera__guide--warning'
+            );
+            if (state) guide.classList.add('fa-camera__guide--' + state);
+        }
+
+        function setStatusText(text, type) {
+            if (!statusEl) return;
+            statusEl.textContent = text;
+            statusEl.className = 'fa-camera__status';
+            if (type) statusEl.classList.add('fa-camera__status--' + type);
+        }
+
+        function triggerFlash() {
+            if (!flash) return;
+            flash.classList.add('fa-camera__flash--active');
+            setTimeout(function() {
+                flash.classList.remove('fa-camera__flash--active');
+            }, 150);
+        }
+
+        // Auto-start if requested
+        var autoStart = container.dataset.autostart === 'true';
+        if (autoStart && window.FaceAttend && window.FaceAttend.Camera) {
+            startCameraComponent();
+        }
+
+        // Expose API on container
+        container.faceCamera = {
+            start: startCameraComponent,
+            stop: stopCameraComponent,
+            setGuideState: setGuideState,
+            setStatus: setStatusText,
+            flash: triggerFlash
+        };
+    })();
+
+    // ── FaceProgress Component Initialization ────────────────────────────────
+    (function initFaceProgressComponent() {
+        var fpContainer = root.querySelector('.face-progress');
+        if (!fpContainer) return;
+
+        var containerId = fpContainer.dataset.containerId;
+        var textId      = fpContainer.dataset.textId;
+        var barId       = fpContainer.dataset.barId;
+        var dotsId      = fpContainer.dataset.dotsId;
+        var anglesId    = fpContainer.dataset.anglesId;
+        var target      = parseInt(fpContainer.dataset.target || '5', 10);
+        var maxDots     = parseInt(fpContainer.dataset.max || '10', 10);
+
+        var textEl   = document.getElementById(textId);
+        var barEl    = document.getElementById(barId);
+        var dotsEl   = document.getElementById(dotsId);
+        var anglesEl = document.getElementById(anglesId);
+        var promptEl = document.getElementById(containerId + '-prompt');
+
+        function updateProgress(current, buckets) {
+            var percentage = Math.min(100, Math.round((current / target) * 100));
+
+            if (textEl) textEl.textContent = current + ' / ' + target;
+
+            if (barEl) {
+                barEl.style.width = percentage + '%';
+                barEl.classList.toggle('progress-bar__fill--success', current >= target);
+            }
+
+            if (dotsEl) {
+                var dots = dotsEl.querySelectorAll('.progress-dots__dot');
+                dots.forEach(function(dot, index) {
+                    dot.classList.remove('progress-dots__dot--active', 'progress-dots__dot--complete');
+                    if (index < current) dot.classList.add('progress-dots__dot--complete');
+                });
+            }
+
+            if (anglesEl && buckets) {
+                buckets.forEach(function(bucket) {
+                    var item = anglesEl.querySelector('[data-bucket="' + bucket + '"]');
+                    if (item) item.classList.add('progress-angles__item--captured');
+                });
+            }
+        }
+
+        function setNextAngle(label, icon) {
+            if (!promptEl) return;
+            if (label) {
+                promptEl.style.display = 'flex';
+                promptEl.querySelector('span').textContent = label;
+                if (icon) {
+                    promptEl.querySelector('i').className = 'fa-solid ' + icon;
+                }
+            } else {
+                promptEl.style.display = 'none';
+            }
+        }
+
+        // Expose API on container
+        fpContainer.faceProgress = {
+            update: updateProgress,
+            setNextAngle: setNextAngle
+        };
+    })();
+
     // getEncodings() - returns base64 face encodings from all captured good frames.
     // Called by mobile wizard submitEnrollment() to build the server POST payload.
     // enrollment-core.js stores the server-returned encoding on each goodFrame.
