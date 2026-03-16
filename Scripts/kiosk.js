@@ -187,6 +187,33 @@
     };
 
     // =========
+    // server warm-up gate
+    // =========
+    function pollServerReady() {
+        fetch(appBase + 'Health', {
+            method: 'GET',
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        })
+        .then(function(r) { return r.ok ? r.json() : null; })
+        .then(function(j) {
+            if (j && j.warmUpState === 1) {
+                state.serverReady = true;
+                log('[warmup] Server ready.');
+            } else {
+                // Still loading models  retry in 2s
+                setTimeout(pollServerReady, 2000);
+            }
+        })
+        .catch(function() {
+            // Network error  retry in 3s
+            setTimeout(pollServerReady, 3000);
+        });
+    }
+    // Start polling after 500ms (give IIS time to respond to first request)
+    setTimeout(pollServerReady, 500);
+
+    // =========
     // state
     // =========
     var ua       = navigator.userAgent || '';
@@ -198,6 +225,7 @@
             var state = {
         unlockOpen:      false,
         adminModalOpen:  false,         // Block scanning when admin success modal is shown
+        serverReady:     false,        // NEW: blocks scans until warm-up is complete
         wasIdle:         true,
         visitorOpen:     false,
         pendingVisitor:  null,
@@ -2215,10 +2243,14 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                             window.location.href = appBase + 'MobileRegistration/Employee';
                         });
                     } else {
+                        toastSuccess((isTimeIn ? 'Time In' : 'Time Out') + ' -- ' + name);
                         setTimeout(function() {
                             window.location.href = appBase + 'MobileRegistration/Employee';
-                        }, 1500);
+                        }, 2500);
                     }
+                    
+                    setPrompt(isTimeIn ? 'Time In recorded.' : 'Time Out recorded.', name);
+                    armPostScanHold(CFG.postScan.holdMs);
                 } else {
                     if (window.Swal) {
                         var iconClass = isTimeIn ? 'fa-circle-check' : 'fa-circle-arrow-right';
@@ -2659,6 +2691,15 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                         safeSetPrompt('Initializing...', 'Please wait a moment.'); 
                         updateEta(true); 
                         return; 
+                    }
+
+                    // SERVER WARM-UP GATE: Block scans until Dlib + ONNX models fully loaded
+                    // The 68-landmark model (~97MB)  pool size takes 15-20s on cold start.
+                    // The /Health endpoint reports ready:true when WarmUpState == 1.
+                    if (!state.serverReady) {
+                        safeSetPrompt('System starting...', 'Models loading, please wait.');
+                        updateEta(true);
+                        return;
                     }
 
                     // ULTRA-FAST PREVIEW: Try to recognize face in background

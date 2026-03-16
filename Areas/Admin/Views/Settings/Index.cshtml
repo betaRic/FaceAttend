@@ -129,7 +129,7 @@
                                         <div class="form-text">Comma-separated crop scales.</div>
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessInputSize, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessInputSize, new
                                         {
@@ -141,7 +141,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessInputSize, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessCropScale, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessCropScale, new
                                         {
@@ -154,7 +154,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessCropScale, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessRealIndex, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessRealIndex, new
                                         {
@@ -166,7 +166,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessRealIndex, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessOutputType, new { @class = "form-label" })
                                         @Html.DropDownListFor(m => m.LivenessOutputType,
                                             new[]
@@ -178,7 +178,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessOutputType, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessNormalize, new { @class = "form-label" })
                                         @Html.DropDownListFor(m => m.LivenessNormalize,
                                             new[]
@@ -192,7 +192,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessNormalize, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessChannelOrder, new { @class = "form-label" })
                                         @Html.DropDownListFor(m => m.LivenessChannelOrder,
                                             new[]
@@ -204,7 +204,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessChannelOrder, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessRunTimeoutMs, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessRunTimeoutMs, new
                                         {
@@ -216,7 +216,7 @@
                                         @Html.ValidationMessageFor(m => m.LivenessRunTimeoutMs, "", new { @class = "text-danger small" })
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessSlowMs, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessSlowMs, new
                                         {
@@ -227,7 +227,8 @@
                                         })
                                         @Html.ValidationMessageFor(m => m.LivenessSlowMs, "", new { @class = "text-danger small" })
                                     </div>
-<div class="col-12 col-md-6">
+
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LivenessCircuitFailStreak, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LivenessCircuitFailStreak, new
                                         {
@@ -327,43 +328,43 @@
                             </div>
                             <div class="ea-settings-section-body">
                                 <div class="row g-3">
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.MinGapSeconds, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.MinGapSeconds, new { @class = "form-control form-control-sm", type = "number", min = "1", max = "600" })
                                         @Html.ValidationMessageFor(m => m.MinGapSeconds, "", new { @class = "text-danger small" })
                                         <div class="form-text">Anti double-tap floor (applies to all transitions).</div>
                                     </div>
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.MinGapInToOutSeconds, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.MinGapInToOutSeconds, new { @class = "form-control form-control-sm", type = "number", min = "300", max = "14400" })
                                         @Html.ValidationMessageFor(m => m.MinGapInToOutSeconds, "", new { @class = "text-danger small" })
                                         <div class="form-text">Minimum wait after Time-In before Time-Out is allowed (default 1800s = 30 min).</div>
                                     </div>
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.MinGapOutToInSeconds, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.MinGapOutToInSeconds, new { @class = "form-control form-control-sm", type = "number", min = "60", max = "3600" })
                                         @Html.ValidationMessageFor(m => m.MinGapOutToInSeconds, "", new { @class = "text-danger small" })
                                         <div class="form-text">Minimum wait after Time-Out before Time-In is allowed (default 300s = 5 min).</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.GraceMinutes, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.GraceMinutes, new { @class = "form-control form-control-sm", type = "number", min = "0", max = "60" })
                                         @Html.ValidationMessageFor(m => m.GraceMinutes, "", new { @class = "text-danger small" })
                                         <div class="form-text">Minutes after work start before a scan is marked late.</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.FullDayHours, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.FullDayHours, new { @class = "form-control form-control-sm", type = "number", step = "0.5", min = "1", max = "24" })
                                         @Html.ValidationMessageFor(m => m.FullDayHours, "", new { @class = "text-danger small" })
                                         <div class="form-text">Hours required for a full-day record.</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LunchDeductAfterHours, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LunchDeductAfterHours, new { @class = "form-control form-control-sm", type = "number", step = "0.5", min = "0", max = "12" })
                                         @Html.ValidationMessageFor(m => m.LunchDeductAfterHours, "", new { @class = "text-danger small" })
                                         <div class="form-text">Deduct lunch only when hours worked exceed this value.</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LunchMinutes, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LunchMinutes, new { @class = "form-control form-control-sm", type = "number", min = "0", max = "120" })
                                         @Html.ValidationMessageFor(m => m.LunchMinutes, "", new { @class = "text-danger small" })
@@ -473,7 +474,7 @@
                             </div>
                             <div class="ea-settings-section-body">
                                 <div class="row g-3">
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.NeedsReviewNearMatchRatio, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.NeedsReviewNearMatchRatio, new
                                         {
@@ -487,7 +488,7 @@
                                         <div class="form-text">Near face threshold.</div>
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.NeedsReviewLivenessMargin, new
                                         {
@@ -501,7 +502,7 @@
                                         <div class="form-text">Near liveness threshold.</div>
                                     </div>
 
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.NeedsReviewGpsMargin, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.NeedsReviewGpsMargin, new
                                         {
@@ -524,19 +525,19 @@
                             </div>
                             <div class="ea-settings-section-body">
                                 <div class="row g-3">
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.AttendanceTolerance, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.AttendanceTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.40", max = "0.90" })
                                         @Html.ValidationMessageFor(m => m.AttendanceTolerance, "", new { @class = "text-danger small" })
                                         <div class="form-text">Face distance for attendance scans. Higher = more lenient (default 0.65).</div>
                                     </div>
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollmentStrictTolerance, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.EnrollmentStrictTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.20", max = "0.70" })
                                         @Html.ValidationMessageFor(m => m.EnrollmentStrictTolerance, "", new { @class = "text-danger small" })
                                         <div class="form-text">Duplicate face detection during enrollment. Lower = stricter (default 0.45).</div>
                                     </div>
-                                    <div class="col-12 col-md-4">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.VisitorDlibTolerance, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.VisitorDlibTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.40", max = "0.90" })
                                         @Html.ValidationMessageFor(m => m.VisitorDlibTolerance, "", new { @class = "text-danger small" })
@@ -553,25 +554,25 @@
                             </div>
                             <div class="ea-settings-section-body">
                                 <div class="row g-3">
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollCaptureTarget, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.EnrollCaptureTarget, new { @class = "form-control form-control-sm", type = "number", min = "3", max = "20" })
                                         @Html.ValidationMessageFor(m => m.EnrollCaptureTarget, "", new { @class = "text-danger small" })
                                         <div class="form-text">Frames collected per enrollment session (default 8).</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollMaxStoredVectors, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.EnrollMaxStoredVectors, new { @class = "form-control form-control-sm", type = "number", min = "1", max = "10" })
                                         @Html.ValidationMessageFor(m => m.EnrollMaxStoredVectors, "", new { @class = "text-danger small" })
                                         <div class="form-text">Face vectors stored per employee after diversity selection (default 5).</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollSharpnessThreshold, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.EnrollSharpnessThreshold, new { @class = "form-control form-control-sm", type = "number", step = "1", min = "10", max = "500" })
                                         @Html.ValidationMessageFor(m => m.EnrollSharpnessThreshold, "", new { @class = "text-danger small" })
                                         <div class="form-text">Minimum image sharpness score (desktop webcam, default 80).</div>
                                     </div>
-                                    <div class="col-12 col-md-3">
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollSharpnessThresholdMobile, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.EnrollSharpnessThresholdMobile, new { @class = "form-control form-control-sm", type = "number", step = "1", min = "10", max = "500" })
                                         @Html.ValidationMessageFor(m => m.EnrollSharpnessThresholdMobile, "", new { @class = "text-danger small" })
