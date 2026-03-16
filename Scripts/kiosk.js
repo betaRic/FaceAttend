@@ -662,10 +662,17 @@
             // Always invalidateSize  cheap if container unchanged, needed on first show
             _idleLeafletMap.invalidateSize();
 
-            //  User marker: pulsing dot, moved smoothly on GPS ticks 
+            //  User marker: pulsing dot, moved smoothly on GPS ticks
+            // Don't show user dot if accuracy is worse than 2km - IP-based geolocation
+            // on desktop is often 50-300km off and showing it is actively misleading.
+            var accOk = state.gps.accuracy != null && state.gps.accuracy <= 2000;
+
             if (_idleUserMarker) {
                 _idleUserMarker.setLatLng([lat, lon]);
-            } else {
+                // Hide/show based on accuracy
+                var el = _idleUserMarker.getElement();
+                if (el) el.style.opacity = accOk ? '1' : '0';
+            } else if (accOk) {
                 var userIcon = L.divIcon({
                     className: '',
                     html: '<div class="map-user-dot"><div class="map-user-ring"></div></div>',
@@ -708,7 +715,16 @@
                 ? Math.round(nearestDist) + ' m'
                 : (nearestDist / 1000).toFixed(1) + ' km';
             var mapInfo = document.getElementById('idleMapInfo');
-            if (mapInfo) mapInfo.textContent = nearest.name + '    ' + distLabel + ' away';
+            if (mapInfo) {
+                var accLabel = state.gps.accuracy != null
+                    ? (state.gps.accuracy <= 50   ? '' + Math.round(state.gps.accuracy) + 'm (good)'
+                     : state.gps.accuracy <= 500  ? '' + Math.round(state.gps.accuracy) + 'm (low)'
+                     : '' + (state.gps.accuracy >= 1000
+                         ? (state.gps.accuracy/1000).toFixed(1) + 'km (GPS unavailable)'
+                         : Math.round(state.gps.accuracy) + 'm (unreliable)'))
+                    : 'GPS unknown';
+                mapInfo.textContent = nearest.name + '    ' + distLabel + ' away    ' + accLabel;
+            }
 
             //  Office marker: only redraw when nearest office changes 
             var officeChanged = !_idleNearestOffice || _idleNearestOffice.name !== nearest.name;
@@ -2695,6 +2711,11 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                     
                     setPrompt(isTimeIn ? 'Time In recorded.' : 'Time Out recorded.', name);
                     armPostScanHold(CFG.postScan.holdMs);
+                    // Reset face state so person must step away before next scan
+                    state.mpFaceSeenAt = 0;
+                    state.mpReadyToFire = false;
+                    state.mpStableStart = 0;
+                    state.wasIdle = true;
                 }
             } else {
                 // Track consecutive visitor/failure attempts
@@ -2814,17 +2835,17 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
             // instead of overwriting with 'Next scan ready soon.'
             state.blockMessage = tooSoonMsg;
 
-            // 20s hold — enough for the person to physically step away.
+            // 2s hold — enough for the person to physically step away.
             // Server enforces the real per-employee gap on any retry.
             // scanBlockUntil is kiosk-wide so we keep it short.
-            armPostScanHold(20000);
+            armPostScanHold(2000);
 
             setTimeout(function () {
                 state.blockMessage = null;
                 if (state.locationState === 'allowed') {
                     setPrompt('Ready.', 'Stand still. One face only.');
                 }
-            }, 20500);
+            }, 2500);
         } else if (err === 'LIVENESS_FAIL') {
             // Visual feedback only - bounding box color + status bar shows liveness state
             // No toast - user sees red bounding box and "Liveness failed" on status bar
@@ -3100,7 +3121,7 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                     if (state.visitorOpen) { updateEta(true); return; }
                     if (state.unlockOpen) { updateEta(true); return; }  // Block scan when PIN modal open
                     if (state.adminModalOpen) { updateEta(true); return; }  // Block scan when admin success modal open
-                    if (now < (state.scanBlockUntil || 0)) { safeSetPrompt('Please wait.', 'Next scan ready soon.'); updateEta(true); return; }
+                    if (now < (state.scanBlockUntil || 0)) { safeSetPrompt('Please wait.', state.blockMessage || 'Next scan ready soon.'); updateEta(true); return; }
                     if (state.mpMode !== 'tasks') { safeSetPrompt('System not ready.', 'Face detection unavailable.'); updateEta(true); return; }
                     
                     // PREVENT IMMEDIATE SCAN: Must wait at least 2 seconds after page load
