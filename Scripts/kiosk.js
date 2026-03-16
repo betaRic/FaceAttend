@@ -233,7 +233,8 @@
         wasIdle:         true,
         visitorOpen:     false,
         pendingVisitor:  null,
-        scanBlockUntil:  0,
+        scanBlockUntil: 0,
+        blockMessage: null,
         submitInProgress: false,
         deviceStatus:    'unknown',
         deviceChecked:   false,
@@ -862,7 +863,7 @@
     function armPostScanHold(ms) {
         var now  = Date.now();
         var hold = (typeof ms === 'number' && isFinite(ms) && ms > 0) ? ms : CFG.postScan.holdMs;
-        state.scanBlockUntil = Math.max(state.scanBlockUntil || 0, now + hold);
+        if (now < (state.scanBlockUntil || 0)) { safeSetPrompt('Please wait.', state.blockMessage || 'Next scan ready soon.'); updateEta(true); return; }
     }
 
     // =========
@@ -2802,29 +2803,24 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
         }
 
         if (err === 'ALREADY_SCANNED' || err === 'TOO_SOON') {
-            toastError(j.message || 'Already scanned. Please wait.');
-            setPrompt('Already scanned.', j.message || 'Please wait before scanning again.');
+            var tooSoonMsg = j.message || 'Already scanned. Please wait.';
+            toastError(tooSoonMsg);
 
-            // Use the actual server gap as the hold  prevents the loop from
-            // re-firing every 3.5s and showing the message repeatedly.
-            // Cap at 90 minutes in case of misconfigured gap values.
-            var gapMs = Math.min((j.minGapSeconds || 120) * 1000, 90 * 60 * 1000);
-            armPostScanHold(gapMs);
+            // Store message so scan loop shows it during the hold
+            // instead of overwriting with 'Next scan ready soon.'
+            state.blockMessage = tooSoonMsg;
 
-            // Clear prompt once the hold expires so kiosk returns to ready state
+            // 20s hold — enough for the person to physically step away.
+            // Server enforces the real per-employee gap on any retry.
+            // scanBlockUntil is kiosk-wide so we keep it short.
+            armPostScanHold(20000);
+
             setTimeout(function () {
+                state.blockMessage = null;
                 if (state.locationState === 'allowed') {
                     setPrompt('Ready.', 'Stand still. One face only.');
                 }
-            }, gapMs + 500);
-
-            var isPersonalMobile = /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
-            var isForcedKiosk = document.body.getAttribute('data-force-kiosk') === 'true';
-            if (isPersonalMobile && !isForcedKiosk) {
-                setTimeout(function() {
-                    window.location.href = (window.appBase || '/') + 'MobileRegistration/Employee';
-                }, 2000);
-            }
+            }, 20500);
         } else if (err === 'LIVENESS_FAIL') {
             // Visual feedback only - bounding box color + status bar shows liveness state
             // No toast - user sees red bounding box and "Liveness failed" on status bar
