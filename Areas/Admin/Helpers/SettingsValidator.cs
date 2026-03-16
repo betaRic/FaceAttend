@@ -105,6 +105,9 @@ namespace FaceAttend.Areas.Admin.Helpers
 
             if (vm.MaxImageDimension < 320)
                 modelState.AddModelError("MaxImageDimension", "Minimum is 320 pixels.");
+
+            if (vm.HalfDayHours < 0.5 || vm.HalfDayHours > 12.0)
+                modelState.AddModelError("HalfDayHours", "Must be between 0.5 and 12.");
         }
 
         /// <summary>

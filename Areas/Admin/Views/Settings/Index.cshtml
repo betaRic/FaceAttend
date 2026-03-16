@@ -359,6 +359,12 @@
                                         <div class="form-text">Hours required for a full-day record.</div>
                                     </div>
                                     <div class="col-12 col-md-6">
+                                        @Html.LabelFor(m => m.HalfDayHours, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.HalfDayHours, new { @class = "form-control form-control-sm", type = "number", step = "0.5", min = "0.5", max = "12" })
+                                        @Html.ValidationMessageFor(m => m.HalfDayHours, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Hours threshold for a half-day record.</div>
+                                    </div>
+                                    <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.LunchDeductAfterHours, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.LunchDeductAfterHours, new { @class = "form-control form-control-sm", type = "number", step = "0.5", min = "0", max = "12" })
                                         @Html.ValidationMessageFor(m => m.LunchDeductAfterHours, "", new { @class = "text-danger small" })

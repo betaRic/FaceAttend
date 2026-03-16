@@ -314,6 +314,13 @@ namespace FaceAttend.Areas.Admin.Helpers
                 LunchEnd = NormalizeTimeOrDefault(ConfigurationService.GetString("Attendance:LunchEnd", "13:00"), "13:00"),
                 FlexiRequiredHours = ConfigurationService.GetDouble("Attendance:FlexiRequiredHours", 8.0),
                 NoGracePeriod = ConfigurationService.GetBool("Attendance:NoGracePeriod", true),
+                FullDayHours = ConfigurationService.GetDouble("Attendance:FullDayHours", 8.0),
+                HalfDayHours = ConfigurationService.GetDouble("Attendance:HalfDayHours", 4.0),
+                LunchDeductAfterHours = ConfigurationService.GetDouble("Attendance:LunchDeductAfterHours", 5.5),
+                LunchMinutes = ConfigurationService.GetInt("Attendance:LunchMinutes", 60),
+                MinGapInToOutSeconds = ConfigurationService.GetInt("Attendance:MinGap:InToOutSeconds", 1800),
+                MinGapOutToInSeconds = ConfigurationService.GetInt("Attendance:MinGap:OutToInSeconds", 300),
+                GraceMinutes = ConfigurationService.GetInt("Attendance:GraceMinutes", 10),
 
                 BallTreeThreshold = ConfigurationService.GetInt("Biometrics:BallTreeThreshold", 50),
                 BallTreeLeafSize = ConfigurationService.GetInt("Biometrics:BallTreeLeafSize", 16),
