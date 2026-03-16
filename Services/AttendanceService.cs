@@ -78,7 +78,7 @@ namespace FaceAttend.Services
             // the first commits, then re-read and see the new record correctly.
             // This is lighter than Serializable (no range locks) and sufficient here
             // because we only query by EmployeeId within a date range.
-            using (var tx = _db.Database.BeginTransaction(IsolationLevel.RepeatableRead))
+            using (var tx = _db.Database.BeginTransaction(IsolationLevel.Serializable))
             {
                 try
                 {
