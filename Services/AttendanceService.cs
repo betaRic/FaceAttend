@@ -52,6 +52,7 @@ namespace FaceAttend.Services
             public string Message { get; set; }
             public string EventType { get; set; }
             public DateTime TimestampUtc { get; set; }
+            public int ApplicableGapSeconds { get; set; }
         }
 
         public RecordResult Record(AttendanceLog log, DateTime? attemptedAtUtc = null)
@@ -148,7 +149,8 @@ namespace FaceAttend.Services
                                 Ok      = false,
                                 Code    = "TOO_SOON",
                                 Message = gapMessage,
-                                TimestampUtc = nowUtc
+                                TimestampUtc = nowUtc,
+                                ApplicableGapSeconds = applicableGap
                             };
                         }
                     }

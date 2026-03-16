@@ -678,6 +678,13 @@ namespace FaceAttend.Controllers
                         var scanId = NewScanId();
                         var key = VisitorScanPrefix + scanId;
 
+                        bool visitorEnabled = ConfigurationService.GetBool(
+                            db, "Kiosk:VisitorEnabled",
+                            ConfigurationService.GetBool("Kiosk:VisitorEnabled", true));
+
+                        if (!visitorEnabled)
+                            return JsonResponseBuilder.ErrorWithTimings("NOT_RECOGNIZED", timings, includePerfTimings);
+
                         _visitorScanCache.Set(
                             key,
                             new VisitorScanCacheItem
@@ -873,16 +880,12 @@ namespace FaceAttend.Controllers
 
                         if (string.Equals(rec.Code, "TOO_SOON", StringComparison.OrdinalIgnoreCase))
                         {
-                            var minGapSeconds = ConfigurationService.GetInt(
-                                db, "Attendance:MinGapSeconds",
-                                ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
+                            var enforcedGap = rec.ApplicableGapSeconds > 0
+                                ? rec.ApplicableGapSeconds
+                                : ConfigurationService.GetInt(db, "Attendance:MinGapSeconds",
+                                    ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
 
-                            var mins = (minGapSeconds >= 60) ? (minGapSeconds / 60) : 0;
-                            var msg = mins > 0
-                                ? ("Already scanned. Please wait " + mins + " minute(s).")
-                                : ("Already scanned. Please wait " + minGapSeconds + " second(s).");
-
-                            return JsonResponseBuilder.TooSoon(msg, minGapSeconds, timings, includePerfTimings);
+                            return JsonResponseBuilder.TooSoon(rec.Message, enforcedGap, timings, includePerfTimings);
                         }
 
                         return JsonResponseBuilder.ErrorWithTimings(rec.Code, timings, includePerfTimings, rec.Message);

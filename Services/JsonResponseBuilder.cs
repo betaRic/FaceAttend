@@ -238,7 +238,7 @@ namespace FaceAttend.Services
                 ok = false, 
                 error = "TOO_SOON", 
                 message,
-                minGap = minGapSeconds,
+                minGapSeconds,
                 timings = includeTimings ? timings : null
             };
 

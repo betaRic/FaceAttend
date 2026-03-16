@@ -195,6 +195,11 @@ namespace FaceAttend.Areas.Admin.Helpers
                 ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold:Mobile", 50.0));
 
             // Visitors
+            var visitorEnabled = ConfigurationService.GetBool(
+                db,
+                "Kiosk:VisitorEnabled",
+                ConfigurationService.GetBool("Kiosk:VisitorEnabled", true));
+
             var visMaxRec = ConfigurationService.GetInt(
                 db,
                 "Visitors:MaxRecords",
@@ -271,6 +276,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 NeedsReviewGpsMargin = gpsMargin,
 
                 // Visitors
+                VisitorEnabled = visitorEnabled,
                 VisitorMaxRecords = visMaxRec,
                 VisitorRetentionYears = visRetYears,
 
@@ -335,6 +341,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 LivenessCircuitFailStreak = ConfigurationService.GetInt("Biometrics:Liveness:CircuitFailStreak", 3),
                 LivenessCircuitDisableSeconds = ConfigurationService.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30),
 
+                VisitorEnabled = ConfigurationService.GetBool("Kiosk:VisitorEnabled", true),
                 VisitorMaxRecords = ConfigurationService.GetInt("Visitors:MaxRecords", 10000),
                 VisitorRetentionYears = ConfigurationService.GetInt("Visitors:RetentionYears", 2),
 

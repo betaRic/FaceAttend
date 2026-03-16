@@ -611,6 +611,29 @@
 
                         <div class="ea-settings-section">
                             <div class="ea-settings-section-head">
+                                <i class="fa-solid fa-person-walking-arrow-right" aria-hidden="true"></i>
+                                Visitor Sign-In
+                            </div>
+                            <div class="ea-settings-section-body">
+                                <div class="row g-3">
+                                    <div class="col-12">
+                                        <div class="form-check form-switch">
+                                            @Html.CheckBoxFor(m => m.VisitorEnabled, new { @class = "form-check-input", role = "switch", id = "VisitorEnabled" })
+                                            <label class="form-check-label" for="VisitorEnabled">
+                                                Enable visitor sign-in at kiosk
+                                            </label>
+                                        </div>
+                                        <div class="form-text">
+                                            When disabled, unrecognized faces show "Not recognized" instead of opening the visitor form.
+                                            Changes apply immediately  no restart needed.
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="ea-settings-section">
+                            <div class="ea-settings-section-head">
                                 <i class="fa-solid fa-user-check" aria-hidden="true"></i>
                                 Visitor Retention
                             </div>

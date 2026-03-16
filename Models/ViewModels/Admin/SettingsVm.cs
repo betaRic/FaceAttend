@@ -197,6 +197,9 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         // ─── Visitors ──────────────────────────────────────────────────────────────
 
+        [Display(Name = "Enable visitor sign-in")]
+        public bool VisitorEnabled { get; set; }
+
         [Range(100, 500000)]
         [Display(Name = "Max visitor log records")]
         public int VisitorMaxRecords { get; set; }

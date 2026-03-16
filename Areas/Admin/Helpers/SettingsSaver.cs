@@ -367,6 +367,14 @@ namespace FaceAttend.Areas.Admin.Helpers
 
             ConfigurationService.Upsert(
                 db,
+                "Kiosk:VisitorEnabled",
+                vm.VisitorEnabled ? "true" : "false",
+                "bool",
+                "When false, unrecognized faces are rejected instead of opening the visitor form.",
+                modifiedBy);
+
+            ConfigurationService.Upsert(
+                db,
                 "Visitors:MaxRecords",
                 vm.VisitorMaxRecords.ToString(CultureInfo.InvariantCulture),
                 "int",
@@ -401,6 +409,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 null,
                 new
                 {
+                    vm.VisitorEnabled,
                     vm.DlibTolerance,
                     vm.LivenessThreshold,
                     vm.GPSAccuracyRequired,

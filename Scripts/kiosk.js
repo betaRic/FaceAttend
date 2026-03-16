@@ -2803,7 +2803,21 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
 
         if (err === 'ALREADY_SCANNED' || err === 'TOO_SOON') {
             toastError(j.message || 'Already scanned. Please wait.');
-            // MOBILE: Redirect to employee page after showing message
+            setPrompt('Already scanned.', j.message || 'Please wait before scanning again.');
+
+            // Use the actual server gap as the hold  prevents the loop from
+            // re-firing every 3.5s and showing the message repeatedly.
+            // Cap at 90 minutes in case of misconfigured gap values.
+            var gapMs = Math.min((j.minGapSeconds || 120) * 1000, 90 * 60 * 1000);
+            armPostScanHold(gapMs);
+
+            // Clear prompt once the hold expires so kiosk returns to ready state
+            setTimeout(function () {
+                if (state.locationState === 'allowed') {
+                    setPrompt('Ready.', 'Stand still. One face only.');
+                }
+            }, gapMs + 500);
+
             var isPersonalMobile = /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
             var isForcedKiosk = document.body.getAttribute('data-force-kiosk') === 'true';
             if (isPersonalMobile && !isForcedKiosk) {
@@ -2811,7 +2825,6 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                     window.location.href = (window.appBase || '/') + 'MobileRegistration/Employee';
                 }, 2000);
             }
-            armPostScanHold(CFG.postScan.holdMs);
         } else if (err === 'LIVENESS_FAIL') {
             // Visual feedback only - bounding box color + status bar shows liveness state
             // No toast - user sees red bounding box and "Liveness failed" on status bar
