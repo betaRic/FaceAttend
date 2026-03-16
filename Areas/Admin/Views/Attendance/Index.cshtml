@@ -237,7 +237,7 @@
                     <tbody>
                         @foreach (var row in Model.Rows)
                         {
-                            var localTime = TimeZoneHelper.UtcToLocal(row.TimestampUtc);
+                            var localTime = row.TimestampUtc;  // Timestamps are now stored in local time
                             var isIn  = row.EventType == "IN"  || row.EventType == "TimeIn";
                             var isOut = row.EventType == "OUT" || row.EventType == "TimeOut";
 

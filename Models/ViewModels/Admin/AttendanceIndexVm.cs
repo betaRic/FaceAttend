@@ -63,12 +63,13 @@ namespace FaceAttend.Models.ViewModels.Admin
         // Display helpers
         public string DateLabel => DateLocal.ToString("yyyy-MM-dd");
 
+        // Timestamps are now stored in local time - no conversion needed
         public string FirstInDisplay => FirstInUtc.HasValue
-            ? TimeZoneHelper.UtcToLocal(FirstInUtc.Value).ToString("HH:mm")
+            ? FirstInUtc.Value.ToString("HH:mm")
             : "-";
 
         public string LastOutDisplay => LastOutUtc.HasValue
-            ? TimeZoneHelper.UtcToLocal(LastOutUtc.Value).ToString("HH:mm")
+            ? LastOutUtc.Value.ToString("HH:mm")
             : "-";
 
         public string HoursDisplay

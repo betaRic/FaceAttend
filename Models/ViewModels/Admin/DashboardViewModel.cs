@@ -47,8 +47,9 @@ namespace FaceAttend.Models.ViewModels.Admin
     {
         public long     Id               { get; set; }
         public DateTime TimestampUtc     { get; set; }
+        // Timestamps are now stored in local time - no conversion needed
         public string   TimestampLocalDisplay =>
-            TimeZoneHelper.UtcToLocal(TimestampUtc).ToString("HH:mm");
+            TimestampUtc.ToString("HH:mm");
 
         public string EmployeeId       { get; set; }
         public string EmployeeFullName { get; set; }

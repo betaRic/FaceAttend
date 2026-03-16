@@ -990,8 +990,8 @@ namespace FaceAttend.Controllers
                     .OrderBy(l => l.Timestamp)
                     .ToList();
 
-                // Get this month's attendance summary
-                var firstDayOfMonth = new DateTime(todayLocal.Year, todayLocal.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+                // Get this month's attendance summary (timestamps are now local time)
+                var firstDayOfMonth = new DateTime(todayLocal.Year, todayLocal.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
                 var firstDayOfNextMonth = firstDayOfMonth.AddMonths(1);
 
                 var monthLogs = db.AttendanceLogs
@@ -1001,7 +1001,7 @@ namespace FaceAttend.Controllers
                     .OrderBy(l => l.Timestamp)
                     .ToList();
 
-                // Calculate statistics (use .Date for in-memory list, not DbFunctions)
+                // Calculate statistics (timestamps are now local time)
                 var totalDaysPresent = monthLogs
                     .Where(l => l.EventType == "IN")
                     .Select(l => l.Timestamp.Date)
@@ -1021,8 +1021,8 @@ namespace FaceAttend.Controllers
                     .OrderBy(l => l.Timestamp)
                     .Select(l => new RecentAttendanceVm
                     {
-                        Date = l.Timestamp.ToLocalTime().ToString("MMM dd"),
-                        Time = l.Timestamp.ToLocalTime().ToString("h:mm tt"),
+                        Date = l.Timestamp.ToString("MMM dd"),
+                        Time = l.Timestamp.ToString("h:mm tt"),
                         Type = l.EventType,
                         Office = l.Office != null ? l.Office.Name : "Unknown"
                     })
@@ -1044,7 +1044,7 @@ namespace FaceAttend.Controllers
                     TodayStatus = lastAttendance?.EventType == "IN" ? "Timed In" :
                                   lastAttendance?.EventType == "OUT" ? "Timed Out" : "Not Yet",
                     LastScanTime = lastAttendance != null
-                        ? lastAttendance.Timestamp.ToLocalTime().ToString("h:mm tt")
+                        ? lastAttendance.Timestamp.ToString("h:mm tt")
                         : null,
 
                     // Monthly stats
@@ -1079,9 +1079,9 @@ namespace FaceAttend.Controllers
             var currentYear = todayLocal.Year;
             var daysInMonth = DateTime.DaysInMonth(currentYear, currentMonth);
 
-            // Group logs by date
+            // Group logs by date (timestamps are now local time)
             var logsByDate = monthLogs
-                .GroupBy(l => l.Timestamp.ToLocalTime().Date)
+                .GroupBy(l => l.Timestamp.Date)
                 .ToDictionary(g => g.Key, g => g.OrderBy(l => l.Timestamp).ToList());
 
             for (int day = 1; day <= daysInMonth; day++)
@@ -1107,13 +1107,13 @@ namespace FaceAttend.Controllers
 
                     if (timeIn != null)
                     {
-                        dayRecord.TimeIn = timeIn.Timestamp.ToLocalTime().ToString("h:mm tt");
+                        dayRecord.TimeIn = timeIn.Timestamp.ToString("h:mm tt");
                         dayRecord.Office = timeIn.Office?.Name;
                     }
 
                     if (timeOut != null && timeOut != timeIn)
                     {
-                        dayRecord.TimeOut = timeOut.Timestamp.ToLocalTime().ToString("h:mm tt");
+                        dayRecord.TimeOut = timeOut.Timestamp.ToString("h:mm tt");
                     }
 
                     // Calculate hours worked
@@ -1181,16 +1181,16 @@ namespace FaceAttend.Controllers
                 DateTime targetMonth;
                 if (!DateTime.TryParseExact(monthParam, "yyyy_MM", null, System.Globalization.DateTimeStyles.None, out targetMonth))
                 {
-                    targetMonth = DateTime.UtcNow;
+                    targetMonth = TimeZoneHelper.NowLocal();
                 }
                 
-                var firstDay = new DateTime(targetMonth.Year, targetMonth.Month, 1, 0, 0, 0, DateTimeKind.Utc);
-                var lastDay = firstDay.AddMonths(1).AddDays(-1);
+                var firstDay = new DateTime(targetMonth.Year, targetMonth.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
+                var lastDay = firstDay.AddMonths(1);
                 
                 var logs = db.AttendanceLogs
                     .Where(l => l.EmployeeId == employee.Id && 
                                 l.Timestamp >= firstDay && 
-                                l.Timestamp <= lastDay)
+                                l.Timestamp < lastDay)
                     .OrderBy(l => l.Timestamp)
                     .Select(l => new
                     {
@@ -1213,8 +1213,8 @@ namespace FaceAttend.Controllers
                 
                 foreach (var log in logs)
                 {
-                    var localTime = log.Timestamp.ToLocalTime();
-                    csv.AppendLine($"\"{localTime:yyyy-MM-dd}\",\"{localTime:HH:mm:ss}\",\"{log.EventType}\",\"{log.OfficeName}\",\"-\"");
+                    // Timestamps are now stored in local time
+                    csv.AppendLine($"\"{log.Timestamp:yyyy-MM-dd}\",\"{log.Timestamp:HH:mm:ss}\",\"{log.EventType}\",\"{log.OfficeName}\",\"-\"");
                 }
                 
                 csv.AppendLine();

@@ -59,14 +59,12 @@ namespace FaceAttend.Services
         {
             if (log == null) throw new ArgumentNullException(nameof(log));
 
-            var nowUtc = attemptedAtUtc ?? DateTime.UtcNow;
+            // SWITCHED TO LOCAL TIME: Timestamps stored in DB are now local (Asia/Manila)
+            var nowLocal = attemptedAtUtc ?? TimeZoneHelper.NowLocal();
 
-            // Mahalagang aligned ang "attendance day" sa app timezone,
-            // hindi sa timezone ng IIS / server OS.
-            var attendanceLocalDate = TimeZoneHelper.UtcToLocal(nowUtc).Date;
-            var todayRange = TimeZoneHelper.LocalDateToUtcRange(attendanceLocalDate);
-            var startUtc   = todayRange.fromUtc;
-            var endUtc     = todayRange.toUtcExclusive;
+            // Direct date comparison since timestamps are now local
+            var startLocal = nowLocal.Date;                    // start of today in local time
+            var endLocal   = nowLocal.Date.AddDays(1);         // start of tomorrow in local time
 
             int minGapSeconds = ConfigurationService.GetInt(
                 _db, "Attendance:MinGapSeconds",
@@ -87,8 +85,8 @@ namespace FaceAttend.Services
                     var lastToday = _db.AttendanceLogs
                         .Where(x =>
                             x.EmployeeId == log.EmployeeId &&
-                            x.Timestamp >= startUtc &&
-                            x.Timestamp < endUtc)
+                            x.Timestamp >= startLocal &&
+                            x.Timestamp < endLocal)
                         .OrderByDescending(x => x.Timestamp)
                         .FirstOrDefault();
 
@@ -110,7 +108,7 @@ namespace FaceAttend.Services
                     // Ang base minGapSeconds (180s) ay palaging enforced bilang anti-doubletap floor.
                     if (lastToday != null)
                     {
-                        var gap = (nowUtc - lastToday.Timestamp).TotalSeconds;
+                        var gap = (nowLocal - lastToday.Timestamp).TotalSeconds;
 
                         int applicableGap;
                         string gapMessage;
@@ -149,13 +147,13 @@ namespace FaceAttend.Services
                                 Ok      = false,
                                 Code    = "TOO_SOON",
                                 Message = gapMessage,
-                                TimestampUtc = nowUtc,
+                                TimestampUtc = nowLocal,   // Now local time
                                 ApplicableGapSeconds = applicableGap
                             };
                         }
                     }
 
-                    log.Timestamp = nowUtc;
+                    log.Timestamp = nowLocal;  // Store as local time
                     log.EventType = next;
                     log.Source    = string.IsNullOrWhiteSpace(log.Source) ? "KIOSK" : log.Source;
 
@@ -183,7 +181,7 @@ namespace FaceAttend.Services
                                 Ok      = false,
                                 Code    = "TOO_SOON",
                                 Message = "Already scanned. Duplicate record prevented.",
-                                TimestampUtc = nowUtc
+                                TimestampUtc = nowLocal   // Now local time
                             };
                         }
                         throw;
@@ -196,7 +194,7 @@ namespace FaceAttend.Services
                         Ok          = true,
                         Code        = "RECORDED",
                         EventType   = next,
-                        TimestampUtc = nowUtc,
+                        TimestampUtc = nowLocal,  // Now local time
                         Message     = next == "IN" ? "Time in recorded." : "Time out recorded."
                     };
                 }

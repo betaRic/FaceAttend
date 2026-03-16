@@ -2658,6 +2658,10 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                     
                     setPrompt(isTimeIn ? 'Time In recorded.' : 'Time Out recorded.', name);
                     armPostScanHold(CFG.postScan.holdMs);
+                    state.mpFaceSeenAt = 0;
+                    state.mpReadyToFire = false;
+                    state.mpStableStart = 0;
+                    state.wasIdle = true;
                 } else {
                     if (window.Swal) {
                         var iconClass = isTimeIn ? 'fa-circle-check' : 'fa-circle-arrow-right';

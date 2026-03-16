@@ -37,7 +37,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
                         <div class="text-muted small">Time (local)</div>
-                        <div class="fw-semibold">@TimeZoneHelper.UtcToLocal(Model.TimestampUtc).ToString("yyyy-MM-dd HH:mm:ss")</div>
+                        <div class="fw-semibold">@Model.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>  @* Timestamps are now stored in local time *@
                     </div>
 
                     <div class="col-12 col-md-6">

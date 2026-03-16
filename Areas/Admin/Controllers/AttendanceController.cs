@@ -122,12 +122,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                 {
                     vm.ShowSummary = true;
 
-                    // Importante:
-                    // huwag mag-group by raw UTC date para hindi mali ang PH day buckets.
+                    // Timestamps are now stored in local time (Asia/Manila) - no conversion needed
                     var dailyRaw = baseQ
                         .Select(x => new { x.Timestamp, x.EventType })
                         .ToList()
-                        .GroupBy(x => TimeZoneHelper.UtcToLocal(x.Timestamp).Date)
+                        .GroupBy(x => x.Timestamp.Date)
                         .Select(g => new
                         {
                             Date = g.Key,
@@ -377,12 +376,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                     .Select(i => range.FromLocalDate.AddDays(i))
                     .ToList();
 
+                // Timestamps are now stored in local time - no conversion needed
                 vm.EmployeeSummary = raw
                     .GroupBy(x => new { x.EmpId, x.FullName, x.Dept })
                     .Select(eg =>
                     {
                         var byDay = eg
-                            .GroupBy(x => TimeZoneHelper.UtcToLocal(x.Timestamp).Date)
+                            .GroupBy(x => x.Timestamp.Date)
                             .ToDictionary(g => g.Key, g => g.ToList());
 
                         var days = new List<DailyEmployeeRow>(dates.Count);
@@ -564,8 +564,9 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 foreach (var eg in grouped)
                 {
+                    // Timestamps are now stored in local time - no conversion needed
                     var byDay = eg
-                        .GroupBy(x => TimeZoneHelper.UtcToLocal(x.Timestamp).Date)
+                        .GroupBy(x => x.Timestamp.Date)
                         .ToDictionary(g => g.Key, g => g.ToList());
 
                     foreach (var dayLocal in dates)
@@ -579,8 +580,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                             CsvHelper.SafeCell(eg.Key.FullName),
                             CsvHelper.SafeCell(eg.Key.Dept),
                             row.DateLabel,
-                            row.FirstInUtc.HasValue ? TimeZoneHelper.UtcToLocal(row.FirstInUtc.Value).ToString("HH:mm") : "",
-                            row.LastOutUtc.HasValue ? TimeZoneHelper.UtcToLocal(row.LastOutUtc.Value).ToString("HH:mm") : "",
+                            row.FirstInUtc.HasValue ? row.FirstInUtc.Value.ToString("HH:mm") : "",
+                            row.LastOutUtc.HasValue ? row.LastOutUtc.Value.ToString("HH:mm") : "",
                             (row.HoursNet ?? row.HoursRaw).HasValue
                                 ? (row.HoursNet ?? row.HoursRaw).Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                                 : "",
@@ -710,9 +711,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                 return row;
             }
 
-            // Both in and out
-            var firstLocal = TimeZoneHelper.UtcToLocal(firstInUtc.Value);
-            var lastLocal = TimeZoneHelper.UtcToLocal(lastOutUtc.Value);
+            // Both in and out (timestamps are now stored in local time)
+            var firstLocal = firstInUtc.Value;
+            var lastLocal = lastOutUtc.Value;
 
             var rawHours = (lastLocal - firstLocal).TotalHours;
             if (rawHours < 0) rawHours = 0;
@@ -805,9 +806,8 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             foreach (var r in rows)
             {
-                // Gamitin ang TimeZoneHelper para laging Philippines time (Asia/Manila),
-                // hindi yung server timezone ng IIS.
-                var local = TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss");
+                // Timestamps are now stored in local time (Asia/Manila) - no conversion needed
+                var local = r.Timestamp.ToString("yyyy-MM-dd HH:mm:ss");
                 sb.Append(CsvHelper.JoinCsv(new[]
                 {
                     local,

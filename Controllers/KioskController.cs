@@ -122,7 +122,7 @@ namespace FaceAttend.Controllers
             string deviceToken = null)
         {
             
-            var requestedAtUtc = DateTime.UtcNow; // capture attendance time at request entry
+            var requestedAtUtc = TimeZoneHelper.NowLocal(); // capture attendance time at request entry (local time)
 
             var activeScans = Interlocked.Increment(ref _activeScanCount);
             try
@@ -180,7 +180,7 @@ namespace FaceAttend.Controllers
         public ActionResult AttendBurst(double? lat, double? lon, double? accuracy,
             int? faceX, int? faceY, int? faceW, int? faceH, string deviceToken = null)
         {
-            var requestedAtUtc = DateTime.UtcNow;
+            var requestedAtUtc = TimeZoneHelper.NowLocal();
             
             try
             {
