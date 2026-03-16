@@ -52,6 +52,9 @@
         centerBlockSub:    el('centerBlockSub'),
         mainPrompt:        el('mainPrompt'),
         subPrompt:         el('subPrompt'),
+
+        idleMapContainer:  document.getElementById('idleMapContainer'),
+        idleMap:           document.getElementById('idleMap'),
     };
 
     var token        = FaceAttend.Utils ? FaceAttend.Utils.getCsrfToken() : 
@@ -223,9 +226,10 @@
     var pageLoadTime = Date.now();  // Track when page loaded to prevent immediate scan
 
             var state = {
-        unlockOpen:      false,
-        adminModalOpen:  false,         // Block scanning when admin success modal is shown
-        serverReady:     false,        // NEW: blocks scans until warm-up is complete
+        unlockOpen:       false,
+        adminModalOpen:   false,         // Block scanning when admin success modal is shown
+        serverReady:      false,        // NEW: blocks scans until warm-up is complete
+        lastVerifiedByGPS: false,       // NEW: true = GPS verified, false = desktop fallback
         wasIdle:         true,
         visitorOpen:     false,
         pendingVisitor:  null,
@@ -276,6 +280,11 @@
         fastPreviewResult: null,          // {name, confidence, employeeId}
         fastPreviewScanning: false,       // Currently sending to WS
         fastPreviewFailCount: 0,          // Connection failure count
+
+        // Idle map state
+        idleMap:          null,           // Leaflet map instance
+        idleMapLayer:     null,           // Tile layer
+        idleMapMarkers:   [],             // All plotted markers/circles
     };
 
     // =========
@@ -385,6 +394,127 @@
     // REMOVED DUPLICATE: setCenterBlock function already defined at line 259
     // See original definition above
 
+    // =========
+    // idle map (Leaflet)
+    // =========
+    var _idleLeafletMap    = null;
+    var _idleUserMarker    = null;
+    var _idleOfficeCircles = [];
+
+    function initIdleMap() {
+        if (_idleLeafletMap) return; // already initialized
+        if (!ui.idleMap) return;
+        if (typeof L === 'undefined') return; // Leaflet not loaded
+
+        _idleLeafletMap = L.map(ui.idleMap, {
+            zoomControl:       false,
+            attributionControl: false,
+            dragging:          false,
+            touchZoom:         false,
+            scrollWheelZoom:   false,
+            doubleClickZoom:   false,
+            boxZoom:           false,
+            keyboard:          false
+        });
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom:     19,
+            crossOrigin: 'anonymous'
+        }).addTo(_idleLeafletMap);
+    }
+
+    function updateIdleMap(show) {
+        var container = ui.idleMapContainer || document.getElementById('idleMapContainer');
+        if (!container) return;
+
+        if (!show || typeof L === 'undefined') {
+            container.classList.add('hidden');
+            return;
+        }
+
+        // Only show map when we have GPS coords
+        var lat = state.gps.lat;
+        var lon = state.gps.lon;
+        if (lat == null || lon == null) {
+            container.classList.add('hidden');
+            return;
+        }
+
+        container.classList.remove('hidden');
+        initIdleMap();
+        if (!_idleLeafletMap) return;
+
+        // Force Leaflet to recalculate size (it was hidden before)
+        setTimeout(function() {
+            _idleLeafletMap.invalidateSize();
+
+            // Plot user position (red dot)
+            if (_idleUserMarker) {
+                _idleLeafletMap.removeLayer(_idleUserMarker);
+            }
+            _idleUserMarker = L.circleMarker([lat, lon], {
+                radius:      8,
+                color:       '#ef4444',
+                fillColor:   '#ef4444',
+                fillOpacity: 0.9,
+                weight:      2
+            }).bindTooltip('You are here', { permanent: false }).addTo(_idleLeafletMap);
+
+            // Remove old office circles
+            _idleOfficeCircles.forEach(function(c) { _idleLeafletMap.removeLayer(c); });
+            _idleOfficeCircles = [];
+
+            // Fetch offices from server and plot them
+            fetch(appBase + 'Kiosk/GetOfficesForMap', {
+                method:      'GET',
+                credentials: 'same-origin',
+                headers:     { 'X-Requested-With': 'XMLHttpRequest' }
+            })
+            .then(function(r) { return r.ok ? r.json() : null; })
+            .then(function(data) {
+                if (!data || !data.offices) return;
+
+                var bounds = [[lat, lon]];
+
+                data.offices.forEach(function(o) {
+                    if (!o.lat || !o.lon) return;
+
+                    // Office radius circle
+                    var circle = L.circle([o.lat, o.lon], {
+                        radius:      o.radius || 100,
+                        color:       '#10b981',
+                        fillColor:   '#10b981',
+                        fillOpacity: 0.12,
+                        weight:      2
+                    }).bindTooltip(o.name, { permanent: false }).addTo(_idleLeafletMap);
+
+                    // Office center dot
+                    var dot = L.circleMarker([o.lat, o.lon], {
+                        radius:      5,
+                        color:       '#10b981',
+                        fillColor:   '#10b981',
+                        fillOpacity: 1,
+                        weight:      2
+                    }).addTo(_idleLeafletMap);
+
+                    _idleOfficeCircles.push(circle, dot);
+                    bounds.push([o.lat, o.lon]);
+                });
+
+                // Fit map to show both user and all offices
+                if (bounds.length > 1) {
+                    _idleLeafletMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+                } else {
+                    _idleLeafletMap.setView([lat, lon], 14);
+                }
+            })
+            .catch(function() {
+                // No offices endpoint yet  just center on user
+                _idleLeafletMap.setView([lat, lon], 14);
+            });
+        }, 100);
+    }
+
     function applyLocationUi() {
         var kind = state.locationState || 'pending';
         var orgName = (document.body.getAttribute('data-org-name') || 'DILG Region XII');
@@ -416,6 +546,9 @@
 
         var showCenter = (kind === 'blocked' && ui.idleOverlay && ui.idleOverlay.classList.contains('hidden'));
         setCenterBlock(state.locationTitle, state.locationSub, showCenter);
+
+        // Show map when blocked and GPS available  helps user see where offices are
+        updateIdleMap(kind === 'blocked' && state.gps.lat != null);
     }
 
     function setLocationState(kind, title, sub, banner) {
@@ -1781,10 +1914,16 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
             }
         }
 
+        // Only honour the cache if the last verification used the same method.
+        // If we were verified by desktop fallback (no GPS) but GPS coords are
+        // now available, force a real GPS check  don't trust the fallback cache.
+        var gpsCoordsAvailable = (state.gps.lat != null && state.gps.lon != null && state.gps.accuracy != null);
+        var cacheIsGpsTrusted  = state.lastVerifiedByGPS || !gpsCoordsAvailable;
         if (state.locationState === 'allowed' &&
             state.currentOffice &&
             state.currentOffice.id &&
-            t < (state.officeVerifiedUntil || 0)) {
+            t < (state.officeVerifiedUntil || 0) &&
+            cacheIsGpsTrusted) {
             return Promise.resolve();
         }
 
@@ -1869,6 +2008,7 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                 state.currentOffice.id = j.officeId;
                 state.currentOffice.name = j.officeName;
                 state.officeVerifiedUntil = Date.now() + (isMobile ? 60 * 1000 : 5 * 60 * 1000);
+                state.lastVerifiedByGPS = true;           // NEW: real GPS verify
                 state.officeResolveRetryUntil = 0;
                 // Store GPS position at verification time for drift detection
                 state.lastVerifiedLat = state.gps.lat;
@@ -1930,6 +2070,7 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                     state.currentOffice.id = j.officeId;
                     state.currentOffice.name = j.officeName;
                     state.officeVerifiedUntil = Date.now() + (5 * 60 * 1000);
+                    state.lastVerifiedByGPS = false;      // NEW: fallback, not GPS
                     state.officeResolveRetryUntil = 0;
                     state.lastVerifiedLat = state.gps.lat;
                     state.lastVerifiedLon = state.gps.lon;

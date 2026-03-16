@@ -1044,6 +1044,30 @@ namespace FaceAttend.Controllers
             return RedirectToAction("Index");
         }
 
+        /// <summary>
+        /// Returns active office locations for the idle map.
+        /// No auth required  only returns lat/lon/radius/name (no sensitive data).
+        /// </summary>
+        [HttpGet]
+        public ActionResult GetOfficesForMap()
+        {
+            using (var db = new FaceAttendDBEntities())
+            {
+                var offices = db.Offices
+                    .Where(o => o.IsActive && o.Latitude != null && o.Longitude != null)
+                    .Select(o => new
+                    {
+                        name   = o.Name,
+                        lat    = o.Latitude,
+                        lon    = o.Longitude,
+                        radius = o.RadiusMeters > 0 ? o.RadiusMeters : 100
+                    })
+                    .ToList();
+
+                return Json(new { offices }, JsonRequestBehavior.AllowGet);
+            }
+        }
+
         // ------------------------------------------------------------
         // Helpers
         // ------------------------------------------------------------
