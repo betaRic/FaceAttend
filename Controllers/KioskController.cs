@@ -683,7 +683,7 @@ namespace FaceAttend.Controllers
                             ConfigurationService.GetBool("Kiosk:VisitorEnabled", true));
 
                         if (!visitorEnabled)
-                            return JsonResponseBuilder.ErrorWithTimings("NOT_RECOGNIZED", timings, includePerfTimings);
+                            return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
 
                         _visitorScanCache.Set(
                             key,

@@ -481,6 +481,25 @@ namespace FaceAttend.Services
             };
         }
 
+        /// <summary>
+        /// Creates a face not recognized response.
+        /// </summary>
+        public static JsonResult NotRecognized(
+            IDictionary<string, long> timings = null, bool includeTimings = false)
+        {
+            return new JsonResult
+            {
+                Data = new
+                {
+                    ok = false,
+                    error = "NOT_RECOGNIZED",
+                    message = "Face not recognized. Please check if you're enrolled.",
+                    timings = includeTimings ? timings : null
+                },
+                JsonRequestBehavior = JsonRequestBehavior.AllowGet
+            };
+        }
+
         #endregion
     }
 
