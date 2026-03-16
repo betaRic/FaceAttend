@@ -1053,10 +1053,13 @@ namespace FaceAttend.Controllers
         {
             using (var db = new FaceAttendDBEntities())
             {
+                // Latitude and Longitude are non-nullable `double` on the `Office` type.
+                // Removing the `!= null` checks fixes CS0472.
                 var offices = db.Offices
-                    .Where(o => o.IsActive && o.Latitude != null && o.Longitude != null)
+                    .Where(o => o.IsActive)
                     .Select(o => new
                     {
+                        id     = o.Id,
                         name   = o.Name,
                         lat    = o.Latitude,
                         lon    = o.Longitude,

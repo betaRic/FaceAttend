@@ -1,4 +1,4 @@
-@{
+﻿@{
     Layout = null;
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
@@ -66,7 +66,7 @@
                     <div id="idleMapContainer" class="idle-map-container hidden">
                         <div class="map-header">
                             <i class="fa-solid fa-location-dot"></i>
-                            <span>Nearby Offices</span>
+                            <span>Nearest Office</span>
                         </div>
                         <div id="idleMap" class="idle-map"></div>
                         <div class="map-legend">
@@ -76,7 +76,11 @@
                             </div>
                             <div class="legend-item">
                                 <span class="legend-dot office"></span>
-                                <span>Allowed offices</span>
+                                <span>Nearest office</span>
+                            </div>
+                            <div class="legend-item">
+                                <span class="legend-dot" style="background:#3b82f6;"></span>
+                                <span>Walking route</span>
                             </div>
                         </div>
                     </div>
