@@ -526,7 +526,7 @@ html, body {
 
 .idle-map {
     width: 100%;
-    height: 200px;
+    height: 320px;
     border-radius: var(--radius-sm);
     overflow: hidden;
     background: var(--neutral-800);
@@ -534,6 +534,77 @@ html, body {
 
 .idle-map .leaflet-container {
     background: var(--neutral-800);
+}
+
+/* Map distance info line */
+.map-info-line {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    min-height: 1.1em;
+    margin-bottom: var(--space-2);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border-default);
+}
+
+/* Leaflet: custom office tooltip */
+.map-office-tooltip {
+    background: rgba(16, 185, 129, 0.9);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 3px 8px;
+    white-space: nowrap;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+}
+.map-office-tooltip::before { display: none; }
+
+/* Pulsing user location dot */
+.map-user-dot {
+    position: relative;
+    width: 16px;
+    height: 16px;
+    background: #ef4444;
+    border-radius: 50%;
+    border: 3px solid white;
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+    animation: mapUserPulse 2s ease-out infinite;
+}
+.map-user-ring {
+    position: absolute;
+    inset: -8px;
+    border-radius: 50%;
+    border: 2px solid rgba(239, 68, 68, 0.35);
+    animation: mapUserRing 2s ease-out infinite;
+}
+@keyframes mapUserPulse {
+    0%   { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0.5); }
+    70%  { box-shadow: 0 0 0 12px rgba(239, 68, 68, 0);   }
+    100% { box-shadow: 0 0 0 0   rgba(239, 68, 68, 0);   }
+}
+@keyframes mapUserRing {
+    0%   { transform: scale(0.5); opacity: 0.8; }
+    100% { transform: scale(1.8); opacity: 0;   }
+}
+
+/* Office pin marker */
+.map-office-pin {
+    width: 34px;
+    height: 34px;
+    background: #10b981;
+    border-radius: 50% 50% 50% 0;
+    transform: rotate(-45deg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.45);
+    border: 2px solid rgba(255,255,255,0.3);
+}
+.map-office-pin i {
+    transform: rotate(45deg);
+    color: #fff;
+    font-size: 13px;
 }
 
 .map-legend {
@@ -824,7 +895,7 @@ html, body {
     }
     
     .idle-map {
-        height: 180px;
+        height: 260px;
     }
 }
 
@@ -887,7 +958,7 @@ html, body {
     }
     
     .idle-map {
-        height: 160px;
+        height: 220px;
     }
     
     .idle-map-container {
@@ -923,7 +994,7 @@ html, body {
     }
 
     .idle-map {
-        height: min(160px, 24dvh);
+        height: min(220px, 38dvh);
     }
 
     .idle-footer .idle-clock {

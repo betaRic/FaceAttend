@@ -413,6 +413,7 @@
     var _officesCache       = null;
     var _officesCacheExpiry = 0;      // epoch ms; 0 = never fetched
     var _OFFICES_CACHE_TTL  = 5 * 60 * 1000;  // 5 minutes
+    var _officesFetching    = false;  // prevents concurrent fetch-on-expire
 
     // GPS smoothing: EMA state and dead-band tracking
     var _gpsSmoothed      = { lat: null, lon: null };
@@ -424,17 +425,20 @@
         if (typeof L === 'undefined') return; // Leaflet not loaded
 
         _idleLeafletMap = L.map(ui.idleMap, {
-            zoomControl:       false,
+            zoomControl:        true,
             attributionControl: false,
-            dragging:          false,
-            touchZoom:         false,
-            scrollWheelZoom:   false,
-            doubleClickZoom:   false,
-            boxZoom:           false,
-            keyboard:          false
+            dragging:           true,
+            touchZoom:          true,
+            scrollWheelZoom:    false,  // off  prevents page scroll hijack
+            doubleClickZoom:    true,
+            boxZoom:            false,
+            keyboard:           false
         });
 
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        _idleLeafletMap.zoomControl.setPosition('bottomright');
+
+        // CartoDB dark tiles  matches kiosk dark theme
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
             maxZoom:     19,
             crossOrigin: 'anonymous'
         }).addTo(_idleLeafletMap);
@@ -446,23 +450,27 @@
     function fetchOfficesOnce(callback) {
         var now = Date.now();
 
-        // Cache is valid — fire callback immediately
         if (_officesCache !== null && now < _officesCacheExpiry) {
             if (callback) callback();
             return;
         }
 
-        // Cache is stale or never fetched — bust dependent state so map + resolver
-        // both redraw with fresh data once the fetch completes
+        // Already mid-fetch — just queue the callback and return
+        if (_officesFetching) {
+            if (callback) setTimeout(function () { fetchOfficesOnce(callback); }, 300);
+            return;
+        }
+
         if (_officesCache !== null) {
-            _officesCache       = null;
-            _idleNearestOffice  = null;   // force map to redraw office circle
-            _idleMapBoundsFitted = false; // re-fit bounds to updated office position
-            // Invalidate client-side office verification so resolver re-checks
+            _officesCache        = null;
+            _idleNearestOffice   = null;
+            _idleMapBoundsFitted = false;
             state.officeVerifiedUntil = 0;
             state.lastVerifiedLat     = null;
             state.lastVerifiedLon     = null;
         }
+
+        _officesFetching = true;
 
         fetch(appBase + 'Kiosk/GetOfficesForMap', {
             method:      'GET',
@@ -473,13 +481,13 @@
         .then(function (data) {
             _officesCache       = (data && data.offices) ? data.offices : [];
             _officesCacheExpiry = Date.now() + _OFFICES_CACHE_TTL;
+            _officesFetching    = false;
             if (callback) callback();
         })
         .catch(function () {
-            // On network error keep stale cache if we had one, or set empty.
-            // Extend expiry by 30s so we don't hammer the server on a bad connection.
             if (_officesCache === null) _officesCache = [];
             _officesCacheExpiry = Date.now() + (30 * 1000);
+            _officesFetching    = false;
             if (callback) callback();
         });
     }
@@ -581,6 +589,16 @@
             _idleLeafletMap.removeLayer(_idleRouteLayer);
             _idleRouteLayer = null;
         }
+
+        // OSRM walking can't route >50km — draw straight dashed line immediately
+        var routeDist = gpsDistanceMeters(lat1, lon1, lat2, lon2);
+        if (routeDist > 50000) {
+            _idleRouteLayer = L.polyline([[lat1, lon1], [lat2, lon2]], {
+                color: '#3b82f6', weight: 3, opacity: 0.5, dashArray: '6 8'
+            }).addTo(_idleLeafletMap);
+            return;
+        }
+
         var osrm = 'https://router.project-osrm.org/route/v1/walking/'
             + lon1 + ',' + lat1 + ';' + lon2 + ',' + lat2
             + '?geometries=geojson&overview=simplified';
@@ -618,6 +636,7 @@
             if (_idleMapVisible) {
                 _idleMapVisible      = false;
                 _idleMapBoundsFitted = false;
+                _idleNearestOffice   = null;  // force full redraw on next show
             }
             return;
         }
@@ -639,20 +658,34 @@
         }
 
         setTimeout(function () {
-            if (!_idleMapBoundsFitted) _idleLeafletMap.invalidateSize();
+            // Always invalidateSize  cheap if container unchanged, needed on first show
+            _idleLeafletMap.invalidateSize();
 
-            // Move existing user marker rather than destroy/recreate (eliminates flicker)
+            //  User marker: pulsing dot, moved smoothly on GPS ticks 
             if (_idleUserMarker) {
                 _idleUserMarker.setLatLng([lat, lon]);
             } else {
-                _idleUserMarker = L.circleMarker([lat, lon], {
-                    radius: 8, color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.9, weight: 2
-                }).bindTooltip('You are here', { permanent: false }).addTo(_idleLeafletMap);
+                var userIcon = L.divIcon({
+                    className: '',
+                    html: '<div class="map-user-dot"><div class="map-user-ring"></div></div>',
+                    iconSize:   [20, 20],
+                    iconAnchor: [10, 10]
+                });
+                _idleUserMarker = L.marker([lat, lon], { icon: userIcon, zIndexOffset: 1000 })
+                    .bindTooltip('You are here', { permanent: false, direction: 'top' })
+                    .addTo(_idleLeafletMap);
             }
 
-            // Use already-cached office list — no server call on map updates
+            //  If offices not yet in cache: fetch then re-invoke 
+            // Do NOT set _idleMapBoundsFitted here  wait until office is plotted
+            if (_officesCache === null) {
+                if (!_idleMapBoundsFitted) _idleLeafletMap.setView([lat, lon], 16);
+                fetchOfficesOnce(function () { updateIdleMap(true); });
+                return;
+            }
+
             var offices = _officesCache;
-            if (!offices || offices.length === 0) {
+            if (offices.length === 0) {
                 if (!_idleMapBoundsFitted) {
                     _idleLeafletMap.setView([lat, lon], 16);
                     _idleMapBoundsFitted = true;
@@ -660,7 +693,7 @@
                 return;
             }
 
-            // Find nearest office by straight-line distance
+            //  Find nearest office 
             var nearest = null, nearestDist = Infinity;
             offices.forEach(function (o) {
                 if (!o.lat || !o.lon) return;
@@ -669,34 +702,58 @@
             });
             if (!nearest) return;
 
-            // Redraw office circle only when nearest office changes
+            // Update distance line in map header
+            var distLabel = nearestDist < 1000
+                ? Math.round(nearestDist) + ' m'
+                : (nearestDist / 1000).toFixed(1) + ' km';
+            var mapInfo = document.getElementById('idleMapInfo');
+            if (mapInfo) mapInfo.textContent = nearest.name + '    ' + distLabel + ' away';
+
+            //  Office marker: only redraw when nearest office changes 
             var officeChanged = !_idleNearestOffice || _idleNearestOffice.name !== nearest.name;
             if (officeChanged) {
                 _idleOfficeCircles.forEach(function (c) { _idleLeafletMap.removeLayer(c); });
-                _idleOfficeCircles  = [];
-                _idleNearestOffice  = nearest;
+                _idleOfficeCircles = [];
+                _idleNearestOffice = nearest;
 
+                // Radius boundary
                 var circle = L.circle([nearest.lat, nearest.lon], {
-                    radius: nearest.radius || 100,
-                    color: '#10b981', fillColor: '#10b981', fillOpacity: 0.15, weight: 2
-                }).bindTooltip(nearest.name, { permanent: true, direction: 'top' })
-                  .addTo(_idleLeafletMap);
-
-                var dot = L.circleMarker([nearest.lat, nearest.lon], {
-                    radius: 6, color: '#10b981', fillColor: '#10b981', fillOpacity: 1, weight: 2
+                    radius:      nearest.radius || 100,
+                    color:       '#10b981',
+                    fillColor:   '#10b981',
+                    fillOpacity: 0.10,
+                    weight:      2,
+                    dashArray:   '5 4'
                 }).addTo(_idleLeafletMap);
 
-                _idleOfficeCircles.push(circle, dot);
+                // Office pin icon
+                var officeIcon = L.divIcon({
+                    className: '',
+                    html: '<div class="map-office-pin"><i class="fa-solid fa-building"></i></div>',
+                    iconSize:   [34, 42],
+                    iconAnchor: [17, 42]
+                });
+                var pin = L.marker([nearest.lat, nearest.lon], { icon: officeIcon })
+                    .bindTooltip(nearest.name, {
+                        permanent:  true,
+                        direction:  'top',
+                        offset:     [0, -44],
+                        className:  'map-office-tooltip'
+                    })
+                    .addTo(_idleLeafletMap);
+
+                _idleOfficeCircles.push(circle, pin);
                 drawRoute(lat, lon, nearest.lat, nearest.lon);
             }
 
-            // Fit bounds once on first show; after that just smoothly pan to user
+            //  Fit to show user + office on first plot; pan smoothly after 
             if (!_idleMapBoundsFitted) {
+                var pad = window.innerWidth < 480 ? [50, 40] : [70, 60];
                 var bounds = L.latLngBounds([[lat, lon], [nearest.lat, nearest.lon]]);
-                _idleLeafletMap.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
+                _idleLeafletMap.fitBounds(bounds, { padding: pad, maxZoom: 17 });
                 _idleMapBoundsFitted = true;
             } else {
-                _idleLeafletMap.panTo([lat, lon], { animate: true, duration: 0.5 });
+                _idleLeafletMap.panTo([lat, lon], { animate: true, duration: 0.4 });
             }
         }, 100);
     }
@@ -2018,6 +2075,16 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                 state.gps.lat      = _gpsSmoothed.lat;
                 state.gps.lon      = _gpsSmoothed.lon;
                 state.gps.accuracy = acc;
+
+                // Discard GPS fixes that are clearly outside the Philippines
+                // (IP-based browser geolocation, VPN, or simulated location)
+                var phLat = _gpsSmoothed.lat, phLon = _gpsSmoothed.lon;
+                if (phLat < 4.5 || phLat > 21.0 || phLon < 116.0 || phLon > 127.0) {
+                    // Outside PH bounds — reset smoothing so next real fix starts fresh
+                    _gpsSmoothed.lat = null;
+                    _gpsSmoothed.lon = null;
+                    return;
+                }
 
                 // Dead-band filter: skip processing if movement is below 8m.
                 // gpsDistanceMeters returns 0 when _lastProcessedGps.lat is null
