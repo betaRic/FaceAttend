@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
@@ -72,72 +72,50 @@ namespace FaceAttend.Controllers
             {
                 var image = Request.Files["image"];
                 if (image == null || image.ContentLength == 0)
-                {
                     return JsonResponseBuilder.Error("NO_IMAGE");
-                }
 
-                // Save to temp file
-                var tempPath = System.IO.Path.Combine(
-                    System.IO.Path.GetTempPath(), 
-                    $"mobile_enroll_{Guid.NewGuid():N}.jpg");
-                
-                image.SaveAs(tempPath);
+                var isMobile = DeviceService.IsMobileDevice(Request);
 
-                try
+                // Single-decode, parallel liveness + encoding (same pipeline as /api/scan/frame).
+                // No temp files — all processing in-memory via FastScanPipeline.
+                var scan = FastScanPipeline.EnrollmentScanInMemory(image, null, isMobile);
+
+                if (!scan.Ok)
+                    return JsonResponseBuilder.Error(scan.Error ?? "SCAN_FAIL", scan.Error);
+
+                // Mobile uses a lower liveness threshold than the desktop kiosk
+                double livenessThreshold = ConfigurationService.GetDouble(
+                    "Biometrics:Liveness:MobileThreshold",
+                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.30));
+
+                bool livenessOk = scan.LivenessOk && scan.LivenessScore >= (float)livenessThreshold;
+
+                // Duplicate face check directly against DB (bypass cache to avoid stale data)
+                var enrollStrictTolerance = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
+                string duplicateEmployeeId = null;
+                using (var checkDb = new FaceAttendDBEntities())
                 {
-                    var dlib = new DlibBiometrics();
-                    DlibBiometrics.FaceBox faceBox;
-                    FaceRecognitionDotNet.Location faceLoc;
-                    string detectErr;
-
-                    // Detect face
-                    if (!dlib.TryDetectSingleFaceFromFile(tempPath, out faceBox, out faceLoc, out detectErr))
-                    {
-                        return JsonResponseBuilder.Error("NO_FACE", detectErr);
-                    }
-
-                    // Liveness check
-                    var liveness = new OnnxLiveness();
-                    var scored = liveness.ScoreFromFile(tempPath, faceBox);
-                    
-                    // FIX: Use mobile-specific lower threshold since this is always a mobile flow
-double livenessThreshold = ConfigurationService.GetDouble(
-    "Biometrics:Liveness:MobileThreshold",
-    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.30));
-                    bool livenessOk = scored.Ok && (scored.Probability ?? 0) >= livenessThreshold;
-
-                    // Encode face
-                    double[] vec;
-                    string encErr;
-                    if (!dlib.TryEncodeFromFileWithLocation(tempPath, faceLoc, out vec, out encErr) || vec == null)
-                    {
-                        return JsonResponseBuilder.Error("ENCODING_FAIL", encErr);
-                    }
-
-                    // Check for duplicate face
-                    // CRITICAL FIX: Use database query instead of cache to avoid stale data
-                    var enrollStrictTolerance = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
-                    string duplicateEmployeeId = null;
-                    using (var checkDb = new FaceAttendDBEntities())
-                    {
-                        duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(checkDb, vec, null, enrollStrictTolerance);
-                    }
-                    var isMatch = !string.IsNullOrEmpty(duplicateEmployeeId);
-                    
-                    return JsonResponseBuilder.Success(new
-                    {
-                        liveness = scored.Probability ?? 0,
-                        livenessOk = livenessOk,
-                        count = 1,
-                        isMatch = isMatch,
-                        matchEmployee = duplicateEmployeeId,
-                        encoding = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(vec))
-                    });
+                    duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(
+                        checkDb, scan.FaceEncoding, null, enrollStrictTolerance);
                 }
-                finally
+
+                return JsonResponseBuilder.Success(new
                 {
-                    System.IO.File.Delete(tempPath);
-                }
+                    liveness      = scan.LivenessScore,
+                    livenessOk    = livenessOk,
+                    sharpness     = scan.Sharpness,
+                    count         = 1,
+                    isMatch       = !string.IsNullOrEmpty(duplicateEmployeeId),
+                    matchEmployee = duplicateEmployeeId,
+                    encoding      = scan.Base64Encoding,
+                    faceBox       = scan.FaceBox != null ? new {
+                                        x = scan.FaceBox.Left,
+                                        y = scan.FaceBox.Top,
+                                        w = scan.FaceBox.Width,
+                                        h = scan.FaceBox.Height
+                                    } : null,
+                    timingMs      = scan.TimingMs
+                });
             }
             catch (Exception ex)
             {

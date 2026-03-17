@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Drawing;
@@ -543,15 +543,33 @@ namespace FaceAttend.Services.Biometrics
                         numberOfTimesToUpsample: 0,
                         model: _model).ToArray();
 
+                    // Retry with upsample=1 when no face found on first pass.
+                    // Mobile cameras produce smaller/softer images that need
+                    // upsampling to detect reliably — mirrors TryDetectBestFaceFromFile.
+                    if (locs.Length == 0)
+                    {
+                        locs = fr.FaceLocations(
+                            img,
+                            numberOfTimesToUpsample: 1,
+                            model: _model).ToArray();
+                    }
+
                     if (locs.Length == 0)
                     {
                         error = "NO_FACE";
                         return false;
                     }
+
+                    // Pick largest face instead of hard-failing on multi-face —
+                    // matches allowLargestFace behaviour of TryDetectBestFaceFromFile.
                     if (locs.Length > 1)
                     {
-                        error = "MULTI_FACE";
-                        return false;
+                        locs = new[] {
+                            locs.OrderByDescending(l =>
+                                Math.Max(0, l.Right - l.Left) *
+                                Math.Max(0, l.Bottom - l.Top))
+                            .First()
+                        };
                     }
 
                     var loc = locs[0];

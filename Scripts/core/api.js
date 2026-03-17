@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FaceAttend Core - API Client
  * Unified API communication with consistent error handling
  * 

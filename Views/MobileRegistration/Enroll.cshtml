@@ -6,105 +6,92 @@
 @section styles {
     @Styles.Render("~/Content/fa-system")
     @Styles.Render("~/Content/fa-mobile")
+    @Styles.Render("~/Content/enrollment")
     <style>
-        /* Mobile wizard styles */
         .wizard-steps {
             display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
         }
         .wizard-step {
             flex: 1; text-align: center; padding: 10px 8px; border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.12);
+            background: rgba(255,255,255,0.04);
             color: var(--text-muted); font-size: 13px; font-weight: 600;
+            transition: all .2s ease;
         }
         .wizard-step.active { background: rgba(59,130,246,0.16); border-color: rgba(59,130,246,0.45); color: #fff; }
-        .wizard-step.done { background: rgba(34,197,94,0.14); border-color: rgba(34,197,94,0.4); color: #dcfce7; }
-        
+        .wizard-step.done   { background: rgba(34,197,94,0.14);  border-color: rgba(34,197,94,0.4);   color: #dcfce7; }
         .wizard-pane { display: none; }
         .wizard-pane.active { display: block; animation: slideIn .25s ease; }
-        @@keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        
+        @@keyframes slideIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
         .wizard-actions { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
-        
         .hint-box {
             background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2);
             color: var(--text-secondary); border-radius: 12px; padding: 12px 14px;
             margin-bottom: 16px; font-size: 14px;
         }
-        .hint-box.security { background: rgba(34,197,94,0.08); border-color: rgba(34,197,94,0.2); }
-        
-        /* Form styles */
-        .form-section { margin-bottom: 16px; }
-        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        @@media (max-width: 480px) { .form-row { grid-template-columns: 1fr; } }
-        
-        .form-group { margin-bottom: 14px; }
-        .form-group label { 
-            display: block; font-size: 12px; font-weight: 600; 
-            color: var(--text-secondary); margin-bottom: 6px; text-transform: uppercase; letter-spacing: .4px;
+        /* Step 1 form */
+        .form-section  { margin-bottom: 16px; }
+        .form-row      { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+        .form-group    { margin-bottom: 14px; }
+        .form-group label {
+            display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px;
         }
+        .form-group label .required { color: var(--color-error); }
+        .form-group label .hint     { font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; }
         .form-group input, .form-group select {
-            width: 100%; padding: 12px 14px; border-radius: 12px;
-            border: 1px solid rgba(255,255,255,0.12); background: rgba(255,255,255,0.05);
-            color: var(--text-primary); font-size: 15px; transition: all .2s ease;
+            width: 100%; padding: 11px 14px;
+            background: rgba(255,255,255,0.05); border: 1.5px solid rgba(255,255,255,0.12);
+            border-radius: 10px; color: var(--text-primary); font-size: 14px;
+            transition: border-color .2s;
         }
-        .form-group input:focus, .form-group select:focus {
-            outline: none; border-color: rgba(59,130,246,0.5); background: rgba(255,255,255,0.08);
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--color-primary); }
+        .form-group input.valid   { border-color: var(--color-success); }
+        .form-group input.invalid { border-color: var(--color-error); }
+        .validation-message { font-size: 11px; color: var(--color-error); margin-top: 4px; min-height: 16px; }
+        .security-badge {
+            display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+            background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
+            border-radius: 10px; font-size: 12px; color: #4ade80; margin-top: 4px;
         }
-        .form-group input.uppercase { text-transform: uppercase; }
-        .form-group input.valid { border-color: var(--accent-success); }
-        .form-group input.invalid { border-color: var(--accent-error); background: rgba(239,68,68,0.05); }
-        
-        .validation-message { font-size: 12px; margin-top: 6px; min-height: 16px; }
-        .validation-message.error { color: var(--accent-error); }
-        .validation-message.success { color: var(--accent-success); }
-        
-        .form-group label .required { color: var(--accent-error); }
-        .form-group label .hint { color: var(--text-muted); font-size: 11px; font-weight: normal; text-transform: none; letter-spacing: 0; margin-left: 4px; }
-        
-        .security-badge { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--accent-success); margin-top: 8px; }
-        
-        /* Review grid */
+        .uppercase { text-transform: uppercase; }
+        /* Step 2: cap camera height so it never overflows mobile viewport */
+        #step2 .enroll-camera-wrap { max-height: 44vh; max-height: 44dvh; }
+        #step2 .enroll-video       { max-height: 44vh; max-height: 44dvh; }
+        /* Step 3 review */
         .review-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-        .review-item { padding: 12px 14px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); }
+        .review-item {
+            padding: 12px 14px; border-radius: 12px;
+            background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+        }
         .review-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
         .review-value { font-size: 15px; color: var(--text-primary); word-break: break-word; }
-        
-        /* Mobile enrollment component overrides */
-        .enroll-container { max-width: 100%; }
-        .enroll-camera-wrap { aspect-ratio: 4/3; border-radius: 16px; }
-        .enroll-angle-guidance { font-size: 14px; padding: 10px 16px; }
-        .enroll-diversity { gap: 8px; }
-        .enroll-diversity-dot { width: 10px; height: 10px; }
-        .enroll-progress-wrap { padding: 12px; }
-        
-        /* Status bar */
         .status-bar {
             padding: 12px 16px; border-radius: 12px; text-align: center;
             font-size: 14px; font-weight: 500; margin-top: 12px;
         }
-        .status-bar.waiting { background: rgba(251,191,36,0.1); color: #fbbf24; border: 1px solid rgba(251,191,36,0.2); }
         .status-bar.success { background: rgba(34,197,94,0.1); color: #34d399; border: 1px solid rgba(34,197,94,0.2); }
-        .status-bar.error { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+        .status-bar.error   { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
     </style>
 }
 
 <div class="header">
-    <h1><i class="fa-solid fa-camera"></i> Face Enrollment</h1>
+    <h1><i class="fa-solid fa-camera-alt"></i> Face Enrollment</h1>
     <p>Complete your details, capture your face, then submit for approval</p>
 </div>
 
 @Html.AntiForgeryToken()
-<input type="hidden" id="successUrl" value="/MobileRegistration/Success" />
 
 <div class="wizard-steps" id="wizardSteps">
     <div class="wizard-step active" data-step="1">1. Details</div>
-    <div class="wizard-step" data-step="2">2. Capture</div>
-    <div class="wizard-step" data-step="3">3. Review</div>
+    <div class="wizard-step"        data-step="2">2. Capture</div>
+    <div class="wizard-step"        data-step="3">3. Review</div>
 </div>
 
-@* Step 1: Details *@
+@* STEP 1 — Details *@
 <div class="wizard-pane active" id="step1">
     <div class="form-section">
+
         <div class="form-group">
             <label>Employee ID <span class="required">*</span> <span class="hint">(Format: DILG-YYYY-###)</span></label>
             <input type="text" id="employeeId" class="uppercase" placeholder="e.g., DILG-2024-001" required maxlength="20" autocomplete="off" />
@@ -125,7 +112,7 @@
         </div>
 
         <div class="form-group">
-            <label>Middle Name <span class="hint">(Optional, letters only)</span></label>
+            <label>Middle Name <span class="hint">(Optional)</span></label>
             <input type="text" id="middleName" class="uppercase" placeholder="Optional" maxlength="50" autocomplete="additional-name" />
             <div class="validation-message" id="middleNameValidation"></div>
         </div>
@@ -162,53 +149,91 @@
         </div>
 
         <div class="security-badge">
-            <i class="fa-solid fa-lock"></i> 
+            <i class="fa-solid fa-lock"></i>
             <span>Form protected by anti-XSS validation</span>
         </div>
     </div>
 
     <div class="wizard-actions">
         <button type="button" class="btn btn-primary" id="btnToCapture" disabled>
-            <i class="fa-solid fa-arrow-right"></i> Continue to Face Capture
+            <i class="fa-solid fa-arrow-right me-2"></i>Continue to Face Capture
         </button>
         <a href="/MobileRegistration" class="btn btn-secondary">
-            <i class="fa-solid fa-arrow-left"></i> Back
+            <i class="fa-solid fa-arrow-left me-2"></i>Back
         </a>
     </div>
 </div>
 
-@* Step 2: Capture - Using Unified Enrollment Component *@
+@* STEP 2 — Face capture: identical markup to Areas/Admin/Views/Employees/Enroll.cshtml *@
 <div class="wizard-pane" id="step2">
-    <div class="hint-box">
-        <i class="fa-solid fa-circle-info"></i> 
-        <strong>10 Face Samples Required.</strong> Follow the angle prompts for best coverage: center, left, right, up, and back to center.
+    <div class="row g-4">
+
+        @* Camera column *@
+        <div class="col-lg-8">
+            <div class="enroll-camera-wrap">
+                <video id="enrollVideo" class="enroll-video" autoplay playsinline muted></video>
+                <canvas id="enrollFaceCanvas" class="enroll-face-canvas"></canvas>
+                <div class="enroll-camera-status">
+                    <span class="enroll-camera-status__dot"></span>
+                    <span id="cameraStatusText">Camera Active</span>
+                </div>
+            </div>
+        </div>
+
+        @* Stats column *@
+        <div class="col-lg-4">
+            <div class="enroll-stats-panel">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <span class="fw-semibold">
+                        <i class="fa-solid fa-bullseye me-2 text-primary"></i>Progress
+                    </span>
+                    <span class="fs-4 fw-bold text-primary">
+                        <span id="captureCount">0</span><small class="text-muted fs-6">/8</small>
+                    </span>
+                </div>
+                <div class="progress mb-3" style="height:8px;">
+                    <div class="progress-bar" id="captureProgress" style="width:0%"></div>
+                </div>
+                <div class="enroll-angles-grid">
+                    <div class="enroll-angle-item" data-angle="center">
+                        <i class="fa-solid fa-circle-dot"></i><span>Center</span>
+                    </div>
+                    <div class="enroll-angle-item" data-angle="left">
+                        <i class="fa-solid fa-arrow-left"></i><span>Left</span>
+                    </div>
+                    <div class="enroll-angle-item" data-angle="right">
+                        <i class="fa-solid fa-arrow-right"></i><span>Right</span>
+                    </div>
+                    <div class="enroll-angle-item" data-angle="up">
+                        <i class="fa-solid fa-arrow-up"></i><span>Up</span>
+                    </div>
+                    <div class="enroll-angle-item" data-angle="down">
+                        <i class="fa-solid fa-arrow-down"></i><span>Down</span>
+                    </div>
+                </div>
+                <div class="enroll-liveness-mini">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span class="small fw-semibold">Liveness</span>
+                        <span class="small fw-bold" id="livenessText">0%</span>
+                    </div>
+                    <div class="progress" style="height:6px;">
+                        <div class="progress-bar bg-success" id="livenessBar" style="width:0%"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
-    @Html.Partial("~/Views/Shared/_EnrollmentComponent.cshtml", new ViewDataDictionary {
-        ["EmployeeId"]        = "",
-        ["ScanUrl"]           = "/api/scan/frame",
-        ["EnrollUrl"]         = "/api/enrollment/enroll",
-        ["RedirectUrl"]       = "",
-        ["Mode"]              = "mobile",
-        ["MinFrames"]         = 10,
-        ["MaxFrames"]         = 10,
-        ["LivenessThreshold"] = 0.75f
-    })
-
-    <div class="wizard-actions">
-        <button type="button" class="btn btn-primary" id="btnToReview" disabled>
-            <i class="fa-solid fa-arrow-right"></i> Review and Submit
-        </button>
+    <div class="wizard-actions mt-3">
         <button type="button" class="btn btn-secondary" id="btnBackToDetails">
-            <i class="fa-solid fa-arrow-left"></i> Back to Details
+            <i class="fa-solid fa-arrow-left me-2"></i>Back to Details
         </button>
     </div>
 </div>
 
-@* Step 3: Review *@
+@* STEP 3 — Review and submit *@
 <div class="wizard-pane" id="step3">
     <div class="hint-box">Review your details before sending the enrollment request.</div>
-
     <div class="form-section">
         <div class="review-grid">
             <div class="review-item">
@@ -233,326 +258,460 @@
             </div>
             <div class="review-item">
                 <div class="review-label">Face Samples</div>
-                <div class="review-value" id="reviewSampleCount">0 / 10</div>
+                <div class="review-value" id="reviewSampleCount">0 / 8</div>
             </div>
         </div>
-
         <div class="status-bar success" id="reviewStatus">Ready to submit</div>
     </div>
-
     <div class="wizard-actions">
         <button type="button" class="btn btn-primary" id="submitBtn">
-            <i class="fa-solid fa-paper-plane"></i> Submit Enrollment
+            <i class="fa-solid fa-paper-plane me-2"></i>Submit Enrollment
         </button>
         <button type="button" class="btn btn-secondary" id="btnBackToCapture">
-            <i class="fa-solid fa-arrow-left"></i> Back to Capture
+            <i class="fa-solid fa-arrow-left me-2"></i>Back to Capture
         </button>
     </div>
 </div>
 
 @section scripts {
+    @Scripts.Render("~/bundles/facescan-core")
     @Scripts.Render("~/bundles/enrollment")
-    
+
     <script>
-        (function () {
-            'use strict';
+    (function () {
+        'use strict';
 
-            // Match CONSTANTS.CAPTURE_TARGET in enrollment-core.js.
-            // Previously 10 — enrollment-core fires onReadyToConfirm at 8
-            // (CAPTURE_TARGET), so requiring 10 here caused an infinite loop
-            // where the component completed at 8 but the wizard rejected it.
-            var MAX_FRAMES = 8;
+        var minFrames = 8; // must match CAPTURE_TARGET in enrollment-core.js
 
-            // Validation rules
-            var ValidationRules = {
-                employeeId: { pattern: /^[A-Z0-9 .\-]+$/, minLength: 2, maxLength: 50, message: 'Employee ID contains invalid characters' },
-                name: { pattern: /^[A-Z .\-',]+$/, minLength: 1, maxLength: 100, message: 'Name contains invalid characters' },
-                middleName: { pattern: /^[A-Z .\-',]*$/, maxLength: 100, message: 'Middle name contains invalid characters' },
-                position: { pattern: /^[A-Z0-9 .\-/(),&#]+$/, minLength: 1, maxLength: 150, message: 'Position contains invalid characters' },
-                department: { pattern: /^[A-Z0-9 .\-/(),&]+$/, minLength: 1, maxLength: 150, message: 'Department contains invalid characters' },
-                deviceName: { pattern: /^[A-Z0-9 .\-/(),&]+$/, minLength: 2, maxLength: 100, message: 'Device name contains invalid characters' }
+        var capturedFrames = [];
+        var _smoothedBox   = null;
+        var _overlayRaf    = null;
+
+        var state = {
+            step: 1,
+            capturedFrames: [],
+            valid: {
+                employeeId: false, firstName: false, lastName:   false,
+                middleName: true,  position:  false, department: false,
+                officeId:   false, deviceName: false
+            }
+        };
+
+        function el(id) { return document.getElementById(id); }
+
+        var els = {
+            employeeId:       el('employeeId'),
+            firstName:        el('firstName'),
+            lastName:         el('lastName'),
+            middleName:       el('middleName'),
+            position:         el('position'),
+            department:       el('department'),
+            officeId:         el('officeId'),
+            deviceName:       el('deviceName'),
+            btnToCapture:     el('btnToCapture'),
+            btnBackToDetails: el('btnBackToDetails'),
+            btnBackToCapture: el('btnBackToCapture'),
+            submitBtn:        el('submitBtn')
+        };
+
+        // Enrollment instance — identical config to admin Employees/Enroll.cshtml
+        if (typeof FaceAttend === 'undefined' || !FaceAttend.Enrollment) {
+            console.error('[MobileEnroll] FaceAttend.Enrollment not available.');
+        }
+
+        var liveEnrollment = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
+            ? FaceAttend.Enrollment.create({
+                empId:             '',
+                scanUrl:           '/api/scan/frame',
+                enrollUrl:         '/api/enrollment/enroll',
+                redirectUrl:       '',
+                minGoodFrames:     minFrames,
+                maxKeepFrames:     8,
+                perFrameThreshold: 0.75,
+                enablePreview:     false
+              })
+            : null;
+
+        // Stats panel helpers — same as admin
+        function updateLiveCaptureUI(frameCount, target) {
+            var c = el('captureCount');
+            if (c) c.textContent = frameCount;
+            var p = el('captureProgress');
+            if (p) p.style.width = Math.round((frameCount / (target || minFrames)) * 100) + '%';
+        }
+
+        function updateLiveAngleDots(goodFrames) {
+            var captured = {};
+            if (goodFrames) {
+                for (var i = 0; i < goodFrames.length; i++) {
+                    var b = goodFrames[i].poseBucket;
+                    if (b && b !== 'other') captured[b] = true;
+                }
+            }
+            ['center', 'left', 'right', 'up', 'down'].forEach(function (angle) {
+                var item = document.querySelector('[data-angle="' + angle + '"]');
+                if (item) item.classList.toggle('is-captured', !!captured[angle]);
+            });
+        }
+
+        // Face overlay — exact copy of admin EMA + corner-bracket drawing
+        var _canvas = el('enrollFaceCanvas');
+        var _ctx    = _canvas ? _canvas.getContext('2d') : null;
+
+        function startFaceOverlay(videoEl, enrollInst) {
+            if (!_canvas || !_ctx) return;
+            function loop() {
+                _overlayRaf = requestAnimationFrame(loop);
+                _canvas.width  = videoEl.videoWidth  || videoEl.offsetWidth;
+                _canvas.height = videoEl.videoHeight || videoEl.offsetHeight;
+                _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+                var raw = enrollInst && enrollInst.lastFaceBox;
+                if (!raw) { _smoothedBox = null; return; }
+                var EMA = 0.25;
+                if (!_smoothedBox) {
+                    _smoothedBox = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
+                } else {
+                    _smoothedBox.x += EMA * (raw.x - _smoothedBox.x);
+                    _smoothedBox.y += EMA * (raw.y - _smoothedBox.y);
+                    _smoothedBox.w += EMA * (raw.w - _smoothedBox.w);
+                    _smoothedBox.h += EMA * (raw.h - _smoothedBox.h);
+                }
+                var sx   = _canvas.width  / (videoEl.videoWidth  || _canvas.width);
+                var sy   = _canvas.height / (videoEl.videoHeight || _canvas.height);
+                var bx   = _smoothedBox.x * sx, by = _smoothedBox.y * sy;
+                var bw   = _smoothedBox.w * sx, bh = _smoothedBox.h * sy;
+                var done = enrollInst && enrollInst.goodFrames ? enrollInst.goodFrames.length : 0;
+                var color     = done >= minFrames ? '#22c55e' : '#3b82f6';
+                var glowColor = done >= minFrames ? 'rgba(34,197,94,0.5)' : 'rgba(59,130,246,0.5)';
+                var cLen  = Math.min(bw, bh) * 0.18;
+                _ctx.strokeStyle = color;
+                _ctx.lineWidth   = 2.5;
+                _ctx.lineCap     = 'round';
+                _ctx.lineJoin    = 'round';
+                _ctx.shadowColor = glowColor;
+                _ctx.shadowBlur  = 12;
+                function bracket(ax, ay, bx2, by2, cx2, cy2) {
+                    _ctx.beginPath(); _ctx.moveTo(ax, ay);
+                    _ctx.lineTo(bx2, by2); _ctx.lineTo(cx2, cy2); _ctx.stroke();
+                }
+                bracket(bx + cLen,    by,      bx,      by,      bx,      by + cLen);
+                bracket(bx + bw-cLen, by,      bx + bw, by,      bx + bw, by + cLen);
+                bracket(bx + cLen,    by + bh, bx,      by + bh, bx,      by + bh - cLen);
+                bracket(bx + bw-cLen, by + bh, bx + bw, by + bh, bx + bw, by + bh - cLen);
+                _ctx.shadowBlur  = 0;
+                _ctx.globalAlpha = 0.2;
+                _ctx.lineWidth   = 0.5;
+                _ctx.strokeRect(bx, by, bw, bh);
+                _ctx.globalAlpha = 1;
+            }
+            loop();
+        }
+
+        function stopFaceOverlay() {
+            if (_overlayRaf) { cancelAnimationFrame(_overlayRaf); _overlayRaf = null; }
+            if (_ctx && _canvas) _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+            _smoothedBox = null;
+        }
+
+        // Camera start / stop — same as admin
+        function startCamera() {
+            if (!liveEnrollment) return;
+            var videoEl  = el('enrollVideo');
+            if (!videoEl) return;
+            updateLiveCaptureUI(0, minFrames);
+            updateLiveAngleDots([]);
+            capturedFrames = [];
+            var statusEl = el('cameraStatusText');
+            liveEnrollment.startCamera(videoEl)
+                .then(function () {
+                    if (statusEl) statusEl.textContent = 'Camera active \u2014 look straight ahead';
+                    liveEnrollment.startAutoEnrollment();
+                    startFaceOverlay(videoEl, liveEnrollment);
+                })
+                .catch(function (e) {
+                    var msg = (e && e.message) || 'Could not access camera.';
+                    if (statusEl) statusEl.textContent = 'Camera error: ' + msg;
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Camera Error', text: msg,
+                            background: '#0f172a', color: '#f8fafc' });
+                    }
+                });
+        }
+
+        function stopCamera() {
+            if (liveEnrollment) liveEnrollment.stopCamera();
+            stopFaceOverlay();
+            capturedFrames = [];
+        }
+
+        // Enrollment callbacks — same as admin except onReadyToConfirm
+        if (liveEnrollment) {
+
+            liveEnrollment.callbacks.onStatus = function (msg) {
+                var e = el('cameraStatusText');
+                if (e) e.textContent = msg || '';
             };
 
-            // DOM refs
-            var els = {
-                btnToCapture: document.getElementById('btnToCapture'),
-                btnToReview: document.getElementById('btnToReview'),
-                btnBackToDetails: document.getElementById('btnBackToDetails'),
-                btnBackToCapture: document.getElementById('btnBackToCapture'),
-                submitBtn: document.getElementById('submitBtn'),
-                employeeId: document.getElementById('employeeId'),
-                firstName: document.getElementById('firstName'),
-                middleName: document.getElementById('middleName'),
-                lastName: document.getElementById('lastName'),
-                position: document.getElementById('position'),
-                department: document.getElementById('department'),
-                officeId: document.getElementById('officeId'),
-                deviceName: document.getElementById('deviceName'),
-                reviewEmployeeId: document.getElementById('reviewEmployeeId'),
-                reviewFullName: document.getElementById('reviewFullName'),
-                reviewPositionDepartment: document.getElementById('reviewPositionDepartment'),
-                reviewOffice: document.getElementById('reviewOffice'),
-                reviewDeviceName: document.getElementById('reviewDeviceName'),
-                reviewSampleCount: document.getElementById('reviewSampleCount'),
-                reviewStatus: document.getElementById('reviewStatus'),
-                submitUrl: '/MobileRegistration/SubmitEnrollment',
-                successUrl: document.getElementById('successUrl').value
+            liveEnrollment.callbacks.onLivenessUpdate = function (pct) {
+                var bar = el('livenessBar');  if (bar) bar.style.width = pct + '%';
+                var txt = el('livenessText'); if (txt) txt.textContent = pct + '%';
             };
 
-            // State
-            var state = {
-                step: 1,
-                capturedFrames: [],
-                validationState: { employeeId: false, firstName: false, lastName: false, middleName: true, position: false, department: false, officeId: false, deviceName: false }
+            liveEnrollment.callbacks.onCaptureProgress = function (current, target) {
+                capturedFrames = liveEnrollment.goodFrames.slice();
+                updateLiveCaptureUI(current, target);
+                updateLiveAngleDots(liveEnrollment.goodFrames);
             };
 
-            // Validation functions
-            function validateField(element, rule, validationId) {
-                var value = element.value.toUpperCase().trim();
-                var validationEl = document.getElementById(validationId);
-                if (element.value !== value) element.value = value;
-                if (!value) {
-                    element.classList.remove('valid', 'invalid');
-                    if (validationEl) validationEl.textContent = '';
-                    return rule !== ValidationRules.middleName;
-                }
-                if (rule.minLength && value.length < rule.minLength) {
-                    element.classList.add('invalid'); element.classList.remove('valid');
-                    if (validationEl) { validationEl.textContent = 'Too short (min ' + rule.minLength + ' chars)'; validationEl.className = 'validation-message error'; }
-                    return false;
-                }
-                if (rule.maxLength && value.length > rule.maxLength) {
-                    element.value = value.substring(0, rule.maxLength); value = element.value;
-                }
-                if (rule.pattern && !rule.pattern.test(value)) {
-                    element.classList.add('invalid'); element.classList.remove('valid');
-                    if (validationEl) { validationEl.textContent = rule.message || 'Invalid format'; validationEl.className = 'validation-message error'; }
-                    return false;
-                }
-                element.classList.add('valid'); element.classList.remove('invalid');
-                if (validationEl) { validationEl.textContent = ''; validationEl.className = 'validation-message'; }
-                return true;
-            }
+            liveEnrollment.callbacks.onAngleUpdate = function (next) {
+                if (!next || next.bucket === 'other') return;
+                var e = el('cameraStatusText');
+                if (e && next.prompt) e.textContent = next.prompt;
+            };
 
-            function validateEmployeeId() { state.validationState.employeeId = validateField(els.employeeId, ValidationRules.employeeId, 'employeeIdValidation'); }
-            function validateFirstName() { state.validationState.firstName = validateField(els.firstName, ValidationRules.name, 'firstNameValidation'); }
-            function validateLastName() { state.validationState.lastName = validateField(els.lastName, ValidationRules.name, 'lastNameValidation'); }
-            function validateMiddleName() { 
-                var value = els.middleName.value.toUpperCase().trim();
-                els.middleName.value = value;
-                if (!value) { els.middleName.classList.remove('valid', 'invalid'); document.getElementById('middleNameValidation').textContent = ''; state.validationState.middleName = true; return; }
-                state.validationState.middleName = validateField(els.middleName, ValidationRules.middleName, 'middleNameValidation');
-            }
-            function validatePosition() { state.validationState.position = validateField(els.position, ValidationRules.position, 'positionValidation'); }
-            function validateDepartment() { state.validationState.department = validateField(els.department, ValidationRules.department, 'departmentValidation'); }
-            function validateOfficeId() { state.validationState.officeId = !!els.officeId.value; if (els.officeId.value) { els.officeId.classList.add('valid'); els.officeId.classList.remove('invalid'); } else { els.officeId.classList.remove('valid', 'invalid'); } document.getElementById('officeIdValidation').textContent = ''; }
-            function validateDeviceName() { state.validationState.deviceName = validateField(els.deviceName, ValidationRules.deviceName, 'deviceNameValidation'); }
-
-            function allFieldsValid() {
-                return state.validationState.employeeId && state.validationState.firstName && state.validationState.lastName &&
-                       state.validationState.middleName && state.validationState.position && state.validationState.department &&
-                       state.validationState.officeId && state.validationState.deviceName;
-            }
-
-            function updateContinueButton() { els.btnToCapture.disabled = !allFieldsValid(); }
-
-            function setStep(step) {
-                state.step = step;
-                [1, 2, 3].forEach(function (n) {
-                    var pane = document.getElementById('step' + n);
-                    var stepEl = document.querySelector('.wizard-step[data-step="' + n + '"]');
-                    if (pane) pane.classList.toggle('active', n === step);
-                    if (stepEl) { stepEl.classList.remove('active', 'done'); if (n === step) stepEl.classList.add('active'); if (n < step) stepEl.classList.add('done'); }
+            // KEY DIFFERENCE vs admin:
+            // Admin calls performEnrollment() here because the employee already
+            // exists in the DB. Mobile: no DB employee yet — advance to Step 3.
+            // SubmitEnrollment() on the server creates the employee + pending device.
+            liveEnrollment.callbacks.onReadyToConfirm = function (data) {
+                var thumbPromises = (data.frames || []).slice(0, 3).map(function (frame) {
+                    return new Promise(function (resolve) {
+                        if (!frame || !frame.blob) { resolve(null); return; }
+                        var reader = new FileReader();
+                        reader.onload  = function (ev) { resolve(ev.target.result); };
+                        reader.onerror = function ()   { resolve(null); };
+                        reader.readAsDataURL(frame.blob);
+                    });
                 });
 
-                if (step === 2) {
-                    // Start enrollment when entering step 2
-                    if (window.FaceAttendEnrollment && typeof window.FaceAttendEnrollment.start === 'function') {
-                        window.FaceAttendEnrollment.start();
+                Promise.all(thumbPromises).then(function (dataUrls) {
+                    var thumbHtml = '';
+                    dataUrls.forEach(function (url) {
+                        if (url) {
+                            thumbHtml +=
+                                '<img src="' + url + '" style="width:80px;height:80px;' +
+                                'object-fit:cover;border-radius:8px;' +
+                                'border:2px solid rgba(255,255,255,0.15);flex-shrink:0;" />';
+                        }
+                    });
+                    var angleOk = data.allAngles
+                        ? '<span style="color:#22c55e;"><i class="fa-solid fa-check me-1"></i>All angles captured</span>'
+                        : '<span style="color:#f59e0b;"><i class="fa-solid fa-triangle-exclamation me-1"></i>' +
+                          (data.angleCount || 0) + '/5 angles captured</span>';
+
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            title: 'Face Capture Complete',
+                            html:
+                                '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
+                                thumbHtml + '</div>' +
+                                '<div style="font-size:.85rem;text-align:left;padding:0 8px;">' +
+                                '<div>' + angleOk + '</div>' +
+                                '<div style="margin-top:4px;">Frames: <strong>' + (data.frameCount || 0) +
+                                '</strong> &nbsp;|&nbsp; Liveness: <strong>' + (data.bestLiveness || 0) +
+                                '%</strong></div></div>',
+                            showCancelButton:   true,
+                            confirmButtonText:  '<i class="fa-solid fa-arrow-right me-2"></i>Continue to Review',
+                            cancelButtonText:   '<i class="fa-solid fa-rotate-right me-2"></i>Retake',
+                            confirmButtonColor: '#3b82f6',
+                            cancelButtonColor:  '#6b7280',
+                            background: '#0f172a', color: '#f8fafc'
+                        }).then(function (result) {
+                            if (result.isConfirmed) {
+                                state.capturedFrames = liveEnrollment.goodFrames.slice();
+                                setStep(3);
+                            } else {
+                                liveEnrollment.startAutoEnrollment();
+                                updateLiveCaptureUI(0, minFrames);
+                                updateLiveAngleDots([]);
+                                capturedFrames = [];
+                                _smoothedBox   = null;
+                            }
+                        });
+                    } else {
+                        state.capturedFrames = liveEnrollment.goodFrames.slice();
+                        setStep(3);
                     }
-                } else {
-                    // Stop enrollment when leaving step 2
-                    if (window.FaceAttendEnrollment && typeof window.FaceAttendEnrollment.stop === 'function') {
-                        window.FaceAttendEnrollment.stop();
-                    }
-                }
-
-                if (step === 3) refreshReview();
-                window.scrollTo({ top: 0, behavior: 'smooth' });
-            }
-
-            function refreshReview() {
-                els.reviewEmployeeId.textContent = els.employeeId.value.toUpperCase() || '-';
-                els.reviewFullName.textContent = [els.firstName.value, els.middleName.value, els.lastName.value].filter(Boolean).join(' ').toUpperCase() || '-';
-                els.reviewPositionDepartment.textContent = (els.position.value.toUpperCase() || '-') + ' / ' + (els.department.value.toUpperCase() || '-');
-                els.reviewOffice.textContent = els.officeId.options[els.officeId.selectedIndex]?.text || '-';
-                els.reviewDeviceName.textContent = els.deviceName.value.toUpperCase() || '-';
-                
-                // Get actual count from FaceAttendEnrollment
-                var encodings = window.FaceAttendEnrollment && typeof window.FaceAttendEnrollment.getEncodings === 'function' 
-                    ? window.FaceAttendEnrollment.getEncodings() 
-                    : [];
-                state.capturedFrames = encodings;
-                
-                els.reviewSampleCount.textContent = state.capturedFrames.length + ' / 10';
-                if (state.capturedFrames.length >= MAX_FRAMES) { 
-                    els.reviewStatus.textContent = 'All face samples collected'; 
-                    els.reviewStatus.className = 'status-bar success'; 
-                }
-                else { 
-                    els.reviewStatus.textContent = 'Face samples incomplete'; 
-                    els.reviewStatus.className = 'status-bar error'; 
-                }
-            }
-
-            // Enrollment callbacks (MIGRATED: Now uses unified FaceAttend system)
-            window.enrollCallbacks = {
-                onCaptureProgress: function(frameCount) {
-                    state.capturedFrames = new Array(frameCount);
-                    els.btnToReview.disabled = frameCount < MAX_FRAMES;
-                    // No popup — status bar in the component shows progress already.
-                    // A Swal here interrupts the user mid-capture.
-                },
-                onEnrollmentComplete: function(result) {
-                    state.capturedFrames = new Array(result.vectorsSaved || 10);
-                    els.btnToReview.disabled = false;
-                },
-                onEnrollmentError: function(error) {
-                    // Silent — enrollment-ui.js already writes to the status bar.
-                    // No MobileSwal here; popup interrupts capture and blocks the user.
-                    // The user sees the error in the status bar and capture resumes automatically.
-                    if (typeof FaceAttend !== 'undefined' && FaceAttend.Notify) {
-                        FaceAttend.Notify.toast(error.message || 'Scan error, retrying...', 'warning', 2000);
-                    }
-                },
-
-                // FIX-002: Intercept onReadyToConfirm for the mobile wizard.
-                //
-                // WHY THIS IS NEEDED:
-                // enrollment-ui.js fires a Swal confirmation dialog when capture
-                // completes. On the admin surface, Confirm  performEnrollment()
-                // which hits /api/enrollment/enroll (requires existing employee).
-                // On mobile, there is NO existing employee yet  the employee is
-                // created by MobileRegistrationController.SubmitEnrollment() in
-                // Step 3, which includes all the form fields (name, department etc).
-                //
-                // Calling performEnrollment() on mobile would fail with
-                // EMPLOYEE_NOT_FOUND because no employee record exists yet.
-                //
-                // HOW IT WORKS:
-                // By defining this interceptor, enrollment-ui.js detects it and
-                // returns early WITHOUT showing the Swal. Instead, this function
-                // runs and automatically advances the wizard to Step 3 (review).
-                // setStep(3) calls FaceAttendEnrollment.stop() which stops the
-                // camera stream. The user reviews their details in Step 3 and
-                // submits via submitEnrollment() which posts all form fields +
-                // face encodings to MobileRegistrationController.SubmitEnrollment.
-                //
-                // data.frames contains the captured frames. Encodings are retrieved
-                // later via window.FaceAttendEnrollment.getEncodings() in
-                // submitEnrollment()  they are stored on each goodFrame by
-                // enrollment-core.js after each successful ScanFrame response.
-                onReadyToConfirm: function(data) {
-                    // Capture is complete. Automatically move to review step.
-                    // setStep(3) handles stopping the camera (leaves step 2).
-                    setStep(3);
-                }
+                });
             };
 
-            async function submitEnrollment() {
-                if (!allFieldsValid()) { 
-                    if (typeof MobileSwal !== 'undefined') MobileSwal.warning('Validation Error', 'Please correct all form fields.'); 
-                    setStep(1); 
-                    return; 
-                }
-                
-                // Get actual encodings from FaceAttendEnrollment
-                var encodings = window.FaceAttendEnrollment && typeof window.FaceAttendEnrollment.getEncodings === 'function' 
-                    ? window.FaceAttendEnrollment.getEncodings() 
-                    : [];
-                    
-                if (encodings.length < MAX_FRAMES) { 
-                    if (typeof MobileSwal !== 'undefined') MobileSwal.warning('Incomplete', 'Please complete all 10 face samples.'); 
-                    setStep(2); 
-                    return; 
-                }
+            liveEnrollment.callbacks.onEnrollmentError = function (result) {
+                var msg = typeof liveEnrollment.describeEnrollError === 'function'
+                    ? liveEnrollment.describeEnrollError(result)
+                    : ((result && (result.message || result.error)) || 'Scan error, retrying...');
+                var e = el('cameraStatusText');
+                if (e) e.textContent = msg;
+            };
+        }
 
-                var confirmResult = typeof MobileSwal !== 'undefined' 
-                    ? await MobileSwal.confirm('Submit Enrollment?', 'Your registration will be sent for admin approval.', 'Yes, Submit', 'Review Again') 
-                    : { isConfirmed: confirm('Submit enrollment?') };
-                    
-                if (!confirmResult.isConfirmed) return;
+        // Wizard step navigation
+        function setStep(step) {
+            state.step = step;
+            [1, 2, 3].forEach(function (n) {
+                var pane   = el('step' + n);
+                var stepEl = document.querySelector('.wizard-step[data-step="' + n + '"]');
+                if (pane)   pane.classList.toggle('active', n === step);
+                if (stepEl) {
+                    stepEl.classList.remove('active', 'done');
+                    if (n === step) stepEl.classList.add('active');
+                    if (n < step)  stepEl.classList.add('done');
+                }
+            });
+            if (step === 2) { startCamera(); } else { stopCamera(); }
+            if (step === 3) { populateReview(); }
+            window.scrollTo(0, 0);
+        }
+
+        function populateReview() {
+            var sel      = els.officeId;
+            var officeTx = (sel && sel.selectedIndex >= 0) ? sel.options[sel.selectedIndex].text : '-';
+            var samples  = state.capturedFrames ? state.capturedFrames.length : 0;
+            var map = {
+                reviewEmployeeId:         els.employeeId ? els.employeeId.value : '-',
+                reviewFullName:           [
+                    els.firstName  ? els.firstName.value  : '',
+                    els.middleName ? els.middleName.value : '',
+                    els.lastName   ? els.lastName.value   : ''
+                ].filter(Boolean).join(' ') || '-',
+                reviewPositionDepartment: [
+                    els.position   ? els.position.value   : '',
+                    els.department ? els.department.value : ''
+                ].filter(Boolean).join(' / ') || '-',
+                reviewOffice:             officeTx,
+                reviewDeviceName:         els.deviceName ? els.deviceName.value : '-',
+                reviewSampleCount:        samples + ' / 8'
+            };
+            Object.keys(map).forEach(function (id) {
+                var e = el(id); if (e) e.textContent = map[id];
+            });
+        }
+
+        var Rules = {
+            employeeId : { min:5,  max:20,  pat:/^[A-Z0-9 \-]+$/,           label:'Employee ID' },
+            firstName  : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,            label:'First Name'  },
+            lastName   : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,            label:'Last Name'   },
+            middleName : { min:0,  max:50,  pat:/^[A-Z \.\-']*$/,            label:'Middle Name', opt:true },
+            position   : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/,  label:'Position'    },
+            department : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/,  label:'Department'  },
+            deviceName : { min:2,  max:50,  pat:/^[A-Z0-9 \._]+$/,          label:'Device Name' }
+        };
+
+        function validateField(input, rules, msgId) {
+            var val   = (input ? input.value : '').trim().toUpperCase();
+            var msgEl = el(msgId);
+            var ok    = false;
+            if (!val && rules.opt) {
+                ok = true;
+            } else if (!val) {
+                if (msgEl) msgEl.textContent = rules.label + ' is required';
+            } else if (val.length < rules.min || val.length > rules.max) {
+                if (msgEl) msgEl.textContent = rules.label + ' must be ' + rules.min + '\u2013' + rules.max + ' chars';
+            } else if (!rules.pat.test(val)) {
+                if (msgEl) msgEl.textContent = rules.label + ' contains invalid characters';
+            } else {
+                ok = true;
+                if (msgEl) msgEl.textContent = '';
+            }
+            if (input) {
+                input.classList.toggle('valid',   ok);
+                input.classList.toggle('invalid', !ok && !!val);
+            }
+            return ok;
+        }
+
+        function updateContinueBtn() {
+            if (els.btnToCapture)
+                els.btnToCapture.disabled = !Object.keys(state.valid).every(function (k) { return state.valid[k]; });
+        }
+
+        function wire(inputEl, ruleKey, msgId, stateKey) {
+            if (!inputEl) return;
+            inputEl.addEventListener('input', function () {
+                state.valid[stateKey] = validateField(inputEl, Rules[ruleKey], msgId);
+                updateContinueBtn();
+            });
+        }
+
+        wire(els.employeeId, 'employeeId', 'employeeIdValidation', 'employeeId');
+        wire(els.firstName,  'firstName',  'firstNameValidation',  'firstName');
+        wire(els.lastName,   'lastName',   'lastNameValidation',   'lastName');
+        wire(els.middleName, 'middleName', 'middleNameValidation', 'middleName');
+        wire(els.position,   'position',   'positionValidation',   'position');
+        wire(els.department, 'department', 'departmentValidation', 'department');
+        wire(els.deviceName, 'deviceName', 'deviceNameValidation', 'deviceName');
+
+        if (els.officeId) {
+            els.officeId.addEventListener('change', function () {
+                state.valid.officeId = !!els.officeId.value;
+                updateContinueBtn();
+            });
+        }
+
+        // Button wiring
+        if (els.btnToCapture)     els.btnToCapture.addEventListener('click',     function () { setStep(2); });
+        if (els.btnBackToDetails) els.btnBackToDetails.addEventListener('click', function () { setStep(1); });
+        if (els.btnBackToCapture) els.btnBackToCapture.addEventListener('click', function () { setStep(2); });
+
+        // Submit enrollment
+        if (els.submitBtn) {
+            els.submitBtn.addEventListener('click', function () {
+                var encodings = [];
+                if (liveEnrollment && liveEnrollment.goodFrames) {
+                    liveEnrollment.goodFrames.forEach(function (f) {
+                        var enc = f.encoding || f.enc;
+                        if (enc) encodings.push(enc);
+                    });
+                }
+                if (encodings.length === 0) {
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'No Face Data',
+                            text: 'Please complete face capture before submitting.',
+                            background: '#0f172a', color: '#f8fafc' });
+                    }
+                    return;
+                }
+                var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
+                var form = new FormData();
+                form.append('EmployeeId',           els.employeeId ? els.employeeId.value.trim().toUpperCase() : '');
+                form.append('FirstName',            els.firstName  ? els.firstName.value.trim().toUpperCase()  : '');
+                form.append('MiddleName',           els.middleName ? els.middleName.value.trim().toUpperCase() : '');
+                form.append('LastName',             els.lastName   ? els.lastName.value.trim().toUpperCase()   : '');
+                form.append('Position',             els.position   ? els.position.value.trim().toUpperCase()   : '');
+                form.append('Department',           els.department ? els.department.value.trim().toUpperCase() : '');
+                form.append('OfficeId',             els.officeId   ? els.officeId.value                        : '');
+                form.append('DeviceName',           els.deviceName ? els.deviceName.value.trim().toUpperCase() : '');
+                form.append('FaceEncoding',         encodings[0]);
+                form.append('AllFaceEncodingsJson', JSON.stringify(encodings));
+                if (tokenInput) form.append('__RequestVerificationToken', tokenInput.value);
 
                 els.submitBtn.disabled = true;
-                els.submitBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Submitting...';
+                els.submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Submitting...';
 
-                var formData = new FormData();
-                formData.append('__RequestVerificationToken', document.querySelector('input[name="__RequestVerificationToken"]').value);
-                formData.append('EmployeeId', els.employeeId.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-                formData.append('FirstName', els.firstName.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-                formData.append('MiddleName', els.middleName.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-                formData.append('LastName', els.lastName.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-                formData.append('Position', els.position.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-                formData.append('Department', els.department.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-                formData.append('OfficeId', els.officeId.value);
-                formData.append('DeviceName', els.deviceName.value.toUpperCase().replace(/</g, '').replace(/>/g, ''));
-
-                // Get encodings from enrollment component
-                formData.append('AllFaceEncodingsJson', JSON.stringify(encodings));
-                formData.append('FaceEncoding', encodings[0] || '');
-
-                try {
-                    var response = await fetch(els.submitUrl, { method: 'POST', body: formData });
-                    var data = await response.json();
-                    if (!data.ok) throw new Error(data.message || 'Submission failed');
-                    if (typeof MobileSwal !== 'undefined') await MobileSwal.success('Enrollment Submitted', 'Your registration is pending admin approval.');
-                    window.location.href = '/MobileRegistration/Success?isNewEmployee=true&employeeDbId=' + encodeURIComponent(data.employeeDbId || '');
-                } catch (err) {
-                    console.error(err);
-                    if (typeof MobileSwal !== 'undefined') MobileSwal.error('Network Error', 'Please check your connection.');
+                fetch('/MobileRegistration/SubmitEnrollment', {
+                    method: 'POST', body: form, credentials: 'same-origin'
+                })
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    if (data && (data.ok || data.success)) {
+                        var empDbId = data.data && data.data.employeeDbId;
+                        window.location.href = '/MobileRegistration/Success?isNewEmployee=true' +
+                            (empDbId ? '&employeeDbId=' + empDbId : '');
+                    } else {
+                        throw new Error((data && (data.message || data.error)) || 'Submission failed.');
+                    }
+                })
+                .catch(function (err) {
                     els.submitBtn.disabled = false;
-                    els.submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane"></i> Submit Enrollment';
-                }
-            }
-
-            // Event listeners
-            ['employeeId', 'firstName', 'lastName', 'middleName', 'position', 'department', 'deviceName'].forEach(function(id) {
-                var el = els[id];
-                if (el) {
-                    el.addEventListener('input', function() { 
-                        window['validate' + id.charAt(0).toUpperCase() + id.slice(1)](); 
-                        updateContinueButton(); 
-                    });
-                    el.addEventListener('blur', window['validate' + id.charAt(0).toUpperCase() + id.slice(1)]);
-                }
+                    els.submitBtn.innerHTML = '<i class="fa-solid fa-paper-plane me-2"></i>Submit Enrollment';
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({ icon: 'error', title: 'Error',
+                            text: err.message || 'Could not submit.',
+                            background: '#0f172a', color: '#f8fafc' });
+                    }
+                });
             });
-            els.officeId.addEventListener('change', function() { validateOfficeId(); updateContinueButton(); });
+        }
 
-            els.btnToCapture.addEventListener('click', function () { 
-                if (!allFieldsValid()) { 
-                    if (typeof MobileSwal !== 'undefined') MobileSwal.warning('Validation Error', 'Please correct all form fields.'); 
-                    return; 
-                } 
-                setStep(2); 
-            });
-            els.btnBackToDetails.addEventListener('click', function () { setStep(1); });
-            els.btnToReview.addEventListener('click', function () { 
-                var encodings = window.FaceAttendEnrollment && typeof window.FaceAttendEnrollment.getEncodings === 'function' 
-                    ? window.FaceAttendEnrollment.getEncodings() 
-                    : [];
-                if (encodings.length < MAX_FRAMES) { 
-                    if (typeof MobileSwal !== 'undefined') MobileSwal.warning('Incomplete', 'Please wait until all 10 samples are collected.'); 
-                    return; 
-                } 
-                setStep(3); 
-            });
-            els.btnBackToCapture.addEventListener('click', function () { setStep(2); });
-            els.submitBtn.addEventListener('click', submitEnrollment);
-
-            // Initial validation
-            validateEmployeeId(); validateFirstName(); validateLastName(); validateMiddleName();
-            validatePosition(); validateDepartment(); validateOfficeId(); validateDeviceName();
-            updateContinueButton();
-        })();
+    }());
     </script>
 }
