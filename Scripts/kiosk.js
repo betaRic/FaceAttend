@@ -1000,6 +1000,8 @@
     function setMobileRegisterVisible(show) {
         var mobileRegisterBtn = getMobileRegisterBtn();
         if (!mobileRegisterBtn) return;
+        // Never show register button if device is already active
+        if (show && state.deviceStatus === 'active') return;
         mobileRegisterBtn.style.display = show ? 'block' : 'none';
     }
 

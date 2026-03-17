@@ -55,6 +55,9 @@
           <Property Name="IsAutoRecorded" Type="bit" Nullable="false" />
           <Property Name="AttendanceDate" Type="date" StoreGeneratedPattern="Computed" />
           <Property Name="AttemptedAtUtc" Type="datetime2" Precision="7" />
+          <Property Name="AttendanceDateLocal" Type="date" StoreGeneratedPattern="Computed" />
+          <Property Name="ScanHour" Type="int" StoreGeneratedPattern="Computed" />
+          <Property Name="ScanMinute" Type="int" StoreGeneratedPattern="Computed" />
         </EntityType>
         <EntityType Name="Devices">
           <Key>
@@ -304,7 +307,7 @@
             <End Role="Visitor" EntitySet="Visitors" />
             <End Role="VisitorLog" EntitySet="VisitorLogs" />
           </AssociationSet>
-        </EntityContainer>
+          </EntityContainer>
         <ComplexType Name="sp_CheckDuplicateFace_Result">
           <Property Type="String" Name="EmployeeId" Nullable="false" MaxLength="20" />
           <Property Type="String" Name="FaceEncodingBase64" Nullable="true" />
@@ -360,6 +363,9 @@
           <Property Name="IsAutoRecorded" Type="Boolean" Nullable="false" />
           <Property Name="AttendanceDate" Type="DateTime" annotation:StoreGeneratedPattern="Computed" Precision="0" />
           <Property Name="AttemptedAtUtc" Type="DateTime" Precision="7" />
+          <Property Name="AttendanceDateLocal" Type="DateTime" annotation:StoreGeneratedPattern="Computed" Precision="0" />
+          <Property Name="ScanHour" Type="Int32" annotation:StoreGeneratedPattern="Computed" />
+          <Property Name="ScanMinute" Type="Int32" annotation:StoreGeneratedPattern="Computed" />
           <NavigationProperty Name="Employee" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="AttendanceLog" ToRole="Employee" />
           <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="AttendanceLog" ToRole="Office" />
         </EntityType>
@@ -575,6 +581,9 @@
           <EntitySetMapping Name="AttendanceLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
               <MappingFragment StoreEntitySet="AttendanceLogs">
+                <ScalarProperty Name="ScanMinute" ColumnName="ScanMinute" />
+                <ScalarProperty Name="ScanHour" ColumnName="ScanHour" />
+                <ScalarProperty Name="AttendanceDateLocal" ColumnName="AttendanceDateLocal" />
                 <ScalarProperty Name="AttemptedAtUtc" ColumnName="AttemptedAtUtc" />
                 <ScalarProperty Name="AttendanceDate" ColumnName="AttendanceDate" />
                 <ScalarProperty Name="IsAutoRecorded" ColumnName="IsAutoRecorded" />
@@ -711,7 +720,7 @@
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
-        </EntityContainerMapping>
+          </EntityContainerMapping>
       </Mapping>
     </edmx:Mappings>
   </edmx:Runtime>

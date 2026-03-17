@@ -98,7 +98,10 @@ namespace FaceAttend.Controllers
                     var liveness = new OnnxLiveness();
                     var scored = liveness.ScoreFromFile(tempPath, faceBox);
                     
-                    double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                    // FIX: Use mobile-specific lower threshold since this is always a mobile flow
+double livenessThreshold = ConfigurationService.GetDouble(
+    "Biometrics:Liveness:MobileThreshold",
+    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.30));
                     bool livenessOk = scored.Ok && (scored.Probability ?? 0) >= livenessThreshold;
 
                     // Encode face
@@ -249,6 +252,16 @@ namespace FaceAttend.Controllers
                     // FIX: Invalidate face index so new enrollment is recognized after approval
                     Services.Biometrics.EmployeeFaceIndex.Invalidate();
 
+                    // FIX: Refresh in-memory face cache so the new employee is immediately recognizable
+                    try
+                    {
+                        FastFaceMatcher.UpdateEmployee(employee.EmployeeId, db);
+                    }
+                    catch
+                    {
+                        // Non-fatal: cache will rebuild on next scan
+                    }
+
                     Response.StatusCode = 200;
                     Response.TrySkipIisCustomErrors = true;
 
@@ -369,7 +382,12 @@ namespace FaceAttend.Controllers
                     if (!FastFaceMatcher.IsInitialized)
                         FastFaceMatcher.Initialize();
                     
-                    var matchResult = FastFaceMatcher.FindBestMatch(vec, tolerance: 0.60);
+                    // FIX: Read tolerance from config instead of hardcoded value
+                    double identifyTol = ConfigurationService.GetDouble(
+                        "Biometrics:AttendanceTolerance",
+                        ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
+                    
+                    var matchResult = FastFaceMatcher.FindBestMatch(vec, identifyTol);
 
                     if (!matchResult.IsMatch)
                     {
@@ -395,9 +413,18 @@ namespace FaceAttend.Controllers
                             return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
                         }
 
+                        var currentFingerprint = DeviceService.GenerateFingerprint(Request);
+                        var currentToken = DeviceService.GetDeviceTokenFromCookie(Request);
+
                         // Check if already has device registered
                         var existingDevice = db.Devices
                             .FirstOrDefault(d => d.EmployeeId == employee.Id && d.Status == "ACTIVE");
+
+                        // Is THIS specific device already registered to this employee?
+                        bool isCurrentDeviceRegistered = existingDevice != null && (
+                            existingDevice.Fingerprint == currentFingerprint ||
+                            (!string.IsNullOrEmpty(currentToken) && existingDevice.DeviceToken == currentToken)
+                        );
 
                         return JsonResponseBuilder.Success(new
                         {
@@ -409,6 +436,7 @@ namespace FaceAttend.Controllers
                             office = SanitizeDisplayText(employee.Office?.Name),
                             hasExistingDevice = existingDevice != null,
                             existingDeviceName = existingDevice?.DeviceName,
+                            isCurrentDeviceRegistered = isCurrentDeviceRegistered,
                             confidence = matchResult.Confidence
                         });
                     }
@@ -478,6 +506,15 @@ namespace FaceAttend.Controllers
                 if (!FastFaceMatcher.IsInitialized)
                     FastFaceMatcher.Initialize();
 
+                // FIX: Read tolerance from config instead of hardcoded value
+                double burstIdentifyTol = ConfigurationService.GetDouble(
+                    "Biometrics:AttendanceTolerance",
+                    ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
+
+                // FIX: Force reload if cache is stale (older than 5 min)
+                if (DateTime.UtcNow - FastFaceMatcher.LastLoaded > TimeSpan.FromMinutes(5))
+                    FastFaceMatcher.ReloadFromDatabase();
+
                 System.Threading.Tasks.Parallel.ForEach(framePaths, new ParallelOptions { MaxDegreeOfParallelism = 3 }, (frameInfo) =>
                 {
                     var i = frameInfo.Item1;
@@ -517,7 +554,7 @@ namespace FaceAttend.Controllers
                             return;
 
                         // Match against database
-                        var matchResult = FastFaceMatcher.FindBestMatch(vec, tolerance: 0.60);
+                        var matchResult = FastFaceMatcher.FindBestMatch(vec, burstIdentifyTol);
                         
                         concurrentResults.Add(new FrameMatchResult
                         {
@@ -570,9 +607,18 @@ namespace FaceAttend.Controllers
                     if (!string.Equals(employeeStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
                         return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
 
+                    var currentFingerprint = DeviceService.GenerateFingerprint(Request);
+                    var currentToken = DeviceService.GetDeviceTokenFromCookie(Request);
+
                     // Check if already has device registered
                     var existingDevice = db.Devices
                         .FirstOrDefault(d => d.EmployeeId == employee.Id && d.Status == "ACTIVE");
+
+                    // Is THIS specific device already registered to this employee?
+                    bool isCurrentDeviceRegistered = existingDevice != null && (
+                        existingDevice.Fingerprint == currentFingerprint ||
+                        (!string.IsNullOrEmpty(currentToken) && existingDevice.DeviceToken == currentToken)
+                    );
 
                     return JsonResponseBuilder.Success(new
                     {
@@ -584,6 +630,7 @@ namespace FaceAttend.Controllers
                         office = SanitizeDisplayText(employee.Office?.Name),
                         hasExistingDevice = existingDevice != null,
                         existingDeviceName = existingDevice?.DeviceName,
+                        isCurrentDeviceRegistered = isCurrentDeviceRegistered,
                         confidence = winner.AvgConfidence,
                         consensusVotes = winner.Votes,
                         totalFrames = frameResults.Count

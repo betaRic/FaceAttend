@@ -557,7 +557,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     .ToList();
 
                 var sb = new StringBuilder();
-                sb.AppendLine("EmployeeId,EmployeeName,Department,Date,FirstIn,LastOut,HoursNet,Status,LateMin,UndertimeMin");
+                sb.AppendLine("EmployeeId,EmployeeName,Department,Date,AmIn,AmOut,PmIn,PmOut,FirstIn,LastOut,HoursNet,Status,LateMin,UndertimeMin");
 
                 var grouped = raw.GroupBy(x => new { x.EmpId, x.FullName, x.Dept })
                     .OrderBy(g => g.Key.EmpId);
@@ -580,6 +580,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                             CsvHelper.SafeCell(eg.Key.FullName),
                             CsvHelper.SafeCell(eg.Key.Dept),
                             row.DateLabel,
+                            row.AmIn.HasValue ? row.AmIn.Value.ToString("HH:mm") : "",
+                            row.AmOut.HasValue ? row.AmOut.Value.ToString("HH:mm") : "",
+                            row.PmIn.HasValue ? row.PmIn.Value.ToString("HH:mm") : "",
+                            row.PmOut.HasValue ? row.PmOut.Value.ToString("HH:mm") : "",
                             row.FirstInUtc.HasValue ? row.FirstInUtc.Value.ToString("HH:mm") : "",
                             row.LastOutUtc.HasValue ? row.LastOutUtc.Value.ToString("HH:mm") : "",
                             (row.HoursNet ?? row.HoursRaw).HasValue
@@ -677,11 +681,23 @@ namespace FaceAttend.Areas.Admin.Controllers
                     .FirstOrDefault();
             }
 
+            // noon split: events before 12:00 are AM, at/after 12:00 are PM
+            var noon = dayLocal.Date.AddHours(12);
+
+            var amIns  = events != null ? events.Where(x => x.EventType == "IN"  && x.Timestamp < noon).OrderBy(x => x.Timestamp).ToList() : null;
+            var amOuts = events != null ? events.Where(x => x.EventType == "OUT" && x.Timestamp < noon).OrderBy(x => x.Timestamp).ToList() : null;
+            var pmIns  = events != null ? events.Where(x => x.EventType == "IN"  && x.Timestamp >= noon).OrderBy(x => x.Timestamp).ToList() : null;
+            var pmOuts = events != null ? events.Where(x => x.EventType == "OUT" && x.Timestamp >= noon).OrderByDescending(x => x.Timestamp).ToList() : null;
+
             var row = new DailyEmployeeRow
             {
                 DateLocal = dayLocal,
                 FirstInUtc = firstInUtc,
-                LastOutUtc = lastOutUtc
+                LastOutUtc = lastOutUtc,
+                AmIn  = amIns  != null && amIns.Any()  ? (DateTime?)amIns.First().Timestamp  : null,
+                AmOut = amOuts != null && amOuts.Any() ? (DateTime?)amOuts.First().Timestamp : null,
+                PmIn  = pmIns  != null && pmIns.Any()  ? (DateTime?)pmIns.First().Timestamp  : null,
+                PmOut = pmOuts != null && pmOuts.Any() ? (DateTime?)pmOuts.First().Timestamp : null,
             };
 
             bool hasIn = firstInUtc.HasValue;

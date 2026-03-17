@@ -192,6 +192,11 @@ namespace FaceAttend.Services.Biometrics
         }
 
         /// <summary>
+        /// Returns the last time the cache was loaded from database.
+        /// </summary>
+        public static DateTime LastLoaded => _lastLoaded;
+
+        /// <summary>
         /// Add or update an employee in the cache (call after enrollment).
         /// Uses FaceEncodingHelper for consistent decoding.
         /// 

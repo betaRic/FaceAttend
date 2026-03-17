@@ -307,7 +307,7 @@
                             @* Detail row - hidden by default.
                                This is NOT a DataTables row, so the colspan causes no conflict. *@
                             <tr class="detail-row" id="@colId" style="display:none;">
-                                <td colspan="9" class="p-0">
+                                <td colspan="11" class="p-0">
                                     <div class="p-3 bg-light border-top border-bottom">
                                         <div class="fw-semibold small mb-2 text-muted">
                                             <i class="fa-solid fa-calendar-days me-1" aria-hidden="true"></i>
@@ -318,8 +318,10 @@
                                                 <thead class="table-secondary">
                                                     <tr>
                                                         <th style="width:110px;">Date</th>
-                                                        <th style="width:95px;">First IN</th>
-                                                        <th style="width:95px;">Last OUT</th>
+                                                        <th style="width:80px;">AM IN</th>
+                                                        <th style="width:80px;">AM OUT</th>
+                                                        <th style="width:80px;">PM IN</th>
+                                                        <th style="width:80px;">PM OUT</th>
                                                         <th style="width:80px;">Hours</th>
                                                         <th style="width:80px;">Late</th>
                                                         <th style="width:90px;">Undertime</th>
@@ -329,14 +331,12 @@
                                                 <tbody>
                                                     @foreach (var day in agg.Emp.Days)
                                                     {
-                                                        bool hasIn  = day.FirstInUtc.HasValue;
-                                                        bool hasOut = day.LastOutUtc.HasValue;
                                                         <tr>
                                                             <td class="fw-semibold text-nowrap">@day.DateLabel</td>
                                                             <td>
-                                                                @if (hasIn)
+                                                                @if (day.AmIn.HasValue)
                                                                 {
-                                                                    <span class="badge bg-success">@day.FirstInDisplay</span>
+                                                                    <span class="badge bg-success">@day.AmInDisplay</span>
                                                                 }
                                                                 else
                                                                 {
@@ -344,9 +344,29 @@
                                                                 }
                                                             </td>
                                                             <td>
-                                                                @if (hasOut)
+                                                                @if (day.AmOut.HasValue)
                                                                 {
-                                                                    <span class="badge bg-secondary">@day.LastOutDisplay</span>
+                                                                    <span class="badge bg-secondary">@day.AmOutDisplay</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="text-muted">-</span>
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                @if (day.PmIn.HasValue)
+                                                                {
+                                                                    <span class="badge bg-success">@day.PmInDisplay</span>
+                                                                }
+                                                                else
+                                                                {
+                                                                    <span class="text-muted">-</span>
+                                                                }
+                                                            </td>
+                                                            <td>
+                                                                @if (day.PmOut.HasValue)
+                                                                {
+                                                                    <span class="badge bg-secondary">@day.PmOutDisplay</span>
                                                                 }
                                                                 else
                                                                 {

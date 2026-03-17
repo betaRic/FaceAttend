@@ -230,6 +230,12 @@
                 Registering this device will replace it.
             </div>
             
+            <!-- Already Registered Message -->
+            <div id="alreadyRegisteredMsg" style="display:none;" class="alert alert-success mt-3">
+                <i class="fa-solid fa-circle-check me-2"></i>
+                Your device is already registered. You can go directly to attendance.
+            </div>
+            
             <!-- Actions -->
             <div class="d-grid gap-2 mt-4">
                 <button type="button" class="mobile-btn mobile-btn-success" id="continueBtn">
@@ -364,7 +370,11 @@
             
             // MIGRATED: Use FaceAttend.Camera.capture instead of canvas draw
             async function captureFrame() {
-                const canvas = FaceAttend.Camera.capture(640, 480);
+                // FIX: Use actual video dimensions, not fixed 640x480
+                const video = FaceAttend.Camera.getVideo ? FaceAttend.Camera.getVideo() : document.querySelector('video');
+                const w = video ? video.videoWidth : 640;
+                const h = video ? video.videoHeight : 480;
+                const canvas = FaceAttend.Camera.capture(w, h);
                 if (!canvas) return null;
                 
                 return new Promise(resolve => {
@@ -433,11 +443,19 @@
                     formData.append('frameCount', burstFrames.length);
                     
                     // Send face box if available
+                    // FIX: Scale face box coordinates to match actual video resolution
                     if (lastFaceBox) {
-                        formData.append('faceX', lastFaceBox.x);
-                        formData.append('faceY', lastFaceBox.y);
-                        formData.append('faceW', lastFaceBox.w);
-                        formData.append('faceH', lastFaceBox.h);
+                        const videoEl = FaceAttend.Camera.getVideo ? FaceAttend.Camera.getVideo() : document.querySelector('video');
+                        const displayW = videoEl ? videoEl.clientWidth  : 640;
+                        const displayH = videoEl ? videoEl.clientHeight : 480;
+                        const actualW  = videoEl ? videoEl.videoWidth   : 640;
+                        const actualH  = videoEl ? videoEl.videoHeight  : 480;
+                        const scaleX = actualW / displayW;
+                        const scaleY = actualH / displayH;
+                        formData.append('faceX', Math.round(lastFaceBox.x * scaleX));
+                        formData.append('faceY', Math.round(lastFaceBox.y * scaleY));
+                        formData.append('faceW', Math.round(lastFaceBox.w * scaleX));
+                        formData.append('faceH', Math.round(lastFaceBox.h * scaleY));
                     }
                     
                     formData.append('__RequestVerificationToken', 
@@ -478,9 +496,38 @@
                 document.getElementById('employeeName').textContent = data.fullName;
                 renderEmployeeDetails(data);
                 
-                if (data.hasExistingDevice) {
-                    document.getElementById('deviceWarning').style.display = 'block';
-                    document.getElementById('existingDeviceName').textContent = data.existingDeviceName;
+                const deviceWarning       = document.getElementById('deviceWarning');
+                const alreadyRegistered   = document.getElementById('alreadyRegisteredMsg');
+                const continueBtn         = document.getElementById('continueBtn');
+
+                if (data.isCurrentDeviceRegistered) {
+                    // THIS device is already registered - no need to register again
+                    if (deviceWarning)     deviceWarning.style.display     = 'none';
+                    if (alreadyRegistered) alreadyRegistered.style.display = 'block';
+                    if (continueBtn) {
+                        continueBtn.textContent = 'Go to Attendance';
+                        continueBtn.onclick = function() {
+                            window.location.href = '/MobileRegistration/Employee';
+                        };
+                    }
+                } else if (data.hasExistingDevice) {
+                    // A DIFFERENT device is registered - show replace warning, allow proceed
+                    if (alreadyRegistered) alreadyRegistered.style.display = 'none';
+                    if (deviceWarning) {
+                        deviceWarning.style.display = 'block';
+                        document.getElementById('existingDeviceName').textContent = data.existingDeviceName;
+                    }
+                    if (continueBtn) {
+                        continueBtn.textContent = 'Replace & Register This Device';
+                        continueBtn.onclick = function() {
+                            window.location.href = '/MobileRegistration/Device?employeeId=' + 
+                                encodeURIComponent(identifiedEmployeeId);
+                        };
+                    }
+                } else {
+                    // No device registered at all - clean flow
+                    if (deviceWarning)     deviceWarning.style.display     = 'none';
+                    if (alreadyRegistered) alreadyRegistered.style.display = 'none';
                 }
                 
                 resultSection.style.display = 'block';

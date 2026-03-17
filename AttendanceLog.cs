@@ -46,6 +46,9 @@ namespace FaceAttend
         public bool IsAutoRecorded { get; set; }
         public Nullable<System.DateTime> AttendanceDate { get; set; }
         public Nullable<System.DateTime> AttemptedAtUtc { get; set; }
+        public Nullable<System.DateTime> AttendanceDateLocal { get; set; }
+        public Nullable<int> ScanHour { get; set; }
+        public Nullable<int> ScanMinute { get; set; }
     
         public virtual Employee Employee { get; set; }
         public virtual Office Office { get; set; }

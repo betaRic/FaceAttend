@@ -48,6 +48,12 @@ namespace FaceAttend.Models.ViewModels.Admin
         public DateTime? FirstInUtc { get; set; }
         public DateTime? LastOutUtc { get; set; }
 
+        // ADD THESE FOUR - AM/PM split (noon boundary for DILG)
+        public DateTime? AmIn  { get; set; }   // first IN before noon
+        public DateTime? AmOut { get; set; }   // first OUT before noon
+        public DateTime? PmIn  { get; set; }   // first IN at/after noon
+        public DateTime? PmOut { get; set; }   // last OUT at/after noon
+
         // Computed values
         public double? HoursRaw { get; set; }
         public double? HoursNet { get; set; }
@@ -83,6 +89,12 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         public string LateDisplay => LateMinutes.HasValue ? (LateMinutes.Value + "m") : "-";
         public string UndertimeDisplay => UndertimeMinutes.HasValue ? (UndertimeMinutes.Value + "m") : "-";
+
+        // AM/PM display helpers
+        public string AmInDisplay  => AmIn.HasValue  ? AmIn.Value.ToString("HH:mm")  : "-";
+        public string AmOutDisplay => AmOut.HasValue ? AmOut.Value.ToString("HH:mm") : "-";
+        public string PmInDisplay  => PmIn.HasValue  ? PmIn.Value.ToString("HH:mm")  : "-";
+        public string PmOutDisplay => PmOut.HasValue ? PmOut.Value.ToString("HH:mm") : "-";
     }
 
     // ── Row in the main attendance table ─────────────────────────────────────────
