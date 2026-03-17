@@ -322,7 +322,7 @@
         var liveEnrollment = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
             ? FaceAttend.Enrollment.create({
                 empId:             '',
-                scanUrl:           '/api/scan/frame',
+                scanUrl:           '/MobileRegistration/ScanFrame',
                 enrollUrl:         '/api/enrollment/enroll',
                 redirectUrl:       '',
                 minGoodFrames:     minFrames,
@@ -656,12 +656,10 @@
         if (els.submitBtn) {
             els.submitBtn.addEventListener('click', function () {
                 var encodings = [];
-                if (liveEnrollment && liveEnrollment.goodFrames) {
-                    liveEnrollment.goodFrames.forEach(function (f) {
-                        var enc = f.encoding || f.enc;
-                        if (enc) encodings.push(enc);
-                    });
-                }
+                (state.capturedFrames || []).forEach(function (f) {
+                    var enc = f.encoding || f.enc;
+                    if (enc) encodings.push(enc);
+                });
                 if (encodings.length === 0) {
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({ icon: 'error', title: 'No Face Data',

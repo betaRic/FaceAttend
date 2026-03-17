@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
@@ -112,7 +112,7 @@ namespace FaceAttend.Models.ViewModels.Admin
         public double?  FaceDistance     { get; set; }
         public bool     LocationVerified { get; set; }
         public bool     NeedsReview      { get; set; }
-        public string   WiFiSSID         { get; set; }   // NEW: added for export & detail display
+        public string   WiFiBSSID         { get; set; }   // NEW: added for export & detail display
     }
 
     // ── Index ViewModel ───────────────────────────────────────────────────────────

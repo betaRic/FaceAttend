@@ -27,7 +27,7 @@ namespace FaceAttend
         public Nullable<double> GPSLatitude { get; set; }
         public Nullable<double> GPSLongitude { get; set; }
         public Nullable<double> GPSAccuracy { get; set; }
-        public string WiFiSSID { get; set; }
+        public string WiFiBSSID { get; set; }
         public bool LocationVerified { get; set; }
         public string LocationError { get; set; }
         public Nullable<double> FaceDistance { get; set; }

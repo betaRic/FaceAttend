@@ -1,4 +1,4 @@
-@model FaceAttend.Controllers.DeviceRegistrationVm
+﻿@model FaceAttend.Controllers.DeviceRegistrationVm
 @{
     Layout = "~/Views/Shared/_MobileLayout.cshtml";
     ViewBag.Title = "Register Device";
@@ -8,458 +8,65 @@
     @Styles.Render("~/Content/fa-system")
     @Styles.Render("~/Content/fa-mobile")
     <style>
-        /* Page Header */
-        .page-header {
-            text-align: center;
-            margin-bottom: 1.5rem;
-        }
-        
-        .page-header h1 {
-            font-size: 1.5rem;
-            font-weight: 700;
-            color: var(--text-primary);
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.75rem;
-        }
-        
-        .page-header p {
-            color: var(--text-muted);
-            font-size: 0.9375rem;
-        }
-        
-        /* Progress Steps */
-        .progress-steps {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            margin-bottom: 1.5rem;
-        }
-        
-        .step {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-        }
-        
-        .step-dot {
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 0.75rem;
-            font-weight: 600;
-            transition: all 0.3s ease;
-        }
-        
-        .step-dot.completed {
-            background: var(--color-success);
-            color: white;
-        }
-        
-        .step-dot.active {
-            background: var(--color-primary);
-            color: white;
-            box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2);
-        }
-        
-        .step-line {
-            width: 40px;
-            height: 2px;
-            background: rgba(255, 255, 255, 0.1);
-            border-radius: 1px;
-        }
-        
-        .step-line.completed {
-            background: var(--color-success);
-        }
-        
-        /* Employee Card */
-        .employee-card {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
-            border: 1px solid rgba(59, 130, 246, 0.2);
-            border-radius: var(--radius-lg);
-            padding: 1.25rem;
-            margin-bottom: 1.25rem;
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            animation: slideUp 0.4s ease;
-        }
-        
-        .employee-avatar {
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            background: linear-gradient(135deg, var(--color-primary) 0%, #2563eb 100%);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-            color: white;
-            flex-shrink: 0;
-            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
-        }
-        
-        .employee-info { flex: 1; }
-        
-        .employee-name {
-            font-weight: 700;
-            font-size: 1.0625rem;
-            color: var(--text-primary);
-            margin-bottom: 0.25rem;
-        }
-        
-        .employee-meta {
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-        
-        .employee-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.375rem;
-            padding: 0.375rem 0.75rem;
-            background: rgba(34, 197, 94, 0.15);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            border-radius: 9999px;
-            font-size: 0.75rem;
-            font-weight: 600;
-            color: var(--color-success);
-        }
-        
-        /* Alert Cards */
-        .alert-card {
-            border-radius: var(--radius-md);
-            padding: 1rem 1.25rem;
-            margin-bottom: 1.25rem;
-            display: flex;
-            gap: 0.875rem;
-            animation: slideUp 0.4s ease 0.1s both;
-        }
-        
-        .alert-card.warning {
-            background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(217, 119, 6, 0.05) 100%);
-            border: 1px solid rgba(245, 158, 11, 0.25);
-        }
-        
-        .alert-card.info {
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%);
-            border: 1px solid rgba(59, 130, 246, 0.25);
-        }
-        
-        .alert-icon {
-            width: 40px;
-            height: 40px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.125rem;
-            flex-shrink: 0;
-        }
-        
-        .alert-card.warning .alert-icon {
-            background: rgba(245, 158, 11, 0.15);
-            color: var(--color-warning);
-        }
-        
-        .alert-card.info .alert-icon {
-            background: rgba(59, 130, 246, 0.15);
-            color: var(--color-primary);
-        }
-        
-        .alert-content { flex: 1; }
-        
-        .alert-title {
-            font-weight: 600;
-            font-size: 0.9375rem;
-            margin-bottom: 0.375rem;
-        }
-        
-        .alert-card.warning .alert-title { color: var(--color-warning); }
-        .alert-card.info .alert-title { color: var(--color-primary); }
-        
-        .alert-text {
-            color: var(--text-secondary);
-            font-size: 0.875rem;
-            line-height: 1.5;
-        }
-        
-        /* Device Preview Card */
-        .device-preview {
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: var(--radius-md);
-            padding: 1.5rem;
-            margin-bottom: 1.25rem;
-            text-align: center;
-            animation: slideUp 0.4s ease 0.2s both;
-        }
-        
-        .device-icon {
-            width: 80px;
-            height: 80px;
-            margin: 0 auto 1rem;
-            background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(37, 99, 235, 0.1) 100%);
-            border: 2px solid rgba(59, 130, 246, 0.2);
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.5rem;
-            color: var(--color-primary);
-        }
-        
-        .device-icon.pulse {
-            animation: pulse 2s infinite;
-        }
-        
-        .device-preview h3 {
-            font-size: 1.0625rem;
-            font-weight: 600;
-            color: var(--text-primary);
-            margin-bottom: 0.25rem;
-        }
-        
-        .device-preview p {
-            color: var(--text-muted);
-            font-size: 0.875rem;
-        }
-        
-        /* Form Styling */
-        .form-card {
-            background: rgba(15, 23, 42, 0.4);
-            border: 1px solid rgba(255, 255, 255, 0.06);
-            border-radius: var(--radius-md);
-            padding: 1.25rem;
-            animation: slideUp 0.4s ease 0.3s both;
-        }
-        
-        .form-group {
-            margin-bottom: 1.25rem;
-        }
-        
-        .form-group:last-child {
-            margin-bottom: 0;
-        }
-        
-        .form-label {
-            display: flex;
-            align-items: center;
-            gap: 0.375rem;
-            font-size: 0.9375rem;
-            font-weight: 500;
-            color: var(--text-primary);
-            margin-bottom: 0.625rem;
-        }
-        
-        .form-label .required {
-            color: var(--color-error);
-        }
-        
-        .form-label .hint {
-            color: var(--text-muted);
-            font-size: 0.8125rem;
-            font-weight: 400;
-        }
-        
-        .input-wrapper {
-            position: relative;
-        }
-        
-        .input-wrapper i {
-            position: absolute;
-            left: 1rem;
-            top: 50%;
-            transform: translateY(-50%);
-            color: var(--text-muted);
-            font-size: 1rem;
-            transition: color 0.2s;
-        }
-        
-        .input-wrapper input {
-            width: 100%;
-            padding: 0.875rem 1rem 0.875rem 2.75rem;
-            background: rgba(0, 0, 0, 0.3);
-            border: 2px solid rgba(255, 255, 255, 0.1);
-            border-radius: 12px;
-            color: var(--text-primary);
-            font-size: 1rem;
-            font-weight: 500;
-            transition: all 0.2s ease;
-        }
-        
-        .input-wrapper input:focus {
-            outline: none;
-            border-color: var(--color-primary);
-            background: rgba(0, 0, 0, 0.4);
-        }
-        
-        .input-wrapper input:focus + i,
-        .input-wrapper input:focus ~ i {
-            color: var(--color-primary);
-        }
-        
-        .input-wrapper input.valid {
-            border-color: var(--color-success);
-            background: rgba(34, 197, 94, 0.05);
-        }
-        
-        .input-wrapper input.invalid {
-            border-color: var(--color-error);
-            background: rgba(239, 68, 68, 0.05);
-        }
-        
-        .validation-message {
-            display: flex;
-            align-items: center;
-            gap: 0.375rem;
-            font-size: 0.8125rem;
-            margin-top: 0.5rem;
-            min-height: 1.25rem;
-        }
-        
-        .validation-message.error {
-            color: var(--color-error);
-        }
-        
-        .validation-message.success {
-            color: var(--color-success);
-        }
-        
-        .input-hint {
-            color: var(--text-muted);
-            font-size: 0.8125rem;
-            margin-top: 0.5rem;
-            line-height: 1.4;
-        }
-        
-        /* Security Badge */
-        .security-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 0.5rem;
-            padding: 0.625rem 1rem;
-            background: rgba(34, 197, 94, 0.08);
-            border: 1px solid rgba(34, 197, 94, 0.15);
-            border-radius: 8px;
-            font-size: 0.8125rem;
-            color: var(--color-success);
-            margin-bottom: 1rem;
-        }
-        
-        /* Action Buttons */
-        .action-bar {
-            display: flex;
-            flex-direction: column;
-            gap: 0.75rem;
-            margin-top: 1.5rem;
-        }
-        
-        .btn-modern {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.625rem;
-            padding: 1rem 1.5rem;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            border: none;
-            width: 100%;
-        }
-        
-        .btn-modern:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .btn-modern.primary {
-            background: linear-gradient(135deg, var(--color-primary) 0%, #2563eb 100%);
-            color: white;
-            box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
-        }
-        
-        .btn-modern.primary:not(:disabled):hover {
-            transform: translateY(-1px);
-            box-shadow: 0 6px 20px rgba(59, 130, 246, 0.4);
-        }
-        
-        .btn-modern.primary:not(:disabled):active {
-            transform: translateY(0);
-        }
-        
-        .btn-modern.secondary {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            color: var(--text-secondary);
-        }
-        
-        .btn-modern.secondary:hover {
-            background: rgba(255, 255, 255, 0.1);
-            color: var(--text-primary);
-        }
-        
-        /* Animations */
-        @@keyframes slideUp {
-            from {
-                opacity: 0;
-                transform: translateY(20px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-        
-        @@keyframes pulse {
-            0%, 100% {
-                box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
-            }
-            50% {
-                box-shadow: 0 0 0 12px rgba(59, 130, 246, 0);
-            }
-        }
-        
-        /* Existing Device Card */
-        .existing-device-card {
-            background: rgba(245, 158, 11, 0.05);
-            border: 1px dashed rgba(245, 158, 11, 0.3);
-            border-radius: 12px;
-            padding: 1rem;
-            margin-top: 1rem;
-            display: flex;
-            align-items: center;
-            gap: 0.875rem;
-        }
-        
-        .existing-device-card i {
-            color: var(--color-warning);
-            font-size: 1.25rem;
-        }
-        
-        .existing-device-card .device-info {
-            flex: 1;
-        }
-        
-        .existing-device-card .device-name {
-            font-weight: 600;
-            color: var(--text-primary);
-            font-size: 0.9375rem;
-        }
-        
-        .existing-device-card .device-status {
-            font-size: 0.8125rem;
-            color: var(--text-muted);
-        }
+        .page-header { text-align: center; margin-bottom: 1.5rem; }
+        .page-header h1 { font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: center; gap: 0.75rem; }
+        .page-header p { color: var(--text-muted); font-size: 0.9375rem; }
+        .progress-steps { display: flex; align-items: center; justify-content: center; gap: 0.5rem; margin-bottom: 1.5rem; }
+        .step { display: flex; align-items: center; gap: 0.5rem; }
+        .step-dot { width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 600; transition: all 0.3s ease; }
+        .step-dot.completed { background: var(--color-success); color: white; }
+        .step-dot.active { background: var(--color-primary); color: white; box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.2); }
+        .step-line { width: 40px; height: 2px; background: rgba(255, 255, 255, 0.1); border-radius: 1px; }
+        .step-line.completed { background: var(--color-success); }
+        .employee-card { background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(37, 99, 235, 0.05) 100%); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: var(--radius-lg); padding: 1.25rem; display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+        .employee-avatar { width: 48px; height: 48px; border-radius: 50%; background: rgba(59, 130, 246, 0.2); display: flex; align-items: center; justify-content: center; font-size: 1.25rem; color: var(--color-primary); flex-shrink: 0; }
+        .employee-info { flex: 1; min-width: 0; }
+        .employee-name { font-weight: 600; font-size: 1rem; color: var(--text-primary); }
+        .employee-meta { font-size: 0.8125rem; color: var(--text-muted); margin-top: 0.125rem; }
+        .employee-badge { font-size: 0.75rem; font-weight: 600; color: var(--color-success); display: flex; align-items: center; gap: 0.25rem; white-space: nowrap; }
+        .alert-card { border-radius: var(--radius-lg); padding: 1rem; margin-bottom: 1rem; display: flex; gap: 0.875rem; align-items: flex-start; }
+        .alert-card.warning { background: rgba(245, 158, 11, 0.05); border: 1px solid rgba(245, 158, 11, 0.2); }
+        .alert-card.info { background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); }
+        .alert-icon { font-size: 1.25rem; flex-shrink: 0; margin-top: 0.125rem; }
+        .alert-card.warning .alert-icon { color: var(--color-warning); }
+        .alert-card.info .alert-icon { color: var(--color-primary); }
+        .alert-title { font-weight: 600; font-size: 0.9375rem; color: var(--text-primary); margin-bottom: 0.25rem; }
+        .alert-text { font-size: 0.8125rem; color: var(--text-muted); line-height: 1.5; }
+        .existing-device-card { background: rgba(245, 158, 11, 0.05); border: 1px dashed rgba(245, 158, 11, 0.3); border-radius: 12px; padding: 1rem; margin-top: 1rem; display: flex; align-items: center; gap: 0.875rem; }
+        .existing-device-card i { color: var(--color-warning); font-size: 1.25rem; }
+        .existing-device-card .device-info { flex: 1; }
+        .existing-device-card .device-name { font-weight: 600; color: var(--text-primary); font-size: 0.9375rem; }
+        .existing-device-card .device-status { font-size: 0.8125rem; color: var(--text-muted); }
+        .device-preview { text-align: center; padding: 1.5rem 1rem; }
+        .device-icon { width: 72px; height: 72px; border-radius: 50%; background: rgba(59, 130, 246, 0.1); border: 2px solid rgba(59, 130, 246, 0.3); display: flex; align-items: center; justify-content: center; font-size: 1.75rem; color: var(--color-primary); margin: 0 auto 1rem; }
+        .device-preview h3 { font-size: 1.125rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem; }
+        .device-preview p { font-size: 0.875rem; color: var(--text-muted); }
+        .form-card { background: var(--bg-surface); border: 1px solid var(--border-default); border-radius: var(--radius-lg); padding: 1.25rem; margin-bottom: 1rem; }
+        .form-group { margin-bottom: 1rem; }
+        .form-label { display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.5rem; }
+        .required { color: var(--color-error); }
+        .input-wrapper { position: relative; }
+        .input-wrapper input { width: 100%; padding: 0.75rem 2.5rem 0.75rem 0.875rem; background: var(--bg-input, rgba(255,255,255,0.05)); border: 1px solid var(--border-default); border-radius: var(--radius-md); color: var(--text-primary); font-size: 1rem; transition: all 0.2s; }
+        .input-wrapper input:focus { outline: none; border-color: var(--color-primary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15); }
+        .input-wrapper input.valid { border-color: var(--color-success); background: rgba(34, 197, 94, 0.05); }
+        .input-wrapper input.invalid { border-color: var(--color-error); }
+        .input-wrapper > i { position: absolute; right: 0.875rem; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.875rem; pointer-events: none; }
+        .validation-message { font-size: 0.8125rem; margin-top: 0.375rem; min-height: 1.2em; }
+        .validation-message.error { color: var(--color-error); }
+        .validation-message.success { color: var(--color-success); }
+        .input-hint { font-size: 0.8125rem; color: var(--color-success); margin-bottom: 1rem; display: flex; align-items: flex-start; gap: 0.375rem; line-height: 1.4; }
+        .security-badge { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; color: var(--text-muted); padding-top: 0.75rem; border-top: 1px solid var(--border-default); }
+        .security-badge i { color: var(--color-success); }
+        .action-bar { display: flex; flex-direction: column; gap: 0.75rem; }
+        .btn-modern { display: flex; align-items: center; justify-content: center; gap: 0.625rem; padding: 0.875rem 1.5rem; border-radius: var(--radius-md); font-size: 1rem; font-weight: 600; border: none; cursor: pointer; transition: all 0.2s; text-decoration: none; }
+        .btn-modern.primary { background: var(--color-primary); color: white; }
+        .btn-modern.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-modern.primary:not(:disabled):hover { background: var(--color-primary-hover, #2563eb); transform: translateY(-1px); }
+        .btn-modern.secondary { background: rgba(255,255,255,0.05); color: var(--text-muted); border: 1px solid var(--border-default); }
+        @@keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+        @@keyframes pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4); } 50% { box-shadow: 0 0 0 12px rgba(59, 130, 246, 0); } }
+        .pulse { animation: pulse 2s infinite; }
+        .uppercase { text-transform: uppercase; }
     </style>
 }
 
@@ -475,15 +82,11 @@
 <!-- Progress Steps -->
 <div class="progress-steps">
     <div class="step">
-        <div class="step-dot completed">
-            <i class="fa-solid fa-check"></i>
-        </div>
+        <div class="step-dot completed"><i class="fa-solid fa-check"></i></div>
     </div>
     <div class="step-line completed"></div>
     <div class="step">
-        <div class="step-dot completed">
-            <i class="fa-solid fa-check"></i>
-        </div>
+        <div class="step-dot completed"><i class="fa-solid fa-check"></i></div>
     </div>
     <div class="step-line completed"></div>
     <div class="step">
@@ -492,35 +95,26 @@
 </div>
 
 @Html.AntiForgeryToken()
-<input type="hidden" id="employeeId" value="@Model.EmployeeId" />
+<input type="hidden" id="employeeId"    value="@Model.EmployeeId" />
 <input type="hidden" id="isNewEmployee" value="@Model.IsNewEmployee.ToString().ToLower()" />
-<input type="hidden" id="employeeDbId" value="@(Model.EmployeeDbId?.ToString() ?? "")" />
+<input type="hidden" id="employeeDbId"  value="@(Model.EmployeeDbId?.ToString() ?? "")" />
 
 @if (!Model.IsNewEmployee)
 {
-    <!-- Employee Card -->
     <div class="employee-card">
-        <div class="employee-avatar">
-            <i class="fa-solid fa-user"></i>
-        </div>
+        <div class="employee-avatar"><i class="fa-solid fa-user"></i></div>
         <div class="employee-info">
             <div class="employee-name">@Model.EmployeeFullName</div>
             <div class="employee-meta">@(string.IsNullOrEmpty(Model.Department) ? "DILG Employee" : Model.Department)</div>
         </div>
-        <div class="employee-badge">
-            <i class="fa-solid fa-shield-check"></i>
-            Verified
-        </div>
+        <div class="employee-badge"><i class="fa-solid fa-shield-check"></i> Verified</div>
     </div>
 }
 
 @if (Model.HasExistingDevice)
 {
-    <!-- Warning Alert -->
     <div class="alert-card warning">
-        <div class="alert-icon">
-            <i class="fa-solid fa-triangle-exclamation"></i>
-        </div>
+        <div class="alert-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
         <div class="alert-content">
             <div class="alert-title">Replace Existing Device?</div>
             <div class="alert-text">
@@ -538,11 +132,8 @@
 }
 else if (Model.IsNewEmployee)
 {
-    <!-- Info Alert -->
     <div class="alert-card info">
-        <div class="alert-icon">
-            <i class="fa-solid fa-circle-info"></i>
-        </div>
+        <div class="alert-icon"><i class="fa-solid fa-circle-info"></i></div>
         <div class="alert-content">
             <div class="alert-title">Pending Approval</div>
             <div class="alert-text">
@@ -554,9 +145,7 @@ else if (Model.IsNewEmployee)
 
 <!-- Device Preview -->
 <div class="device-preview">
-    <div class="device-icon pulse">
-        <i class="fa-solid fa-mobile-screen-button"></i>
-    </div>
+    <div class="device-icon pulse"><i class="fa-solid fa-mobile-screen-button"></i></div>
     <h3>@(Model.IsNewEmployee ? "New Employee Device" : "Personal Device")</h3>
     <p>Name your device to continue</p>
 </div>
@@ -566,27 +155,21 @@ else if (Model.IsNewEmployee)
     <div class="form-group">
         <label class="form-label">
             <i class="fa-solid fa-tag"></i>
-            Device Name
-            <span class="required">*</span>
+            Device Name <span class="required">*</span>
         </label>
         <div class="input-wrapper">
-            <input type="text" 
-                   id="deviceName" 
-                   class="uppercase" 
-                   value="@Model.DeviceName.ToUpperInvariant()" 
-                   placeholder="e.g., MY IPHONE 15" 
-                   required 
-                   maxlength="50" 
-                   autocomplete="off" />
+            <input type="text" id="deviceName" class="uppercase"
+                   value="@Model.DeviceName.ToUpperInvariant()"
+                   placeholder="e.g., MY IPHONE 15"
+                   required maxlength="50" autocomplete="off" />
             <i class="fa-solid fa-mobile-screen-button"></i>
         </div>
         <div class="validation-message" id="deviceNameValidation"></div>
         <p class="input-hint">
             <i class="fa-solid fa-circle-info"></i>
-            Choose a name you'll recognize. Use letters, numbers, spaces, hyphens, or underscores.
+            Choose a name you will recognize. Use letters, numbers, spaces, hyphens, or underscores.
         </p>
     </div>
-    
     <div class="security-badge">
         <i class="fa-solid fa-lock"></i>
         <span>Secure connection - Anti-XSS protected</span>
@@ -599,7 +182,6 @@ else if (Model.IsNewEmployee)
         <i class="fa-solid fa-check"></i>
         <span>@(Model.IsNewEmployee ? "Complete Registration" : "Register Device")</span>
     </button>
-    
     <a href="@(Model.IsNewEmployee ? "/MobileRegistration/Enroll" : "/MobileRegistration/Identify")" class="btn-modern secondary">
         <i class="fa-solid fa-arrow-left"></i>
         <span>Go Back</span>
@@ -610,157 +192,120 @@ else if (Model.IsNewEmployee)
     <script>
         (function() {
             'use strict';
-            
-            const registerBtn = document.getElementById('registerBtn');
+
+            const registerBtn     = document.getElementById('registerBtn');
             const deviceNameInput = document.getElementById('deviceName');
-            
-            // Validation rules
+
             const ValidationRules = {
                 deviceName: {
-                    pattern: /^[A-Z0-9\s.\-_'\x40]+$/,
+                    pattern:   /^[A-Z0-9\s.\-_'@]+$/,
                     minLength: 2,
-                    maxLength: 100,
-                    message: 'Invalid characters. Use letters, numbers, spaces, hyphens, or underscores only.'
+                    maxLength: 50,
+                    message:   'Invalid characters. Use letters, numbers, spaces, hyphens, or underscores only.'
                 }
             };
-            
-            // Security utilities
+
             const SecurityUtils = {
-                sanitizeInput: function(value) {
-                    if (!value) return '';
-                    return value
-                        .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-                        .replace(/<[^>]+>/g, '')
-                        .replace(/javascript:/gi, '')
-                        .replace(/on\w+\s*=/gi, '')
-                        .trim();
+                sanitizeInput: function(val) {
+                    return (val || '').replace(/[<>"'&]/g, '').trim();
                 },
-                toUpperCase: function(value) {
-                    if (!value) return '';
-                    return value.toUpperCase().trim();
+                toUpperCase: function(val) {
+                    return (val || '').toUpperCase();
                 }
             };
-            
+
+            const MobileSwal = {
+                error: function(title, text) {
+                    if (window.Swal) {
+                        Swal.fire({ icon: 'error', title: title, text: text,
+                            background: '#0f172a', color: '#f8fafc', confirmButtonColor: '#3b82f6' });
+                    } else { alert(title + ': ' + text); }
+                }
+            };
+
             function validateDeviceName() {
-                var value = SecurityUtils.toUpperCase(deviceNameInput.value);
-                var validationEl = document.getElementById('deviceNameValidation');
-                var rule = ValidationRules.deviceName;
-                var inputWrapper = deviceNameInput.closest('.input-wrapper');
-                
-                // Auto-convert to uppercase
-                if (deviceNameInput.value !== value) {
-                    deviceNameInput.value = value;
+                const val          = SecurityUtils.toUpperCase(deviceNameInput.value);
+                const validationEl = document.getElementById('deviceNameValidation');
+                const rules        = ValidationRules.deviceName;
+
+                if (!val || val.trim().length < rules.minLength) {
+                    deviceNameInput.classList.remove('valid'); deviceNameInput.classList.add('invalid');
+                    if (validationEl) { validationEl.textContent = 'Device name must be at least ' + rules.minLength + ' characters.'; validationEl.className = 'validation-message error'; }
+                    registerBtn.disabled = true; return false;
                 }
-                
-                // Check if empty
-                if (!value || value.length === 0) {
-                    deviceNameInput.classList.remove('valid', 'invalid');
-                    if (validationEl) {
-                        validationEl.innerHTML = '';
-                        validationEl.className = 'validation-message';
-                    }
-                    registerBtn.disabled = true;
-                    return false;
+                if (val.trim().length > rules.maxLength) {
+                    deviceNameInput.classList.remove('valid'); deviceNameInput.classList.add('invalid');
+                    if (validationEl) { validationEl.textContent = 'Device name must be ' + rules.maxLength + ' characters or less.'; validationEl.className = 'validation-message error'; }
+                    registerBtn.disabled = true; return false;
                 }
-                
-                // Check min length
-                if (value.length < rule.minLength) {
-                    deviceNameInput.classList.add('invalid');
-                    deviceNameInput.classList.remove('valid');
-                    if (validationEl) {
-                        validationEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> Too short (min ' + rule.minLength + ' characters)';
-                        validationEl.className = 'validation-message error';
-                    }
-                    registerBtn.disabled = true;
-                    return false;
+                if (!rules.pattern.test(val.trim())) {
+                    deviceNameInput.classList.remove('valid'); deviceNameInput.classList.add('invalid');
+                    if (validationEl) { validationEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> ' + rules.message; validationEl.className = 'validation-message error'; }
+                    registerBtn.disabled = true; return false;
                 }
-                
-                // Check max length
-                if (value.length > rule.maxLength) {
-                    deviceNameInput.value = value.substring(0, rule.maxLength);
-                    value = deviceNameInput.value;
-                }
-                
-                // Check pattern
-                if (!rule.pattern.test(value)) {
-                    deviceNameInput.classList.add('invalid');
-                    deviceNameInput.classList.remove('valid');
-                    if (validationEl) {
-                        validationEl.innerHTML = '<i class="fa-solid fa-circle-xmark"></i> ' + rule.message;
-                        validationEl.className = 'validation-message error';
-                    }
-                    registerBtn.disabled = true;
-                    return false;
-                }
-                
-                // Valid
-                deviceNameInput.classList.add('valid');
-                deviceNameInput.classList.remove('invalid');
-                if (validationEl) {
-                    validationEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Looks good!';
-                    validationEl.className = 'validation-message success';
-                }
-                registerBtn.disabled = false;
-                return true;
+                deviceNameInput.classList.remove('invalid'); deviceNameInput.classList.add('valid');
+                if (validationEl) { validationEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Looks good!'; validationEl.className = 'validation-message success'; }
+                registerBtn.disabled = false; return true;
             }
-            
-            // Real-time validation
+
             deviceNameInput.addEventListener('input', validateDeviceName);
-            deviceNameInput.addEventListener('blur', validateDeviceName);
-            
-            registerBtn.addEventListener('click', async () => {
-                if (!validateDeviceName()) {
-                    MobileSwal.warning('Validation Error', 'Please enter a valid device name before continuing.');
-                    return;
-                }
-                
+            deviceNameInput.addEventListener('keyup', function(e) {
+                deviceNameInput.value = deviceNameInput.value.toUpperCase();
+            });
+
+            registerBtn.addEventListener('click', async function() {
+                if (!validateDeviceName()) return;
+
                 const deviceName = SecurityUtils.sanitizeInput(SecurityUtils.toUpperCase(deviceNameInput.value));
-                
                 registerBtn.disabled = true;
                 registerBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> <span>Registering...</span>';
 
                 const formData = new FormData();
-                formData.append('EmployeeId', document.getElementById('employeeId').value);
-                formData.append('IsNewEmployee', document.getElementById('isNewEmployee').value === 'true');
-                formData.append('EmployeeDbId', document.getElementById('employeeDbId').value || '');
-                formData.append('DeviceName', deviceName);
-                formData.append('__RequestVerificationToken', $('input[name="__RequestVerificationToken"]').val());
+                formData.append('EmployeeId',                   document.getElementById('employeeId').value);
+                formData.append('IsNewEmployee',                document.getElementById('isNewEmployee').value === 'true');
+                formData.append('EmployeeDbId',                 document.getElementById('employeeDbId').value || '');
+                formData.append('DeviceName',                   deviceName);
+                formData.append('__RequestVerificationToken',   $('input[name="__RequestVerificationToken"]').val());
 
                 try {
                     const response = await fetch('/MobileRegistration/RegisterDevice', {
                         method: 'POST',
-                        headers: {
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
+                        headers: { 'X-Requested-With': 'XMLHttpRequest' },
                         body: formData
                     });
-                    const raw = await response.json();
-                    const data = raw && raw.ok && raw.data ? Object.assign({ ok: raw.ok, message: raw.message || null }, raw.data) : raw;
+                    const raw  = await response.json();
+                    const data = raw && raw.ok && raw.data
+                        ? Object.assign({ ok: raw.ok, message: raw.message || null }, raw.data)
+                        : raw;
 
                     if (data.ok) {
-                        window.location.href = '/MobileRegistration/Success?isNewEmployee=' + data.isNewEmployee + 
+                        // B3-04: Persist device token for reliable re-identification
+                        if (data.deviceToken) {
+                            try { localStorage.setItem('FaceAttend_DeviceToken', data.deviceToken); } catch(e) {}
+                            var exp = new Date(); exp.setFullYear(exp.getFullYear() + 1);
+                            document.cookie = 'FaceAttend_DeviceToken=' + data.deviceToken +
+                                '; expires=' + exp.toUTCString() + '; path=/; SameSite=Lax';
+                        }
+                        window.location.href = '/MobileRegistration/Success?isNewEmployee=' + data.isNewEmployee +
                             (data.employeeDbId ? '&employeeDbId=' + data.employeeDbId : '');
                     } else {
                         MobileSwal.error('Registration Failed', data.message || 'Please try again');
                         registerBtn.disabled = false;
                         const isNew = document.getElementById('isNewEmployee').value === 'true';
-                        registerBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>' + 
+                        registerBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>' +
                             (isNew ? 'Complete Registration' : 'Register Device') + '</span>';
                     }
                 } catch (err) {
                     MobileSwal.error('Network Error', 'Please check your connection and try again');
                     registerBtn.disabled = false;
                     const isNew = document.getElementById('isNewEmployee').value === 'true';
-                    registerBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>' + 
+                    registerBtn.innerHTML = '<i class="fa-solid fa-check"></i> <span>' +
                         (isNew ? 'Complete Registration' : 'Register Device') + '</span>';
                 }
             });
-            
-            // Initial validation
+
             validateDeviceName();
-            
-            // Focus input on load
-            setTimeout(() => deviceNameInput.focus(), 300);
+            setTimeout(function() { deviceNameInput.focus(); }, 300);
         })();
     </script>
 }

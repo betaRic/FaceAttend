@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <edmx:Edmx Version="3.0" xmlns:edmx="http://schemas.microsoft.com/ado/2009/11/edmx">
   <!-- EF Runtime content -->
   <edmx:Runtime>
@@ -36,7 +36,7 @@
           <Property Name="GPSLatitude" Type="float" />
           <Property Name="GPSLongitude" Type="float" />
           <Property Name="GPSAccuracy" Type="float" />
-          <Property Name="WiFiSSID" Type="nvarchar" MaxLength="100" />
+          <Property Name="WiFiBSSID" Type="nvarchar" MaxLength="100" />
           <Property Name="LocationVerified" Type="bit" Nullable="false" />
           <Property Name="LocationError" Type="nvarchar" MaxLength="200" />
           <Property Name="FaceDistance" Type="float" />
@@ -112,7 +112,7 @@
           <Property Name="Latitude" Type="float" Nullable="false" />
           <Property Name="Longitude" Type="float" Nullable="false" />
           <Property Name="RadiusMeters" Type="int" Nullable="false" />
-          <Property Name="WiFiSSID" Type="nvarchar" MaxLength="100" />
+          <Property Name="WiFiBSSID" Type="nvarchar" MaxLength="100" />
           <Property Name="IsActive" Type="bit" Nullable="false" />
           <Property Name="CreatedDate" Type="datetime2" Precision="7" Nullable="false" />
         </EntityType>
@@ -344,7 +344,7 @@
           <Property Name="GPSLatitude" Type="Double" />
           <Property Name="GPSLongitude" Type="Double" />
           <Property Name="GPSAccuracy" Type="Double" />
-          <Property Name="WiFiSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="WiFiBSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="LocationVerified" Type="Boolean" Nullable="false" />
           <Property Name="LocationError" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
           <Property Name="FaceDistance" Type="Double" />
@@ -426,7 +426,7 @@
           <Property Name="Latitude" Type="Double" Nullable="false" />
           <Property Name="Longitude" Type="Double" Nullable="false" />
           <Property Name="RadiusMeters" Type="Int32" Nullable="false" />
-          <Property Name="WiFiSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="WiFiBSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="IsActive" Type="Boolean" Nullable="false" />
           <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
           <NavigationProperty Name="AttendanceLogs" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="Office" ToRole="AttendanceLog" />
@@ -602,7 +602,7 @@
                 <ScalarProperty Name="FaceDistance" ColumnName="FaceDistance" />
                 <ScalarProperty Name="LocationError" ColumnName="LocationError" />
                 <ScalarProperty Name="LocationVerified" ColumnName="LocationVerified" />
-                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
+                <ScalarProperty Name="WiFiBSSID" ColumnName="WiFiBSSID" />
                 <ScalarProperty Name="GPSAccuracy" ColumnName="GPSAccuracy" />
                 <ScalarProperty Name="GPSLongitude" ColumnName="GPSLongitude" />
                 <ScalarProperty Name="GPSLatitude" ColumnName="GPSLatitude" />
@@ -666,7 +666,7 @@
               <MappingFragment StoreEntitySet="Offices">
                 <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
                 <ScalarProperty Name="IsActive" ColumnName="IsActive" />
-                <ScalarProperty Name="WiFiSSID" ColumnName="WiFiSSID" />
+                <ScalarProperty Name="WiFiBSSID" ColumnName="WiFiBSSID" />
                 <ScalarProperty Name="RadiusMeters" ColumnName="RadiusMeters" />
                 <ScalarProperty Name="Longitude" ColumnName="Longitude" />
                 <ScalarProperty Name="Latitude" ColumnName="Latitude" />

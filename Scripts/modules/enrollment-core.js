@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FaceAttend - Enrollment Core Module (Unified v3)
  * Consolidated enrollment logic using FaceAttend.Core modules
  * 
@@ -189,8 +189,8 @@ FaceAttend.Enrollment = (function () {
         this.config = Object.assign({
             empId: '',
             perFrameThreshold: 0.75,
-            scanUrl: '/Biometrics/ScanFrame',
-            enrollUrl: '/Biometrics/Enroll',
+            scanUrl: '/api/scan/frame',
+            enrollUrl: '/api/enrollment/enroll',
             redirectUrl: '/Admin/Employees',
             minGoodFrames: 3,
             maxKeepFrames: 8,

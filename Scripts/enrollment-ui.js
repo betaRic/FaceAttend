@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FaceAttend - Unified Enrollment UI Controller
  * Scripts/enrollment-ui.js
  *
@@ -34,8 +34,8 @@
     var cfg = {
         empId:       (root.getAttribute('data-employee-id') || '').trim(),
         mode:        root.getAttribute('data-mode')          || 'admin',
-        scanUrl:     root.getAttribute('data-scan-url')      || '/Biometrics/ScanFrame',
-        enrollUrl:   root.getAttribute('data-enroll-url')    || '/Biometrics/Enroll',
+        scanUrl:     root.getAttribute('data-scan-url')      || '/api/scan/frame',
+        enrollUrl:   root.getAttribute('data-enroll-url')    || '/api/enrollment/enroll',
         redirectUrl: root.getAttribute('data-redirect-url')  || '',
         minFrames:   parseInt(root.getAttribute('data-min-frames')   || '3',    10),
         livenessTh:  parseFloat(root.getAttribute('data-liveness-th') || '0.75')

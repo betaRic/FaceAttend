@@ -31,7 +31,7 @@ namespace FaceAttend
         public double Latitude { get; set; }
         public double Longitude { get; set; }
         public int RadiusMeters { get; set; }
-        public string WiFiSSID { get; set; }
+        public string WiFiBSSID { get; set; }
         public bool IsActive { get; set; }
         public System.DateTime CreatedDate { get; set; }
     

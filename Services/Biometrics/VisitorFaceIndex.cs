@@ -19,7 +19,7 @@ namespace FaceAttend.Services.Biometrics
         // Inner class implementing the base
         private class VisitorFaceIndexImpl : FaceIndexBase<Entry>
         {
-            public VisitorFaceIndexImpl() : base(int.MaxValue) // Visitors don't use BallTree
+            public VisitorFaceIndexImpl() : base(ConfigurationService.GetInt("Biometrics:BallTreeThreshold", 50))
             {
             }
 

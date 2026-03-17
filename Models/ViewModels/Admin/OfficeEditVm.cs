@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace FaceAttend.Models.ViewModels.Admin
 {
@@ -34,7 +34,7 @@ namespace FaceAttend.Models.ViewModels.Admin
         public int RadiusMeters { get; set; } = 100;
 
         [StringLength(100)]
-        public string WiFiSSID { get; set; }
+        public string WiFiBSSID { get; set; }
 
         public bool IsActive { get; set; } = true;
     }

@@ -698,7 +698,7 @@ namespace FaceAttend.Controllers
 
                         ClientIP = StringHelper.Truncate(Request.UserHostAddress ?? "", 100),
                         UserAgent = StringHelper.Truncate(Request.UserAgent ?? "", 1000),
-                        WiFiSSID = StringHelper.Truncate(office.WiFiSSID, 200),
+                        WiFiBSSID = StringHelper.Truncate(office.WiFiBSSID, 200),
 
                         NeedsReview = needsReviewFlag,
                         Notes = reviewNotes.Length == 0 ? null : reviewNotes.ToString()

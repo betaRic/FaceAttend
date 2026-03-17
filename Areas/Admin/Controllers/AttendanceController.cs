@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Linq;
@@ -110,7 +110,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         FaceDistance     = x.FaceDistance,
                         LocationVerified = x.LocationVerified,
                         NeedsReview      = x.NeedsReview,
-                        WiFiSSID         = x.WiFiSSID
+                        WiFiBSSID         = x.WiFiBSSID
                     })
                     .ToList();
 
@@ -413,7 +413,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         /// <summary>
         /// CSV export.  Row cap is configurable via Attendance:ExportMaxRows in
-        /// Web.config (default 10,000).  Includes WiFiSSID column.
+        /// Web.config (default 10,000).  Includes WiFiBSSID column.
         ///
         /// Security: CSV injection is mitigated by SafeCell() which prefixes formula
         /// triggers (=, +, -, @) with a single quote.  Export is a GET protected by
@@ -474,7 +474,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         GPSAccuracy      = x.GPSAccuracy,
                         NeedsReview      = x.NeedsReview,
                         Notes            = x.Notes,
-                        WiFiSSID         = x.WiFiSSID        // NEW column
+                        WiFiBSSID         = x.WiFiBSSID        // NEW column
                     })
                     .ToList();
 
@@ -809,7 +809,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             public double?  GPSAccuracy      { get; set; }
             public bool     NeedsReview      { get; set; }
             public string   Notes            { get; set; }
-            public string   WiFiSSID         { get; set; }   // NEW
+            public string   WiFiBSSID         { get; set; }   // NEW
         }
 
         private static string BuildCsv(IEnumerable<ExportRow> rows)
@@ -818,7 +818,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             sb.AppendLine(
                 "TimestampLocal,EmployeeId,EmployeeName,Department,Office," +
                 "EventType,LivenessScore,FaceDistance,LocationVerified," +
-                "GPSAccuracy,NeedsReview,WiFiSSID,Notes");
+                "GPSAccuracy,NeedsReview,WiFiBSSID,Notes");
 
             foreach (var r in rows)
             {
@@ -843,7 +843,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         ? r.GPSAccuracy.Value.ToString("0.0",
                             System.Globalization.CultureInfo.InvariantCulture) : "",
                     r.NeedsReview ? "YES" : "NO",
-                    CsvHelper.SafeCell(r.WiFiSSID),
+                    CsvHelper.SafeCell(r.WiFiBSSID),
                     CsvHelper.SafeCell(r.Notes)
                 }));
                 sb.AppendLine();

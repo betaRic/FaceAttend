@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
@@ -46,7 +46,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.Type = (vm.Type ?? "").Trim();
             vm.ProvinceName = (vm.ProvinceName ?? "").Trim();
             vm.HUCCity = (vm.HUCCity ?? "").Trim();
-            vm.WiFiSSID = (vm.WiFiSSID ?? "").Trim();
+            vm.WiFiBSSID = (vm.WiFiBSSID ?? "").Trim();
 
             // server-side validation (do not rely on dropdown alone)
             var validTypes = new[] { "REGION", "PROVINCE", "HUC" };
@@ -74,7 +74,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     Latitude = vm.Latitude,
                     Longitude = vm.Longitude,
                     RadiusMeters = vm.RadiusMeters,
-                    WiFiSSID = string.IsNullOrWhiteSpace(vm.WiFiSSID) ? null : vm.WiFiSSID,
+                    WiFiBSSID = string.IsNullOrWhiteSpace(vm.WiFiBSSID) ? null : vm.WiFiBSSID,
                     IsActive = vm.IsActive,
                     CreatedDate = DateTime.UtcNow
                 };
@@ -100,7 +100,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         o.Latitude,
                         o.Longitude,
                         o.RadiusMeters,
-                        o.WiFiSSID,
+                        o.WiFiBSSID,
                         o.IsActive
                     });
 
@@ -128,7 +128,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     Latitude = o.Latitude,
                     Longitude = o.Longitude,
                     RadiusMeters = o.RadiusMeters > 0 ? o.RadiusMeters : 100,
-                    WiFiSSID = o.WiFiSSID,
+                    WiFiBSSID = o.WiFiBSSID,
                     IsActive = o.IsActive
                 };
 
@@ -145,7 +145,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.Type = (vm.Type ?? "").Trim();
             vm.ProvinceName = (vm.ProvinceName ?? "").Trim();
             vm.HUCCity = (vm.HUCCity ?? "").Trim();
-            vm.WiFiSSID = (vm.WiFiSSID ?? "").Trim();
+            vm.WiFiBSSID = (vm.WiFiBSSID ?? "").Trim();
 
             // server-side validation (do not rely on dropdown alone)
             var validTypes = new[] { "REGION", "PROVINCE", "HUC" };
@@ -176,7 +176,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     o.Latitude,
                     o.Longitude,
                     o.RadiusMeters,
-                    o.WiFiSSID,
+                    o.WiFiBSSID,
                     o.IsActive
                 };
 
@@ -188,7 +188,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 o.Latitude = vm.Latitude;
                 o.Longitude = vm.Longitude;
                 o.RadiusMeters = vm.RadiusMeters;
-                o.WiFiSSID = string.IsNullOrWhiteSpace(vm.WiFiSSID) ? null : vm.WiFiSSID;
+                o.WiFiBSSID = string.IsNullOrWhiteSpace(vm.WiFiBSSID) ? null : vm.WiFiBSSID;
                 o.IsActive = vm.IsActive;
 
                 db.SaveChanges();
@@ -211,7 +211,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         o.Latitude,
                         o.Longitude,
                         o.RadiusMeters,
-                        o.WiFiSSID,
+                        o.WiFiBSSID,
                         o.IsActive
                     });
 

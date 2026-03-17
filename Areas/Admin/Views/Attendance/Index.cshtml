@@ -278,10 +278,10 @@
                                 </td>
                                 <td class="ea-cell-muted" style="font-size:.82rem;">
                                     @(string.IsNullOrWhiteSpace(row.OfficeName) ? "-" : row.OfficeName)
-                                    @if (!string.IsNullOrWhiteSpace(row.WiFiSSID))
+                                    @if (!string.IsNullOrWhiteSpace(row.WiFiBSSID))
                                     {
                                         <div>
-                                            <i class="fa-solid fa-wifi fa-xs text-success me-1" aria-hidden="true"></i>@row.WiFiSSID
+                                            <i class="fa-solid fa-wifi fa-xs text-success me-1" aria-hidden="true"></i>@row.WiFiBSSID
                                         </div>
                                     }
                                 </td>

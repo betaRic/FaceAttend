@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Globalization;
@@ -113,7 +113,58 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
+
+        /// <summary>
+        /// AJAX: Save face enrollment for a visitor (live camera path).
+        /// Called by performEnrollment() in enrollment-core.js via enrollUrl.
+        /// </summary>
         [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult EnrollFace(string employeeId)
+        {
+            int visitorId;
+            if (!int.TryParse(employeeId, out visitorId))
+                return JsonResponseBuilder.Error("INVALID_ID", "Invalid visitor ID.");
+
+            var files = new System.Collections.Generic.List<HttpPostedFileBase>();
+            for (int i = 0; i < Request.Files.Count; i++)
+            {
+                var f = Request.Files[i];
+                if (f != null && f.ContentLength > 0) files.Add(f);
+            }
+
+            if (files.Count == 0)
+                return JsonResponseBuilder.Error("NO_IMAGE");
+
+            var isMobile  = DeviceService.IsMobileDevice(Request);
+            var maxStored = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 5);
+            var vecs      = new System.Collections.Generic.List<double[]>();
+
+            foreach (var img in files.Take(maxStored))
+            {
+                var scan = FaceAttend.Services.Biometrics.FastScanPipeline.EnrollmentScanInMemory(img, null, isMobile);
+                if (scan.Ok && scan.FaceEncoding != null) vecs.Add(scan.FaceEncoding);
+            }
+
+            if (vecs.Count == 0)
+                return JsonResponseBuilder.Error("NO_FACE", "No valid face found in uploaded frames.");
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var visitor = db.Visitors.FirstOrDefault(v => v.Id == visitorId);
+                if (visitor == null) return JsonResponseBuilder.NotFound("Visitor");
+
+                var bestBytes = FaceAttend.Services.Biometrics.DlibBiometrics.EncodeToBytes(vecs[0]);
+                visitor.FaceEncodingBase64 = FaceAttend.Services.Biometrics.BiometricCrypto.EncodeForStorage(bestBytes);
+                visitor.IsActive = true;
+                db.SaveChanges();
+                VisitorFaceIndex.Invalidate();
+            }
+
+            return JsonResponseBuilder.Success(new { savedVectors = vecs.Count },
+                string.Format("{0} face sample(s) saved for visitor.", vecs.Count));
+        }
+
         [ValidateAntiForgeryToken]
         public ActionResult Edit(int id, string name, bool isActive = true)
         {

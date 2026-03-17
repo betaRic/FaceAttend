@@ -716,7 +716,7 @@ Detailed diagnostics including Dlib pool status, individual model file presence,
 | `LocationVerified` | bit | GPS within office radius |
 | `GPSLatitude`, `GPSLongitude` | float | Truncated to 4 decimal places |
 | `GPSAccuracy` | float | GPS accuracy in meters |
-| `WiFiSSID` | nvarchar(200) | Office WiFi SSID at time of scan |
+| `WiFiBSSID` | nvarchar(200) | Office WiFi SSID at time of scan |
 | `NeedsReview` | bit | Flagged for admin review |
 | `Notes` | nvarchar(max) | Review notes, GPS repeat reason, etc. |
 
@@ -729,7 +729,7 @@ Detailed diagnostics including Dlib pool status, individual model file presence,
 | `Type` | nvarchar(20) | `REGION` / `PROVINCE` / `HUC` |
 | `Latitude`, `Longitude` | float | GPS center of office |
 | `RadiusMeters` | int | Allowed radius for GPS verification |
-| `WiFiSSID` | nvarchar(100) | Expected WiFi network (logged, not enforced) |
+| `WiFiBSSID` | nvarchar(100) | Expected WiFi network (logged, not enforced) |
 | `IsActive` | bit | Soft-delete flag |
 
 ---
