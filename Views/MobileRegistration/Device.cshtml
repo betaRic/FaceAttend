@@ -198,7 +198,7 @@ else if (Model.IsNewEmployee)
 
             const ValidationRules = {
                 deviceName: {
-                    pattern:   /^[A-Z0-9\s.\-_'@]+$/,
+                    pattern: /^[A-Z0-9 \.\-\/\(\),]+$/,
                     minLength: 2,
                     maxLength: 50,
                     message:   'Invalid characters. Use letters, numbers, spaces, hyphens, or underscores only.'

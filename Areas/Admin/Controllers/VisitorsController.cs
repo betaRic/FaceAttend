@@ -155,7 +155,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (visitor == null) return JsonResponseBuilder.NotFound("Visitor");
 
                 var bestBytes = FaceAttend.Services.Biometrics.DlibBiometrics.EncodeToBytes(vecs[0]);
-                visitor.FaceEncodingBase64 = FaceAttend.Services.Biometrics.BiometricCrypto.EncodeForStorage(bestBytes);
+                visitor.FaceEncodingBase64 = FaceAttend.Services.Biometrics.BiometricCrypto.ProtectBase64Bytes(bestBytes);
                 visitor.IsActive = true;
                 db.SaveChanges();
                 VisitorFaceIndex.Invalidate();
