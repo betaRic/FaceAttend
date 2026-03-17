@@ -74,7 +74,7 @@
     // config  -- all timings optimised vs original
     // =========
     var CFG = {
-        debug: false,
+        debug: true, // DEBUG: Enable for troubleshooting face detection
 
         // OPT-01: 60ms loop (was 120) -- 2x faster face detection response
         loopMs: 60,
@@ -1527,23 +1527,6 @@
         setLiveness(null, null, 'live-unk');
         setEta('ETA: --');
     }
-    
-    // Safety timeout: If capture takes too long, reset flags
-    var captureSafetyTimeout = null;
-    function startCaptureSafetyTimeout() {
-        clearTimeout(captureSafetyTimeout);
-        captureSafetyTimeout = setTimeout(function() {
-            if (state.submitInProgress || state.liveInFlight) {
-
-                state.submitInProgress = false;
-                state.liveInFlight = false;
-                setPrompt('Capture timeout.', 'Please try again.');
-            }
-        }, 15000); // 15 second max capture time
-    }
-    function clearCaptureSafetyTimeout() {
-        clearTimeout(captureSafetyTimeout);
-    }
 
     // =========
     // motion sense (local anti-idle, no server calls)
@@ -1610,52 +1593,32 @@
     // Get current face bbox relative to capture canvas (for server-side optimization)
     function getFaceBoxForServer() {
         if (!state.mpBoxCanvas || !canvas.width || !canvas.height) return null;
-        
-        // Map from overlay canvas coordinates to capture canvas coordinates
-        var scaleX = CAPTURE_W / canvas.width;
-        var scaleY = CAPTURE_H / canvas.height;
-        
+
+        // CRITICAL FIX: Face box must be scaled to CAPTURE resolution (1280x720)
+        // NOT to video.videoWidth/video.videoHeight, because captureFrameBlob()
+        // always captures at CAPTURE_W x CAPTURE_H regardless of video resolution.
+        var displayW = canvas.width  || video.clientWidth  || 1;
+        var displayH = canvas.height || video.clientHeight || 1;
+        var sx = CAPTURE_W / displayW;
+        var sy = CAPTURE_H / displayH;
+
         var box = state.mpBoxCanvas;
-        return {
-            x: Math.round(box.x * scaleX),
-            y: Math.round(box.y * scaleY),
-            w: Math.round(box.w * scaleX),
-            h: Math.round(box.h * scaleY)
+        var result = {
+            x: Math.round(box.x * sx),
+            y: Math.round(box.y * sy),
+            w: Math.round(box.w * sx),
+            h: Math.round(box.h * sy)
         };
-    }
-
-    // FIX-03: Fast sharpness check using Laplacian variance on face ROI
-    function isFrameSharp(faceBox) {
-        var SIZE = 64;
-        var tmp = document.createElement('canvas');
-        tmp.width = tmp.height = SIZE;
-        var tCtx = tmp.getContext('2d');
-
-        var sx = faceBox ? faceBox.x : canvas.width * 0.2;
-        var sy = faceBox ? faceBox.y : canvas.height * 0.1;
-        var sw = faceBox ? faceBox.w : canvas.width * 0.6;
-        var sh = faceBox ? faceBox.h : canvas.height * 0.8;
-
-        // Draw face ROI downscaled to 64×64
-        tCtx.drawImage(video, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
-        var data = tCtx.getImageData(0, 0, SIZE, SIZE).data;
-
-        // Grayscale + Laplacian variance
-        var gray = new Float32Array(SIZE * SIZE);
-        for (var i = 0; i < data.length; i += 4) {
-            gray[i >> 2] = 0.299 * data[i] + 0.587 * data[i+1] + 0.114 * data[i+2];
+        
+        // DEBUG: Log face box coordinates
+        if (CFG.debug) {
+            log('[FaceBox] display:', displayW + 'x' + displayH, 
+                'capture:', CAPTURE_W + 'x' + CAPTURE_H,
+                'scale:', sx.toFixed(2) + ',' + sy.toFixed(2),
+                'box:', result.x + ',' + result.y + ',' + result.w + ',' + result.h);
         }
-        var sum = 0, sumSq = 0, n = 0;
-        for (var y = 1; y < SIZE - 1; y++) {
-            for (var x = 1; x < SIZE - 1; x++) {
-                var idx = y * SIZE + x;
-                var lap = gray[idx-SIZE] + gray[idx-1] - 4*gray[idx] + gray[idx+1] + gray[idx+SIZE];
-                sum += lap; sumSq += lap * lap; n++;
-            }
-        }
-        var mean = sum / n;
-        var variance = (sumSq / n) - (mean * mean);
-        return variance > 30; // Below 30 = too blurry to bother sending
+        
+        return result;
     }
 
     // =========
@@ -2381,71 +2344,8 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
     }
 
     // =========
-    // burst capture for robust identification
-    // Captures multiple frames for consensus voting (mobile + enhanced kiosk)
-    // =========
-    function captureBurstFrames(count, intervalMs) {
-        return new Promise(function(resolve, reject) {
-            // Wait for video to be ready
-            if (!video.videoWidth || !video.videoHeight) {
-
-                reject(new Error('Video not ready'));
-                return;
-            }
-            
-            var frames = [];
-            var canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            var ctx = canvas.getContext('2d');
-            var attempts = 0;
-            var maxAttempts = count * 2; // Allow some retries
-            
-            function captureFrame(index) {
-                if (frames.length >= count) {
-
-                    resolve(frames);
-                    return;
-                }
-                
-                if (attempts >= maxAttempts) {
-
-                    resolve(frames);
-                    return;
-                }
-                
-                attempts++;
-                
-                try {
-                    ctx.drawImage(video, 0, 0);
-                    canvas.toBlob(function(blob) {
-                        if (blob && blob.size > 1000) { // Ensure blob is valid and not empty
-                            frames.push(blob);
-
-                        } else {
-
-                        }
-                        
-                        if (frames.length < count && attempts < maxAttempts) {
-                            setTimeout(function() { captureFrame(index + 1); }, intervalMs);
-                        } else {
-                            resolve(frames);
-                        }
-                    }, 'image/jpeg', 0.90);  // Higher quality for better recognition
-                } catch (e) {
-
-                    resolve(frames);
-                }
-            }
-            
-            captureFrame(0);
-        });
-    }
-
-    // =========
     // attendance submit
     // OPT-SPEED-02: Send face bbox to server so it can skip detection (saves ~150ms)
-    // BURST MODE: For mobile and enhanced kiosk, captures 10 frames for consensus
     // =========
     function submitAttendance(blob) {
         // Prevent double-fire: if already submitting, skip
@@ -2509,80 +2409,6 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
             });
     }
 
-    // =========
-    // BURST attendance submit for mobile
-    // Sends 3 frames for consensus voting - optimized for speed
-    // =========
-    function submitBurstAttendance(blobs, onSwalShownCallback) {
-        if (state.submitInProgress) {
-
-            return Promise.resolve({ ok: false, error: 'ALREADY_SUBMITTING' });
-        }
-
-        state.submitInProgress = true;
-
-        if (state.attendAbortCtrl) {
-            try { state.attendAbortCtrl.abort(); } catch (e) { }
-        }
-
-        state.attendAbortCtrl = new AbortController();
-        var signal = state.attendAbortCtrl.signal;
-
-        var fd = new FormData();
-        fd.append('__RequestVerificationToken', token);
-        fd.append('frameCount', blobs.length);
-        
-        blobs.forEach(function(blob, index) {
-            fd.append('frame_' + index, blob, 'frame_' + index + '.jpg');
-        });
-        
-        if (state.gps.lat      != null) fd.append('lat',      state.gps.lat);
-        if (state.gps.lon      != null) fd.append('lon',      state.gps.lon);
-        if (state.gps.accuracy != null) fd.append('accuracy', state.gps.accuracy);
-        
-        // CRITICAL FIX: Send face bbox so server can skip detection (saves ~150ms per frame!)
-        var faceBox = getFaceBoxForServer();
-        if (faceBox) {
-            fd.append('faceX', faceBox.x);
-            fd.append('faceY', faceBox.y);
-            fd.append('faceW', faceBox.w);
-            fd.append('faceH', faceBox.h);
-        }
-        
-        // Include device token for persistent device identification
-        var deviceToken = getDeviceToken();
-        if (deviceToken) fd.append('deviceToken', deviceToken);
-
-        return fetch(appBase + 'Kiosk/AttendBurst', { 
-            method: 'POST', 
-            body: fd, 
-            credentials: 'same-origin', 
-            signal: signal 
-        })
-            .then(function (r) {
-                if (r.status === 429 || r.status === 503) {
-                    return {
-                        ok: false,
-                        error: r.status === 429 ? 'RATE_LIMIT_EXCEEDED' : 'SYSTEM_BUSY',
-                        retryAfter: Number(r.headers.get('Retry-After') || 0)
-                    };
-                }
-                return r.json();
-            })
-            .then(function (j) {
-                // Handle the same as regular submitAttendance
-                handleAttendanceResponse(j, onSwalShownCallback);
-            })
-            .catch(function (e) {
-                if (e && e.name === 'AbortError') return;
-                state.backoffUntil = Date.now() + 2000;
-                setPrompt('System error.', 'Reload the page or check the server.');
-            })
-            .finally(function () {
-                state.submitInProgress = false;
-            });
-    }
-    
     // Shared attendance response handler
     function handleAttendanceResponse(j, onSwalShownCallback) {
 
@@ -3154,80 +2980,17 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                             return;
                         }
                         
-                        // OPTIMIZED: Mobile uses 5-frame burst for faster response
-                        // Reduced from 10 to 5 frames, 30ms interval for speed
-                        var useBurst = isMobile && !document.body.getAttribute('data-force-kiosk');
-                        
-                        if (useBurst) {
-                            // FIX-03: Check frame sharpness before capture to skip blurry frames
-                            var faceBox = getFaceBoxForServer();
-                            if (faceBox && !isFrameSharp(faceBox)) {
-                                // Frame too blurry - skip this cycle, try again next loop
-                                state.liveInFlight = false;
-                                state.mpReadyToFire = true; // allow immediate retry
-                                safeSetPrompt('Too blurry.', 'Please hold still.');
-                                return;
-                            }
-                            
-                            // Mobile burst capture - OPTIMIZED for speed
+                        // Single-frame capture - same for mobile and desktop
+                        // Server handles mobile-specific requirements: GPS + Device check
+                        captureFrameBlob().then(function (blob) {
+                            if (!blob) return;
                             state.mpReadyToFire = false;
                             state.mpStableStart = 0;
                             state.liveInFlight = true;
-                            setPrompt('Capturing...', 'Hold still');
-                            
-                            // TIMING: Start tracking performance
-                            var timingStart = performance.now();
-                            var timingMarkers = {};
-
-                            
-                            // Start safety timeout
-                            startCaptureSafetyTimeout();
-                            
-                            captureBurstFrames(3, 30).then(function(blobs) {
-                                timingMarkers.captureComplete = performance.now();
-
-                                
-                                clearCaptureSafetyTimeout();
-                                // Allow submission with at least 1 frame (server will handle fallback)
-                                if (blobs.length < 1) {
-                                    state.liveInFlight = false;
-                                    state.submitInProgress = false;
-                                    setPrompt('Capture failed.', 'Please try again.');
-                                    return;
-                                }
-
-                                timingMarkers.submissionStart = performance.now();
-                                
-                                submitBurstAttendance(blobs, function onSwalShown() {
-                                    // TIMING: Swal is now visible
-                                    var timingEnd = performance.now();
-                                    timingMarkers.swalShown = timingEnd;
-                                    
-
-                                }).finally(function () {
-                                    clearCaptureSafetyTimeout();
-                                    state.liveInFlight = false;
-                                });
-                            }).catch(function(err) {
-                                clearCaptureSafetyTimeout();
-                                // Handle any capture errors
+                            submitAttendance(blob).finally(function () {
                                 state.liveInFlight = false;
-                                state.submitInProgress = false;
-
-                                setPrompt('Capture error.', 'Please try again.');
                             });
-                        } else {
-                            // Desktop/Kiosk single frame
-                            captureFrameBlob().then(function (blob) {
-                                if (!blob) return;
-                                state.mpReadyToFire = false;
-                                state.mpStableStart = 0;
-                                state.liveInFlight = true;
-                                submitAttendance(blob).finally(function () {
-                                    state.liveInFlight = false;
-                                });
-                            });
-                        }
+                        });
                     }
 
                     updateEta(true);

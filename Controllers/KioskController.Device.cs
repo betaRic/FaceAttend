@@ -42,13 +42,22 @@ namespace FaceAttend.Controllers
         /// <summary>
         /// Resolve current personal-phone device state for kiosk idle gating.
         /// This only applies to real mobile phones. Tablets, kiosks, and desktops bypass this gate.
+        /// ENHANCED: Uses Sec-CH-UA-Mobile to prevent "Desktop site" bypass
         /// </summary>
         [HttpGet]
         public ActionResult GetCurrentMobileDeviceState()
         {
+            // Sec-CH-UA-Mobile overrides cookie - if hardware is mobile, NEVER treat as kiosk
             var kioskCookie = Request.Cookies["ForceKioskMode"];
-            var forceKiosk = (kioskCookie != null && kioskCookie.Value == "true") ||
-                             (Request.Headers["X-Kiosk-Mode"] == "true");
+            var chUaMobile  = Request.Headers["Sec-CH-UA-Mobile"];
+            bool isHardwareMobile = (chUaMobile == "?1");
+            
+            // If hardware is mobile, NEVER treat as kiosk even if cookie says so
+            var forceKiosk = !isHardwareMobile && (
+                (kioskCookie != null && kioskCookie.Value == "true") ||
+                (Request.Headers["X-Kiosk-Mode"] == "true")
+            );
+            
             var isMobile = DeviceService.IsMobileDevice(Request);
 
             if (!isMobile || forceKiosk)

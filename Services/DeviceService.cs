@@ -109,9 +109,57 @@ namespace FaceAttend.Services
         
         /// <summary>
         /// Check if device is a mobile device (BYOD) vs desktop/kiosk
+        /// ENHANCED: Uses Sec-CH-UA-Mobile header and client-side hints which survive "Desktop site" mode
         /// </summary>
         public static bool IsMobileDevice(HttpRequestBase request)
         {
+            // Sec-CH-UA-Mobile: ?1 means the hardware IS a mobile device,
+            // regardless of desktop mode being enabled in browser settings.
+            // This survives "Request desktop site" in Chrome Android.
+            var chUaMobile = request.Headers["Sec-CH-UA-Mobile"];
+            if (!string.IsNullOrWhiteSpace(chUaMobile))
+            {
+                if (chUaMobile.Trim() == "?1") return true;
+                if (chUaMobile.Trim() == "?0") return false;
+            }
+
+            // Client-side mobile detection (JavaScript-detected, sent via headers)
+            // This survives "Desktop site" mode because it's based on hardware capabilities
+            var clientScreenW = request.Headers["X-Client-Screen-Width"];
+            var clientScreenH = request.Headers["X-Client-Screen-Height"];
+            var clientPixelRatio = request.Headers["X-Client-Pixel-Ratio"];
+            var clientTouch = request.Headers["X-Client-Touch-Supported"];
+            var clientMobileUA = request.Headers["X-Client-Mobile-UA"];
+
+            if (!string.IsNullOrEmpty(clientScreenW) && !string.IsNullOrEmpty(clientScreenH))
+            {
+                int screenW, screenH;
+                float pixelRatio;
+                
+                if (int.TryParse(clientScreenW, out screenW) && 
+                    int.TryParse(clientScreenH, out screenH) &&
+                    float.TryParse(clientPixelRatio ?? "1", out pixelRatio))
+                {
+                    var minDim = Math.Min(screenW, screenH);
+                    var maxDim = Math.Max(screenW, screenH);
+                    var isTouch = clientTouch == "true";
+                    var isMobileUA = clientMobileUA == "true";
+                    
+                    // Mobile characteristics: touch + high pixel ratio + small screen
+                    if (isTouch && pixelRatio >= 2.0f && minDim <= 600)
+                    {
+                        return true;
+                    }
+                    
+                    // Additional check: if original UA was mobile but UA was spoofed
+                    if (isMobileUA && isTouch && maxDim <= 1400)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            // Fallback to UA parsing for older browsers
             var userAgent = request.UserAgent?.ToLowerInvariant() ?? "";
             
             // STRICT mobile detection - only true phones

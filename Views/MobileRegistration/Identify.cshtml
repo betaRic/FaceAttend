@@ -368,9 +368,9 @@
                 }
             }
             
-            // MIGRATED: Use FaceAttend.Camera.capture instead of canvas draw
+            // SIMPLIFIED: Single-frame capture aligned with desktop kiosk
+            // Uses same proven approach - let server handle face detection
             async function captureFrame() {
-                // FIX: Use actual video dimensions, not fixed 640x480
                 const video = FaceAttend.Camera.getVideo ? FaceAttend.Camera.getVideo() : document.querySelector('video');
                 const w = video ? video.videoWidth : 640;
                 const h = video ? video.videoHeight : 480;
@@ -378,20 +378,8 @@
                 if (!canvas) return null;
                 
                 return new Promise(resolve => {
-                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.85);
+                    canvas.toBlob(blob => resolve(blob), 'image/jpeg', 0.90);
                 });
-            }
-            
-            async function captureBurstFrames(count, intervalMs) {
-                const frames = [];
-                for (let i = 0; i < count; i++) {
-                    const blob = await captureFrame();
-                    if (blob) frames.push(blob);
-                    if (i < count - 1) {
-                        await new Promise(r => setTimeout(r, intervalMs));
-                    }
-                }
-                return frames;
             }
             
             async function startIdentification() {
@@ -429,39 +417,20 @@
                 setStatus('scanning', 'Scanning...');
                 
                 try {
-                    // Capture 3 frames burst
-                    const burstFrames = await captureBurstFrames(3, 50);
+                    // SIMPLIFIED: Single frame capture - same as desktop kiosk
+                    // Server uses FastScanPipeline for fast face detection
+                    const blob = await captureFrame();
                     
-                    if (burstFrames.length === 0) {
-                        throw new Error('No frames captured');
+                    if (!blob) {
+                        throw new Error('No frame captured');
                     }
                     
                     const formData = new FormData();
-                    burstFrames.forEach((blob, index) => {
-                        formData.append('image_' + index, blob, 'frame_' + index + '.jpg');
-                    });
-                    formData.append('frameCount', burstFrames.length);
-                    
-                    // Send face box if available
-                    // FIX: Scale face box coordinates to match actual video resolution
-                    if (lastFaceBox) {
-                        const videoEl = FaceAttend.Camera.getVideo ? FaceAttend.Camera.getVideo() : document.querySelector('video');
-                        const displayW = videoEl ? videoEl.clientWidth  : 640;
-                        const displayH = videoEl ? videoEl.clientHeight : 480;
-                        const actualW  = videoEl ? videoEl.videoWidth   : 640;
-                        const actualH  = videoEl ? videoEl.videoHeight  : 480;
-                        const scaleX = actualW / displayW;
-                        const scaleY = actualH / displayH;
-                        formData.append('faceX', Math.round(lastFaceBox.x * scaleX));
-                        formData.append('faceY', Math.round(lastFaceBox.y * scaleY));
-                        formData.append('faceW', Math.round(lastFaceBox.w * scaleX));
-                        formData.append('faceH', Math.round(lastFaceBox.h * scaleY));
-                    }
-                    
+                    formData.append('image', blob, 'frame.jpg');
                     formData.append('__RequestVerificationToken', 
                         document.querySelector('input[name="__RequestVerificationToken"]').value);
                     
-                    const response = await fetch('/MobileRegistration/IdentifyEmployeeBurst', {
+                    const response = await fetch('/MobileRegistration/IdentifyEmployee', {
                         method: 'POST',
                         body: formData
                     });

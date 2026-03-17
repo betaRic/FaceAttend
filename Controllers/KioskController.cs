@@ -165,190 +165,6 @@ namespace FaceAttend.Controllers
             }
         }
 
-        /// <summary>
-        /// BURST MODE: Mobile attendance with multi-frame consensus voting
-        /// Captures 5 frames and requires 3+ consistent matches for robust identification
-        /// 
-        /// PHASE 3 OPTIMIZATION (P-03): 
-        /// - Uses FastScanPipeline.ProcessSingleFrame for in-memory processing (no temp files)
-        /// - Single JPEG decode per frame instead of 3 decodes
-        /// - ~30-40% faster burst processing
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        [RateLimit(Name = "KioskAttendBurst", MaxRequests = 60, WindowSeconds = 60, Burst = 15)]
-        public ActionResult AttendBurst(double? lat, double? lon, double? accuracy,
-            int? faceX, int? faceY, int? faceW, int? faceH, string deviceToken = null)
-        {
-            var requestedAtUtc = TimeZoneHelper.NowLocal();
-            
-            try
-            {
-                int frameCount = 0;
-                int.TryParse(Request.Form["frameCount"], out frameCount);
-                if (frameCount < 1) frameCount = 5;
-
-                // Validate frames received
-                var validFrames = new List<Tuple<int, HttpPostedFileBase>>();
-                for (int i = 0; i < frameCount; i++)
-                {
-                    var image = Request.Files["frame_" + i];
-                    if (image != null && image.ContentLength > 0)
-                        validFrames.Add(Tuple.Create(i, image));
-                }
-
-                if (validFrames.Count < 1)
-                    return JsonResponseBuilder.Error("NO_FRAMES", "No frames received. Please try again.");
-
-                // Use client face box from MediaPipe when available.
-                DlibBiometrics.FaceBox clientFaceBox = null;
-                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
-                    && faceW.Value > 20 && faceH.Value > 20)
-                {
-                    clientFaceBox = new DlibBiometrics.FaceBox
-                    {
-                        Left = faceX.Value,
-                        Top = faceY.Value,
-                        Width = faceW.Value,
-                        Height = faceH.Value
-                    };
-                }
-
-                // OPTIMIZED: Process frames in parallel using single-decode pipeline
-                var concurrentResults = new System.Collections.Concurrent.ConcurrentBag<BurstFrameResult>();
-                double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
-                var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.65);
-                attendanceTol = Math.Max(0.55, Math.Min(0.75, attendanceTol));
-
-                // FIX-04 (comment only): Angle-aware tolerance adjustment happens inside the loop
-                // using actualImageWidth from each frame's scan result.
-
-                if (!FastFaceMatcher.IsInitialized)
-                    FastFaceMatcher.Initialize();
-
-                // OPTIMIZED: Process in parallel using bitmap-based pipeline (no temp files)
-                System.Threading.Tasks.Parallel.ForEach(validFrames, new ParallelOptions { MaxDegreeOfParallelism = 4 }, (frameInfo) =>
-                {
-                    var frameIndex = frameInfo.Item1;
-                    var image = frameInfo.Item2;
-
-                    try
-                    {
-                        // OPTIMIZED: Use single-decode pipeline (no temp file, no re-decoding)
-                        var result = FastScanPipeline.ProcessSingleFrame(image, clientFaceBox, livenessThreshold, attendanceTol);
-                        
-                        if (result == null)
-                            return;
-
-                        // FIX-04 (moved): Angle-aware tolerance using ACTUAL image width from scan result
-                        if (clientFaceBox != null && result.ImageWidth > 0)
-                        {
-                            float actualImageCenterX = result.ImageWidth / 2f;
-                            float faceCenterX = clientFaceBox.Left + clientFaceBox.Width / 2f;
-                            float normalizedOffset = Math.Abs(faceCenterX - actualImageCenterX) / actualImageCenterX;
-
-                            if (normalizedOffset > 0.15f)
-                            {
-                                var angleRelax = Math.Min(normalizedOffset * 0.10, 0.08);
-                                var adjustedTol = Math.Min(attendanceTol + angleRelax, 0.75);
-                                
-                                // Re-match with relaxed tolerance if the original match was borderline
-                                if (!result.IsMatch && result.FaceEncoding != null)
-                                {
-                                    var relaxedMatch = FastFaceMatcher.FindBestMatch(result.FaceEncoding, adjustedTol);
-                                    if (relaxedMatch?.IsMatch == true)
-                                    {
-                                        result.EmployeeId = relaxedMatch.Employee?.EmployeeId;
-                                        result.Confidence = relaxedMatch.Confidence;
-                                        result.Distance = relaxedMatch.Distance;
-                                        result.IsMatch = true;
-                                    }
-                                }
-                            }
-                        }
-
-                        concurrentResults.Add(new BurstFrameResult
-                        {
-                            OriginalFrameIndex = frameIndex,
-                            EmployeeId = result.EmployeeId,
-                            Confidence = result.Confidence,
-                            Distance = result.Distance,
-                            IsMatch = result.IsMatch,
-                            LivenessScore = result.LivenessScore,
-                            UsedClientBox = result.UsedClientBox
-                        });
-                    }
-                    catch { /* Skip failed frames */ }
-                });
-
-                // Convert concurrent results to list for consensus voting
-                var frameResults = concurrentResults.ToList();
-                
-                // Need at least 1 good frame
-                if (frameResults.Count < 1)
-                    return JsonResponseBuilder.Error("FACE_NOT_CLEAR", "Could not detect a face. Please try again.");
-
-                var successfulMatches = frameResults.Where(r => r.IsMatch && !string.IsNullOrEmpty(r.EmployeeId)).ToList();
-
-                if (successfulMatches.Count < 1)
-                {
-                    // No match found - try single frame fallback
-                    if (frameResults.Count >= 1)
-                    {
-                        var fallbackFrame = frameResults.First();
-                        var fallbackImage = validFrames[fallbackFrame.OriginalFrameIndex].Item2;
-                        return ScanAttendanceCore(lat, lon, accuracy, fallbackImage, clientFaceBox, requestedAtUtc, false, deviceToken);
-                    }
-                    return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Face not recognized. Please check if you're enrolled.");
-                }
-
-                // Find the employee with most votes
-                var voteGroups = successfulMatches
-                    .GroupBy(r => r.EmployeeId)
-                    .Select(g => new { EmployeeId = g.Key, Votes = g.Count(), AvgConfidence = g.Average(r => r.Confidence), AvgDistance = g.Average(r => r.Distance) })
-                    .OrderByDescending(g => g.Votes)
-                    .ThenByDescending(g => g.AvgConfidence)
-                    .ToList();
-
-                var winner = voteGroups.First();
-
-                // For burst mode, require at least 2 votes if we have 3+ frames, otherwise 1 is enough
-                int requiredVotes = (frameResults.Count >= 3) ? 2 : 1;
-                if (winner.Votes < requiredVotes)
-                    return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Face not clearly recognized. Please try again with better lighting.");
-
-                // Use the best frame for this employee for attendance recording
-                var bestFrame = successfulMatches
-                    .Where(r => r.EmployeeId == winner.EmployeeId)
-                    .OrderBy(r => r.Distance)
-                    .First();
-
-                // Find the original image file that corresponds to this best frame
-                var bestImage = validFrames[bestFrame.OriginalFrameIndex].Item2;
-                
-                // Now process attendance using the best frame
-                return ScanAttendanceCore(lat, lon, accuracy, bestImage, clientFaceBox, requestedAtUtc, false, deviceToken);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError("[Kiosk.AttendBurst] Error: " + ex);
-                return JsonResponseBuilder.Error("SERVER_ERROR", ex.Message);
-            }
-            // NOTE: No finally block needed - no temp files to clean up!
-        }
-
-        private class BurstFrameResult
-        {
-            public int OriginalFrameIndex { get; set; }
-            public string EmployeeId { get; set; }
-            public double Confidence { get; set; }
-            public double Distance { get; set; }
-            public bool IsMatch { get; set; }
-            public double LivenessScore { get; set; }
-            public bool UsedClientBox { get; set; }
-            // NOTE: TempPath removed - no longer needed with in-memory processing
-        }
-
         private static bool TryBuildFaceLocationFromClientBox(
             DlibBiometrics.FaceBox sourceBox,
             out DlibBiometrics.FaceBox faceBox,
@@ -457,15 +273,27 @@ namespace FaceAttend.Controllers
                     string faceErr;
                     bool usedClientBox = false;
 
+                    // DEBUG: Log image dimensions for troubleshooting
+                    try
+                    {
+                        using (var dbgImg = System.Drawing.Image.FromFile(processedPath))
+                        {
+                            System.Diagnostics.Trace.TraceInformation($"[Kiosk] Image dimensions: {dbgImg.Width}x{dbgImg.Height}, ClientFaceBox: {clientFaceBox?.Left},{clientFaceBox?.Top},{clientFaceBox?.Width},{clientFaceBox?.Height}");
+                        }
+                    }
+                    catch { }
+
                     if (TryBuildFaceLocationFromClientBox(clientFaceBox, out faceBox, out faceLoc))
                     {
                         // Trust client detection when MediaPipe already has a stable face box.
                         usedClientBox = true;
                         faceErr = null;
+                        System.Diagnostics.Trace.TraceInformation($"[Kiosk] Using client face box: {faceBox.Left},{faceBox.Top},{faceBox.Width},{faceBox.Height}");
                     }
                     else
                     {
                         // Fallback: server-side detection with kiosk-friendly retry.
+                        System.Diagnostics.Trace.TraceInformation("[Kiosk] No client face box, using server detection");
                         if (!dlib.TryDetectBestFaceFromFile(processedPath, out faceBox, out faceLoc, out faceErr,
                             allowLargestFace: true, primaryUpsample: 0, retryUpsampleOnNoFace: true))
                         {
@@ -711,9 +539,16 @@ namespace FaceAttend.Controllers
                     var deviceIsMobile = DeviceService.IsMobileDevice(Request);
                     
                     // FORCE KIOSK MODE: Check for kiosk cookie or header (for tablets/laptops that detect as mobile)
+                    // Sec-CH-UA-Mobile overrides cookie - if hardware is mobile, NEVER treat as kiosk
                     var kioskCookie = Request.Cookies["ForceKioskMode"];
-                    var forceKiosk = (kioskCookie != null && kioskCookie.Value == "true") || 
-                                     (Request.Headers["X-Kiosk-Mode"] == "true");
+                    var chUaMobile  = Request.Headers["Sec-CH-UA-Mobile"];
+                    bool isHardwareMobile = (chUaMobile == "?1");
+                    
+                    // If hardware is mobile, NEVER treat as kiosk even if cookie says so
+                    var forceKiosk = !isHardwareMobile && (
+                        (kioskCookie != null && kioskCookie.Value == "true") ||
+                        (Request.Headers["X-Kiosk-Mode"] == "true")
+                    );
                     
                     // DEBUG: Log device detection
                     var tokenFromCookie = DeviceService.GetDeviceTokenFromCookie(Request);

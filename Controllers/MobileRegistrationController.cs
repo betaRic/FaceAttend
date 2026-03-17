@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Drawing;
+using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web.Mvc;
@@ -329,6 +331,8 @@ double livenessThreshold = ConfigurationService.GetDouble(
 
         /// <summary>
         /// AJAX: Identify employee by face
+        /// OPTIMIZED: Uses in-memory processing (no temp files) for speed
+        /// NO LIVENESS: Only for identification - liveness runs at attendance time
         /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -342,270 +346,87 @@ double livenessThreshold = ConfigurationService.GetDouble(
                     return JsonResponseBuilder.Error("NO_IMAGE");
                 }
 
-                var tempPath = System.IO.Path.Combine(
-                    System.IO.Path.GetTempPath(), 
-                    $"mobile_identify_{Guid.NewGuid():N}.jpg");
-                
-                image.SaveAs(tempPath);
-
+                // OPTIMIZED: In-memory processing (no temp files)
+                // Detection + Encoding ONLY (no liveness - that's for attendance time)
+                Bitmap bitmap = null;
                 try
                 {
+                    using (var ms = new MemoryStream())
+                    {
+                        image.InputStream.CopyTo(ms);
+                        ms.Position = 0;
+                        bitmap = new Bitmap(ms);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Trace.TraceError("[IdentifyEmployee] Failed to load image: " + ex.Message);
+                    return JsonResponseBuilder.Error("IMAGE_LOAD_FAIL", "Could not process image.");
+                }
+
+                double[] faceEncoding;
+                using (bitmap)
+                {
+                    // DEBUG: Log image dimensions
+                    System.Diagnostics.Trace.TraceInformation($"[IdentifyEmployee] Image dimensions: {bitmap.Width}x{bitmap.Height}");
+                    
                     var dlib = new DlibBiometrics();
                     DlibBiometrics.FaceBox faceBox;
                     FaceRecognitionDotNet.Location faceLoc;
                     string detectErr;
-
-                    if (!dlib.TryDetectSingleFaceFromFile(tempPath, out faceBox, out faceLoc, out detectErr))
-                    {
-                        return JsonResponseBuilder.Error("NO_FACE", detectErr);
-                    }
-
-                    // Liveness check
-                    var liveness = new OnnxLiveness();
-                    var scored = liveness.ScoreFromFile(tempPath, faceBox);
-                    double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
                     
-                    if (!scored.Ok || (scored.Probability ?? 0) < livenessThreshold)
+                    // Detect face
+                    if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLoc, out detectErr))
                     {
-                        return JsonResponseBuilder.Error("LIVENESS_FAIL", "Please ensure you are a real person.");
+                        System.Diagnostics.Trace.TraceWarning($"[IdentifyEmployee] Face detection failed: {detectErr}");
+                        return JsonResponseBuilder.Error("NO_FACE", "Could not detect a face. Please try again.");
                     }
-
-                    // Encode and match
-                    double[] vec;
+                    
+                    System.Diagnostics.Trace.TraceInformation($"[IdentifyEmployee] Face detected: {faceBox.Left},{faceBox.Top},{faceBox.Width},{faceBox.Height}");
+                    
+                    // Encode face (NO LIVENESS - that's for attendance time)
                     string encErr;
-                    if (!dlib.TryEncodeFromFileWithLocation(tempPath, faceLoc, out vec, out encErr) || vec == null)
+                    if (!dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLoc, out faceEncoding, out encErr) || faceEncoding == null)
                     {
-                        return JsonResponseBuilder.Error("ENCODING_FAIL");
-                    }
-
-                    // FIX: Ensure matcher is initialized before use
-                    if (!FastFaceMatcher.IsInitialized)
-                        FastFaceMatcher.Initialize();
-                    
-                    // FIX: Read tolerance from config instead of hardcoded value
-                    double identifyTol = ConfigurationService.GetDouble(
-                        "Biometrics:AttendanceTolerance",
-                        ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
-                    
-                    var matchResult = FastFaceMatcher.FindBestMatch(vec, identifyTol);
-
-                    if (!matchResult.IsMatch)
-                    {
-                        return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Face not recognized. Please check if you're enrolled.");
-                    }
-
-                    // Get full employee details
-                    using (var db = new FaceAttendDBEntities())
-                    {
-                        var employeeId = matchResult.Employee.EmployeeId;
-                        var employee = db.Employees
-                            .FirstOrDefault(e => e.EmployeeId == employeeId);
-
-                        if (employee == null)
-                        {
-                            return JsonResponseBuilder.NotFound("Employee");
-                        }
-
-                        // IMPORTANT: Only allow ACTIVE employees to identify themselves
-                        var employeeStatus = employee.Status ?? "INACTIVE";
-                        if (!string.Equals(employeeStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
-                        {
-                            return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
-                        }
-
-                        var currentFingerprint = DeviceService.GenerateFingerprint(Request);
-                        var currentToken = DeviceService.GetDeviceTokenFromCookie(Request);
-
-                        // Check if already has device registered
-                        var existingDevice = db.Devices
-                            .FirstOrDefault(d => d.EmployeeId == employee.Id && d.Status == "ACTIVE");
-
-                        // Is THIS specific device already registered to this employee?
-                        bool isCurrentDeviceRegistered = existingDevice != null && (
-                            existingDevice.Fingerprint == currentFingerprint ||
-                            (!string.IsNullOrEmpty(currentToken) && existingDevice.DeviceToken == currentToken)
-                        );
-
-                        return JsonResponseBuilder.Success(new
-                        {
-                            employeeId = employee.EmployeeId,
-                            employeeDbId = employee.Id,  // IMPORTANT: needed for device registration
-                            fullName = $"{employee.FirstName} {employee.LastName}",
-                            department = SanitizeDisplayText(employee.Department),
-                            position = SanitizeDisplayText(employee.Position),
-                            office = SanitizeDisplayText(employee.Office?.Name),
-                            hasExistingDevice = existingDevice != null,
-                            existingDeviceName = existingDevice?.DeviceName,
-                            isCurrentDeviceRegistered = isCurrentDeviceRegistered,
-                            confidence = matchResult.Confidence
-                        });
+                        System.Diagnostics.Trace.TraceError($"[IdentifyEmployee] Encoding failed: {encErr}");
+                        return JsonResponseBuilder.Error("ENCODING_FAIL", "Could not process face.");
                     }
                 }
-                finally
-                {
-                    System.IO.File.Delete(tempPath);
-                }
-            }
-            catch (Exception ex)
-            {
-                return JsonResponseBuilder.Error("SERVER_ERROR", ex.Message);
-            }
-        }
 
-        /// <summary>
-        /// AJAX: Multi-frame burst identification for robust face matching
-        /// Captures 5 frames and uses consensus voting for higher accuracy
-        /// </summary>
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult IdentifyEmployeeBurst(int? faceX, int? faceY, int? faceW, int? faceH)
-        {
-            var tempFiles = new List<string>();
-            try
-            {
-                int frameCount = 0;
-                int.TryParse(Request.Form["frameCount"], out frameCount);
-                if (frameCount < 1) frameCount = 3; // Default to 3 frames
-
-                // Use client face box if provided (saves ~150ms per frame)
-                DlibBiometrics.FaceBox clientFaceBox = null;
-                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
-                    && faceW.Value > 20 && faceH.Value > 20)
-                {
-                    clientFaceBox = new DlibBiometrics.FaceBox
-                    {
-                        Left = faceX.Value,
-                        Top = faceY.Value,
-                        Width = faceW.Value,
-                        Height = faceH.Value
-                    };
-                }
-
-                // Save all frames first
-                var framePaths = new List<Tuple<int, string>>();
-                for (int i = 0; i < frameCount; i++)
-                {
-                    var image = Request.Files["image_" + i];
-                    if (image == null || image.ContentLength == 0) continue;
-
-                    var tempPath = System.IO.Path.Combine(
-                        System.IO.Path.GetTempPath(),
-                        $"mobile_identify_burst_{Guid.NewGuid():N}.jpg");
-                    tempFiles.Add(tempPath);
-                    image.SaveAs(tempPath);
-                    framePaths.Add(Tuple.Create(i, tempPath));
-                }
-
-                if (framePaths.Count < 1)
-                    return JsonResponseBuilder.Error("NO_FRAMES", "No frames received.");
-
-                // OPTIMIZED: Process frames in parallel
-                var concurrentResults = new System.Collections.Concurrent.ConcurrentBag<FrameMatchResult>();
-                double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
-
+                // FIX: Ensure matcher is initialized before use
                 if (!FastFaceMatcher.IsInitialized)
                     FastFaceMatcher.Initialize();
-
+                
                 // FIX: Read tolerance from config instead of hardcoded value
-                double burstIdentifyTol = ConfigurationService.GetDouble(
+                double identifyTol = ConfigurationService.GetDouble(
                     "Biometrics:AttendanceTolerance",
                     ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
+                
+                var matchResult = FastFaceMatcher.FindBestMatch(faceEncoding, identifyTol);
 
-                // FIX: Force reload if cache is stale (older than 5 min)
-                if (DateTime.UtcNow - FastFaceMatcher.LastLoaded > TimeSpan.FromMinutes(5))
-                    FastFaceMatcher.ReloadFromDatabase();
-
-                System.Threading.Tasks.Parallel.ForEach(framePaths, new ParallelOptions { MaxDegreeOfParallelism = 3 }, (frameInfo) =>
+                if (!matchResult.IsMatch)
                 {
-                    var i = frameInfo.Item1;
-                    var tempPath = frameInfo.Item2;
-
-                    try
-                    {
-                        var dlib = new DlibBiometrics();
-                        var liveness = new OnnxLiveness();
-                        
-                        DlibBiometrics.FaceBox faceBox;
-                        FaceRecognitionDotNet.Location faceLoc;
-                        string detectErr;
-                        // Try client box first (saves ~150ms detection time)
-                        if (clientFaceBox != null)
-                        {
-                            faceBox = clientFaceBox;
-                            faceLoc = new FaceRecognitionDotNet.Location(
-                                clientFaceBox.Left, clientFaceBox.Top,
-                                clientFaceBox.Left + clientFaceBox.Width,
-                                clientFaceBox.Top + clientFaceBox.Height);
-                        }
-                        else if (!dlib.TryDetectSingleFaceFromFile(tempPath, out faceBox, out faceLoc, out detectErr))
-                        {
-                            return; // Skip if no face detected
-                        }
-
-                        // Liveness check
-                        var scored = liveness.ScoreFromFile(tempPath, faceBox);
-                        if (!scored.Ok || (scored.Probability ?? 0) < livenessThreshold)
-                            return;
-
-                        // Encode face
-                        double[] vec;
-                        string encErr;
-                        if (!dlib.TryEncodeFromFileWithLocation(tempPath, faceLoc, out vec, out encErr) || vec == null)
-                            return;
-
-                        // Match against database
-                        var matchResult = FastFaceMatcher.FindBestMatch(vec, burstIdentifyTol);
-                        
-                        concurrentResults.Add(new FrameMatchResult
-                        {
-                            FrameIndex = i,
-                            EmployeeId = matchResult.IsMatch ? matchResult.Employee?.EmployeeId : null,
-                            Confidence = matchResult.Confidence,
-                            IsMatch = matchResult.IsMatch
-                        });
-                    }
-                    catch { /* Skip failed frames */ }
-                });
-
-                var frameResults = concurrentResults.ToList();
-
-                // Consensus voting: adaptive based on frame count
-                // For 3 frames: need at least 2 matches with 2 votes for same employee
-                int minFramesRequired = Math.Min(2, frameResults.Count); // At least 2 good frames
-                if (frameResults.Count < minFramesRequired)
-                    return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Could not detect a clear face. Please try again.");
-
-                var successfulMatches = frameResults.Where(r => r.IsMatch && !string.IsNullOrEmpty(r.EmployeeId)).ToList();
-                int minMatchesRequired = frameResults.Count >= 3 ? 2 : 1; // 2/3 or 1/1
-                if (successfulMatches.Count < minMatchesRequired)
                     return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Face not recognized. Please check if you're enrolled.");
-
-                // Find the employee with most votes
-                var voteGroups = successfulMatches
-                    .GroupBy(r => r.EmployeeId)
-                    .Select(g => new { EmployeeId = g.Key, Votes = g.Count(), AvgConfidence = g.Average(r => r.Confidence) })
-                    .OrderByDescending(g => g.Votes)
-                    .ThenByDescending(g => g.AvgConfidence)
-                    .ToList();
-
-                var winner = voteGroups.First();
-                int requiredVotes = frameResults.Count >= 3 ? 2 : 1;
-                if (winner.Votes < requiredVotes) // Need majority
-                    return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Face not recognized. Please try again.");
+                }
 
                 // Get full employee details
                 using (var db = new FaceAttendDBEntities())
                 {
+                    var employeeId = matchResult.Employee.EmployeeId;
                     var employee = db.Employees
-                        .FirstOrDefault(e => e.EmployeeId == winner.EmployeeId);
+                        .FirstOrDefault(e => e.EmployeeId == employeeId);
 
                     if (employee == null)
+                    {
                         return JsonResponseBuilder.NotFound("Employee");
+                    }
 
-                    // Only allow ACTIVE employees
+                    // IMPORTANT: Only allow ACTIVE employees to identify themselves
                     var employeeStatus = employee.Status ?? "INACTIVE";
                     if (!string.Equals(employeeStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
+                    {
                         return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
+                    }
 
                     var currentFingerprint = DeviceService.GenerateFingerprint(Request);
                     var currentToken = DeviceService.GetDeviceTokenFromCookie(Request);
@@ -623,7 +444,7 @@ double livenessThreshold = ConfigurationService.GetDouble(
                     return JsonResponseBuilder.Success(new
                     {
                         employeeId = employee.EmployeeId,
-                        employeeDbId = employee.Id,
+                        employeeDbId = employee.Id,  // IMPORTANT: needed for device registration
                         fullName = $"{employee.FirstName} {employee.LastName}",
                         department = SanitizeDisplayText(employee.Department),
                         position = SanitizeDisplayText(employee.Position),
@@ -631,9 +452,7 @@ double livenessThreshold = ConfigurationService.GetDouble(
                         hasExistingDevice = existingDevice != null,
                         existingDeviceName = existingDevice?.DeviceName,
                         isCurrentDeviceRegistered = isCurrentDeviceRegistered,
-                        confidence = winner.AvgConfidence,
-                        consensusVotes = winner.Votes,
-                        totalFrames = frameResults.Count
+                        confidence = matchResult.Confidence
                     });
                 }
             }
@@ -641,22 +460,6 @@ double livenessThreshold = ConfigurationService.GetDouble(
             {
                 return JsonResponseBuilder.Error("SERVER_ERROR", ex.Message);
             }
-            finally
-            {
-                // Cleanup temp files
-                foreach (var file in tempFiles)
-                {
-                    try { System.IO.File.Delete(file); } catch { }
-                }
-            }
-        }
-
-        private class FrameMatchResult
-        {
-            public int FrameIndex { get; set; }
-            public string EmployeeId { get; set; }
-            public double Confidence { get; set; }
-            public bool IsMatch { get; set; }
         }
 
         #endregion

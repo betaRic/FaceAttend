@@ -471,6 +471,7 @@
     <Content Include="Content\_unified\components\wizard.css" />
     <Content Include="Content\_unified\tokens.css" />
     <Content Include="Content\_unified\unified.css" />
+    <Content Include="FaceAttendDB.sql" />
     <Content Include="FaceAttendDBEntities.Context.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>

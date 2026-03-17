@@ -270,7 +270,7 @@
                 middleName: { pattern: /^[A-Z .\-',]*$/, maxLength: 100, message: 'Middle name contains invalid characters' },
                 position: { pattern: /^[A-Z0-9 .\-/(),&#]+$/, minLength: 1, maxLength: 150, message: 'Position contains invalid characters' },
                 department: { pattern: /^[A-Z0-9 .\-/(),&]+$/, minLength: 1, maxLength: 150, message: 'Department contains invalid characters' },
-                deviceName: { pattern: /^[A-Z0-9 .@_-]+$/, minLength: 2, maxLength: 100, message: 'Device name contains invalid characters' }
+                deviceName: { pattern: /^[A-Z0-9 .\-/(),&]+$/, minLength: 2, maxLength: 100, message: 'Device name contains invalid characters' }
             };
 
             // DOM refs

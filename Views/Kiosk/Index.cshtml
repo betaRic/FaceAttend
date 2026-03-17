@@ -16,6 +16,28 @@
     @Styles.Render("~/Content/fa-system")      @* Design System Tokens (v3) *@
     @Styles.Render("~/Content/kiosk-vendor")
     @Styles.Render("~/Content/kiosk")
+    <!-- Client-side mobile detection for desktop site bypass prevention -->
+    <script>
+        // Detect mobile hardware characteristics (survives "Desktop site" mode)
+        (function() {
+            var isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+            var isMobileUA = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent);
+            var screenW = window.screen.width;
+            var screenH = window.screen.height;
+            var pixelRatio = window.devicePixelRatio || 1;
+            
+            // Store for later use in fetch requests
+            window.__FA_CLIENT_MOBILE_HINT = {
+                isTouch: isTouch,
+                isMobileUA: isMobileUA,
+                screenW: screenW,
+                screenH: screenH,
+                pixelRatio: pixelRatio,
+                // Hardware is likely mobile if: touch + high pixel ratio + small screen
+                isLikelyMobile: isTouch && pixelRatio >= 2 && Math.min(screenW, screenH) <= 600
+            };
+        })();
+    </script>
 </head>
 <body
     class="kiosk-body"
