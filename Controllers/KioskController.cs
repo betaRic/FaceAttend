@@ -554,52 +554,51 @@ namespace FaceAttend.Controllers
                     var tokenFromCookie = DeviceService.GetDeviceTokenFromCookie(Request);
                     string deviceTokenFromCheck = null; // Declare outside for later use
 
-                    
+
                     if (deviceIsMobile && !forceKiosk)
                     {
-                        // This is a personal phone (BYOD) - check device registration
-                        // Try device token first (persistent), then fingerprint
-                        // Use token from form parameter first, then cookie
+                        // Check if this device is registered and active in the system.
+                        // Any active registered device can be used by any employee — no employee binding check.
                         var effectiveDeviceToken = deviceToken ?? tokenFromCookie;
 
-                        var deviceCheck = DeviceService.ValidateDevice(db, deviceFingerprint, emp.Id, effectiveDeviceToken);
+                        var activeDevice = db.Devices.FirstOrDefault(d =>
+                            (d.DeviceToken == effectiveDeviceToken || d.Fingerprint == deviceFingerprint)
+                            && d.Status == "ACTIVE");
 
-                        
-                        if (!deviceCheck.Success)
+                        if (activeDevice == null)
                         {
-                            if (deviceCheck.ErrorCode == "NOT_REGISTERED")
-                            {
-                                // Device not registered - prompt to register
-                                return JsonResponseBuilder.RegisterDeviceRequired(
-                                    emp.Id,
-                                    emp.FirstName + " " + emp.LastName,
-                                    deviceFingerprint,
-                                    "This device is not registered. Please register it to continue.");
-                            }
-                            else if (deviceCheck.ErrorCode == "WRONG_EMPLOYEE")
-                            {
-                                // Device belongs to a different employee - message already contains owner name
-                                var ownerName = deviceCheck.Message?.Replace("This device is registered to ", "")?.Replace(". Please use your own registered device.", "") ?? "another employee";
-                                return JsonResponseBuilder.Error("WRONG_DEVICE", deviceCheck.Message, null, new { matchedEmployee = ownerName });
-                            }
-                            else if (deviceCheck.ErrorCode == "PENDING")
+                            // Check if pending or blocked before saying not registered
+                            var anyDevice = db.Devices.FirstOrDefault(d =>
+                                d.DeviceToken == effectiveDeviceToken || d.Fingerprint == deviceFingerprint);
+
+                            if (anyDevice != null && anyDevice.Status == "PENDING")
                             {
                                 return JsonResponseBuilder.DevicePending(
                                     "Your device registration is pending admin approval.");
                             }
-                            else if (deviceCheck.ErrorCode == "BLOCKED")
+
+                            if (anyDevice != null && anyDevice.Status == "BLOCKED")
                             {
                                 return JsonResponseBuilder.DeviceBlocked(
                                     "This device has been blocked. Contact administrator.");
                             }
+
+                            // Not registered at all
+                            return JsonResponseBuilder.RegisterDeviceRequired(
+                                emp.Id,
+                                emp.FirstName + " " + emp.LastName,
+                                deviceFingerprint,
+                                "This device is not registered. Please register it to continue.");
                         }
-                        // Device is valid - refresh the token cookie
-                        deviceTokenFromCheck = deviceCheck.Message;
+
+                        // Device is active — update usage stats and continue
+                        activeDevice.LastUsedAt = DateTime.UtcNow;
+                        activeDevice.UseCount = activeDevice.UseCount + 1;
+                        deviceTokenFromCheck = activeDevice.DeviceToken;
                         if (!string.IsNullOrEmpty(deviceTokenFromCheck))
                         {
                             DeviceService.SetDeviceTokenCookie(Response, deviceTokenFromCheck, Request.IsSecureConnection);
                         }
-                        // Device is valid - continue with attendance
                     }
                     // For non-mobile (kiosk), deviceTokenFromCheck stays null
 

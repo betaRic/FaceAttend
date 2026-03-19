@@ -99,6 +99,40 @@ namespace FaceAttend.Controllers
                         checkDb, scan.FaceEncoding, null, enrollStrictTolerance);
                 }
 
+                // Pose estimation — mirrors ScanController.Frame
+                // Without this, r.landmarks is null on mobile and estimatePoseBucket()
+                // falls back to box-geometry which only measures WHERE the face is in the
+                // frame, not HOW the head is turned. Result: every frame = "center".
+                float poseYaw, posePitch;
+                if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
+                    (poseYaw, posePitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(scan.Landmarks5);
+                else
+                    (poseYaw, posePitch) = FaceQualityAnalyzer.EstimatePose(
+                        scan.FaceBox, scan.ImageWidth, scan.ImageHeight);
+                var poseBucket = FaceQualityAnalyzer.GetPoseBucket(poseYaw, posePitch);
+
+                object landmarksResponse = null;
+                if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
+                {
+                    var lm = scan.Landmarks5;
+                    bool hasChin = lm.Length >= 8 && lm[7] > 0f;
+                    if (hasChin)
+                        landmarksResponse = new object[]
+                        {
+                            new { x = (int)lm[0], y = (int)lm[1] },
+                            new { x = (int)lm[2], y = (int)lm[3] },
+                            new { x = (int)lm[4], y = (int)lm[5] },
+                            new { x = (int)lm[6], y = (int)lm[7] }
+                        };
+                    else
+                        landmarksResponse = new object[]
+                        {
+                            new { x = (int)lm[0], y = (int)lm[1] },
+                            new { x = (int)lm[2], y = (int)lm[3] },
+                            new { x = (int)lm[4], y = (int)lm[5] }
+                        };
+                }
+
                 return JsonResponseBuilder.Success(new
                 {
                     liveness      = scan.LivenessScore,
@@ -108,6 +142,10 @@ namespace FaceAttend.Controllers
                     isMatch       = !string.IsNullOrEmpty(duplicateEmployeeId),
                     matchEmployee = duplicateEmployeeId,
                     encoding      = scan.Base64Encoding,
+                    poseYaw       = poseYaw,
+                    posePitch     = posePitch,
+                    poseBucket    = poseBucket,
+                    landmarks     = landmarksResponse,
                     faceBox       = scan.FaceBox != null ? new {
                                         x = scan.FaceBox.Left,
                                         y = scan.FaceBox.Top,
