@@ -349,10 +349,7 @@ Build in Visual Studio (`Ctrl+Shift+B`) targeting **x64**. The project requires 
 Set these in IIS Manager → Application Pools → [your pool] → Advanced Settings → Environment Variables, or via PowerShell as Administrator:
 
 ```powershell
-# Generate the admin PIN hash first (run once in your dev environment)
-# Open Package Manager Console in Visual Studio and run:
-# FaceAttend.Filters.AdminAuthorizeAttribute.HashPin("your-pin-here")
-# Copy the output hash, then:
+# Run this on Poweshell as administrative
 
 # Prompt for PIN securely
 $pin = Read-Host -Prompt "Enter new PIN" -AsSecureString
@@ -396,7 +393,9 @@ $result = "PBKDF2`$120000`$$salt64`$$hash64"
 
 Write-Host "`nEnvironment variable set successfully."
 
-# Optional: Restrict admin panel to LAN subnet only
+
+
+# Optional: To restrict admin panel to LAN subnet only
 [System.Environment]::SetEnvironmentVariable(
     "FACEATTEND_ADMIN_ALLOWED_IP_RANGES",
     "192.168.1.0/24",
