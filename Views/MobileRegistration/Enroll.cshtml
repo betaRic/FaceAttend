@@ -1,3 +1,4 @@
+<!--Views/MobileRegistration/Enroll.cshtml-->
 @{
     Layout = "~/Views/Shared/_MobileLayout.cshtml";
     ViewBag.Title = "Face Enrollment";
@@ -327,7 +328,7 @@
                 redirectUrl:       '',
                 minGoodFrames:     minFrames,
                 maxKeepFrames:     8,
-                perFrameThreshold: 0.75,
+                perFrameThreshold: 0.60,
                 enablePreview:     false
               })
             : null;
@@ -474,12 +475,15 @@
             // exists in the DB. Mobile: no DB employee yet — advance to Step 3.
             // SubmitEnrollment() on the server creates the employee + pending device.
             liveEnrollment.callbacks.onReadyToConfirm = function (data) {
+                // Force show the dialog
+                console.log('[Mobile] Ready to confirm:', data); // Debug log
+
                 var thumbPromises = (data.frames || []).slice(0, 3).map(function (frame) {
                     return new Promise(function (resolve) {
                         if (!frame || !frame.blob) { resolve(null); return; }
                         var reader = new FileReader();
-                        reader.onload  = function (ev) { resolve(ev.target.result); };
-                        reader.onerror = function ()   { resolve(null); };
+                        reader.onload = function (e) { resolve(e.target.result); };
+                        reader.onerror = function () { resolve(null); };
                         reader.readAsDataURL(frame.blob);
                     });
                 });
@@ -488,50 +492,45 @@
                     var thumbHtml = '';
                     dataUrls.forEach(function (url) {
                         if (url) {
-                            thumbHtml +=
-                                '<img src="' + url + '" style="width:80px;height:80px;' +
-                                'object-fit:cover;border-radius:8px;' +
-                                'border:2px solid rgba(255,255,255,0.15);flex-shrink:0;" />';
+                            thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;" />';
                         }
                     });
-                    var angleOk = data.allAngles
-                        ? '<span style="color:#22c55e;"><i class="fa-solid fa-check me-1"></i>All angles captured</span>'
-                        : '<span style="color:#f59e0b;"><i class="fa-solid fa-triangle-exclamation me-1"></i>' +
-                          (data.angleCount || 0) + '/5 angles captured</span>';
 
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            title: 'Face Capture Complete',
-                            html:
-                                '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
-                                thumbHtml + '</div>' +
-                                '<div style="font-size:.85rem;text-align:left;padding:0 8px;">' +
-                                '<div>' + angleOk + '</div>' +
-                                '<div style="margin-top:4px;">Frames: <strong>' + (data.frameCount || 0) +
-                                '</strong> &nbsp;|&nbsp; Liveness: <strong>' + (data.bestLiveness || 0) +
-                                '%</strong></div></div>',
-                            showCancelButton:   true,
-                            confirmButtonText:  '<i class="fa-solid fa-arrow-right me-2"></i>Continue to Review',
-                            cancelButtonText:   '<i class="fa-solid fa-rotate-right me-2"></i>Retake',
-                            confirmButtonColor: '#3b82f6',
-                            cancelButtonColor:  '#6b7280',
-                            background: '#0f172a', color: '#f8fafc'
-                        }).then(function (result) {
-                            if (result.isConfirmed) {
-                                state.capturedFrames = liveEnrollment.goodFrames.slice();
-                                setStep(3);
-                            } else {
-                                liveEnrollment.startAutoEnrollment();
-                                updateLiveCaptureUI(0, minFrames);
-                                updateLiveAngleDots([]);
-                                capturedFrames = [];
-                                _smoothedBox   = null;
-                            }
-                        });
-                    } else {
-                        state.capturedFrames = liveEnrollment.goodFrames.slice();
-                        setStep(3);
-                    }
+                    var angleOk = data.allAngles
+                        ? '<span style="color:#22c55e;">✓ All angles captured</span>'
+                        : '<span style="color:#f59e0b;">⚠ ' + (data.angleCount || 0) + '/5 angles</span>';
+
+                    Swal.fire({
+                        title: 'Enrollment Complete!',
+                        html:
+                            '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
+                            thumbHtml + '</div>' +
+                            '<div style="font-size:.9rem;">' +
+                            '<p>' + data.frameCount + ' frames captured</p>' +
+                            '<p>' + angleOk + '</p>' +
+                            '<p>Best quality: ' + data.bestLiveness + '%</p>' +
+                            '</div>',
+                        showCancelButton: true,
+                        confirmButtonText: 'Continue to Review →',
+                        cancelButtonText: 'Retake Photos',
+                        confirmButtonColor: '#22c55e',
+                        background: '#0f172a',
+                        color: '#f8fafc',
+                        allowOutsideClick: false
+                    }).then(function (result) {
+                        if (result.isConfirmed) {
+                            // CRITICAL: Advance to step 3
+                            state.capturedFrames = liveEnrollment.goodFrames.slice();
+                            setStep(3); // This should show the review pane
+                        } else {
+                            // Retake
+                            liveEnrollment.startAutoEnrollment();
+                            updateLiveCaptureUI(0, minFrames);
+                            updateLiveAngleDots([]);
+                            capturedFrames = [];
+                            _smoothedBox = null;
+                        }
+                    });
                 });
             };
 

@@ -68,8 +68,8 @@ namespace FaceAttend.Controllers.Api
 
             // Load configuration
             var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget", 8);
-            var maxStored = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 5);
+            var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget", 20);   // was 8
+            var maxStored = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 8); // was 5
             var strictTol = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
             var isMobile = DeviceService.IsMobileDevice(Request);
 
@@ -150,7 +150,7 @@ namespace FaceAttend.Controllers.Api
                         });
 
                     var liveTh = (float)ConfigurationService.GetDouble(
-                        "Biometrics:Enroll:LivenessThreshold", 0.75);
+                        "Biometrics:Enroll:LivenessThreshold", 0.82);
 
                     if (!liveOk || liveness < liveTh || vec == null) return;
 
@@ -247,8 +247,8 @@ namespace FaceAttend.Controllers.Api
             }
 
             // Diversity-aware selection
-            var selected = SelectDiverseFrames(candidates.ToList(), maxStored);
-
+            // Diversity-aware selection
+            var selected = SelectDiverseFrames(candidates.ToList(), maxStored, isMobile);
             // Save to database
             using (var db = new FaceAttendDBEntities())
             {
@@ -380,14 +380,26 @@ namespace FaceAttend.Controllers.Api
         /// <summary>
         /// Select diverse frames based on pose buckets
         /// </summary>
+        // In SelectDiverseFrames method - weight quality higher to prevent bad enrollments
         private static List<EnrollCandidate> SelectDiverseFrames(
-            List<EnrollCandidate> candidates, int targetCount)
+            List<EnrollCandidate> candidates, int targetCount, bool isMobile)
         {
             var desiredBuckets = new[] { "center", "left", "right", "up", "down" };
             var selected = new List<EnrollCandidate>();
 
-            // Phase 1: Best from each bucket
-            foreach (var bucket in desiredBuckets)
+            // Quality calculation with mobile adjustments
+            foreach (var c in candidates)
+            {
+                // FIX: Explicit cast to match EnrollCandidate.QualityScore type (float)
+                c.QualityScore = (float)CalculateMobileOptimizedQuality(c, isMobile);
+            }
+
+            // Phase 1: Take best from each bucket, prioritizing center and left/right
+            var priorityBuckets = isMobile
+                ? new[] { "center", "left", "right" }  // Mobile: prioritize horizontal angles
+                : desiredBuckets;
+
+            foreach (var bucket in priorityBuckets)
             {
                 if (selected.Count >= targetCount) break;
 
@@ -399,7 +411,7 @@ namespace FaceAttend.Controllers.Api
                 if (best != null) selected.Add(best);
             }
 
-            // Phase 2: Fill with highest quality
+            // Phase 2: Fill remaining with highest quality regardless of angle
             var remaining = candidates
                 .Where(c => !selected.Contains(c))
                 .OrderByDescending(c => c.QualityScore)
@@ -407,9 +419,45 @@ namespace FaceAttend.Controllers.Api
 
             selected.AddRange(remaining);
 
-            return selected
-                .OrderByDescending(c => c.QualityScore)
-                .ToList();
+            // MOBILE: If we still don't have enough diversity, lower threshold and retry
+            if (isMobile && selected.Select(c => c.PoseBucket).Distinct().Count() < 3)
+            {
+                // Accept lower quality frames to get diversity
+                var extra = candidates
+                    .Where(c => !selected.Contains(c))
+                    .OrderByDescending(c => c.Liveness) // At least good liveness
+                    .Take(targetCount - selected.Count);
+                selected.AddRange(extra);
+            }
+
+            return selected.OrderByDescending(c => c.QualityScore).ToList();
+        }
+
+        // Change this method signature from double to float
+        private static float CalculateMobileOptimizedQuality(EnrollCandidate c, bool isMobile)
+        {
+            if (!isMobile)
+            {
+                // FIX: Cast to float
+                return (float)FaceQualityAnalyzer.CalculateQualityScore(
+                    c.Liveness, c.Sharpness, c.Area, c.PoseYaw, c.PosePitch);
+            }
+
+            // Mobile: Weight liveness higher, sharpness lower (mobile cameras are noisier)
+            var livenessWeight = 0.50f;  // Use 'f' suffix for float literals
+            var sharpnessWeight = 0.20f;
+            var areaWeight = 0.20f;
+            var poseWeight = 0.10f;
+
+            // Normalize sharpness (mobile max ~200 vs desktop ~400)
+            var sharpnessNorm = Math.Min(c.Sharpness / 200.0, 1.0);
+
+            // FIX: Return float, not double
+            return (float)((c.Liveness * livenessWeight) +
+                   (sharpnessNorm * sharpnessWeight) +
+                   (Math.Min(c.Area / 50000.0, 1.0) * areaWeight) +
+                   ((1.0 - Math.Abs(c.PoseYaw) / 45.0) * poseWeight * 0.5) +
+                   ((1.0 - Math.Abs(c.PosePitch) / 45.0) * poseWeight * 0.5));
         }
     }
 }

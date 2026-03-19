@@ -63,7 +63,6 @@ namespace FaceAttend.Controllers
 
         /// <summary>
         /// AJAX: Real-time face detection during enrollment
-        /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult ScanFrame()
@@ -76,22 +75,22 @@ namespace FaceAttend.Controllers
 
                 var isMobile = DeviceService.IsMobileDevice(Request);
 
-                // Single-decode, parallel liveness + encoding (same pipeline as /api/scan/frame).
-                // No temp files — all processing in-memory via FastScanPipeline.
+                // MOBILE: Lower sharpness threshold expectation
                 var scan = FastScanPipeline.EnrollmentScanInMemory(image, null, isMobile);
 
                 if (!scan.Ok)
                     return JsonResponseBuilder.Error(scan.Error ?? "SCAN_FAIL", scan.Error);
 
-                // Mobile uses a lower liveness threshold than the desktop kiosk
-                double livenessThreshold = ConfigurationService.GetDouble(
-                    "Biometrics:Liveness:MobileThreshold",
-                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.30));
+                // MOBILE: Use significantly lower liveness threshold (0.30 vs 0.75)
+                double livenessThreshold = isMobile ? 0.30 :
+                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
 
                 bool livenessOk = scan.LivenessOk && scan.LivenessScore >= (float)livenessThreshold;
 
-                // Duplicate face check directly against DB (bypass cache to avoid stale data)
-                var enrollStrictTolerance = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
+                // MOBILE: Reduced strictness for enrollment duplicate check
+                var enrollStrictTolerance = isMobile ? 0.50 :  // More lenient for mobile
+                    ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
+
                 string duplicateEmployeeId = null;
                 using (var checkDb = new FaceAttendDBEntities())
                 {
@@ -99,18 +98,28 @@ namespace FaceAttend.Controllers
                         checkDb, scan.FaceEncoding, null, enrollStrictTolerance);
                 }
 
-                // Pose estimation — mirrors ScanController.Frame
-                // Without this, r.landmarks is null on mobile and estimatePoseBucket()
-                // falls back to box-geometry which only measures WHERE the face is in the
-                // frame, not HOW the head is turned. Result: every frame = "center".
+                // Pose estimation with mobile compensation
                 float poseYaw, posePitch;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
+                {
                     (poseYaw, posePitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(scan.Landmarks5);
+
+                    // MOBILE: Apply 20% reduction to angles (mobile users hold phones differently)
+                    if (isMobile)
+                    {
+                        poseYaw *= 0.8f;
+                        posePitch *= 0.8f;
+                    }
+                }
                 else
+                {
                     (poseYaw, posePitch) = FaceQualityAnalyzer.EstimatePose(
                         scan.FaceBox, scan.ImageWidth, scan.ImageHeight);
+                }
+
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(poseYaw, posePitch);
 
+                // Return enhanced landmarks for better client-side visualization
                 object landmarksResponse = null;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
                 {
@@ -119,40 +128,45 @@ namespace FaceAttend.Controllers
                     if (hasChin)
                         landmarksResponse = new object[]
                         {
-                            new { x = (int)lm[0], y = (int)lm[1] },
-                            new { x = (int)lm[2], y = (int)lm[3] },
-                            new { x = (int)lm[4], y = (int)lm[5] },
-                            new { x = (int)lm[6], y = (int)lm[7] }
+                    new { x = (int)lm[0], y = (int)lm[1] }, // left eye
+                    new { x = (int)lm[2], y = (int)lm[3] }, // right eye
+                    new { x = (int)lm[4], y = (int)lm[5] }, // nose
+                    new { x = (int)lm[6], y = (int)lm[7] }  // chin
                         };
                     else
                         landmarksResponse = new object[]
                         {
-                            new { x = (int)lm[0], y = (int)lm[1] },
-                            new { x = (int)lm[2], y = (int)lm[3] },
-                            new { x = (int)lm[4], y = (int)lm[5] }
+                    new { x = (int)lm[0], y = (int)lm[1] },
+                    new { x = (int)lm[2], y = (int)lm[3] },
+                    new { x = (int)lm[4], y = (int)lm[5] }
                         };
                 }
 
                 return JsonResponseBuilder.Success(new
                 {
-                    liveness      = scan.LivenessScore,
-                    livenessOk    = livenessOk,
-                    sharpness     = scan.Sharpness,
-                    count         = 1,
-                    isMatch       = !string.IsNullOrEmpty(duplicateEmployeeId),
+                    liveness = scan.LivenessScore,
+                    livenessOk = livenessOk,
+                    sharpness = scan.Sharpness,
+                    sharpnessThreshold = scan.SharpnessThreshold,
+                    count = 1,
+                    isMatch = !string.IsNullOrEmpty(duplicateEmployeeId),
                     matchEmployee = duplicateEmployeeId,
-                    encoding      = scan.Base64Encoding,
-                    poseYaw       = poseYaw,
-                    posePitch     = posePitch,
-                    poseBucket    = poseBucket,
-                    landmarks     = landmarksResponse,
-                    faceBox       = scan.FaceBox != null ? new {
-                                        x = scan.FaceBox.Left,
-                                        y = scan.FaceBox.Top,
-                                        w = scan.FaceBox.Width,
-                                        h = scan.FaceBox.Height
-                                    } : null,
-                    timingMs      = scan.TimingMs
+                    encoding = scan.Base64Encoding,
+                    poseYaw = poseYaw,
+                    posePitch = posePitch,
+                    poseBucket = poseBucket,
+                    landmarks = landmarksResponse,
+                    faceBox = scan.FaceBox != null ? new
+                    {
+                        x = scan.FaceBox.Left,
+                        y = scan.FaceBox.Top,
+                        w = scan.FaceBox.Width,
+                        h = scan.FaceBox.Height,
+                        // MOBILE: Include area ratio for client-side distance calc
+                        areaRatio = (float)(scan.FaceBox.Width * scan.FaceBox.Height) / (scan.ImageWidth * scan.ImageHeight)
+                    } : null,
+                    timingMs = scan.TimingMs,
+                    isMobile = isMobile  // Echo back for client logic
                 });
             }
             catch (Exception ex)
@@ -163,7 +177,6 @@ namespace FaceAttend.Controllers
 
         /// <summary>
         /// Submit new employee enrollment with face
-        /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult SubmitEnrollment(NewEmployeeEnrollmentVm vm)
@@ -183,14 +196,16 @@ namespace FaceAttend.Controllers
                 }
 
                 var fingerprint = DeviceService.GenerateFingerprint(Request);
+                var isMobile = DeviceService.IsMobileDevice(Request);
+
+                // FIX: Declare normalizedEmployeeId here
+                var normalizedEmployeeId = vm.EmployeeId.Trim().ToUpperInvariant();
 
                 using (var db = new FaceAttendDBEntities())
                 {
-                    var normalizedEmployeeId = vm.EmployeeId.Trim().ToUpperInvariant();
-
                     // Check for duplicate employee ID (handle null status)
-                    if (db.Employees.Any(e => 
-                        e.EmployeeId == normalizedEmployeeId && 
+                    if (db.Employees.Any(e =>
+                        e.EmployeeId == normalizedEmployeeId &&
                         (e.Status == null || e.Status != "INACTIVE")))
                     {
                         Response.StatusCode = 400;
@@ -200,6 +215,7 @@ namespace FaceAttend.Controllers
                             "Employee ID already exists or is pending approval.");
                     }
 
+                    // FIX: Declare faceTemplate and faceVector here
                     byte[] faceTemplate;
                     double[] faceVector;
                     try
@@ -222,13 +238,14 @@ namespace FaceAttend.Controllers
                     }
 
                     // CRITICAL FIX: Server-side duplicate face check
-                    // Use database query directly to avoid cache staleness issues
-                    // that could cause Employee B to be incorrectly matched to Employee A
-                    var strictTolerance = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
-                    
+                    // FIX: Use isMobile variable for tolerance
+                    var strictTolerance = isMobile ? 0.50 :
+                        ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
+
                     // Check for duplicate directly from database (bypass cache)
-                    var duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(db, faceVector, normalizedEmployeeId, strictTolerance);
-                    
+                    var duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(
+                        db, faceVector, normalizedEmployeeId, strictTolerance);
+
                     if (!string.IsNullOrEmpty(duplicateEmployeeId))
                     {
                         Response.StatusCode = 400;
@@ -251,8 +268,8 @@ namespace FaceAttend.Controllers
 
                         FaceEncodingBase64 = Convert.ToBase64String(faceTemplate),
                         // Store all captured encodings for robust matching
-                        FaceEncodingsJson = !string.IsNullOrWhiteSpace(vm.AllFaceEncodingsJson) 
-                            ? vm.AllFaceEncodingsJson 
+                        FaceEncodingsJson = !string.IsNullOrWhiteSpace(vm.AllFaceEncodingsJson)
+                            ? vm.AllFaceEncodingsJson
                             : null,
 
                         // self-enrollment flow
@@ -261,7 +278,7 @@ namespace FaceAttend.Controllers
                         CreatedDate = DateTime.UtcNow,
                         EnrolledDate = DateTime.UtcNow,
                         LastModifiedDate = DateTime.UtcNow,
-                        ModifiedBy = "SELF_ENROLLMENT"
+                        ModifiedBy = "SELF_ENROLLMENT_MOBILE"  // Indicate mobile enrollment
                     };
 
                     db.Employees.Add(employee);
@@ -287,7 +304,8 @@ namespace FaceAttend.Controllers
                     {
                         employeeDbId = employee.Id,
                         employeeId = employee.EmployeeId,
-                        status = employee.Status
+                        status = employee.Status,
+                        isMobile = isMobile  // Echo back for client logic
                     }, "Enrollment submitted. Waiting for admin approval.");
                 }
             }

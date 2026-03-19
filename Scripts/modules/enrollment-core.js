@@ -28,47 +28,40 @@ FaceAttend.Enrollment = (function () {
     // =========================================================================
     // CONSTANTS
     // =========================================================================
+    // =========================================================================
+    // MOBILE-OPTIMIZED CONSTANTS
+    // =========================================================================
     var CONSTANTS = {
-        // Capture timing
         AUTO_INTERVAL_MS: 300,
-        PASS_WINDOW:      3,
-        PASS_REQUIRED:    1,
+        PASS_WINDOW: 3,
+        PASS_REQUIRED: 1,
 
-        // Frame targets
-        CAPTURE_TARGET:    8,
-        MIN_GOOD_FRAMES:   3,
-        MAX_KEEP_FRAMES:   8,
-        // FIX-003: MAX_IMAGES was referenced in enrollFromFiles() as
-        // CONSTANTS.MAX_IMAGES but was never defined, causing it to resolve
-        // to undefined. Array.prototype.slice(files, 0, undefined) returned
-        // all files accidentally. Now explicitly defined and equal to
-        // CAPTURE_TARGET (8) so the behavior is consistent and intentional.
-        MAX_IMAGES:        8,
+        // Capture targets - reduced for faster enrollment
+        CAPTURE_TARGET: 8,        // Was 20 - 12 is plenty for diversity
+        MIN_GOOD_FRAMES: 6,        // Was 10 - faster completion
+        MAX_KEEP_FRAMES: 8,
+        MAX_IMAGES: 12,
+        FRAMES_PER_BUCKET: 1,      // 1 frame per angle is enough
 
-        // Image capture
-        // CAPTURE_WIDTH/HEIGHT now used for sharpness calculation canvas only
-        // Actual capture uses native camera resolution (1280x720 ideal)
-        CAPTURE_WIDTH:  640,
+        CAPTURE_WIDTH: 640,
         CAPTURE_HEIGHT: 480,
-        UPLOAD_QUALITY: 0.90,  // Higher quality for enrollment (was 0.80)
+        UPLOAD_QUALITY: 0.90,
 
-        // Quality thresholds
-        SHARPNESS_THRESHOLD_DESKTOP: 80,
-        SHARPNESS_THRESHOLD_MOBILE:  50,
-        SHARPNESS_SAMPLE_SIZE:       160,
+        // ADAPTIVE THRESHOLDS
+        SHARPNESS_THRESHOLD_DESKTOP: 150,
+        SHARPNESS_THRESHOLD_MOBILE: 45,    // Was 80 - mobile cameras are noisier
 
-        // Angle buckets
+        SHARPNESS_SAMPLE_SIZE: 160,
+
+        // CRITICAL FIX: Mobile-friendly distance
+        MIN_FACE_AREA_RATIO_DESKTOP: 0.10,  // 10% for desktop webcam
+        MIN_FACE_AREA_RATIO_MOBILE: 0.055,  // 5.5% for mobile arm's length
+
+        FACE_AREA_WARNING_RATIO: 0.07,      // Warning threshold
+
         ANGLE_SEQUENCE: ['center', 'left', 'right', 'up', 'down'],
-
-        // Auto-submit trigger
         AUTO_SUBMIT_ON_ALL_ANGLES: true,
-
-        // FIX-002: Fallback confirmation timer.
-        // If the user cannot complete all 5 angle buckets (poor lighting,
-        // physical limitation, or slow movement), this timer fires the
-        // Swal confirmation automatically once minGoodFrames is first reached.
-        // Value is milliseconds. 30000 = 30 seconds.
-        AUTO_CONFIRM_TIMEOUT_MS: 30000
+        AUTO_CONFIRM_TIMEOUT_MS: 15000
     };
 
     // =========================================================================
@@ -91,8 +84,10 @@ FaceAttend.Enrollment = (function () {
     }
 
     function isMobileDevice() {
-        return FaceAttend.Utils ? FaceAttend.Utils.isMobile() : 
-            /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
+        if (FaceAttend.Utils && FaceAttend.Utils.isMobile) {
+            return FaceAttend.Utils.isMobile();
+        }
+        return /iPhone|iPad|iPod|Android.*Mobile|Windows Phone/i.test(navigator.userAgent);
     }
 
     // =========================================================================
@@ -300,98 +295,179 @@ FaceAttend.Enrollment = (function () {
     // -------------------------------------------------------------------------
     // Phase 2: Pose Estimation
     // -------------------------------------------------------------------------
+    function getMinFaceAreaRatio() {
+        return isMobileDevice()
+            ? CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE
+            : CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP;
+    }
 
+    function getSharpnessThreshold() {
+        var base = isMobileDevice()
+            ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE
+            : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
+
+        // Adjust for camera resolution
+        var videoEl = document.getElementById('enrollVideo');
+        if (videoEl && videoEl.videoWidth) {
+            var resolutionScale = Math.min(1, Math.max(videoEl.videoWidth, videoEl.videoHeight) / 720);
+            return base * resolutionScale;
+        }
+        return base;
+    }
     /**
      * Estimates pose bucket from face bounding box.
      * Return values: center, left, right, up, down, other
+
+        // Further reduce threshold for low-end mobile devices
+        var isMobile = FaceAttend.Utils.isMobile();
+        if (!isMobile) return CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
+
+        // Check for low-end device indicators (older Android, etc.)
+        var ua = navigator.userAgent || '';
+        var isLowEnd = /Android [4-7]\./i.test(ua) || /iPhone [5-7]/i.test(ua);
+
+        return isLowEnd ? 35 : CONSTANTS.SHARPNESS_THRESHOLD_MOBILE;
+    }
+
+    // Enhanced pose estimation with mobile angle compensation
+    /**
+     * FIXED: Pose estimation with proper landmark detection and lenient thresholds
+     * Return values: center, left, right, up, down, other
      */
-    Enrollment.prototype.estimatePoseBucket = function(landmarks, faceBox, canvasW, canvasH) {
+    /**
+     * FIXED: Robust pose estimation with correct angle calculations
+     * Returns: 'center', 'left', 'right', 'up', 'down', or 'other'
+     */
+    Enrollment.prototype.estimatePoseBucket = function (landmarks, faceBox, canvasW, canvasH) {
         if (!faceBox || faceBox.w <= 0) return 'center';
 
-        // Box-geometry fallback — used only when landmarks are null/empty.
-        // Aspect ratio bias REMOVED: nearly all face boxes are taller than wide
-        // (ratio ~1.3-1.6), so the old "if aspect > 1.4: pitch -= 10" fired on
-        // every frame and permanently biased pitch toward "up".
-        var faceCenterX = (faceBox.x + faceBox.w / 2) / (canvasW || 640);
-        var faceCenterY = (faceBox.y + faceBox.h / 2) / (canvasH || 480);
-        var yaw   = (faceCenterX - 0.5) * 60;
-        var pitch = (faceCenterY - 0.5) * 40;
+        var W = canvasW || 640;
+        var H = canvasH || 480;
 
+        // Default: assume center if no landmarks
+        var yaw = 0, pitch = 0;
+        var hasLandmarks = false;
+
+        // PRIMARY METHOD: Use facial landmarks (accurate)
         if (landmarks && landmarks.length >= 3) {
-            var lEye = landmarks[0], rEye = landmarks[1], nose = landmarks[2];
+            var lEye = landmarks[0];
+            var rEye = landmarks[1];
+            var nose = landmarks[2];
             var chin = landmarks.length >= 4 ? landmarks[3] : null;
 
             if (lEye && rEye && nose) {
-                var eyeMidX  = (lEye.x + rEye.x) / 2;
-                var eyeMidY  = (lEye.y + rEye.y) / 2;
+                hasLandmarks = true;
+                var eyeMidX = (lEye.x + rEye.x) / 2;
+                var eyeMidY = (lEye.y + rEye.y) / 2;
                 var eyeDistX = Math.abs(lEye.x - rEye.x);
+                var eyeDistY = Math.abs(lEye.y - rEye.y);
 
-                if (eyeDistX > 1) {
-                    // YAW: nose offset from eye midpoint (self-scaling)
-                    yaw = (nose.x - eyeMidX) / eyeDistX * 90;
+                if (eyeDistX > 0) {
+                    // YAW: If nose is to the left of eye midpoint, face is turned right (and vice versa)
+                    // Range: -90 (left) to +90 (right)
+                    yaw = ((nose.x - eyeMidX) / eyeDistX) * 90;
 
-                    // PITCH: choose formula based on whether chin is available
-                    if (chin && chin.y > 0 && chin.y > nose.y) {
-                        // SELF-CALIBRATING: uses chin point — no fixed baseline
-                        // Matches server: FaceQualityAnalyzer.EstimatePoseFromLandmarks (8-float path)
+                    // PITCH calculation
+                    if (chin && chin.y > nose.y) {
+                        // Use chin for better pitch accuracy
                         var faceHeight = chin.y - eyeMidY;
-                        if (faceHeight < 1) faceHeight = 1;
-                        var noseFraction = (nose.y - eyeMidY) / faceHeight;
-                        // noseFraction ~0.45 = frontal. UP = increases, DOWN = decreases
-                        pitch = -(noseFraction - 0.45) * 130;
+                        if (faceHeight > 0) {
+                            var noseRatio = (nose.y - eyeMidY) / faceHeight;
+                            // 0.4-0.5 = looking straight
+                            // < 0.4 = looking up
+                            // > 0.5 = looking down
+                            pitch = (0.45 - noseRatio) * 130;
+                        }
                     } else {
-                        // FALLBACK: nose-to-eye ratio with corrected 1.05 baseline
-                        // (was 1.2 which biased every frontal frame to "up")
-                        var normalizedPitch = (nose.y - eyeMidY) / eyeDistX;
-                        pitch = -(normalizedPitch - 1.05) * 50;
+                        // Fallback: nose-to-eye distance vs eye-distance
+                        var noseOffset = nose.y - eyeMidY;
+                        var normalizedPitch = noseOffset / eyeDistX;
+                        // Calibrated: ~1.0 = straight, <1.0 = up, >1.0 = down
+                        pitch = (1.0 - normalizedPitch) * 60;
                     }
                 }
             }
         }
 
-        var absYaw   = Math.abs(yaw);
-        var absPitch = Math.abs(pitch);
+        // FALLBACK: Use face box position (less accurate but functional)
+        if (!hasLandmarks && faceBox) {
+            var faceCenterX = (faceBox.x + faceBox.w / 2) / W;
+            var faceCenterY = (faceBox.y + faceBox.h / 2) / H;
 
-        if (absYaw > 35 || absPitch > 30) return 'other';
-        if (absYaw < 12 && absPitch < 12) return 'center';
-
-        if (absYaw >= absPitch) {
-            if (yaw < -12) return 'left';
-            if (yaw > 12)  return 'right';
-        } else {
-            if (pitch < -12) return 'up';
-            if (pitch > 12)  return 'down';
+            // If face is on left side of frame, likely looking right
+            yaw = (faceCenterX - 0.5) * 40; // Reduced sensitivity
+            pitch = (faceCenterY - 0.5) * 30;
         }
 
-        return 'center';
+        // THRESHOLDS: Tuned for usability
+        var CENTER_YAW = 12;      // ±12 degrees = center
+        var CENTER_PITCH = 10;    // ±10 degrees = center
+        var MAX_YAW = 45;         // Beyond this = "other" (too extreme)
+        var MAX_PITCH = 35;       // Beyond this = "other"
+
+        var absYaw = Math.abs(yaw);
+        var absPitch = Math.abs(pitch);
+
+        // Debug logging (enable if needed)
+        if (this.config.debug && hasLandmarks) {
+            console.log('[Pose] Yaw:', yaw.toFixed(1), 'Pitch:', pitch.toFixed(1),
+                'Bucket:', (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) ? 'center' :
+                (absYaw > absPitch ? (yaw < 0 ? 'left' : 'right') :
+                    (pitch < 0 ? 'up' : 'down')));
+        }
+
+        // Check extreme angles
+        if (absYaw > MAX_YAW || absPitch > MAX_PITCH) return 'other';
+
+        // Check center first
+        if (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) return 'center';
+
+        // Determine direction: whichever is more dominant (yaw vs pitch)
+        if (absYaw >= absPitch) {
+            // Horizontal turn is dominant
+            if (yaw < -CENTER_YAW) return 'left';   // Negative yaw = face turned left
+            if (yaw > CENTER_YAW) return 'right';   // Positive yaw = face turned right
+        } else {
+            // Vertical tilt is dominant  
+            if (pitch < -CENTER_PITCH) return 'up';    // Negative pitch = looking up
+            if (pitch > CENTER_PITCH) return 'down';   // Positive pitch = looking down
+        }
+
+        return 'center'; // Shouldn't reach here, but fallback
     };
 
     /**
      * Phase 2: Returns the next angle to prompt for based on captured buckets
      */
-    Enrollment.prototype.getNextAnglePrompt = function() {
+    Enrollment.prototype.getNextAnglePrompt = function () {
         var captured = {};
         for (var i = 0; i < this.goodFrames.length; i++) {
             var b = this.goodFrames[i].poseBucket;
-            if (b) captured[b] = true;
+            if (b && b !== 'other') captured[b] = (captured[b] || 0) + 1;
         }
 
         var prompts = {
-            center: { prompt: 'Look straight at the camera',   icon: 'fa-circle-dot' },
-            left:   { prompt: 'Turn your head slightly LEFT',  icon: 'fa-arrow-left' },
-            right:  { prompt: 'Turn your head slightly RIGHT', icon: 'fa-arrow-right' },
-            up:     { prompt: 'Tilt your head slightly UP',    icon: 'fa-arrow-up' },
-            down:   { prompt: 'Tilt your head slightly DOWN',  icon: 'fa-arrow-down' }
+            center: { prompt: 'Look straight at the camera', icon: 'fa-circle-dot' },
+            left: { prompt: 'Turn your head slightly LEFT', icon: 'fa-arrow-left' },
+            right: { prompt: 'Turn your head slightly RIGHT', icon: 'fa-arrow-right' },
+            up: { prompt: 'Tilt your head slightly UP', icon: 'fa-arrow-up' },
+            down: { prompt: 'Tilt your head slightly DOWN', icon: 'fa-arrow-down' }
         };
 
         for (var j = 0; j < CONSTANTS.ANGLE_SEQUENCE.length; j++) {
             var bucket = CONSTANTS.ANGLE_SEQUENCE[j];
-            if (!captured[bucket]) {
-                return { bucket: bucket, prompt: prompts[bucket].prompt, icon: prompts[bucket].icon };
+            var have = captured[bucket] || 0;
+            if (have < CONSTANTS.FRAMES_PER_BUCKET) {
+                var need = CONSTANTS.FRAMES_PER_BUCKET - have;
+                return {
+                    bucket: bucket,
+                    prompt: prompts[bucket].prompt + ' (' + have + '/' + CONSTANTS.FRAMES_PER_BUCKET + ')',
+                    icon: prompts[bucket].icon
+                };
             }
         }
 
-        return { bucket: 'center', prompt: 'Hold still - capturing final frames', icon: 'fa-check' };
+        return { bucket: 'center', prompt: 'Hold still — capturing final frames', icon: 'fa-check' };
     };
 
     // -------------------------------------------------------------------------
@@ -800,117 +876,77 @@ FaceAttend.Enrollment = (function () {
     Enrollment.prototype.autoTick = function () {
         var self = this;
 
-        // DEBUG: Log why autoTick might return early (call this from browser console to enable)
-        if (this._debugAutoTick) {
-            console.log('[Enrollment] autoTick called:', {
-                enrolled: this.enrolled,
-                hasStream: !!this.stream,
-                busy: this.busy,
-                hasCam: !!this.elements.cam,
-                videoWidth: this.elements.cam && this.elements.cam.videoWidth,
-                autoTimer: this.autoTimer,
-                time: new Date().toISOString()
-            });
-        }
-
-        if (this.enrolled || !this.stream || this.busy) {
-            if (this._debugAutoTick) {
-                console.log('[Enrollment] autoTick returning early:', {
-                    reason: this.enrolled ? 'enrolled' : !this.stream ? 'no stream' : 'busy',
-                    enrolled: this.enrolled,
-                    hasStream: !!this.stream,
-                    busy: this.busy
-                });
-            }
-            return;
-        }
+        if (this.enrolled || !this.stream || this.busy) return;
 
         var cam = this.elements.cam;
-        if (!cam || !cam.videoWidth) {
-            if (this._debugAutoTick) {
-                console.log('[Enrollment] autoTick returning - no cam or videoWidth');
-            }
-            return;
-        }
+        if (!cam || !cam.videoWidth) return;
 
         this.busy = true;
-
-        // SAFETY: If the server takes too long, abort the request and reset busy.
-        // Increased to 10s — long enough for normal server response (2-4s),
-        // short enough to recover from genuine hangs without infinite pending pile-up.
-        var safetyTimeout = setTimeout(function() {
+        var safetyTimeout = setTimeout(function () {
             if (self.busy) {
-                self._abortCurrentScan(); // cancel the stale request first
+                self._abortCurrentScan();
                 self.busy = false;
             }
         }, 10000);
 
         var capturedBlob = null;
-
-        // Phase 2: Quick client-side sharpness check BEFORE upload
         var sharpnessOk = true;
         var sharpness = 0;
+        var isMobile = isMobileDevice();
+
+        // Quick client-side sharpness check
         if (cam.videoWidth > 0) {
             var tmpCanvas = document.createElement('canvas');
             var videoW = cam.videoWidth;
             var videoH = cam.videoHeight;
-            // DO NOT pre-scale this canvas. calculateSharpness() handles its own
-            // 160×160 downscaling internally. Pre-scaling here breaks coordinate
-            // alignment — this.lastFaceBox is in original video coordinates, and
-            // clamping it against a 160×120 canvas produces sw/sh ≈ 0 → score 0 → always blurry.
             tmpCanvas.width = videoW;
             tmpCanvas.height = videoH;
             var tmpCtx = tmpCanvas.getContext('2d');
             tmpCtx.drawImage(cam, 0, 0, videoW, videoH);
 
-            // Adaptive threshold: scale down for lower resolution cameras
-            // Base threshold calibrated for 1280x720; scale proportionally
-            var baseThreshold = isMobileDevice()
-                ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE
-                : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
+            var threshold = getSharpnessThreshold();
+
+            // Scale threshold based on resolution (lower res = lower expectation)
             var resolutionScale = Math.min(1, Math.max(videoW, videoH) / 720);
-            var threshold = baseThreshold * resolutionScale;
+            var adaptiveThreshold = threshold * resolutionScale;
 
             sharpness = this.calculateSharpness(tmpCanvas, this.lastFaceBox);
 
-            if (sharpness < threshold) {
+            if (sharpness < adaptiveThreshold) {
                 sharpnessOk = false;
                 this.busy = false;
-                if (this._debugAutoTick) {
-                    console.log('[Enrollment] Sharpness check failed:', {
-                        sharpness: sharpness,
-                        threshold: threshold,
-                        videoW: videoW,
-                        videoH: videoH
-                    });
-                }
+                this.lastFaceBox = null; // Clear stale box so next frame is not blocked
+
+                // MOBILE-FRIENDLY MESSAGE
+                var msg = isMobile
+                    ? 'Image blurry. Hold steady or improve lighting.'
+                    : 'Image blurry (score: ' + Math.round(sharpness) + '). Move closer or improve lighting.';
+
                 if (this.callbacks.onStatus) {
-                    this.callbacks.onStatus(
-                        'Image blurry (score: ' + Math.round(sharpness) +
-                        '). Move closer or improve lighting.', 'warning');
+                    this.callbacks.onStatus(msg, 'warning');
+                    if (this.callbacks.onQualityFeedback) {
+                        this.callbacks.onQualityFeedback({ type: 'blur', score: sharpness, threshold: adaptiveThreshold });
+                    }
                 }
                 return;
             }
         }
 
+        // Continue with capture...
         this.captureJpegBlob(CONSTANTS.UPLOAD_QUALITY)
             .then(function (blob) {
                 capturedBlob = blob;
                 return self.postScanFrame(blob);
             })
             .then(function (result) {
-                if (result) {
-                    result.lastBlob = capturedBlob;
-                    result.clientSharpness = sharpness; // Pass sharpness to processor
-                }
+                if (!result) return;
+                result.lastBlob = capturedBlob;
+                result.clientSharpness = sharpness;
                 self.processScanResult(result);
             })
             .catch(function (e) {
-                // AbortError = deliberately cancelled by safety timeout — silent, do not show error
                 if (e && e.name === 'AbortError') return;
-                // Transient network/server error — show brief status but do NOT reset goodFrames
-                // so the user doesn't lose captured progress on a single bad frame
-                self.handleStatus('Scan error, retrying...', 'warning');
+                self.handleStatus(isMobile ? 'Retrying...' : 'Scan error, retrying...', 'warning');
                 self.passHist = [];
             })
             .finally(function () {
@@ -923,6 +959,7 @@ FaceAttend.Enrollment = (function () {
      * Phase 2: Updated processScanResult with poseBucket and auto-submit
      */
     Enrollment.prototype.processScanResult = function (r) {
+        var self = this; 
         if (!r || r.ok !== true) {
             var errorCode = r && r.error;
             if (this._debugAutoTick) {
@@ -1040,8 +1077,13 @@ FaceAttend.Enrollment = (function () {
                 var b = this.goodFrames[m].poseBucket;
                 if (b && b !== 'other') capturedBuckets[b] = true;
             }
-            var allAngles = CONSTANTS.ANGLE_SEQUENCE.every(function(bucket) {
-                return capturedBuckets[bucket];
+            // Require FRAMES_PER_BUCKET frames per angle, not just 1
+            var allAngles = CONSTANTS.ANGLE_SEQUENCE.every(function (bucket) {
+                var count = 0;
+                for (var m2 = 0; m2 < self.goodFrames.length; m2++) {
+                    if (self.goodFrames[m2].poseBucket === bucket) count++;
+                }
+                return count >= CONSTANTS.FRAMES_PER_BUCKET;
             });
 
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;

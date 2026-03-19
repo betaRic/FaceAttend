@@ -400,69 +400,176 @@
     }
 
     // ── Face bounding box overlay (replaces static dashed circle guide) ────────
+    // ============================================================================
+    // MOBILE-OPTIMIZED FACE OVERLAY
+    // ============================================================================
     var overlayCanvas = document.getElementById('enrollFaceCanvas');
-    var overlayCtx    = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+    var overlayCtx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+    var lastBoxSmooth = null;
+    var boxAnimationId = null;
 
     function drawFaceOverlay() {
-        requestAnimationFrame(drawFaceOverlay);
-        if (!overlayCanvas || !overlayCtx) return;
+        if (!overlayCanvas || !overlayCtx || !ui.video) return;
 
-        // Size canvas to its CSS display size each frame (handles resizes)
-        var cw = overlayCanvas.offsetWidth;
-        var ch = overlayCanvas.offsetHeight;
-        if (cw < 1 || ch < 1) return;
-        overlayCanvas.width  = cw;
-        overlayCanvas.height = ch;
-        overlayCtx.clearRect(0, 0, cw, ch);
+        boxAnimationId = requestAnimationFrame(drawFaceOverlay);
+
+        // Handle device pixel ratio for crisp lines on mobile
+        var dpr = window.devicePixelRatio || 1;
+        var displayWidth = overlayCanvas.offsetWidth;
+        var displayHeight = overlayCanvas.offsetHeight;
+
+        if (displayWidth < 1 || displayHeight < 1) return;
+
+        // Resize canvas to match display size
+        if (overlayCanvas.width !== displayWidth * dpr) {
+            overlayCanvas.width = displayWidth * dpr;
+            overlayCanvas.height = displayHeight * dpr;
+            overlayCtx.scale(dpr, dpr);
+        }
+
+        overlayCtx.clearRect(0, 0, displayWidth, displayHeight);
 
         var faceBox = enrollment.lastFaceBox;
-        if (!faceBox || !faceBox.w || !faceBox.h) return;
-        if (!ui.video || !ui.video.videoWidth)      return;
+        if (!faceBox || !faceBox.w || !faceBox.h || !ui.video.videoWidth) {
+            lastBoxSmooth = null;
+            return;
+        }
 
-        // Map face box from video pixel space → canvas display space
-        var scaleX = cw / ui.video.videoWidth;
-        var scaleY = ch / ui.video.videoHeight;
+        var videoW = ui.video.videoWidth;
+        var videoH = ui.video.videoHeight;
 
-        // Video is CSS-mirrored (transform:scaleX(-1)), so mirror X coordinate
-        var bx = (ui.video.videoWidth - faceBox.x - faceBox.w) * scaleX;
-        var by = faceBox.y * scaleY;
-        var bw = faceBox.w * scaleX;
-        var bh = faceBox.h * scaleY;
+        // Calculate object-fit: cover transformation
+        // Video is scaled to cover the container
+        var videoAspect = videoW / videoH;
+        var displayAspect = displayWidth / displayHeight;
+        var scale, offsetX, offsetY;
 
+        if (videoAspect > displayAspect) {
+            // Video is wider - scale to height, crop sides
+            scale = displayHeight / videoH;
+            offsetX = (displayWidth - videoW * scale) / 2;
+            offsetY = 0;
+        } else {
+            // Video is taller - scale to width, crop top/bottom
+            scale = displayWidth / videoW;
+            offsetX = 0;
+            offsetY = (displayHeight - videoH * scale) / 2;
+        }
+
+        // Transform face box from video to display coordinates
+        var rawX = faceBox.x * scale + offsetX;
+        var rawY = faceBox.y * scale + offsetY;
+        var rawW = faceBox.w * scale;
+        var rawH = faceBox.h * scale;
+
+        // Handle mirroring (CSS transform: scaleX(-1) on video)
+        var displayX = displayWidth - (rawX + rawW);
+        var displayY = rawY;
+        var displayW = rawW;
+        var displayH = rawH;
+
+        // Smooth the box (EMA filter)
+        if (!lastBoxSmooth) {
+            lastBoxSmooth = { x: displayX, y: displayY, w: displayW, h: displayH };
+        } else {
+            var alpha = 0.3; // Smoothing factor
+            lastBoxSmooth.x += alpha * (displayX - lastBoxSmooth.x);
+            lastBoxSmooth.y += alpha * (displayY - lastBoxSmooth.y);
+            lastBoxSmooth.w += alpha * (displayW - lastBoxSmooth.w);
+            lastBoxSmooth.h += alpha * (displayH - lastBoxSmooth.h);
+        }
+
+        var bx = lastBoxSmooth.x;
+        var by = lastBoxSmooth.y;
+        var bw = lastBoxSmooth.w;
+        var bh = lastBoxSmooth.h;
+
+        // Determine color based on quality
         var goodCount = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
-        var target    = cfg.minFrames || 8;
-        var color     = goodCount >= target ? '#22c55e' : '#3b82f6';
-        var cLen      = Math.min(bw, bh) * 0.18;
+        var target = cfg.minFrames || 6;
+        var isMobile = isMobileDevice();
+
+        // Check distance
+        var faceArea = (faceBox.w * faceBox.h);
+        var frameArea = videoW * videoH;
+        var areaRatio = faceArea / frameArea;
+        var minRatio = isMobile ? 0.055 : 0.10;
+
+        var color, glowColor, statusText;
+        if (goodCount >= target) {
+            color = '#22c55e';
+            glowColor = 'rgba(34,197,94,0.5)';
+            statusText = 'Perfect!';
+        } else if (areaRatio < minRatio * 0.7) {
+            color = '#ef4444';
+            glowColor = 'rgba(239,68,68,0.5)';
+            statusText = isMobile ? 'Move closer' : 'Too far';
+        } else if (areaRatio < minRatio) {
+            color = '#f59e0b';
+            glowColor = 'rgba(245,158,11,0.5)';
+            statusText = 'Closer...';
+        } else {
+            color = '#3b82f6';
+            glowColor = 'rgba(59,130,246,0.5)';
+            statusText = 'Hold still';
+        }
+
+        // Draw corner brackets
+        var cornerLen = Math.min(bw, bh) * 0.2;
 
         overlayCtx.strokeStyle = color;
-        overlayCtx.lineWidth   = 2.5;
-        overlayCtx.lineCap     = 'round';
-        overlayCtx.lineJoin    = 'round';
-        overlayCtx.shadowColor = color;
-        overlayCtx.shadowBlur  = 10;
+        overlayCtx.lineWidth = 3;
+        overlayCtx.lineCap = 'round';
+        overlayCtx.lineJoin = 'round';
+        overlayCtx.shadowColor = glowColor;
+        overlayCtx.shadowBlur = 12;
 
-        function bracket(ax, ay, bx2, by2, cx, cy) {
+        function drawCorner(x1, y1, x2, y2, x3, y3) {
             overlayCtx.beginPath();
-            overlayCtx.moveTo(ax, ay);
-            overlayCtx.lineTo(bx2, by2);
-            overlayCtx.lineTo(cx, cy);
+            overlayCtx.moveTo(x1, y1);
+            overlayCtx.lineTo(x2, y2);
+            overlayCtx.lineTo(x3, y3);
             overlayCtx.stroke();
         }
-        // Top-left
-        bracket(bx + cLen, by,      bx,      by,      bx,      by + cLen);
-        // Top-right
-        bracket(bx+bw-cLen, by,     bx+bw,   by,      bx+bw,   by + cLen);
-        // Bottom-left
-        bracket(bx + cLen, by+bh,   bx,      by+bh,   bx,      by+bh-cLen);
-        // Bottom-right
-        bracket(bx+bw-cLen, by+bh,  bx+bw,   by+bh,   bx+bw,   by+bh-cLen);
 
-        // Thin rect fill behind corners
-        overlayCtx.shadowBlur  = 0;
-        overlayCtx.globalAlpha = 0.25;
-        overlayCtx.lineWidth   = 0.5;
-        overlayCtx.strokeRect(bx, by, bw, bh);
-        overlayCtx.globalAlpha = 1;
+        // Top-left
+        drawCorner(bx + cornerLen, by, bx, by, bx, by + cornerLen);
+        // Top-right  
+        drawCorner(bx + bw - cornerLen, by, bx + bw, by, bx + bw, by + cornerLen);
+        // Bottom-left
+        drawCorner(bx + cornerLen, by + bh, bx, by + bh, bx, by + bh - cornerLen);
+        // Bottom-right
+        drawCorner(bx + bw - cornerLen, by + bh, bx + bw, by + bh, bx + bw, by + bh - cornerLen);
+
+        // Status text
+        overlayCtx.shadowBlur = 0;
+        overlayCtx.fillStyle = color;
+        overlayCtx.font = 'bold 14px sans-serif';
+        overlayCtx.textAlign = 'center';
+        overlayCtx.fillText(statusText, bx + bw / 2, by + bh + 25);
+
+        // Subtle fill
+        overlayCtx.fillStyle = color;
+        overlayCtx.globalAlpha = 0.05;
+        overlayCtx.fillRect(bx, by, bw, bh);
+        overlayCtx.globalAlpha = 1.0;
+    }
+
+    // Start overlay
+    if (overlayCanvas) {
+        drawFaceOverlay();
+    }
+
+    // Clean up on stop
+    function stopFaceOverlay() {
+        if (boxAnimationId) {
+            cancelAnimationFrame(boxAnimationId);
+            boxAnimationId = null;
+        }
+        if (overlayCtx && overlayCanvas) {
+            overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
+        }
+        lastBoxSmooth = null;
     }
     drawFaceOverlay();
 
@@ -484,6 +591,44 @@
 
     enrollment.callbacks.onAngleUpdate = function (next) {
         if (next && next.bucket !== 'other') showAngle(next);
+    };
+
+    // Add to enrollment.callbacks setup
+    enrollment.callbacks.onDistanceFeedback = function (feedback) {
+        // Update UI with distance status
+        var statusEl = document.getElementById('cameraStatusText');
+        if (!statusEl) return;
+
+        var isMobile = (typeof FaceAttend.Utils !== 'undefined' && FaceAttend.Utils.isMobile)
+            ? FaceAttend.Utils.isMobile()
+            : false;
+
+        switch (feedback.status) {
+            case 'too_far':
+                statusEl.textContent = isMobile
+                    ? 'Move a bit closer 📱'
+                    : 'Move closer — face too small';
+                statusEl.style.color = '#ef4444';
+                break;
+            case 'warning':
+                statusEl.textContent = 'Good, but can be closer 👍';
+                statusEl.style.color = '#f59e0b';
+                break;
+            case 'good':
+                statusEl.textContent = 'Perfect distance! Hold still ✓';
+                statusEl.style.color = '#22c55e';
+                break;
+        }
+    };
+
+    enrollment.callbacks.onQualityFeedback = function (feedback) {
+        if (feedback.type === 'blur') {
+            var statusEl = document.getElementById('cameraStatusText');
+            if (statusEl) {
+                statusEl.textContent = 'Image blurry — hold steadier or add light';
+                statusEl.style.color = '#f59e0b';
+            }
+        }
     };
 
     // FIX-002: onReadyToConfirm  fires when auto-capture completes.

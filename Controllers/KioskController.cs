@@ -561,15 +561,14 @@ namespace FaceAttend.Controllers
                         // Any active registered device can be used by any employee — no employee binding check.
                         var effectiveDeviceToken = deviceToken ?? tokenFromCookie;
 
-                        var activeDevice = db.Devices.FirstOrDefault(d =>
-                            (d.DeviceToken == effectiveDeviceToken || d.Fingerprint == deviceFingerprint)
-                            && d.Status == "ACTIVE");
+                        var activeDevice = db.Devices.FirstOrDefault(d => d.Status == "ACTIVE" && ((!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken) || d.Fingerprint == deviceFingerprint));
 
                         if (activeDevice == null)
                         {
                             // Check if pending or blocked before saying not registered
                             var anyDevice = db.Devices.FirstOrDefault(d =>
-                                d.DeviceToken == effectiveDeviceToken || d.Fingerprint == deviceFingerprint);
+                                (!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken)
+                                || d.Fingerprint == deviceFingerprint);
 
                             if (anyDevice != null && anyDevice.Status == "PENDING")
                             {

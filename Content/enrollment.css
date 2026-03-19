@@ -99,6 +99,39 @@
     transform: scaleX(-1);
 }
 
+/* Current angle indicator */
+.enroll-angle-item.is-current {
+    border: 2px solid #3b82f6;
+    background: rgba(59, 130, 246, 0.15);
+    animation: pulse-blue 2s infinite;
+}
+
+@keyframes pulse-blue {
+    0% {
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.4);
+    }
+
+    70% {
+        box-shadow: 0 0 0 10px rgba(59, 130, 246, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+    }
+}
+
+/* Captured state */
+.enroll-angle-item.is-captured {
+    background: rgba(34, 197, 94, 0.2) !important;
+    border-color: #22c55e !important;
+    color: #22c55e !important;
+}
+
+/* Distance warning colors */
+.enroll-face-canvas[data-distance="too_far"] {
+    filter: drop-shadow(0 0 10px rgba(239, 68, 68, 0.5));
+}
+
 /* Dynamic face bounding box canvas — overlays video, drawn by enrollment-ui.js */
 .enroll-face-canvas {
     position: absolute;
