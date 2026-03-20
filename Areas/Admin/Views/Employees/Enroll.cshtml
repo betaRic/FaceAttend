@@ -350,75 +350,116 @@
                 if (el && next.prompt) el.textContent = next.prompt;
             };
 
-            liveEnrollment.callbacks.onReadyToConfirm = function(data) {
-                // Show confirmation dialog
-                var thumbPromises = data.frames.slice(0, 3).map(function(frame) {
-                    return new Promise(function(resolve) {
-                        if (!frame || !frame.blob) { resolve(null); return; }
-                        var reader = new FileReader();
-                        reader.onload = function(e) { resolve(e.target.result); };
-                        reader.onerror = function() { resolve(null); };
-                        reader.readAsDataURL(frame.blob);
-                    });
-                });
+    liveEnrollment.callbacks.onReadyToConfirm = function (data) {
+        if (!data.allAngles) {
+            var REQUIRED = ['center', 'left', 'right', 'up', 'down'];
+            var capturedSet = {};
+            (data.frames || []).forEach(function (f) {
+                if (f.poseBucket && f.poseBucket !== 'other') capturedSet[f.poseBucket] = true;
+            });
+            var missing = REQUIRED.filter(function (a) { return !capturedSet[a]; });
 
-                Promise.all(thumbPromises).then(function(dataUrls) {
-                    var thumbHtml = '';
-                    dataUrls.forEach(function(url) {
-                        if (url) {
-                            thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;" />';
-                        }
-                    });
+            Swal.fire({
+                icon:              'warning',
+                title:             'More angles needed',
+                html:              'Please capture <b>all 5 angles</b> for robust identification.' +
+                                   '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
+                                   '<br>Captured so far: ' + data.angleCount + ' / 5',
+                confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',
+                confirmButtonColor:'#3b82f6',
+                background:        '#0f172a',
+                color:             '#f8fafc',
+                allowOutsideClick: false,
+                allowEscapeKey:    false
+            }).then(function () {
+                // Resume scanning so admin can capture the missing angles.
+                liveEnrollment.startAutoEnrollment();
+                updateLiveCaptureUI(0, minFrames);
+                updateLiveAngleDots([]);
+                capturedFrames = [];
+                _smoothedBox = null;
+                var saveBtn = document.getElementById('saveBtn');
+                if (saveBtn) {
+                    saveBtn.disabled = true;
+                    saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
+                }
+            });
+            return; // block submission
+        }
 
-                    var angleStatusHtml = data.allAngles
-                        ? '<span style="color:#22c55e;"><i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>All 5 angles captured</span>'
-                        : '<span style="color:#f59e0b;"><i class="fa-solid fa-triangle-exclamation" style="margin-right:6px;"></i>' + data.angleCount + ' / 5 angles captured</span>';
+        // ── All 5 angles present — show thumbnail confirmation ────────────────
+        var thumbPromises = data.frames.slice(0, 3).map(function (frame) {
+            return new Promise(function (resolve) {
+                if (!frame || !frame.blob) { resolve(null); return; }
+                var reader = new FileReader();
+                reader.onload  = function (e) { resolve(e.target.result); };
+                reader.onerror = function ()  { resolve(null); };
+                reader.readAsDataURL(frame.blob);
+            });
+        });
 
-                    var summaryHtml =
-                        '<div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' + thumbHtml + '</div>' +
-                        '<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px 16px;text-align:left;font-size:0.875rem;line-height:2;">' +
-                            '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i><strong>' + data.frameCount + '</strong> frames captured</div>' +
-                            '<div>' + angleStatusHtml + '</div>' +
-                            '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
-                        '</div>';
+        Promise.all(thumbPromises).then(function (dataUrls) {
+            var thumbHtml = '';
+            dataUrls.forEach(function (url) {
+                if (url) {
+                    thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
+                                 'border-radius:8px;border:2px solid rgba(255,255,255,0.15);' +
+                                 'flex-shrink:0;margin:4px;" />';
+                }
+            });
 
-                    if (typeof Swal !== 'undefined') {
-                        Swal.fire({
-                            title: 'Ready to Enroll',
-                            html: summaryHtml,
-                            icon: 'success',
-                            showCancelButton: true,
-                            confirmButtonText: '<i class="fa-solid fa-check" style="margin-right:6px;"></i>Confirm Enrollment',
-                            cancelButtonText: '<i class="fa-solid fa-rotate-left" style="margin-right:6px;"></i>Retake',
-                            confirmButtonColor: '#22c55e',
-                            cancelButtonColor: '#475569',
-                            background: '#0f172a',
-                            color: '#f8fafc',
-                            allowOutsideClick: false,
-                            allowEscapeKey: false
-                        }).then(function(result) {
-                            if (result.isConfirmed) {
-                                var saveBtn = document.getElementById('saveBtn');
-                                if (saveBtn) {
-                                    saveBtn.disabled = true;
-                                    saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Saving...';
-                                }
-                                liveEnrollment.performEnrollment();
-                            } else {
-                                liveEnrollment.startAutoEnrollment();
-                                updateLiveCaptureUI(0, minFrames);
-                                updateLiveAngleDots([]);
-                                var saveBtn = document.getElementById('saveBtn');
-                                if (saveBtn) {
-                                    saveBtn.disabled = true;
-                                    saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
-                                }
-                                _smoothedBox = null; // reset EMA so box doesn't ghost to old position
-                            }
-                        });
+            var summaryHtml =
+                '<div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' +
+                    thumbHtml +
+                '</div>' +
+                '<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px 16px;' +
+                     'text-align:left;font-size:0.875rem;line-height:2;">' +
+                    '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i>' +
+                        '<strong>' + data.frameCount + '</strong> frames captured</div>' +
+                    '<div><span style="color:#22c55e;">' +
+                        '<i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>' +
+                        'All 5 angles captured</span></div>' +
+                    '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>' +
+                        'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
+                '</div>';
+
+            Swal.fire({
+                title:             'Ready to Enroll',
+                html:              summaryHtml,
+                icon:              'success',
+                showCancelButton:  true,
+                confirmButtonText: '<i class="fa-solid fa-check" style="margin-right:6px;"></i>Confirm Enrollment',
+                cancelButtonText:  '<i class="fa-solid fa-rotate-left" style="margin-right:6px;"></i>Retake',
+                confirmButtonColor:'#22c55e',
+                cancelButtonColor: '#475569',
+                background:        '#0f172a',
+                color:             '#f8fafc',
+                allowOutsideClick: false,
+                allowEscapeKey:    false
+            }).then(function (result) {
+                if (result.isConfirmed) {
+                    var saveBtn = document.getElementById('saveBtn');
+                    if (saveBtn) {
+                        saveBtn.disabled = true;
+                        saveBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Saving...';
                     }
-                });
-            };
+                    liveEnrollment.performEnrollment();
+                } else {
+                    // Retake — restart scanning
+                    liveEnrollment.startAutoEnrollment();
+                    updateLiveCaptureUI(0, minFrames);
+                    updateLiveAngleDots([]);
+                    capturedFrames = [];
+                    _smoothedBox = null;
+                    var saveBtn = document.getElementById('saveBtn');
+                    if (saveBtn) {
+                        saveBtn.disabled = true;
+                        saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
+                    }
+                }
+            });
+        });
+    };
 
             liveEnrollment.callbacks.onEnrollmentComplete = function(vecCount) {
                 showSuccess();

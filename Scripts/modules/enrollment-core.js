@@ -1,23 +1,39 @@
-﻿/**
+/**
  * FaceAttend - Enrollment Core Module (Unified v3)
  * Consolidated enrollment logic using FaceAttend.Core modules
- * 
- * @version 3.0.0
+ *
+ * @version 3.1.0  (bugfix release)
+ *
+ * FIXES IN THIS VERSION:
+ *   FIX-POSE-01  estimatePoseBucket() — negate yaw so the angle label matches
+ *                what the *user* sees in the mirror-flipped video preview.
+ *                Before: user turns RIGHT (mirror) → yaw positive → "right" ✓
+ *                        ... except dlib processes the raw (non-flipped) frame
+ *                        so the same turn produced negative yaw → "left" ✗
+ *                After:  yaw = -((nose.x - eyeMidX) / eyeDistX) * 90
+ *                        faceBox fallback also negated.
+ *
+ *   FIX-SHARP-01 autoTick() — removed `this.lastFaceBox = null` on sharpness
+ *                failure.  Clearing the box caused the next frame to fall back
+ *                to a wide center crop for sharpness, which scored high enough
+ *                to pass (background texture), then the tight face ROI scored
+ *                low on the frame after that — ping-pong.  Keeping the stale
+ *                face box means subsequent frames are evaluated on the face ROI
+ *                consistently until a new box arrives.
+ *
+ *   FIX-SHARP-02 processScanResult() — only call pushGoodFrame() when the
+ *                server's r.sharpnessOk is true (or absent for older servers).
+ *                Prevents blurry frames from sneaking in via the liveness path.
+ *
+ *   FIX-BUCKET-01 pushGoodFrame() — enforce a per-bucket cap of
+ *                FRAMES_PER_BUCKET so one angle cannot monopolise the 8-frame
+ *                pool.  Without this, a fast center-facing user filled all 8
+ *                slots with "center" frames and allAngles never fired.
+ *
  * @requires FaceAttend.Utils
  * @requires FaceAttend.Camera
  * @requires FaceAttend.API
  * @requires FaceAttend.Notify
- * 
- * PHASE 3 CHANGES (Unification):
- * - Uses FaceAttend.Utils for utilities (getCsrfToken, debounce, isMobileDevice)
- * - Uses FaceAttend.Camera for camera operations
- * - Uses FaceAttend.API for server communication (scanFrame, enroll)
- * - Uses FaceAttend.Notify for user feedback
- * - Preserves all Phase 2 features: sharpness filter, pose bucketing, diversity collection
- * 
- * Usage:
- *   var enrollment = FaceAttend.Enrollment.create(config);
- *   enrollment.startCamera().then(enrollment.startAutoEnrollment);
  */
 
 var FaceAttend = window.FaceAttend || {};
@@ -28,36 +44,30 @@ FaceAttend.Enrollment = (function () {
     // =========================================================================
     // CONSTANTS
     // =========================================================================
-    // =========================================================================
-    // MOBILE-OPTIMIZED CONSTANTS
-    // =========================================================================
     var CONSTANTS = {
         AUTO_INTERVAL_MS: 300,
         PASS_WINDOW: 3,
         PASS_REQUIRED: 1,
 
-        // Capture targets - reduced for faster enrollment
-        CAPTURE_TARGET: 8,        // Was 20 - 12 is plenty for diversity
-        MIN_GOOD_FRAMES: 6,        // Was 10 - faster completion
+        CAPTURE_TARGET: 8,
+        MIN_GOOD_FRAMES: 6,
         MAX_KEEP_FRAMES: 8,
         MAX_IMAGES: 12,
-        FRAMES_PER_BUCKET: 1,      // 1 frame per angle is enough
+        FRAMES_PER_BUCKET: 1,   // max frames stored per angle bucket
 
         CAPTURE_WIDTH: 640,
         CAPTURE_HEIGHT: 480,
         UPLOAD_QUALITY: 0.90,
 
-        // ADAPTIVE THRESHOLDS
         SHARPNESS_THRESHOLD_DESKTOP: 150,
-        SHARPNESS_THRESHOLD_MOBILE: 45,    // Was 80 - mobile cameras are noisier
+        SHARPNESS_THRESHOLD_MOBILE: 45,
 
         SHARPNESS_SAMPLE_SIZE: 160,
 
-        // CRITICAL FIX: Mobile-friendly distance
-        MIN_FACE_AREA_RATIO_DESKTOP: 0.10,  // 10% for desktop webcam
-        MIN_FACE_AREA_RATIO_MOBILE: 0.055,  // 5.5% for mobile arm's length
+        MIN_FACE_AREA_RATIO_DESKTOP: 0.10,
+        MIN_FACE_AREA_RATIO_MOBILE: 0.055,
 
-        FACE_AREA_WARNING_RATIO: 0.07,      // Warning threshold
+        FACE_AREA_WARNING_RATIO: 0.07,
 
         ANGLE_SEQUENCE: ['center', 'left', 'right', 'up', 'down'],
         AUTO_SUBMIT_ON_ALL_ANGLES: true,
@@ -65,9 +75,9 @@ FaceAttend.Enrollment = (function () {
     };
 
     // =========================================================================
-    // UTILITY FUNCTIONS (delegated to FaceAttend.Utils)
+    // UTILITY FUNCTIONS
     // =========================================================================
-    
+
     function getCsrfToken() {
         return FaceAttend.Utils ? FaceAttend.Utils.getCsrfToken() : '';
     }
@@ -98,35 +108,20 @@ FaceAttend.Enrollment = (function () {
         return new Promise(function (resolve, reject) {
             var img = new Image();
             var url = URL.createObjectURL(file);
-
             img.onload = function () {
                 URL.revokeObjectURL(url);
-
-                var w = img.width;
-                var h = img.height;
-
+                var w = img.width, h = img.height;
                 if (w > maxWidth || h > maxHeight) {
                     var ratio = Math.min(maxWidth / w, maxHeight / h);
                     w = Math.floor(w * ratio);
                     h = Math.floor(h * ratio);
                 }
-
                 var canvas = document.createElement('canvas');
-                canvas.width = w;
-                canvas.height = h;
-                var ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
-
-                canvas.toBlob(function (blob) {
-                    resolve(blob);
-                }, 'image/jpeg', quality || CONSTANTS.UPLOAD_QUALITY);
+                canvas.width = w; canvas.height = h;
+                canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                canvas.toBlob(function (blob) { resolve(blob); }, 'image/jpeg', quality || CONSTANTS.UPLOAD_QUALITY);
             };
-
-            img.onerror = function () {
-                URL.revokeObjectURL(url);
-                reject(new Error('Failed to load image'));
-            };
-
+            img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Failed to load image')); };
             img.src = url;
         });
     }
@@ -134,44 +129,20 @@ FaceAttend.Enrollment = (function () {
     function precheckImage(file, options) {
         options = options || {};
         var maxSize = options.maxSize || 5 * 1024 * 1024;
-        var minWidth = options.minWidth || 200;
-        var minHeight = options.minHeight || 200;
+        var minWidth = options.minWidth || 200, minHeight = options.minHeight || 200;
         var maxDimension = options.maxDimension || 4096;
-
         return new Promise(function (resolve) {
-            if (file.size > maxSize) {
-                resolve({ ok: false, error: 'File too large (max ' + Math.round(maxSize / 1024 / 1024) + 'MB): ' + file.name });
-                return;
-            }
-
-            if (!file.type.match(/^image\/(jpeg|jpg|png)$/i)) {
-                resolve({ ok: false, error: 'Invalid file type (JPEG/PNG only): ' + file.name });
-                return;
-            }
-
+            if (file.size > maxSize) { resolve({ ok: false, error: 'File too large (max ' + Math.round(maxSize / 1024 / 1024) + 'MB): ' + file.name }); return; }
+            if (!file.type.match(/^image\/(jpeg|jpg|png)$/i)) { resolve({ ok: false, error: 'Invalid file type (JPEG/PNG only): ' + file.name }); return; }
             var img = new Image();
             var url = URL.createObjectURL(file);
-
             img.onload = function () {
                 URL.revokeObjectURL(url);
-
-                if (img.width < minWidth || img.height < minHeight) {
-                    resolve({ ok: false, error: 'Image too small (min ' + minWidth + 'x' + minHeight + '): ' + file.name });
-                    return;
-                }
-                if (img.width > maxDimension || img.height > maxDimension) {
-                    resolve({ ok: false, error: 'Image too large (max ' + maxDimension + 'x' + maxDimension + '): ' + file.name });
-                    return;
-                }
-
+                if (img.width < minWidth || img.height < minHeight) { resolve({ ok: false, error: 'Image too small (min ' + minWidth + 'x' + minHeight + '): ' + file.name }); return; }
+                if (img.width > maxDimension || img.height > maxDimension) { resolve({ ok: false, error: 'Image too large (max ' + maxDimension + 'x' + maxDimension + '): ' + file.name }); return; }
                 resolve({ ok: true, width: img.width, height: img.height });
             };
-
-            img.onerror = function () {
-                URL.revokeObjectURL(url);
-                resolve({ ok: false, error: 'Cannot read image: ' + file.name });
-            };
-
+            img.onerror = function () { URL.revokeObjectURL(url); resolve({ ok: false, error: 'Cannot read image: ' + file.name }); };
             img.src = url;
         });
     }
@@ -193,7 +164,6 @@ FaceAttend.Enrollment = (function () {
             debug: false
         }, config);
 
-        // State
         this.stream = null;
         this.busy = false;
         this.enrolled = false;
@@ -202,14 +172,11 @@ FaceAttend.Enrollment = (function () {
         this.autoTimer = null;
         this.passHist = [];
         this.goodFrames = [];
-        this.lastFaceBox = null;  // Phase 2: Store last face box for sharpness
-        this.confirmTimer = null;    // FIX-002: 30-second fallback confirm timer handle
-        this._scanController = null; // Tracks in-flight scan fetch — aborted by safety timeout
-
-        // DOM elements
+        this.lastFaceBox = null;
+        this.confirmTimer = null;
+        this._scanController = null;
         this.elements = {};
 
-        // Callbacks (Phase 2: added onAngleUpdate; FIX-002: added onReadyToConfirm)
         this.callbacks = {
             onStatus: null,
             onLivenessUpdate: null,
@@ -217,96 +184,65 @@ FaceAttend.Enrollment = (function () {
             onEnrollmentComplete: null,
             onEnrollmentError: null,
             onMultiFaceWarning: null,
-            onAngleUpdate: null,        // Phase 2: angle guidance callback
-            onReadyToConfirm: null      // FIX-002: fires when auto-capture is complete
-                                        // Payload: { frameCount, angleCount,
-                                        //           bestLiveness, allAngles, frames }
-                                        // enrollment-ui.js wires this to the Swal dialog.
+            onAngleUpdate: null,
+            onReadyToConfirm: null
         };
 
         this.captureCanvas = document.createElement('canvas');
     }
 
     // -------------------------------------------------------------------------
-    // Phase 2: Sharpness Calculation
+    // Sharpness
     // -------------------------------------------------------------------------
 
-    /**
-     * Computes Laplacian variance on face ROI, downscaled to 160×160.
-     * Measures image sharpness - higher = sharper.
-     */
-    Enrollment.prototype.calculateSharpness = function(canvas, faceBox) {
-        var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
-        var H = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
+    Enrollment.prototype.calculateSharpness = function (canvas, faceBox) {
+        var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE, H = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
         var tmp = document.createElement('canvas');
-        tmp.width = W;
-        tmp.height = H;
+        tmp.width = W; tmp.height = H;
         var tCtx = tmp.getContext('2d');
 
-        // Use face ROI if available, else center crop
         var sx, sy, sw, sh;
         if (faceBox && faceBox.w > 0 && faceBox.h > 0) {
-            sx = faceBox.x;
-            sy = faceBox.y;
-            sw = faceBox.w;
-            sh = faceBox.h;
+            sx = faceBox.x; sy = faceBox.y; sw = faceBox.w; sh = faceBox.h;
         } else {
-            sx = canvas.width * 0.2;
-            sy = canvas.height * 0.1;
-            sw = canvas.width * 0.6;
-            sh = canvas.height * 0.8;
+            sx = canvas.width * 0.2; sy = canvas.height * 0.1;
+            sw = canvas.width * 0.6; sh = canvas.height * 0.8;
         }
-
-        // Clamp to canvas bounds
         sx = Math.max(0, Math.min(sx, canvas.width - 1));
         sy = Math.max(0, Math.min(sy, canvas.height - 1));
         sw = Math.min(sw, canvas.width - sx);
         sh = Math.min(sh, canvas.height - sy);
-
         if (sw <= 0 || sh <= 0) return 0;
 
         tCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, W, H);
         var imgData = tCtx.getImageData(0, 0, W, H).data;
-
-        // Convert to grayscale
         var gray = new Float32Array(W * H);
-        for (var i = 0; i < imgData.length; i += 4) {
-            gray[i >> 2] = 0.299 * imgData[i] + 0.587 * imgData[i+1] + 0.114 * imgData[i+2];
-        }
+        for (var i = 0; i < imgData.length; i += 4)
+            gray[i >> 2] = 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
 
-        // Laplacian 3×3 kernel: [0,1,0,1,-4,1,0,1,0]
         var sum = 0, sumSq = 0, count = 0;
         for (var y = 1; y < H - 1; y++) {
             for (var x = 1; x < W - 1; x++) {
                 var idx = y * W + x;
-                var lap = gray[idx - W] + gray[idx - 1]
-                        - 4 * gray[idx]
-                        + gray[idx + 1] + gray[idx + W];
-                sum += lap;
-                sumSq += lap * lap;
-                count++;
+                var lap = gray[idx - W] + gray[idx - 1] - 4 * gray[idx] + gray[idx + 1] + gray[idx + W];
+                sum += lap; sumSq += lap * lap; count++;
             }
         }
         if (count === 0) return 0;
         var mean = sum / count;
-        return (sumSq / count) - (mean * mean); // Variance
+        return (sumSq / count) - (mean * mean);
     };
 
     // -------------------------------------------------------------------------
-    // Phase 2: Pose Estimation
+    // Pose estimation
     // -------------------------------------------------------------------------
+
     function getMinFaceAreaRatio() {
-        return isMobileDevice()
-            ? CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE
-            : CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP;
+        return isMobileDevice() ? CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE : CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP;
     }
 
     function getSharpnessThreshold() {
-        var base = isMobileDevice()
-            ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE
-            : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
-
-        // Adjust for camera resolution
+        var base = isMobileDevice() ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
         var videoEl = document.getElementById('enrollVideo');
         if (videoEl && videoEl.videoWidth) {
             var resolutionScale = Math.min(1, Math.max(videoEl.videoWidth, videoEl.videoHeight) / 720);
@@ -314,45 +250,28 @@ FaceAttend.Enrollment = (function () {
         }
         return base;
     }
+
     /**
-     * Estimates pose bucket from face bounding box.
-     * Return values: center, left, right, up, down, other
-
-        // Further reduce threshold for low-end mobile devices
-        var isMobile = FaceAttend.Utils.isMobile();
-        if (!isMobile) return CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
-
-        // Check for low-end device indicators (older Android, etc.)
-        var ua = navigator.userAgent || '';
-        var isLowEnd = /Android [4-7]\./i.test(ua) || /iPhone [5-7]/i.test(ua);
-
-        return isLowEnd ? 35 : CONSTANTS.SHARPNESS_THRESHOLD_MOBILE;
-    }
-
-    // Enhanced pose estimation with mobile angle compensation
-    /**
-     * FIXED: Pose estimation with proper landmark detection and lenient thresholds
-     * Return values: center, left, right, up, down, other
-     */
-    /**
-     * FIXED: Robust pose estimation with correct angle calculations
-     * Returns: 'center', 'left', 'right', 'up', 'down', or 'other'
+     * Estimate pose bucket from facial landmarks (or faceBox fallback).
+     *
+     * FIX-POSE-01: yaw is negated so the label matches what the user sees in
+     * the CSS-mirrored video.  The canvas capture is raw (non-mirrored), so
+     * dlib landmarks are in raw-frame coordinates.  Without negation:
+     *   user turns LEFT in mirror  →  nose moves RIGHT in raw frame  →  +yaw  →  "right" (WRONG)
+     * With negation:
+     *   user turns LEFT in mirror  →  nose moves RIGHT in raw frame  →  +yaw  →  negate  →  -yaw  →  "left" (CORRECT)
+     *
+     * Returns: 'center' | 'left' | 'right' | 'up' | 'down' | 'other'
      */
     Enrollment.prototype.estimatePoseBucket = function (landmarks, faceBox, canvasW, canvasH) {
         if (!faceBox || faceBox.w <= 0) return 'center';
 
-        var W = canvasW || 640;
-        var H = canvasH || 480;
-
-        // Default: assume center if no landmarks
+        var W = canvasW || 640, H = canvasH || 480;
         var yaw = 0, pitch = 0;
         var hasLandmarks = false;
 
-        // PRIMARY METHOD: Use facial landmarks (accurate)
         if (landmarks && landmarks.length >= 3) {
-            var lEye = landmarks[0];
-            var rEye = landmarks[1];
-            var nose = landmarks[2];
+            var lEye = landmarks[0], rEye = landmarks[1], nose = landmarks[2];
             var chin = landmarks.length >= 4 ? landmarks[3] : null;
 
             if (lEye && rEye && nose) {
@@ -360,85 +279,56 @@ FaceAttend.Enrollment = (function () {
                 var eyeMidX = (lEye.x + rEye.x) / 2;
                 var eyeMidY = (lEye.y + rEye.y) / 2;
                 var eyeDistX = Math.abs(lEye.x - rEye.x);
-                var eyeDistY = Math.abs(lEye.y - rEye.y);
 
                 if (eyeDistX > 0) {
-                    // YAW: If nose is to the left of eye midpoint, face is turned right (and vice versa)
-                    // Range: -90 (left) to +90 (right)
-                    yaw = ((nose.x - eyeMidX) / eyeDistX) * 90;
+                    // FIX-POSE-01: negate yaw — raw frame is horizontally flipped vs display
+                    yaw = -((nose.x - eyeMidX) / eyeDistX) * 90;
 
-                    // PITCH calculation
                     if (chin && chin.y > nose.y) {
-                        // Use chin for better pitch accuracy
                         var faceHeight = chin.y - eyeMidY;
                         if (faceHeight > 0) {
                             var noseRatio = (nose.y - eyeMidY) / faceHeight;
-                            // 0.4-0.5 = looking straight
-                            // < 0.4 = looking up
-                            // > 0.5 = looking down
                             pitch = (0.45 - noseRatio) * 130;
                         }
                     } else {
-                        // Fallback: nose-to-eye distance vs eye-distance
                         var noseOffset = nose.y - eyeMidY;
                         var normalizedPitch = noseOffset / eyeDistX;
-                        // Calibrated: ~1.0 = straight, <1.0 = up, >1.0 = down
                         pitch = (1.0 - normalizedPitch) * 60;
                     }
                 }
             }
         }
 
-        // FALLBACK: Use face box position (less accurate but functional)
         if (!hasLandmarks && faceBox) {
             var faceCenterX = (faceBox.x + faceBox.w / 2) / W;
             var faceCenterY = (faceBox.y + faceBox.h / 2) / H;
-
-            // If face is on left side of frame, likely looking right
-            yaw = (faceCenterX - 0.5) * 40; // Reduced sensitivity
-            pitch = (faceCenterY - 0.5) * 30;
+            // FIX-POSE-01: negate yaw in fallback path too
+            yaw   = -(faceCenterX - 0.5) * 40;
+            pitch =  (faceCenterY - 0.5) * 30;
         }
 
-        // THRESHOLDS: Tuned for usability
-        var CENTER_YAW = 12;      // ±12 degrees = center
-        var CENTER_PITCH = 10;    // ±10 degrees = center
-        var MAX_YAW = 45;         // Beyond this = "other" (too extreme)
-        var MAX_PITCH = 35;       // Beyond this = "other"
+        var CENTER_YAW = 12, CENTER_PITCH = 10;
+        var MAX_YAW = 45, MAX_PITCH = 35;
+        var absYaw = Math.abs(yaw), absPitch = Math.abs(pitch);
 
-        var absYaw = Math.abs(yaw);
-        var absPitch = Math.abs(pitch);
-
-        // Debug logging (enable if needed)
         if (this.config.debug && hasLandmarks) {
-            console.log('[Pose] Yaw:', yaw.toFixed(1), 'Pitch:', pitch.toFixed(1),
-                'Bucket:', (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) ? 'center' :
-                (absYaw > absPitch ? (yaw < 0 ? 'left' : 'right') :
-                    (pitch < 0 ? 'up' : 'down')));
+            console.log('[Pose] yaw:', yaw.toFixed(1), 'pitch:', pitch.toFixed(1));
         }
 
-        // Check extreme angles
         if (absYaw > MAX_YAW || absPitch > MAX_PITCH) return 'other';
-
-        // Check center first
         if (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) return 'center';
 
-        // Determine direction: whichever is more dominant (yaw vs pitch)
         if (absYaw >= absPitch) {
-            // Horizontal turn is dominant
-            if (yaw < -CENTER_YAW) return 'left';   // Negative yaw = face turned left
-            if (yaw > CENTER_YAW) return 'right';   // Positive yaw = face turned right
+            if (yaw < -CENTER_YAW) return 'left';
+            if (yaw >  CENTER_YAW) return 'right';
         } else {
-            // Vertical tilt is dominant  
-            if (pitch < -CENTER_PITCH) return 'up';    // Negative pitch = looking up
-            if (pitch > CENTER_PITCH) return 'down';   // Positive pitch = looking down
+            if (pitch < -CENTER_PITCH) return 'up';
+            if (pitch >  CENTER_PITCH) return 'down';
         }
 
-        return 'center'; // Shouldn't reach here, but fallback
+        return 'center';
     };
 
-    /**
-     * Phase 2: Returns the next angle to prompt for based on captured buckets
-     */
     Enrollment.prototype.getNextAnglePrompt = function () {
         var captured = {};
         for (var i = 0; i < this.goodFrames.length; i++) {
@@ -447,401 +337,240 @@ FaceAttend.Enrollment = (function () {
         }
 
         var prompts = {
-            center: { prompt: 'Look straight at the camera', icon: 'fa-circle-dot' },
-            left: { prompt: 'Turn your head slightly LEFT', icon: 'fa-arrow-left' },
-            right: { prompt: 'Turn your head slightly RIGHT', icon: 'fa-arrow-right' },
-            up: { prompt: 'Tilt your head slightly UP', icon: 'fa-arrow-up' },
-            down: { prompt: 'Tilt your head slightly DOWN', icon: 'fa-arrow-down' }
+            center: { prompt: 'Look straight at the camera',   icon: 'fa-circle-dot'  },
+            left:   { prompt: 'Turn your head slightly LEFT',  icon: 'fa-arrow-left'  },
+            right:  { prompt: 'Turn your head slightly RIGHT', icon: 'fa-arrow-right' },
+            up:     { prompt: 'Tilt your head slightly UP',    icon: 'fa-arrow-up'    },
+            down:   { prompt: 'Tilt your head slightly DOWN',  icon: 'fa-arrow-down'  }
         };
 
         for (var j = 0; j < CONSTANTS.ANGLE_SEQUENCE.length; j++) {
             var bucket = CONSTANTS.ANGLE_SEQUENCE[j];
-            var have = captured[bucket] || 0;
-            if (have < CONSTANTS.FRAMES_PER_BUCKET) {
-                var need = CONSTANTS.FRAMES_PER_BUCKET - have;
+            if ((captured[bucket] || 0) < CONSTANTS.FRAMES_PER_BUCKET) {
                 return {
                     bucket: bucket,
-                    prompt: prompts[bucket].prompt + ' (' + have + '/' + CONSTANTS.FRAMES_PER_BUCKET + ')',
+                    prompt: prompts[bucket].prompt + ' (' + (captured[bucket] || 0) + '/' + CONSTANTS.FRAMES_PER_BUCKET + ')',
                     icon: prompts[bucket].icon
                 };
             }
         }
-
         return { bucket: 'center', prompt: 'Hold still — capturing final frames', icon: 'fa-check' };
     };
 
     // -------------------------------------------------------------------------
-    // Camera Operations
+    // Camera
     // -------------------------------------------------------------------------
 
-    // -------------------------------------------------------------------------
-    // Camera Operations (using FaceAttend.Camera)
-    // -------------------------------------------------------------------------
-    
     Enrollment.prototype.startCamera = function (videoElement) {
         var self = this;
         this.elements.cam = videoElement || this.elements.cam;
 
-        // Use FaceAttend.Camera if available
-        // Request 1280x720 for sharp enrollment images
-        var videoConstraints = {
-            facingMode: 'user',
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-        };
+        var videoConstraints = { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } };
 
         if (FaceAttend.Camera) {
             return new Promise(function (resolve, reject) {
-                FaceAttend.Camera.start(
-                    self.elements.cam,
-                    videoConstraints,
-                    function (stream) {
-                        self.stream = stream;
-                        resolve(stream);
-                    },
-                    function (err) {
-                        reject(err);
-                    }
-                );
+                FaceAttend.Camera.start(self.elements.cam, videoConstraints,
+                    function (stream) { self.stream = stream; resolve(stream); },
+                    function (err)    { reject(err); });
             });
         }
 
-        // Fallback to native getUserMedia
         return new Promise(function (resolve, reject) {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                reject(new Error('Camera API not available'));
-                return;
+                reject(new Error('Camera API not available')); return;
             }
-
-            navigator.mediaDevices.getUserMedia({
-                video: videoConstraints,
-                audio: false
-            }).then(function (stream) {
-                self.stream = stream;
-                if (self.elements.cam) {
-                    self.elements.cam.srcObject = stream;
-                    self.elements.cam.play().catch(function () { });
-                }
-                resolve(stream);
-            }).catch(reject);
+            navigator.mediaDevices.getUserMedia({ video: videoConstraints, audio: false })
+                .then(function (stream) {
+                    self.stream = stream;
+                    if (self.elements.cam) { self.elements.cam.srcObject = stream; self.elements.cam.play().catch(function () {}); }
+                    resolve(stream);
+                }).catch(reject);
         });
     };
 
     Enrollment.prototype.stopCamera = function () {
-        // FIX-002: Clear the 30-second fallback timer on full camera stop.
-        // This prevents the Swal from firing after the user has navigated
-        // away from the enrollment page or closed the camera pane.
         this._clearConfirmTimer();
         this.stopAutoEnrollment();
-
-        // Use FaceAttend.Camera if we used it
-        if (FaceAttend.Camera) {
-            FaceAttend.Camera.stop();
-        } else if (this.stream) {
-            try {
-                this.stream.getTracks().forEach(function (t) { t.stop(); });
-            } catch (e) { }
-        }
-
+        if (FaceAttend.Camera) { FaceAttend.Camera.stop(); }
+        else if (this.stream) { try { this.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
         this.stream = null;
-        this.enrolled = false;
-        this.enrolling = false;
-        this.passHist = [];
-        this.goodFrames = [];
-        this.lastFaceBox = null;
-
-        if (this.elements.cam) {
-            this.elements.cam.srcObject = null;
-        }
+        this.enrolled = false; this.enrolling = false;
+        this.passHist = []; this.goodFrames = []; this.lastFaceBox = null;
+        if (this.elements.cam) this.elements.cam.srcObject = null;
     };
 
     Enrollment.prototype.captureJpegBlob = function (quality) {
         var self = this;
         var cam = this.elements.cam;
         var canvas = this.captureCanvas;
-
-        if (!cam || !cam.videoWidth) {
-            return Promise.reject(new Error('Camera not ready'));
-        }
-
-        // Use native video resolution for sharp capture (1280x720 or camera native)
+        if (!cam || !cam.videoWidth) return Promise.reject(new Error('Camera not ready'));
         var w = cam.videoWidth || CONSTANTS.CAPTURE_WIDTH;
         var h = cam.videoHeight || CONSTANTS.CAPTURE_HEIGHT;
-
-        canvas.width = w;
-        canvas.height = h;
-
-        var ctx = canvas.getContext('2d');
-        ctx.clearRect(0, 0, w, h);
-        ctx.drawImage(cam, 0, 0, w, h);
-
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(cam, 0, 0, w, h);
         return new Promise(function (resolve) {
             canvas.toBlob(function (b) { resolve(b); }, 'image/jpeg', quality || CONSTANTS.UPLOAD_QUALITY);
         });
     };
 
     // -------------------------------------------------------------------------
-    // Server Communication
+    // Server communication
     // -------------------------------------------------------------------------
 
     Enrollment.prototype.normalizeSuccessResult = function (result) {
         if (result && result.ok === true && result.data && typeof result.data === 'object') {
             var merged = { ok: true, message: result.message || null };
             for (var k in result.data) {
-                if (Object.prototype.hasOwnProperty.call(result.data, k)) {
-                    merged[k] = result.data[k];
-                }
+                if (Object.prototype.hasOwnProperty.call(result.data, k)) merged[k] = result.data[k];
             }
             return merged;
         }
         return result;
     };
 
-    // -------------------------------------------------------------------------
-    // API Operations (using FaceAttend.API with Promise wrappers)
-    // -------------------------------------------------------------------------
-    
     Enrollment.prototype._abortCurrentScan = function () {
-        if (this._scanController) {
-            try { this._scanController.abort(); } catch (e) {}
-            this._scanController = null;
-        }
+        if (this._scanController) { try { this._scanController.abort(); } catch (e) {} this._scanController = null; }
     };
 
     Enrollment.prototype.postScanFrame = function (blob) {
         var self = this;
-
-        // Abort any previous in-flight scan before starting a new one.
-        // This prevents request pile-up when the server is slow or the safety
-        // timeout fires before the previous response returns.
         this._abortCurrentScan();
-
         var controller = new AbortController();
         this._scanController = controller;
 
         var fd = new FormData();
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('image', blob, 'frame.jpg');
-
-        // Send face bbox so server can skip detection (OPT-SPEED-02)
         if (this.lastFaceBox) {
-            fd.append('faceX', this.lastFaceBox.x);
-            fd.append('faceY', this.lastFaceBox.y);
-            fd.append('faceW', this.lastFaceBox.w);
-            fd.append('faceH', this.lastFaceBox.h);
+            fd.append('faceX', this.lastFaceBox.x); fd.append('faceY', this.lastFaceBox.y);
+            fd.append('faceW', this.lastFaceBox.w); fd.append('faceH', this.lastFaceBox.h);
         }
 
-        var scanUrl = this.config.scanUrl || '/api/scan/frame';
-
-        return fetch(scanUrl, {
-            method: 'POST',
-            body: fd,
-            credentials: 'same-origin',
-            signal: controller.signal
+        return fetch(this.config.scanUrl || '/api/scan/frame', {
+            method: 'POST', body: fd, credentials: 'same-origin', signal: controller.signal
         })
-        .then(function (r) {
-            if (!r.ok) throw new Error('HTTP ' + r.status);
-            return r.json();
-        })
-        .then(function (data) {
-            return self.normalizeSuccessResult ? self.normalizeSuccessResult(data) : data;
-        })
-        .catch(function (e) {
-            if (e && e.name === 'AbortError') return null; // deliberately aborted — suppress silently
-            throw e;
-        })
-        .finally(function () {
-            if (self._scanController === controller) self._scanController = null;
-        });
+        .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+        .then(function (data) { return self.normalizeSuccessResult ? self.normalizeSuccessResult(data) : data; })
+        .catch(function (e) { if (e && e.name === 'AbortError') return null; throw e; })
+        .finally(function () { if (self._scanController === controller) self._scanController = null; });
     };
 
     Enrollment.prototype.postEnrollMany = function (blobs) {
         var self = this;
-
-        if (!blobs || !blobs.length) {
-            return Promise.resolve({ ok: false, error: 'NO_IMAGE' });
-        }
+        if (!blobs || !blobs.length) return Promise.resolve({ ok: false, error: 'NO_IMAGE' });
 
         var startTime = Date.now();
-        
-        // Use FaceAttend.API if available
+
         if (FaceAttend.API && FaceAttend.API.enroll) {
             return new Promise(function (resolve, reject) {
                 FaceAttend.API.enroll(self.config.empId, blobs, {},
                     function (result) {
                         result = self.normalizeSuccessResult(result) || result;
-                        if (result) {
-                            result.timeMs = Date.now() - startTime;
-                        }
+                        if (result) result.timeMs = Date.now() - startTime;
                         resolve(result);
                     },
-                    function (error) {
-                        reject(error);
-                    }
-                );
+                    function (error) { reject(error); });
             });
         }
 
-        // Fallback to raw fetch
         var fd = new FormData();
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('employeeId', this.config.empId);
-
-        for (var i = 0; i < blobs.length; i++) {
+        for (var i = 0; i < blobs.length; i++)
             fd.append('image', blobs[i], 'enroll_' + (i + 1) + '.jpg');
-        }
 
         return fetch(this.config.enrollUrl, { method: 'POST', body: fd })
             .then(function (res) { return res.json(); })
             .then(function (result) {
                 result = self.normalizeSuccessResult(result) || result;
-                if (result) {
-                    result.timeMs = Date.now() - startTime;
-                }
+                if (result) result.timeMs = Date.now() - startTime;
                 return result;
             })
-            .catch(function (e) {
-                return { ok: false, error: 'NETWORK_ERROR', message: e.message };
-            });
+            .catch(function (e) { return { ok: false, error: 'NETWORK_ERROR', message: e.message }; });
     };
 
     // -------------------------------------------------------------------------
-    // Auto Enrollment Logic (Phase 2 Updated)
+    // Auto-enrollment logic
     // -------------------------------------------------------------------------
 
     Enrollment.prototype.startAutoEnrollment = function () {
-        // FIX-002: Clear any pending 30-second fallback timer from a previous
-        // capture session before starting fresh. Without this, if the user
-        // does a retake, the old timer from the previous session would still
-        // fire and show a stale Swal over the fresh capture in progress.
         this._clearConfirmTimer();
         this.stopAutoEnrollment();
-        this.enrolled = false;
-        this.passHist = [];
-        this.goodFrames = [];
-        this.lastFaceBox = null;
+        this.enrolled = false; this.passHist = []; this.goodFrames = []; this.lastFaceBox = null;
         this.autoTimer = setInterval(this.autoTick.bind(this), CONSTANTS.AUTO_INTERVAL_MS);
     };
 
     Enrollment.prototype.stopAutoEnrollment = function () {
-        if (this.autoTimer) {
-            clearInterval(this.autoTimer);
-        }
-        this.autoTimer = null;
-        this.enrolling = false;
+        if (this.autoTimer) clearInterval(this.autoTimer);
+        this.autoTimer = null; this.enrolling = false;
     };
 
     // -------------------------------------------------------------------------
-    // FIX-002: Confirm Timer and Ready-To-Confirm Logic
+    // Confirm-timer helpers
     // -------------------------------------------------------------------------
 
-    /**
-     * Prepares the confirmation payload and fires the onReadyToConfirm callback.
-     *
-     * Called by two code paths:
-     *   1. processScanResult  immediate trigger when all angles captured or
-     *      max frames hit
-     *   2. _startConfirmTimer setTimeout  30-second fallback when user cannot
-     *      complete all 5 angles
-     *
-     * Payload sent to callback:
-     *   frameCount   {number}   total good frames collected this session
-     *   angleCount   {number}   distinct pose buckets captured (max 5)
-     *   bestLiveness {number}   highest liveness score as integer 0-100
-     *   allAngles    {boolean}  true if all 5 ANGLE_SEQUENCE buckets captured
-     *   frames       {Array}    shallow copy of goodFrames array (sorted by
-     *                            probability descending, so [0] is best frame)
-     *                            Each frame: { blob, encoding, p, poseBucket,
-     *                            sharpness }
-     *
-     * enrollment-ui.js reads `frames[0..2].blob` to generate thumbnail previews,
-     * `frameCount` and `angleCount` for the summary row, and `bestLiveness`
-     * for the liveness display.
-     */
     Enrollment.prototype._fireReadyToConfirm = function () {
-        // Always clear the timer first  whether it was running or not.
-        // _clearConfirmTimer is safe to call when confirmTimer is null.
         this._clearConfirmTimer();
-
-        // Guard: if no callback is wired (e.g. on a page that does not use
-        // enrollment-ui.js), do nothing. performEnrollment() will never be
-        // called in this case, which is intentional  something must listen.
         if (!this.callbacks.onReadyToConfirm) return;
 
-        // Build the set of distinct captured buckets from goodFrames.
-        // poseBucket values match ANGLE_SEQUENCE: 'center','left','right','up','down'.
-        // Frames with poseBucket === 'other' are discarded frames  never counted.
         var capturedBuckets = {};
         for (var i = 0; i < this.goodFrames.length; i++) {
             var b = this.goodFrames[i].poseBucket;
             if (b && b !== 'other') capturedBuckets[b] = true;
         }
-
-        // Find the highest liveness probability across all good frames.
-        // goodFrames is sorted descending by p so goodFrames[0].p is the best,
-        // but we iterate to be safe against any future sort changes.
         var bestLiveness = 0;
-        for (var j = 0; j < this.goodFrames.length; j++) {
-            if (this.goodFrames[j].p > bestLiveness) {
-                bestLiveness = this.goodFrames[j].p;
-            }
-        }
+        for (var j = 0; j < this.goodFrames.length; j++)
+            if (this.goodFrames[j].p > bestLiveness) bestLiveness = this.goodFrames[j].p;
 
         this.callbacks.onReadyToConfirm({
             frameCount:   this.goodFrames.length,
             angleCount:   Object.keys(capturedBuckets).length,
-            bestLiveness: Math.round(bestLiveness * 100),  // convert 0-1 float  0-100 integer
+            bestLiveness: Math.round(bestLiveness * 100),
             allAngles:    Object.keys(capturedBuckets).length >= CONSTANTS.ANGLE_SEQUENCE.length,
-            frames:       this.goodFrames.slice()  // shallow copy  caller must not mutate
+            frames:       this.goodFrames.slice()
         });
     };
 
-    /**
-     * Starts the 30-second fallback confirmation timer.
-     *
-     * Called from processScanResult the FIRST TIME goodFrames.length reaches
-     * minGoodFrames. If the user has not yet captured all 5 angles after 30
-     * seconds, we still fire _fireReadyToConfirm so they are not stuck forever.
-     *
-     * Guards inside the setTimeout callback ensure this is a no-op if:
-     *   - enrollment is already in progress (enrolling === true)
-     *   - enrollment was already completed (enrolled === true)
-     *   - somehow goodFrames dropped below minGoodFrames (defensive)
-     *
-     * The timer handle is stored on this.confirmTimer so it can be cancelled
-     * by _clearConfirmTimer during retake or camera stop.
-     */
     Enrollment.prototype._startConfirmTimer = function () {
         var self = this;
         this.confirmTimer = setTimeout(function () {
-            // These guards prevent the Swal from firing in edge cases where
-            // the state has changed since the timer was started.
             if (self.enrolled || self.enrolling) return;
             if (self.goodFrames.length < self.config.minGoodFrames) return;
-
-            self.stopAutoEnrollment();   // stop the capture interval
-            self._fireReadyToConfirm(); // show the Swal
+            self.stopAutoEnrollment();
+            self._fireReadyToConfirm();
         }, CONSTANTS.AUTO_CONFIRM_TIMEOUT_MS);
     };
 
-    /**
-     * Cancels the 30-second fallback timer.
-     * Safe to call when this.confirmTimer is null  does nothing in that case.
-     *
-     * Called from:
-     *   - _fireReadyToConfirm (before firing callback, to prevent double-fire)
-     *   - startAutoEnrollment (fresh retake session)
-     *   - stopCamera (full teardown)
-     */
     Enrollment.prototype._clearConfirmTimer = function () {
-        if (this.confirmTimer) {
-            clearTimeout(this.confirmTimer);
-            this.confirmTimer = null;
-        }
+        if (this.confirmTimer) { clearTimeout(this.confirmTimer); this.confirmTimer = null; }
     };
+
+    // -------------------------------------------------------------------------
+    // pushGoodFrame — FIX-BUCKET-01: enforce per-bucket cap
+    // -------------------------------------------------------------------------
 
     Enrollment.prototype.pushGoodFrame = function (blob, probability, encoding, poseBucket, sharpness) {
         if (!blob) return;
+
+        // FIX-BUCKET-01: count how many frames we already have for this bucket
+        var bucketCount = 0;
+        for (var k = 0; k < this.goodFrames.length; k++)
+            if (this.goodFrames[k].poseBucket === poseBucket) bucketCount++;
+
+        // If we have already filled the bucket quota AND we still have room in the
+        // pool (i.e. another bucket is empty), skip this frame so the pool stays
+        // diverse.  Once all buckets are filled we accept extra frames freely.
+        var capturedBuckets = {};
+        for (var m = 0; m < this.goodFrames.length; m++) {
+            var b = this.goodFrames[m].poseBucket;
+            if (b && b !== 'other') capturedBuckets[b] = true;
+        }
+        var allFilled = CONSTANTS.ANGLE_SEQUENCE.every(function (bkt) { return !!capturedBuckets[bkt]; });
+
+        if (bucketCount >= CONSTANTS.FRAMES_PER_BUCKET && !allFilled) {
+            // Bucket already satisfied and we still need other angles — skip
+            return;
+        }
 
         this.goodFrames.push({
             blob: blob,
@@ -853,13 +582,11 @@ FaceAttend.Enrollment = (function () {
 
         this.goodFrames.sort(function (a, b) { return b.p - a.p; });
 
-        if (this.goodFrames.length > this.config.maxKeepFrames) {
+        if (this.goodFrames.length > this.config.maxKeepFrames)
             this.goodFrames.length = this.config.maxKeepFrames;
-        }
 
-        if (this.callbacks.onCaptureProgress) {
+        if (this.callbacks.onCaptureProgress)
             this.callbacks.onCaptureProgress(this.goodFrames.length, this.config.minGoodFrames);
-        }
     };
 
     Enrollment.prototype.getGoodFrameBlobs = function () {
@@ -871,73 +598,59 @@ FaceAttend.Enrollment = (function () {
     };
 
     /**
-     * Phase 2: Updated autoTick with sharpness pre-filter
+     * autoTick — one scan iteration.
+     *
+     * FIX-SHARP-01: removed `this.lastFaceBox = null` from the sharpness-fail
+     * path.  Clearing the box caused the subsequent frame to compute sharpness
+     * on a wide center crop (background texture scored high) which then passed,
+     * then the following frame used the tight face ROI again and failed — a
+     * blurry/sharp ping-pong that incremented progress on blurry frames.
+     * Keeping the stale box means the face ROI is always used until a new
+     * server response provides an updated box.
      */
     Enrollment.prototype.autoTick = function () {
         var self = this;
-
         if (this.enrolled || !this.stream || this.busy) return;
-
         var cam = this.elements.cam;
         if (!cam || !cam.videoWidth) return;
 
         this.busy = true;
         var safetyTimeout = setTimeout(function () {
-            if (self.busy) {
-                self._abortCurrentScan();
-                self.busy = false;
-            }
+            if (self.busy) { self._abortCurrentScan(); self.busy = false; }
         }, 10000);
 
         var capturedBlob = null;
-        var sharpnessOk = true;
         var sharpness = 0;
         var isMobile = isMobileDevice();
 
-        // Quick client-side sharpness check
         if (cam.videoWidth > 0) {
             var tmpCanvas = document.createElement('canvas');
-            var videoW = cam.videoWidth;
-            var videoH = cam.videoHeight;
-            tmpCanvas.width = videoW;
-            tmpCanvas.height = videoH;
-            var tmpCtx = tmpCanvas.getContext('2d');
-            tmpCtx.drawImage(cam, 0, 0, videoW, videoH);
+            tmpCanvas.width  = cam.videoWidth;
+            tmpCanvas.height = cam.videoHeight;
+            tmpCanvas.getContext('2d').drawImage(cam, 0, 0, tmpCanvas.width, tmpCanvas.height);
 
             var threshold = getSharpnessThreshold();
-
-            // Scale threshold based on resolution (lower res = lower expectation)
-            var resolutionScale = Math.min(1, Math.max(videoW, videoH) / 720);
+            var resolutionScale = Math.min(1, Math.max(cam.videoWidth, cam.videoHeight) / 720);
             var adaptiveThreshold = threshold * resolutionScale;
 
             sharpness = this.calculateSharpness(tmpCanvas, this.lastFaceBox);
 
             if (sharpness < adaptiveThreshold) {
-                sharpnessOk = false;
                 this.busy = false;
-                this.lastFaceBox = null; // Clear stale box so next frame is not blocked
-
-                // MOBILE-FRIENDLY MESSAGE
                 var msg = isMobile
                     ? 'Image blurry. Hold steady or improve lighting.'
                     : 'Image blurry (score: ' + Math.round(sharpness) + '). Move closer or improve lighting.';
-
                 if (this.callbacks.onStatus) {
                     this.callbacks.onStatus(msg, 'warning');
-                    if (this.callbacks.onQualityFeedback) {
+                    if (this.callbacks.onQualityFeedback)
                         this.callbacks.onQualityFeedback({ type: 'blur', score: sharpness, threshold: adaptiveThreshold });
-                    }
                 }
                 return;
             }
         }
 
-        // Continue with capture...
         this.captureJpegBlob(CONSTANTS.UPLOAD_QUALITY)
-            .then(function (blob) {
-                capturedBlob = blob;
-                return self.postScanFrame(blob);
-            })
+            .then(function (blob) { capturedBlob = blob; return self.postScanFrame(blob); })
             .then(function (result) {
                 if (!result) return;
                 result.lastBlob = capturedBlob;
@@ -949,54 +662,36 @@ FaceAttend.Enrollment = (function () {
                 self.handleStatus(isMobile ? 'Retrying...' : 'Scan error, retrying...', 'warning');
                 self.passHist = [];
             })
-            .finally(function () {
-                clearTimeout(safetyTimeout);
-                self.busy = false;
-            });
+            .finally(function () { clearTimeout(safetyTimeout); self.busy = false; });
     };
 
     /**
-     * Phase 2: Updated processScanResult with poseBucket and auto-submit
+     * processScanResult — handle one server scan response.
+     *
+     * FIX-SHARP-02: only call pushGoodFrame() when r.sharpnessOk is true (or
+     * absent, for older server versions that don't return the field).  This
+     * prevents blurry frames from being accepted on the basis of liveness alone.
      */
     Enrollment.prototype.processScanResult = function (r) {
-        var self = this; 
+        var self = this;
+
         if (!r || r.ok !== true) {
             var errorCode = r && r.error;
-            if (this._debugAutoTick) {
-                console.log('[Enrollment] processScanResult error:', {
-                    errorCode: errorCode,
-                    message: r && r.message,
-                    liveness: r && r.liveness,
-                    livenessOk: r && r.livenessOk
-                });
-            }
             if (errorCode === 'NO_FACE' || errorCode === 'NO_IMAGE') {
                 this.handleStatus('No face detected.', 'warning');
-                if (this.callbacks.onLivenessUpdate) {
-                    this.callbacks.onLivenessUpdate(0, 'fail');
-                }
+                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
             } else if (errorCode === 'LIVENESS_FAIL') {
                 this.handleStatus('Liveness check failed. Please ensure good lighting.', 'warning');
-                if (this.callbacks.onLivenessUpdate) {
-                    this.callbacks.onLivenessUpdate(25, 'fail');
-                }
+                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(25, 'fail');
             } else if (errorCode === 'ENCODING_FAIL') {
                 this.handleStatus('Could not encode face. Please try again.', 'warning');
-                if (this.callbacks.onLivenessUpdate) {
-                    this.callbacks.onLivenessUpdate(0, 'fail');
-                }
+                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
             } else if (errorCode === 'SCAN_ERROR') {
-                // Silent retry for transient server errors — don't reset goodFrames,
-                // don't show Swal, just log and continue scanning
                 this.handleStatus('Scan error, retrying...', 'warning');
-                // Keep passHist — this is a transient error, not a fundamental failure
-                return;
+                return; // transient — keep goodFrames intact
             } else {
-                // Other errors — show in status bar but don't interrupt scanning
                 this.handleStatus((r && r.message) ? r.message : (errorCode || 'Scan error'), 'warning');
-                if (this.callbacks.onLivenessUpdate) {
-                    this.callbacks.onLivenessUpdate(0, 'fail');
-                }
+                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
             }
             this.passHist = [];
             return;
@@ -1005,140 +700,94 @@ FaceAttend.Enrollment = (function () {
         if (r.count === 0) {
             this.handleStatus('No face detected.', 'warning');
             this.passHist = [];
-            if (this.callbacks.onLivenessUpdate) {
-                this.callbacks.onLivenessUpdate(0, 'fail');
-            }
+            if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
             return;
         }
 
-        // Store face box for next sharpness calculation
-        if (r.faceBox) {
-            this.lastFaceBox = r.faceBox;
-        }
+        if (r.faceBox) this.lastFaceBox = r.faceBox;
 
-        // Multi-face handling
         if (r.count > 1) {
-            if (!this.multiFaceWarned) {
-                this.multiFaceWarned = true;
-                if (this.callbacks.onMultiFaceWarning) {
-                    this.callbacks.onMultiFaceWarning(r.count);
-                }
-            }
-        } else if (this.multiFaceWarned) {
-            this.multiFaceWarned = false;
-            if (this.callbacks.onMultiFaceWarning) {
-                this.callbacks.onMultiFaceWarning(1);
-            }
-        }
+            if (!this.multiFaceWarned) { this.multiFaceWarned = true; if (this.callbacks.onMultiFaceWarning) this.callbacks.onMultiFaceWarning(r.count); }
+        } else if (this.multiFaceWarned) { this.multiFaceWarned = false; if (this.callbacks.onMultiFaceWarning) this.callbacks.onMultiFaceWarning(1); }
 
-        var p = typeof r.liveness === 'number' ? r.liveness : 0;
+        var p    = typeof r.liveness === 'number' ? r.liveness : 0;
         var pass = (r.livenessOk === true) && (p >= this.config.perFrameThreshold);
 
         this.passHist.push(pass ? 1 : 0);
-        if (this.passHist.length > CONSTANTS.PASS_WINDOW) {
-            this.passHist.shift();
-        }
+        if (this.passHist.length > CONSTANTS.PASS_WINDOW) this.passHist.shift();
 
-        var sum = this.passHist.reduce(function (a, b) { return a + b; }, 0);
-
-        if (this.callbacks.onLivenessUpdate) {
-            var pct = Math.round(p * 100);
-            var kind = pass ? 'pass' : 'fail';
-            this.callbacks.onLivenessUpdate(pct, kind);
-        }
+        if (this.callbacks.onLivenessUpdate)
+            this.callbacks.onLivenessUpdate(Math.round(p * 100), pass ? 'pass' : 'fail');
 
         if (pass) {
-            // Phase 2: Calculate pose bucket and store with frame
-            // Update lastFaceBox from server response so the NEXT scan can skip
-            // HOG detection by sending this bbox as faceX/Y/W/H params.
-            // Without this, lastFaceBox is always null → HOG runs every frame → +200-500ms each.
-            if (r.faceBox && r.faceBox.w > 0) {
-                this.lastFaceBox = r.faceBox;
-            }
+            if (r.faceBox && r.faceBox.w > 0) this.lastFaceBox = r.faceBox;
 
-            // Pass server landmarks and actual canvas dimensions.
-            // r.landmarks = [{x,y},{x,y},{x,y}] (leftEye, rightEye, noseTip) in pixel coords.
             var cam = this.elements.cam;
             var canvasW = (cam && cam.videoWidth)  || CONSTANTS.CAPTURE_WIDTH;
             var canvasH = (cam && cam.videoHeight) || CONSTANTS.CAPTURE_HEIGHT;
             var poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
-            var sharpness = r.sharpness || r.clientSharpness || 0;
-            
-            this.pushGoodFrame(r.lastBlob || null, p, r.encoding || null, poseBucket, sharpness);
+            var sharpness  = r.sharpness || r.clientSharpness || 0;
 
-            // Phase 2: Notify UI of next angle needed
-            if (this.callbacks.onAngleUpdate) {
-                this.callbacks.onAngleUpdate(this.getNextAnglePrompt());
+            // FIX-SHARP-02: require server sharpness confirmation
+            // r.sharpnessOk is undefined on older server builds — treat as passing
+            var serverSharpOk = (r.sharpnessOk === true || r.sharpnessOk === undefined);
+
+            if (serverSharpOk) {
+                this.pushGoodFrame(r.lastBlob || null, p, r.encoding || null, poseBucket, sharpness);
+            } else {
+                this.handleStatus('Frame too blurry (server). Hold steady.', 'warning');
+                // Don't return early — still update angle guidance and check progress
             }
 
-            // Phase 2: Check auto-submit conditions
+            if (this.callbacks.onAngleUpdate)
+                this.callbacks.onAngleUpdate(this.getNextAnglePrompt());
+
+            // Check per-bucket completion
             var capturedBuckets = {};
-            for (var m = 0; m < this.goodFrames.length; m++) {
-                var b = this.goodFrames[m].poseBucket;
+            for (var m = 0; m < self.goodFrames.length; m++) {
+                var b = self.goodFrames[m].poseBucket;
                 if (b && b !== 'other') capturedBuckets[b] = true;
             }
-            // Require FRAMES_PER_BUCKET frames per angle, not just 1
             var allAngles = CONSTANTS.ANGLE_SEQUENCE.every(function (bucket) {
-                var count = 0;
-                for (var m2 = 0; m2 < self.goodFrames.length; m2++) {
-                    if (self.goodFrames[m2].poseBucket === bucket) count++;
-                }
-                return count >= CONSTANTS.FRAMES_PER_BUCKET;
+                var cnt = 0;
+                for (var m2 = 0; m2 < self.goodFrames.length; m2++)
+                    if (self.goodFrames[m2].poseBucket === bucket) cnt++;
+                return cnt >= CONSTANTS.FRAMES_PER_BUCKET;
             });
 
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
-            var hasMaxFrames = this.goodFrames.length >= CONSTANTS.CAPTURE_TARGET;
+            var hasMaxFrames    = this.goodFrames.length >= CONSTANTS.CAPTURE_TARGET;
 
-            // FIX-002: Start the 30-second fallback timer the FIRST TIME
-            // minGoodFrames is reached. The timer is started here (not in
-            // pushGoodFrame) so we have direct access to the enrollment/enrolling
-            // guard flags. The !this.confirmTimer check ensures it only starts
-            // once per capture session  subsequent frames hitting this block
-            // do not reset the timer.
-            if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling) {
+            if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling)
                 this._startConfirmTimer();
-            }
 
-            // FIX-002: When all 5 angles are captured (or max frames hit),
-            // STOP the capture interval and fire the onReadyToConfirm callback
-            // instead of calling performEnrollment() directly.
-            //
-            // IMPORTANT: The camera stream is NOT stopped here  only the
-            // auto-tick interval is stopped. The video element keeps showing
-            // the live feed while the Swal dialog is visible.
-            //
-            // performEnrollment() is now called by enrollment-ui.js AFTER
-            // the user clicks "Confirm" in the Swal dialog.
             if ((allAngles && hasEnoughFrames && CONSTANTS.AUTO_SUBMIT_ON_ALL_ANGLES) || hasMaxFrames) {
-                this.stopAutoEnrollment();   // stops setInterval; camera stream stays alive
-                this._fireReadyToConfirm();  // clears timer, fires onReadyToConfirm callback
+                this.stopAutoEnrollment();
+                this._fireReadyToConfirm();
                 return;
             }
 
-            var needPass = Math.max(0, CONSTANTS.PASS_REQUIRED - sum);
             var needFrames = Math.max(0, this.config.minGoodFrames - this.goodFrames.length);
-
-            var msg = 'Face OK. Liveness: ' + p.toFixed(2) +
+            this.handleStatus(
+                'Face OK. Liveness: ' + p.toFixed(2) +
                 ', Frames: ' + this.goodFrames.length + '/' + this.config.minGoodFrames +
-                ', Ready in ' + needFrames + ' more.';
-            this.handleStatus(msg, 'success');
+                (needFrames > 0 ? ', need ' + needFrames + ' more.' : ', almost done!'),
+                'success');
         } else {
-            var failMsg = 'Face detected. Liveness: ' + p.toFixed(2) + ' (need ' + this.config.perFrameThreshold + '). Hold still, improve lighting.';
-            this.handleStatus(failMsg, 'warning');
+            this.handleStatus(
+                'Face detected. Liveness: ' + p.toFixed(2) +
+                ' (need ' + this.config.perFrameThreshold + '). Hold still, improve lighting.',
+                'warning');
             this.passHist = [];
         }
     };
 
     Enrollment.prototype.performEnrollment = function () {
         var self = this;
-        
-        if (this.enrolling) {
-            return;
-        }
+        if (this.enrolling) return;
         this.enrolling = true;
-        
-        var frames = this.getGoodFrameBlobs();
 
+        var frames = this.getGoodFrameBlobs();
         this.handleStatus('Saving enrollment (' + frames.length + ' frames)...', 'info');
 
         this.postEnrollMany(frames)
@@ -1148,12 +797,8 @@ FaceAttend.Enrollment = (function () {
                     self.enrolled = true;
                     self.stopAutoEnrollment();
                     var vecCount = typeof result.savedVectors === 'number'
-                        ? result.savedVectors
-                        : self.goodFrames.length;
-
-                    if (self.callbacks.onEnrollmentComplete) {
-                        self.callbacks.onEnrollmentComplete(vecCount, result);
-                    }
+                        ? result.savedVectors : self.goodFrames.length;
+                    if (self.callbacks.onEnrollmentComplete) self.callbacks.onEnrollmentComplete(vecCount, result);
                 } else {
                     self.handleEnrollmentError(result);
                 }
@@ -1161,195 +806,132 @@ FaceAttend.Enrollment = (function () {
             .catch(function (e) {
                 self.enrolling = false;
                 self.handleError('Enrollment failed: ' + (e && e.message ? e.message : e));
-                self.passHist = [];
-                self.goodFrames = [];
+                self.passHist = []; self.goodFrames = [];
             });
     };
 
     // -------------------------------------------------------------------------
-    // Upload Enrollment
+    // Upload enrollment
     // -------------------------------------------------------------------------
 
     Enrollment.prototype.enrollFromFiles = function (files, options) {
         var self = this;
         options = options || {};
-
-        if (this.busy) {
-            return Promise.reject(new Error('Already processing'));
-        }
-
-        if (!files || !files.length) {
-            return Promise.reject(new Error('No files selected'));
-        }
+        if (this.busy) return Promise.reject(new Error('Already processing'));
+        if (!files || !files.length) return Promise.reject(new Error('No files selected'));
 
         this.busy = true;
-
         var maxImages = options.maxImages || CONSTANTS.MAX_IMAGES;
         var imgs = Array.prototype.slice.call(files, 0, maxImages);
 
-        return Promise.all(imgs.map(function (f) {
-            return precheckImage(f, options.precheck);
-        })).then(function (checks) {
-            for (var i = 0; i < checks.length; i++) {
-                if (!checks[i].ok) {
-                    throw new Error(checks[i].error);
+        return Promise.all(imgs.map(function (f) { return precheckImage(f, options.precheck); }))
+            .then(function (checks) {
+                for (var i = 0; i < checks.length; i++)
+                    if (!checks[i].ok) throw new Error(checks[i].error);
+
+                if (self.config.enablePreview && options.showPreview) {
+                    return options.showPreview(imgs).then(function (confirmed) {
+                        if (!confirmed) throw new Error('CANCELLED');
+                        return imgs;
+                    });
                 }
-            }
-
-            if (self.config.enablePreview && options.showPreview) {
-                return options.showPreview(imgs).then(function (confirmed) {
-                    if (!confirmed) {
-                        throw new Error('CANCELLED');
-                    }
-                    return imgs;
-                });
-            }
-
-            return imgs;
-        }).then(function (imgs) {
-            self.handleStatus('Uploading...', 'info');
-
-            var fd = new FormData();
-            fd.append('__RequestVerificationToken', getCsrfToken());
-            fd.append('employeeId', self.config.empId);
-
-            for (var i = 0; i < imgs.length; i++) {
-                fd.append('image', imgs[i], imgs[i].name || ('upload_' + (i + 1) + '.jpg'));
-            }
-
-            return fetch(self.config.enrollUrl, { method: 'POST', body: fd })
-                .then(function (res) { return res.json(); });
-        }).then(function (result) {
-            self.busy = false;
-
-            if (result && result.ok === true) {
-                var vecCount = typeof result.savedVectors === 'number'
-                    ? result.savedVectors
-                    : imgs.length;
-
-                if (self.callbacks.onEnrollmentComplete) {
-                    self.callbacks.onEnrollmentComplete(vecCount, result);
+                return imgs;
+            })
+            .then(function (imgs) {
+                self.handleStatus('Uploading...', 'info');
+                var fd = new FormData();
+                fd.append('__RequestVerificationToken', getCsrfToken());
+                fd.append('employeeId', self.config.empId);
+                for (var i = 0; i < imgs.length; i++)
+                    fd.append('image', imgs[i], imgs[i].name || ('upload_' + (i + 1) + '.jpg'));
+                return fetch(self.config.enrollUrl, { method: 'POST', body: fd }).then(function (res) { return res.json(); });
+            })
+            .then(function (result) {
+                self.busy = false;
+                if (result && result.ok === true) {
+                    var vecCount = typeof result.savedVectors === 'number' ? result.savedVectors : imgs.length;
+                    if (self.callbacks.onEnrollmentComplete) self.callbacks.onEnrollmentComplete(vecCount, result);
+                    return result;
+                } else {
+                    self.handleEnrollmentError(result);
+                    throw new Error(result.error || 'Enrollment failed');
                 }
-
-                return result;
-            } else {
-                self.handleEnrollmentError(result);
-                throw new Error(result.error || 'Enrollment failed');
-            }
-        }).catch(function (e) {
-            self.busy = false;
-            if (e.message !== 'CANCELLED') {
-                self.handleError('Upload failed: ' + (e && e.message ? e.message : e));
-            }
-            throw e;
-        });
+            })
+            .catch(function (e) {
+                self.busy = false;
+                if (e.message !== 'CANCELLED') self.handleError('Upload failed: ' + (e && e.message ? e.message : e));
+                throw e;
+            });
     };
 
     // -------------------------------------------------------------------------
-    // Error Handling
+    // Error handling
     // -------------------------------------------------------------------------
 
     Enrollment.prototype.handleStatus = function (message, kind) {
-        if (this.callbacks.onStatus) {
-            this.callbacks.onStatus(message, kind);
-        }
+        if (this.callbacks.onStatus) this.callbacks.onStatus(message, kind);
     };
 
     Enrollment.prototype.handleError = function (message) {
         this.handleStatus(message, 'danger');
-        if (this.callbacks.onEnrollmentError) {
-            this.callbacks.onEnrollmentError({ error: message });
-        }
+        if (this.callbacks.onEnrollmentError) this.callbacks.onEnrollmentError({ error: message });
     };
 
     Enrollment.prototype.handleEnrollmentError = function (result) {
         var errorText = this.describeEnrollError(result);
         this.handleStatus(errorText, 'danger');
-
-        if (this.callbacks.onEnrollmentError) {
-            this.callbacks.onEnrollmentError(result);
-        }
-
+        if (this.callbacks.onEnrollmentError) this.callbacks.onEnrollmentError(result);
         if (result && result.error !== 'FACE_ALREADY_ENROLLED') {
-            this.passHist = [];
-            this.goodFrames = [];
+            this.passHist = []; this.goodFrames = [];
         }
     };
 
     Enrollment.prototype.describeEnrollError = function (r) {
         if (!r) return 'Enrollment failed (no response)';
-
-        var step = r.step || '';
-        var timeInfo = typeof r.timeMs === 'number'
-            ? ' (took ' + r.timeMs + 'ms)'
-            : '';
-
-        if (r.error === 'NO_EMPLOYEE_ID') {
-            return 'Please enter an employee ID.';
-        }
-        if (r.error === 'EMPLOYEE_ID_TOO_LONG') {
-            return 'Employee ID is too long (max 20 characters).';
-        }
-        if (r.error === 'NO_IMAGE') {
-            return 'Please select or capture at least one image.';
-        }
-        if (r.error === 'TOO_LARGE') {
-            return 'Image file is too large (max 10MB per file).';
-        }
-        if (r.error === 'EMPLOYEE_NOT_FOUND') {
-            return 'Employee not found in database. Please check the employee ID.';
-        }
+        var step = r.step || '', timeInfo = typeof r.timeMs === 'number' ? ' (took ' + r.timeMs + 'ms)' : '';
+        if (r.error === 'NO_EMPLOYEE_ID')      return 'Please enter an employee ID.';
+        if (r.error === 'EMPLOYEE_ID_TOO_LONG') return 'Employee ID is too long (max 20 characters).';
+        if (r.error === 'NO_IMAGE')            return 'Please select or capture at least one image.';
+        if (r.error === 'TOO_LARGE')           return 'Image file is too large (max 10MB per file).';
+        if (r.error === 'EMPLOYEE_NOT_FOUND')  return 'Employee not found in database. Please check the employee ID.';
         if (r.error === 'NO_GOOD_FRAME') {
-            var processed = typeof r.processed === 'number'
-                ? ' (processed ' + r.processed + ' images)'
-                : '';
+            var processed = typeof r.processed === 'number' ? ' (processed ' + r.processed + ' images)' : '';
             return 'No good frame found. Please try better lighting, hold still, and ensure your face is clearly visible.' + processed;
         }
         if (r.error === 'FACE_ALREADY_ENROLLED') {
-            var who = r.matchEmployeeId
-                ? ' matched with employee <b>' + escapeHtml(r.matchEmployeeId) + '</b>'
-                : '';
-            var dist = typeof r.distance === 'number'
-                ? ', distance: <b>' + r.distance.toFixed(4) + '</b>'
-                : '';
-            var hits = typeof r.matchCount === 'number' && typeof r.hitsRequired === 'number'
-                ? ', matched frames: <b>' + r.matchCount + '/' + r.hitsRequired + '</b>'
-                : '';
-            return 'Face already enrolled' + who + dist + hits + '. Please contact administrator if this is an error.';
+            var who  = r.matchEmployeeId ? ' matched with employee <b>' + escapeHtml(r.matchEmployeeId) + '</b>' : '';
+            var dist = typeof r.distance === 'number' ? ', distance: <b>' + r.distance.toFixed(4) + '</b>' : '';
+            return 'Face already enrolled' + who + dist + '. Please contact administrator if this is an error.';
         }
-        if (r.error === 'NETWORK_ERROR') {
-            return 'Network error. Please check your connection and try again.';
-        }
-
+        if (r.error === 'NETWORK_ERROR') return 'Network error. Please check your connection and try again.';
         return (r.error || 'Enrollment failed') + ' [step: ' + step + ']' + timeInfo;
     };
 
     // -------------------------------------------------------------------------
     // Debug utilities
     // -------------------------------------------------------------------------
-    
-    Enrollment.prototype.enableDebug = function() {
-        this._debugAutoTick = true;
-        console.log('[Enrollment] Debug enabled. autoTick logging is now active.');
-    };
-    
-    Enrollment.prototype.disableDebug = function() {
-        this._debugAutoTick = false;
-        console.log('[Enrollment] Debug disabled.');
-    };
-    
-    Enrollment.prototype.getState = function() {
+
+    Enrollment.prototype.enableDebug  = function () { this._debugAutoTick = true;  console.log('[Enrollment] Debug enabled.'); };
+    Enrollment.prototype.disableDebug = function () { this._debugAutoTick = false; console.log('[Enrollment] Debug disabled.'); };
+    Enrollment.prototype.getState     = function () {
         return {
-            enrolled: this.enrolled,
-            enrolling: this.enrolling,
-            busy: this.busy,
-            hasStream: !!this.stream,
-            hasAutoTimer: !!this.autoTimer,
+            enrolled: this.enrolled, enrolling: this.enrolling, busy: this.busy,
+            hasStream: !!this.stream, hasAutoTimer: !!this.autoTimer,
             goodFramesCount: this.goodFrames.length,
             passHistLength: this.passHist.length,
-            videoWidth: this.elements.cam && this.elements.cam.videoWidth,
+            videoWidth:  this.elements.cam && this.elements.cam.videoWidth,
             videoHeight: this.elements.cam && this.elements.cam.videoHeight
         };
+    };
+
+    // getEncodings() helper used by mobile wizard submit
+    Enrollment.prototype.getEncodings = function () {
+        var result = [];
+        for (var i = 0; i < this.goodFrames.length; i++) {
+            var enc = this.goodFrames[i].encoding || this.goodFrames[i].enc || null;
+            if (enc) result.push(enc);
+        }
+        return result;
     };
 
     // -------------------------------------------------------------------------
@@ -1357,9 +939,7 @@ FaceAttend.Enrollment = (function () {
     // -------------------------------------------------------------------------
 
     return {
-        create: function (config) {
-            return new Enrollment(config);
-        },
+        create: function (config) { return new Enrollment(config); },
         CONSTANTS: CONSTANTS,
         utils: {
             getCsrfToken: getCsrfToken,
@@ -1367,7 +947,7 @@ FaceAttend.Enrollment = (function () {
             debounce: debounce,
             compressImageFile: compressImageFile,
             precheckImage: precheckImage,
-            isMobileDevice: isMobileDevice  // Phase 2: exposed
+            isMobileDevice: isMobileDevice
         }
     };
 })();

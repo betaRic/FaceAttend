@@ -475,9 +475,51 @@
             // exists in the DB. Mobile: no DB employee yet — advance to Step 3.
             // SubmitEnrollment() on the server creates the employee + pending device.
             liveEnrollment.callbacks.onReadyToConfirm = function (data) {
-                // Force show the dialog
-                console.log('[Mobile] Ready to confirm:', data); // Debug log
+                // Debug log
+                console.log('[Mobile] Ready to confirm:', data);
 
+                // ── FIX (STUCK-02): Block submission if any angle is missing ─
+                if (!data.allAngles) {
+                    var REQUIRED = ['center', 'left', 'right', 'up', 'down'];
+                    var capturedSet = {};
+                    (data.frames || []).forEach(function (f) {
+                        if (f.poseBucket && f.poseBucket !== 'other') capturedSet[f.poseBucket] = true;
+                    });
+                    var missing = REQUIRED.filter(function (a) { return !capturedSet[a]; });
+
+                    if (typeof Swal !== 'undefined') {
+                        Swal.fire({
+                            icon:              'warning',
+                            title:             'More angles needed',
+                            html:              'Please capture <b>all 5 angles</b> for reliable face recognition.' +
+                                               '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
+                                               '<br>Captured: ' + data.angleCount + ' / 5',
+                            confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',
+                            confirmButtonColor:'#3b82f6',
+                            background:        '#0f172a',
+                            color:             '#f8fafc',
+                            allowOutsideClick: false,
+                            allowEscapeKey:    false
+                        }).then(function () {
+                            // Resume scanning for missing angles
+                            liveEnrollment.startAutoEnrollment();
+                            updateLiveCaptureUI(0, minFrames);
+                            updateLiveAngleDots([]);
+                            capturedFrames = [];
+                            _smoothedBox = null;
+                        });
+                    } else {
+                        alert('Missing angles: ' + missing.join(', ') + '. Please continue capturing.');
+                        liveEnrollment.startAutoEnrollment();
+                        updateLiveCaptureUI(0, minFrames);
+                        updateLiveAngleDots([]);
+                        capturedFrames = [];
+                        _smoothedBox = null;
+                    }
+                    return; // block submission
+                }
+
+                // ── All 5 angles present — show confirm and advance to Step 3 ─
                 var thumbPromises = (data.frames || []).slice(0, 3).map(function (frame) {
                     return new Promise(function (resolve) {
                         if (!frame || !frame.blob) { resolve(null); return; }
@@ -492,38 +534,36 @@
                     var thumbHtml = '';
                     dataUrls.forEach(function (url) {
                         if (url) {
-                            thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;border-radius:8px;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;" />';
+                            thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;' +
+                                         'object-fit:cover;border-radius:8px;' +
+                                         'border:2px solid rgba(255,255,255,0.15);flex-shrink:0;margin:4px;" />';
                         }
                     });
 
-                    var angleOk = data.allAngles
-                        ? '<span style="color:#22c55e;">✓ All angles captured</span>'
-                        : '<span style="color:#f59e0b;">⚠ ' + (data.angleCount || 0) + '/5 angles</span>';
-
                     Swal.fire({
-                        title: 'Enrollment Complete!',
+                        title:             'Enrollment Complete!',
                         html:
                             '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
                             thumbHtml + '</div>' +
                             '<div style="font-size:.9rem;">' +
                             '<p>' + data.frameCount + ' frames captured</p>' +
-                            '<p>' + angleOk + '</p>' +
+                            '<p><span style="color:#22c55e;">✓ All 5 angles captured</span></p>' +
                             '<p>Best quality: ' + data.bestLiveness + '%</p>' +
                             '</div>',
-                        showCancelButton: true,
+                        showCancelButton:  true,
                         confirmButtonText: 'Continue to Review →',
-                        cancelButtonText: 'Retake Photos',
-                        confirmButtonColor: '#22c55e',
-                        background: '#0f172a',
-                        color: '#f8fafc',
+                        cancelButtonText:  'Retake Photos',
+                        confirmButtonColor:'#22c55e',
+                        background:        '#0f172a',
+                        color:             '#f8fafc',
                         allowOutsideClick: false
                     }).then(function (result) {
                         if (result.isConfirmed) {
-                            // CRITICAL: Advance to step 3
+                            // CRITICAL: store frames then advance to Step 3
                             state.capturedFrames = liveEnrollment.goodFrames.slice();
-                            setStep(3); // This should show the review pane
+                            setStep(3);
                         } else {
-                            // Retake
+                            // Retake — restart scanning from scratch
                             liveEnrollment.startAutoEnrollment();
                             updateLiveCaptureUI(0, minFrames);
                             updateLiveAngleDots([]);

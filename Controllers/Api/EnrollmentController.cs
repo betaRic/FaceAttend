@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
@@ -9,153 +10,193 @@ using System.Web.Mvc;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Security;
+using Newtonsoft.Json;
 
 namespace FaceAttend.Controllers.Api
 {
     /// <summary>
-    /// Unified enrollment API
-    /// Single endpoint for face enrollment across admin, mobile, and visitor flows
+    /// Unified face enrollment API — admin, mobile, and visitor flows all route here.
+    ///
+    /// Each uploaded frame goes through this pipeline:
+    ///   1.  Magic-byte image validation
+    ///   2.  Temp-save + optional resize (ImagePreprocessor)
+    ///   3.  Load Bitmap ONCE — every subsequent op reuses this single decode
+    ///   4.  Face detection from Bitmap
+    ///   5.  Minimum face-area gate (too far from camera)
+    ///   6.  Sharpness gate (Laplacian variance on face ROI)
+    ///   7.  Pre-extract raw RGB bytes — required for thread-safe parallel ops
+    ///   8.  Parallel: liveness score + face encoding
+    ///   9.  Liveness gate — threshold aligned with ScanController (THRESH-01 fix)
+    ///   10. Duplicate-face check
+    ///   11. Pose estimation → angle bucket
+    ///
+    /// After all frames are scored:
+    ///   • SelectDiverseFrames picks the best angle-diverse set
+    ///   • EnrollmentQualityGate enforces 5-layer identity assurance
+    ///   • Vectors are encrypted and persisted
+    ///   • In-memory caches are invalidated
     /// </summary>
     [RoutePrefix("api/enrollment")]
     public class EnrollmentController : Controller
     {
-        /// <summary>
-        /// Enroll face(s) for an employee
-        /// Supports both single and multi-frame enrollment
-        /// </summary>
+        // =====================================================================
+        // POST api/enrollment/enroll
+        // =====================================================================
+
         [HttpPost]
         [Route("enroll")]
         [ValidateAntiForgeryToken]
-        public ActionResult Enroll(string employeeId, 
-            List<HttpPostedFileBase> images, 
+        public ActionResult Enroll(
+            string employeeId,
+            List<HttpPostedFileBase> images,
             string allEncodingsJson = null)
         {
             var sw = Stopwatch.StartNew();
 
-            // Validate input
+            // ── Input validation ──────────────────────────────────────────────
             if (string.IsNullOrWhiteSpace(employeeId))
-            {
                 return JsonResponseBuilder.Error("NO_EMPLOYEE_ID");
-            }
 
             employeeId = employeeId.Trim().ToUpper();
             if (employeeId.Length > 20)
-            {
                 return JsonResponseBuilder.Error("EMPLOYEE_ID_TOO_LONG");
-            }
 
-            // Collect images from request
-            var files = new List<HttpPostedFileBase>();
-            if (images != null)
-            {
-                files.AddRange(images.Where(f => f != null && f.ContentLength > 0));
-            }
-
-            // Also check Request.Files for backward compatibility
-            for (int i = 0; i < Request.Files.Count; i++)
-            {
-                var f = Request.Files[i];
-                if (f != null && f.ContentLength > 0 && !files.Contains(f))
-                {
-                    files.Add(f);
-                }
-            }
-
+            var files = CollectFiles(images);
             if (files.Count == 0)
-            {
                 return JsonResponseBuilder.Error("NO_IMAGE");
-            }
 
-            // Load configuration
-            var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-            var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget", 20);   // was 8
-            var maxStored = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 8); // was 5
-            var strictTol = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
-            var isMobile = DeviceService.IsMobileDevice(Request);
+            // ── Read config ONCE — never inside the hot parallel loop ─────────
+            var maxBytes    = ConfigurationService.GetInt("Biometrics:MaxUploadBytes",          10 * 1024 * 1024);
+            var maxImages   = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget",    20);
+            var maxStored   = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 8);
+            var strictTol   = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
+            var parallelism = Math.Min(files.Count,
+                              ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
+            var isMobile    = DeviceService.IsMobileDevice(Request);
+
+            // THRESH-01 FIX: Use the same config key as ScanController.
+            // The old key "Biometrics:Enroll:LivenessThreshold" defaulted to 0.82,
+            // silently discarding every frame that already passed the scan endpoint
+            // at 0.75. That mismatch was the root cause of NO_GOOD_FRAME errors.
+            var liveTh  = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
+
+            // QUALITY-01: Minimum face-area ratio — rejects distant/tiny faces
+            var minAreaRatio = isMobile
+                ? ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio:Mobile", 0.05)
+                : ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio",         0.08);
 
             files = files.Take(maxImages).ToList();
 
-            // Validate employee exists
-            Employee emp;
+            // ── Verify employee exists before spending CPU on frames ──────────
             using (var db = new FaceAttendDBEntities())
             {
-                emp = db.Employees.FirstOrDefault(e => e.EmployeeId == employeeId);
-                if (emp == null)
-                {
+                if (!db.Employees.Any(e => e.EmployeeId == employeeId))
                     return JsonResponseBuilder.Error("EMPLOYEE_NOT_FOUND");
-                }
             }
 
-            // Process frames
-            var candidates = new ConcurrentBag<EnrollCandidate>();
-            int processedCount = 0;
+            // ── Parallel frame processing ─────────────────────────────────────
+            var  candidates     = new ConcurrentBag<EnrollCandidate>();
+            int  processedCount = 0;
             bool duplicateFound = false;
-            string duplicateId = null;
-            var lockObj = new object();
+            string duplicateId  = null;
+            var  dupLock        = new object();
 
-            var parallelism = Math.Min(files.Count,
-                ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
-
-            // Parallel frame processing
-            Parallel.ForEach(files, new ParallelOptions { MaxDegreeOfParallelism = parallelism }, 
-                (file, state) =>
+            Parallel.ForEach(files,
+                new ParallelOptions { MaxDegreeOfParallelism = parallelism },
+                (file, loopState) =>
             {
                 if (duplicateFound) return;
 
                 string path = null, processedPath = null;
+                Bitmap bitmap = null;
                 try
                 {
-                    // Security validation
-                    if (!FileSecurityService.IsValidImage(file.InputStream, 
-                        new[] { ".jpg", ".jpeg", ".png" }))
-                    {
+                    // ── 1. Security: validate image magic bytes ───────────────
+                    if (!FileSecurityService.IsValidImage(file.InputStream,
+                            new[] { ".jpg", ".jpeg", ".png" }))
                         return;
-                    }
 
+                    // ── 2. Save to temp + resize if oversized ─────────────────
                     file.InputStream.Position = 0;
                     path = FileSecurityService.SaveTemp(file, "enr_", maxBytes);
-                    bool isProc;
-                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "enr_", out isProc);
 
+                    bool wasResized;
+                    processedPath = ImagePreprocessor.PreprocessForDetection(
+                        path, "enr_", out wasResized);
+
+                    // ── 3. Single Bitmap decode — every op below reuses it ────
+                    // The old code decoded the same JPEG 3–4 times per frame.
+                    // One decode → sharpness, RGB extraction, detection,
+                    //              parallel liveness + encoding.
+                    bitmap = new Bitmap(processedPath);
+                    int imgW = bitmap.Width;
+                    int imgH = bitmap.Height;
+
+                    // ── 4. Face detection from Bitmap (no second file read) ───
                     var dlib = new DlibBiometrics();
                     DlibBiometrics.FaceBox faceBox;
                     FaceRecognitionDotNet.Location faceLoc;
                     string detectErr;
 
-                    if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLoc, out detectErr))
+                    if (!dlib.TryDetectSingleFaceFromBitmap(
+                            bitmap, out faceBox, out faceLoc, out detectErr))
                         return;
 
-                    // Sharpness check
-                    var sharpness = FaceQualityAnalyzer.CalculateSharpness(processedPath, faceBox);
-                    var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
+                    // ── 5. Face-area gate: reject distant/tiny faces ──────────
+                    if (imgW > 0 && imgH > 0)
+                    {
+                        double areaRatio = (double)(faceBox.Width * faceBox.Height)
+                                         / (imgW * imgH);
+                        if (areaRatio < minAreaRatio) return;
+                    }
+
+                    // ── 6. Sharpness gate ─────────────────────────────────────
+                    var sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(
+                        bitmap, faceBox);
                     if (sharpness < sharpTh) return;
 
-                    // Parallel: liveness + encoding
-                    double[] vec = null;
-                    float liveness = 0f;
-                    bool liveOk = false;
+                    // ── 7. Pre-extract RGB bytes for thread-safe parallelism ───
+                    // OnnxLiveness.ScoreFromBitmap internally clones the Bitmap
+                    // and calls LockBits on the clone — safe.
+                    // DlibBiometrics.TryEncodeWithLandmarksFromRgbData works only
+                    // on the byte array and never touches the Bitmap object.
+                    // Pre-extracting here guarantees no concurrent LockBits on the
+                    // same Bitmap. See FastScanPipeline.EnrollmentScanInMemory for
+                    // the identical pattern.
+                    byte[] rgbData;
+                    try   { rgbData = DlibBiometrics.ExtractRgbData(bitmap); }
+                    catch { return; }
+
+                    // ── 8. Parallel: liveness + encoding ─────────────────────
+                    double[] vec         = null;
+                    float    livenessScr = 0f;
+                    bool     liveOk      = false;
 
                     Parallel.Invoke(
                         () =>
                         {
-                            string encErr;
-                            dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encErr);
+                            // Encoding from pre-extracted byte array only — Bitmap not touched
+                            float[] landmarks; string encErr;
+                            dlib.TryEncodeWithLandmarksFromRgbData(
+                                rgbData, imgW, imgH, faceLoc,
+                                out vec, out landmarks, out encErr);
                         },
                         () =>
                         {
-                            var live = new OnnxLiveness();
-                            var scored = live.ScoreFromFile(processedPath, faceBox);
-                            liveOk = scored.Ok;
-                            liveness = scored.Probability ?? 0f;
+                            // Liveness from Bitmap clone — OnnxLiveness makes its own
+                            // clone so LockBits calls never race with the encoding thread
+                            var live   = new OnnxLiveness();
+                            var scored = live.ScoreFromBitmap(bitmap, faceBox);
+                            liveOk      = scored.Ok;
+                            livenessScr = scored.Probability ?? 0f;
                         });
 
-                    var liveTh = (float)ConfigurationService.GetDouble(
-                        "Biometrics:Enroll:LivenessThreshold", 0.82);
+                    // ── 9. Liveness gate (THRESH-01 aligned) ─────────────────
+                    if (!liveOk || livenessScr < liveTh || vec == null) return;
 
-                    if (!liveOk || liveness < liveTh || vec == null) return;
-
-                    // Duplicate check
-                    lock (lockObj)
+                    // ── 10. Duplicate-face check (one DB call per good frame) ──
+                    lock (dupLock)
                     {
                         processedCount++;
                         if (!duplicateFound)
@@ -168,110 +209,99 @@ namespace FaceAttend.Controllers.Api
                                 if (!string.IsNullOrEmpty(dup))
                                 {
                                     duplicateFound = true;
-                                    duplicateId = dup;
-                                    state.Stop();
+                                    duplicateId    = dup;
+                                    loopState.Stop();
                                     return;
                                 }
                             }
                         }
                     }
-
                     if (duplicateFound) return;
 
-                    // Pose estimation
-                    int imgW = 640, imgH = 480;
-                    try
-                    {
-                        using (var bmp = new System.Drawing.Bitmap(processedPath))
-                        {
-                            imgW = bmp.Width;
-                            imgH = bmp.Height;
-                        }
-                    }
-                    catch { }
-
+                    // ── 11. Pose estimation → angle bucket ────────────────────
                     var (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(faceBox, imgW, imgH);
-                    var bucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
-
-                    if (bucket == "other") return;
+                    var bucket       = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
+                    if (bucket == "other") return;  // extreme angle — discard
 
                     int area = Math.Max(0, faceBox.Width) * Math.Max(0, faceBox.Height);
 
                     candidates.Add(new EnrollCandidate
                     {
-                        Vec = vec,
-                        Liveness = liveness,
-                        Area = area,
-                        Sharpness = sharpness,
-                        PoseYaw = yaw,
-                        PosePitch = pitch,
-                        PoseBucket = bucket,
+                        Vec          = vec,
+                        Liveness     = livenessScr,
+                        Area         = area,
+                        Sharpness    = sharpness,
+                        PoseYaw      = yaw,
+                        PosePitch    = pitch,
+                        PoseBucket   = bucket,
                         QualityScore = FaceQualityAnalyzer.CalculateQualityScore(
-                            liveness, sharpness, area, yaw, pitch)
+                            livenessScr, sharpness, area, yaw, pitch)
                     });
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Trace.TraceWarning(
-                        "[EnrollmentController.Enroll] Frame error: {0}", ex.Message);
+                    Trace.TraceWarning("[Enroll] Frame error: {0}", ex.Message);
                 }
                 finally
                 {
+                    // Always dispose and clean up — even on exception
+                    bitmap?.Dispose();
                     ImagePreprocessor.Cleanup(processedPath, path);
                     FileSecurityService.TryDelete(path);
                 }
             });
 
-            // Handle duplicate found
+            // ── Early exits ───────────────────────────────────────────────────
             if (duplicateFound)
-            {
-                return JsonResponseBuilder.Error("FACE_ALREADY_ENROLLED",
-                    details: new
-                    {
-                        step = "duplicate_check",
-                        matchEmployeeId = duplicateId,
-                        processed = processedCount,
-                        timeMs = sw.ElapsedMilliseconds
-                    });
-            }
+                return JsonResponseBuilder.Error("FACE_ALREADY_ENROLLED", details: new
+                {
+                    matchEmployeeId = duplicateId,
+                    processed       = processedCount,
+                    timeMs          = sw.ElapsedMilliseconds
+                });
 
             if (candidates.IsEmpty)
-            {
-                return JsonResponseBuilder.Error("NO_GOOD_FRAME",
-                    details: new
-                    {
-                        step = "processing",
-                        processed = processedCount,
-                        timeMs = sw.ElapsedMilliseconds
-                    });
-            }
+                return JsonResponseBuilder.Error("NO_GOOD_FRAME", details: new
+                {
+                    processed = processedCount,
+                    timeMs    = sw.ElapsedMilliseconds
+                });
 
-            // Diversity-aware selection
-            // Diversity-aware selection
+            // ── Select the best angle-diverse frame set ───────────────────────
             var selected = SelectDiverseFrames(candidates.ToList(), maxStored, isMobile);
-            // Save to database
+
+            // ── 5-layer identity assurance gate ──────────────────────────────
+            // Checks: min vector count, angle diversity, intra-set diversity,
+            // self-match verification, average quality floor.
+            // Returns an actionable error message so the client can guide the user.
+            var gate = EnrollmentQualityGate.Validate(selected);
+            if (!gate.Passed)
+                return JsonResponseBuilder.Error(gate.ErrorCode, gate.Message);
+
+            // ── Persist to database ───────────────────────────────────────────
             using (var db = new FaceAttendDBEntities())
             {
-                emp = db.Employees.First(e => e.EmployeeId == employeeId);
+                var emp = db.Employees.First(e => e.EmployeeId == employeeId);
 
-                // Best single vector (primary)
-                var bestBytes = DlibBiometrics.EncodeToBytes(selected[0].Vec);
-                emp.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(bestBytes);
+                // Primary single vector — kept for legacy code that reads
+                // FaceEncodingBase64 directly
+                emp.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(
+                    DlibBiometrics.EncodeToBytes(selected[0].Vec));
 
-                // All selected vectors as JSON
-                var jsonList = selected.Select(c =>
-                    BiometricCrypto.ProtectBase64Bytes(DlibBiometrics.EncodeToBytes(c.Vec))
-                ).ToList();
+                // All selected vectors as an encrypted JSON array
                 emp.FaceEncodingsJson = BiometricCrypto.ProtectString(
-                    Newtonsoft.Json.JsonConvert.SerializeObject(jsonList));
+                    JsonConvert.SerializeObject(
+                        selected.Select(c => BiometricCrypto.ProtectBase64Bytes(
+                                                 DlibBiometrics.EncodeToBytes(c.Vec)))
+                                .ToList()));
 
                 emp.EnrolledDate = emp.EnrolledDate ?? DateTime.UtcNow;
-                emp.Status = "ACTIVE";
+                emp.Status       = "ACTIVE";
 
                 db.SaveChanges();
-                
-                // Cache invalidation - PASS DB CONTEXT to ensure transactional consistency
-                // This ensures the cache sees the just-committed data
+
+                // Pass the open DB context so the cache update sees the
+                // just-committed rows — no read-your-own-writes gap.
                 FastFaceMatcher.UpdateEmployee(employeeId, db);
                 EmployeeFaceIndex.Invalidate();
             }
@@ -279,95 +309,79 @@ namespace FaceAttend.Controllers.Api
             return JsonResponseBuilder.Success(new
             {
                 savedVectors = selected.Count,
-                timeMs = sw.ElapsedMilliseconds,
-                poseBuckets = selected.Select(c => c.PoseBucket).ToList()
+                timeMs       = sw.ElapsedMilliseconds,
+                poseBuckets  = selected.Select(c => c.PoseBucket).ToList()
             });
         }
 
-        /// <summary>
-        /// Check for duplicate face without enrolling
-        /// </summary>
+        // =====================================================================
+        // POST api/enrollment/check-duplicate
+        // =====================================================================
+
         [HttpPost]
         [Route("check-duplicate")]
         [ValidateAntiForgeryToken]
-        public ActionResult CheckDuplicate(HttpPostedFileBase image, string excludeEmployeeId = null)
+        public ActionResult CheckDuplicate(
+            HttpPostedFileBase image,
+            string excludeEmployeeId = null)
         {
             if (image == null || image.ContentLength <= 0)
-            {
                 return JsonResponseBuilder.Error("NO_IMAGE");
-            }
 
-            string tempPath = null;
-            string processedPath = null;
-
+            string tempPath = null, processedPath = null;
             try
             {
-                var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
-                tempPath = FileSecurityService.SaveTemp(image, "dup_", maxBytes);
+                var maxBytes  = ConfigurationService.GetInt(
+                    "Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+                tempPath      = FileSecurityService.SaveTemp(image, "dup_", maxBytes);
 
-                bool isProcessed;
-                processedPath = ImagePreprocessor.PreprocessForDetection(tempPath, "dup_", out isProcessed);
+                bool wasResized;
+                processedPath = ImagePreprocessor.PreprocessForDetection(
+                    tempPath, "dup_", out wasResized);
 
                 var dlib = new DlibBiometrics();
                 DlibBiometrics.FaceBox faceBox;
                 FaceRecognitionDotNet.Location faceLoc;
                 string detectErr;
 
-                if (!dlib.TryDetectSingleFaceFromFile(processedPath, out faceBox, out faceLoc, out detectErr))
-                {
+                if (!dlib.TryDetectSingleFaceFromFile(
+                        processedPath, out faceBox, out faceLoc, out detectErr))
                     return JsonResponseBuilder.Success(new
                     {
-                        ok = true,
-                        isDuplicate = false,
+                        isDuplicate  = false,
                         faceDetected = false
                     });
-                }
 
-                double[] vec;
-                string encodeErr;
-                if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encodeErr) 
-                    || vec == null)
-                {
+                double[] vec; string encErr;
+                if (!dlib.TryEncodeFromFileWithLocation(
+                        processedPath, faceLoc, out vec, out encErr) || vec == null)
                     return JsonResponseBuilder.Success(new
                     {
-                        ok = true,
-                        isDuplicate = false,
+                        isDuplicate  = false,
                         faceDetected = true,
-                        encodable = false
+                        encodable    = false
                     });
-                }
 
                 var strictTol = ConfigurationService.GetDouble(
                     "Biometrics:EnrollmentStrictTolerance", 0.45);
 
                 using (var db = new FaceAttendDBEntities())
                 {
-                    var dup = DuplicateCheckHelper.FindDuplicate(db, vec, excludeEmployeeId, strictTol);
+                    var dup = DuplicateCheckHelper.FindDuplicate(
+                        db, vec, excludeEmployeeId, strictTol);
 
-                    if (!string.IsNullOrEmpty(dup))
+                    return JsonResponseBuilder.Success(new
                     {
-                        return JsonResponseBuilder.Success(new
-                        {
-                            ok = true,
-                            isDuplicate = true,
-                            matchEmployeeId = dup,
-                            faceDetected = true,
-                            encodable = true
-                        });
-                    }
+                        isDuplicate     = !string.IsNullOrEmpty(dup),
+                        matchEmployeeId = dup,
+                        faceDetected    = true,
+                        encodable       = true
+                    });
                 }
-
-                return JsonResponseBuilder.Success(new
-                {
-                    ok = true,
-                    isDuplicate = false,
-                    faceDetected = true,
-                    encodable = true
-                });
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Trace.TraceError("[EnrollmentController.CheckDuplicate] Error: {0}", ex);
+                Trace.TraceError("[CheckDuplicate] Error: {0}", ex);
                 return JsonResponseBuilder.Error("CHECK_ERROR");
             }
             finally
@@ -377,29 +391,56 @@ namespace FaceAttend.Controllers.Api
             }
         }
 
+        // =====================================================================
+        // Private helpers
+        // =====================================================================
+
         /// <summary>
-        /// Select diverse frames based on pose buckets
+        /// Collects uploaded files from both the typed MVC model parameter
+        /// and the raw Request.Files bag (for backward compatibility with
+        /// older clients that POST files without named parameters).
         /// </summary>
-        // In SelectDiverseFrames method - weight quality higher to prevent bad enrollments
+        private List<HttpPostedFileBase> CollectFiles(List<HttpPostedFileBase> typed)
+        {
+            var files = new List<HttpPostedFileBase>();
+
+            if (typed != null)
+                files.AddRange(typed.Where(f => f != null && f.ContentLength > 0));
+
+            for (int i = 0; i < Request.Files.Count; i++)
+            {
+                var f = Request.Files[i];
+                if (f != null && f.ContentLength > 0 && !files.Contains(f))
+                    files.Add(f);
+            }
+
+            return files;
+        }
+
+        /// <summary>
+        /// Selects up to <paramref name="targetCount"/> frames that cover as
+        /// many distinct pose angles as possible.
+        ///
+        /// Phase 1 — one best-quality frame per angle bucket (all 5 angles).
+        /// Phase 2 — fill remaining slots with the highest-quality frames
+        ///            regardless of angle.
+        ///
+        /// The old mobile-only shortcut (center/left/right only in Phase 1)
+        /// was removed. The client-side angle enforcement now guarantees 5-angle
+        /// input for both platforms, so Phase 1 always attempts all 5 buckets.
+        /// </summary>
         private static List<EnrollCandidate> SelectDiverseFrames(
             List<EnrollCandidate> candidates, int targetCount, bool isMobile)
         {
-            var desiredBuckets = new[] { "center", "left", "right", "up", "down" };
-            var selected = new List<EnrollCandidate>();
-
-            // Quality calculation with mobile adjustments
+            // Recompute with platform-tuned weights before sorting
             foreach (var c in candidates)
-            {
-                // FIX: Explicit cast to match EnrollCandidate.QualityScore type (float)
-                c.QualityScore = (float)CalculateMobileOptimizedQuality(c, isMobile);
-            }
+                c.QualityScore = ComputeQualityScore(c, isMobile);
 
-            // Phase 1: Take best from each bucket, prioritizing center and left/right
-            var priorityBuckets = isMobile
-                ? new[] { "center", "left", "right" }  // Mobile: prioritize horizontal angles
-                : desiredBuckets;
+            var allBuckets = new[] { "center", "left", "right", "up", "down" };
+            var selected   = new List<EnrollCandidate>(targetCount);
 
-            foreach (var bucket in priorityBuckets)
+            // Phase 1: one best frame per angle bucket
+            foreach (var bucket in allBuckets)
             {
                 if (selected.Count >= targetCount) break;
 
@@ -411,7 +452,7 @@ namespace FaceAttend.Controllers.Api
                 if (best != null) selected.Add(best);
             }
 
-            // Phase 2: Fill remaining with highest quality regardless of angle
+            // Phase 2: fill remaining slots with any high-quality frame
             var remaining = candidates
                 .Where(c => !selected.Contains(c))
                 .OrderByDescending(c => c.QualityScore)
@@ -419,45 +460,42 @@ namespace FaceAttend.Controllers.Api
 
             selected.AddRange(remaining);
 
-            // MOBILE: If we still don't have enough diversity, lower threshold and retry
-            if (isMobile && selected.Select(c => c.PoseBucket).Distinct().Count() < 3)
-            {
-                // Accept lower quality frames to get diversity
-                var extra = candidates
-                    .Where(c => !selected.Contains(c))
-                    .OrderByDescending(c => c.Liveness) // At least good liveness
-                    .Take(targetCount - selected.Count);
-                selected.AddRange(extra);
-            }
-
+            // Return highest-quality first so selected[0] is always the best vector
             return selected.OrderByDescending(c => c.QualityScore).ToList();
         }
 
-        // Change this method signature from double to float
-        private static float CalculateMobileOptimizedQuality(EnrollCandidate c, bool isMobile)
+        /// <summary>
+        /// Platform-tuned composite quality score (0–1 range).
+        ///
+        /// Desktop — delegates directly to FaceQualityAnalyzer (standard weights).
+        /// Mobile  — raises liveness weight (primary signal on noisy cameras),
+        ///           lowers sharpness weight, normalizes sharpness against a
+        ///           mobile-realistic max (200 vs 400 on desktop), and clamps
+        ///           pose centrality to [0, 1] to prevent negative scores on
+        ///           angles beyond ±45°.
+        /// </summary>
+        private static float ComputeQualityScore(EnrollCandidate c, bool isMobile)
         {
             if (!isMobile)
-            {
-                // FIX: Cast to float
                 return (float)FaceQualityAnalyzer.CalculateQualityScore(
                     c.Liveness, c.Sharpness, c.Area, c.PoseYaw, c.PosePitch);
-            }
 
-            // Mobile: Weight liveness higher, sharpness lower (mobile cameras are noisier)
-            var livenessWeight = 0.50f;  // Use 'f' suffix for float literals
-            var sharpnessWeight = 0.20f;
-            var areaWeight = 0.20f;
-            var poseWeight = 0.10f;
+            const float wLiveness  = 0.50f;
+            const float wSharpness = 0.20f;
+            const float wArea      = 0.20f;
+            const float wPose      = 0.10f;
 
-            // Normalize sharpness (mobile max ~200 vs desktop ~400)
-            var sharpnessNorm = Math.Min(c.Sharpness / 200.0, 1.0);
+            float normSharpness = Math.Min(c.Sharpness / 200f, 1f);
+            float normArea      = Math.Min(c.Area      / 50000f, 1f);
 
-            // FIX: Return float, not double
-            return (float)((c.Liveness * livenessWeight) +
-                   (sharpnessNorm * sharpnessWeight) +
-                   (Math.Min(c.Area / 50000.0, 1.0) * areaWeight) +
-                   ((1.0 - Math.Abs(c.PoseYaw) / 45.0) * poseWeight * 0.5) +
-                   ((1.0 - Math.Abs(c.PosePitch) / 45.0) * poseWeight * 0.5));
+            // Clamp to [0, 1]: extreme angles would yield negative without this
+            float poseCentrality = Math.Max(0f,
+                1f - (Math.Abs(c.PoseYaw) + Math.Abs(c.PosePitch)) / 90f);
+
+            return (c.Liveness     * wLiveness)
+                 + (normSharpness  * wSharpness)
+                 + (normArea       * wArea)
+                 + (poseCentrality * wPose);
         }
     }
 }
