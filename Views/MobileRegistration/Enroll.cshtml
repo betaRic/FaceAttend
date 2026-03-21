@@ -1,4 +1,4 @@
-<!--Views/MobileRegistration/Enroll.cshtml-->
+@*Views/MobileRegistration/Enroll.cshtml*@
 @{
     Layout = "~/Views/Shared/_MobileLayout.cshtml";
     ViewBag.Title = "Face Enrollment";
@@ -21,7 +21,7 @@
         }
         .wizard-step.active { background: rgba(59,130,246,0.16); border-color: rgba(59,130,246,0.45); color: #fff; }
         .wizard-step.done   { background: rgba(34,197,94,0.14);  border-color: rgba(34,197,94,0.4);   color: #dcfce7; }
-        .wizard-pane { display: none; }
+        .wizard-pane        { display: none; }
         .wizard-pane.active { display: block; animation: slideIn .25s ease; }
         @@keyframes slideIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
         .wizard-actions { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
@@ -30,7 +30,6 @@
             color: var(--text-secondary); border-radius: 12px; padding: 12px 14px;
             margin-bottom: 16px; font-size: 14px;
         }
-        /* Step 1 form */
         .form-section  { margin-bottom: 16px; }
         .form-row      { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
         .form-group    { margin-bottom: 14px; }
@@ -56,10 +55,8 @@
             border-radius: 10px; font-size: 12px; color: #4ade80; margin-top: 4px;
         }
         .uppercase { text-transform: uppercase; }
-        /* Step 2: cap camera height so it never overflows mobile viewport */
         #step2 .enroll-camera-wrap { max-height: 44vh; max-height: 44dvh; }
         #step2 .enroll-video       { max-height: 44vh; max-height: 44dvh; }
-        /* Step 3 review */
         .review-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
         .review-item {
             padding: 12px 14px; border-radius: 12px;
@@ -95,7 +92,8 @@
 
         <div class="form-group">
             <label>Employee ID <span class="required">*</span> <span class="hint">(Format: DILG-YYYY-###)</span></label>
-            <input type="text" id="employeeId" class="uppercase" placeholder="e.g., DILG-2024-001" required maxlength="20" autocomplete="off" />
+            <input type="text" id="employeeId" class="uppercase" placeholder="e.g., DILG-2024-001"
+                   required maxlength="20" autocomplete="off" />
             <div class="validation-message" id="employeeIdValidation"></div>
         </div>
 
@@ -114,7 +112,8 @@
 
         <div class="form-group">
             <label>Middle Name <span class="hint">(Optional)</span></label>
-            <input type="text" id="middleName" class="uppercase" placeholder="Optional" maxlength="50" autocomplete="additional-name" />
+            <input type="text" id="middleName" class="uppercase" placeholder="Optional"
+                   maxlength="50" autocomplete="additional-name" />
             <div class="validation-message" id="middleNameValidation"></div>
         </div>
 
@@ -145,7 +144,8 @@
 
         <div class="form-group">
             <label>Device Name <span class="required">*</span> <span class="hint">(e.g., MY IPHONE 15)</span></label>
-            <input type="text" id="deviceName" class="uppercase" value="MY PHONE" required maxlength="50" autocomplete="off" />
+            <input type="text" id="deviceName" class="uppercase" value="MY PHONE"
+                   required maxlength="50" autocomplete="off" />
             <div class="validation-message" id="deviceNameValidation"></div>
         </div>
 
@@ -153,6 +153,7 @@
             <i class="fa-solid fa-lock"></i>
             <span>Form protected by anti-XSS validation</span>
         </div>
+
     </div>
 
     <div class="wizard-actions">
@@ -165,11 +166,10 @@
     </div>
 </div>
 
-@* STEP 2 — Face capture: identical markup to Areas/Admin/Views/Employees/Enroll.cshtml *@
+@* STEP 2 — Face capture *@
 <div class="wizard-pane" id="step2">
     <div class="row g-4">
 
-        @* Camera column *@
         <div class="col-lg-8">
             <div class="enroll-camera-wrap">
                 <video id="enrollVideo" class="enroll-video" autoplay playsinline muted></video>
@@ -181,7 +181,6 @@
             </div>
         </div>
 
-        @* Stats column *@
         <div class="col-lg-4">
             <div class="enroll-stats-panel">
                 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -223,6 +222,7 @@
                 </div>
             </div>
         </div>
+
     </div>
 
     <div class="wizard-actions mt-3">
@@ -282,21 +282,20 @@
     (function () {
         'use strict';
 
-        var minFrames = 8; // must match CAPTURE_TARGET in enrollment-core.js
-
-        var capturedFrames = [];
-        var _smoothedBox   = null;
-        var _overlayRaf    = null;
+        var MIN_FRAMES = 8;
 
         var state = {
-            step: 1,
+            step:           1,
             capturedFrames: [],
             valid: {
-                employeeId: false, firstName: false, lastName:   false,
-                middleName: true,  position:  false, department: false,
+                employeeId: false, firstName:  false, lastName:   false,
+                middleName: true,  position:   false, department: false,
                 officeId:   false, deviceName: false
             }
         };
+
+        var _cameraStarted = false;
+        var _overlayToken  = null;
 
         function el(id) { return document.getElementById(id); }
 
@@ -315,121 +314,146 @@
             submitBtn:        el('submitBtn')
         };
 
-        // Enrollment instance — identical config to admin Employees/Enroll.cshtml
         if (typeof FaceAttend === 'undefined' || !FaceAttend.Enrollment) {
-            console.error('[MobileEnroll] FaceAttend.Enrollment not available.');
+            console.error('[MobileEnroll] FaceAttend.Enrollment not available. Check bundle order.');
         }
 
-        var liveEnrollment = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
+        var enroll = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
             ? FaceAttend.Enrollment.create({
                 empId:             '',
                 scanUrl:           '/MobileRegistration/ScanFrame',
                 enrollUrl:         '/api/enrollment/enroll',
-                redirectUrl:       '',
-                minGoodFrames:     minFrames,
+                minGoodFrames:     MIN_FRAMES,
                 maxKeepFrames:     8,
                 perFrameThreshold: 0.60,
                 enablePreview:     false
               })
             : null;
 
-        // Stats panel helpers — same as admin
-        function updateLiveCaptureUI(frameCount, target) {
+        function updateCaptureUI(frameCount, target) {
             var c = el('captureCount');
             if (c) c.textContent = frameCount;
             var p = el('captureProgress');
-            if (p) p.style.width = Math.round((frameCount / (target || minFrames)) * 100) + '%';
+            if (p) p.style.width = Math.min(100, Math.round((frameCount / (target || MIN_FRAMES)) * 100)) + '%';
         }
 
-        function updateLiveAngleDots(goodFrames) {
+        function updateAngleDots(goodFrames) {
             var captured = {};
-            if (goodFrames) {
-                for (var i = 0; i < goodFrames.length; i++) {
-                    var b = goodFrames[i].poseBucket;
-                    if (b && b !== 'other') captured[b] = true;
-                }
-            }
+            (goodFrames || []).forEach(function (f) {
+                if (f.poseBucket && f.poseBucket !== 'other') captured[f.poseBucket] = true;
+            });
             ['center', 'left', 'right', 'up', 'down'].forEach(function (angle) {
                 var item = document.querySelector('[data-angle="' + angle + '"]');
                 if (item) item.classList.toggle('is-captured', !!captured[angle]);
             });
         }
 
-        // Face overlay — exact copy of admin EMA + corner-bracket drawing
-        var _canvas = el('enrollFaceCanvas');
-        var _ctx    = _canvas ? _canvas.getContext('2d') : null;
+        function resetCaptureUI() {
+            updateCaptureUI(0, MIN_FRAMES);
+            updateAngleDots([]);
+            var bar = el('livenessBar');  if (bar) bar.style.width = '0%';
+            var txt = el('livenessText'); if (txt) txt.textContent = '0%';
+        }
 
         function startFaceOverlay(videoEl, enrollInst) {
-            if (!_canvas || !_ctx) return;
+            var overlayCanvas = el('enrollFaceCanvas');
+            var ctx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
+            if (!overlayCanvas || !ctx) return;
+
+            if (_overlayToken) _overlayToken.canceled = true;
+            var token = { canceled: false };
+            _overlayToken = token;
+
+            var smoothed = null;
+            var EMA = 0.25;
+
             function loop() {
-                _overlayRaf = requestAnimationFrame(loop);
-                _canvas.width  = videoEl.videoWidth  || videoEl.offsetWidth;
-                _canvas.height = videoEl.videoHeight || videoEl.offsetHeight;
-                _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
+                if (token.canceled) return;
+                requestAnimationFrame(loop);
+
+                var cw = overlayCanvas.offsetWidth;
+                var ch = overlayCanvas.offsetHeight;
+                if (cw < 1 || ch < 1) return;
+                overlayCanvas.width  = cw;
+                overlayCanvas.height = ch;
+                ctx.clearRect(0, 0, cw, ch);
+
                 var raw = enrollInst && enrollInst.lastFaceBox;
-                if (!raw) { _smoothedBox = null; return; }
-                var EMA = 0.25;
-                if (!_smoothedBox) {
-                    _smoothedBox = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
+                if (!raw || !raw.w || !videoEl.videoWidth) { smoothed = null; return; }
+
+                if (!smoothed) {
+                    smoothed = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
                 } else {
-                    _smoothedBox.x += EMA * (raw.x - _smoothedBox.x);
-                    _smoothedBox.y += EMA * (raw.y - _smoothedBox.y);
-                    _smoothedBox.w += EMA * (raw.w - _smoothedBox.w);
-                    _smoothedBox.h += EMA * (raw.h - _smoothedBox.h);
+                    smoothed.x += EMA * (raw.x - smoothed.x);
+                    smoothed.y += EMA * (raw.y - smoothed.y);
+                    smoothed.w += EMA * (raw.w - smoothed.w);
+                    smoothed.h += EMA * (raw.h - smoothed.h);
                 }
-                var sx   = _canvas.width  / (videoEl.videoWidth  || _canvas.width);
-                var sy   = _canvas.height / (videoEl.videoHeight || _canvas.height);
-                var bx   = _smoothedBox.x * sx, by = _smoothedBox.y * sy;
-                var bw   = _smoothedBox.w * sx, bh = _smoothedBox.h * sy;
-                var done = enrollInst && enrollInst.goodFrames ? enrollInst.goodFrames.length : 0;
-                var color     = done >= minFrames ? '#22c55e' : '#3b82f6';
-                var glowColor = done >= minFrames ? 'rgba(34,197,94,0.5)' : 'rgba(59,130,246,0.5)';
-                var cLen  = Math.min(bw, bh) * 0.18;
-                _ctx.strokeStyle = color;
-                _ctx.lineWidth   = 2.5;
-                _ctx.lineCap     = 'round';
-                _ctx.lineJoin    = 'round';
-                _ctx.shadowColor = glowColor;
-                _ctx.shadowBlur  = 12;
+
+                var sx = cw / videoEl.videoWidth;
+                var sy = ch / videoEl.videoHeight;
+
+                // Mirror X to match CSS transform:scaleX(-1) on the video element
+                var bx = (videoEl.videoWidth - smoothed.x - smoothed.w) * sx;
+                var by = smoothed.y * sy;
+                var bw = smoothed.w * sx;
+                var bh = smoothed.h * sy;
+
+                var done      = enrollInst && enrollInst.goodFrames ? enrollInst.goodFrames.length : 0;
+                var color     = done >= MIN_FRAMES ? '#22c55e' : '#3b82f6';
+                var glowColor = done >= MIN_FRAMES ? 'rgba(34,197,94,0.5)' : 'rgba(59,130,246,0.5)';
+                var cLen      = Math.min(bw, bh) * 0.18;
+
+                ctx.strokeStyle = color;
+                ctx.lineWidth   = 2.5;
+                ctx.lineCap     = 'round';
+                ctx.lineJoin    = 'round';
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur  = 12;
+
                 function bracket(ax, ay, bx2, by2, cx2, cy2) {
-                    _ctx.beginPath(); _ctx.moveTo(ax, ay);
-                    _ctx.lineTo(bx2, by2); _ctx.lineTo(cx2, cy2); _ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(ax, ay); ctx.lineTo(bx2, by2); ctx.lineTo(cx2, cy2);
+                    ctx.stroke();
                 }
-                bracket(bx + cLen,    by,      bx,      by,      bx,      by + cLen);
-                bracket(bx + bw-cLen, by,      bx + bw, by,      bx + bw, by + cLen);
-                bracket(bx + cLen,    by + bh, bx,      by + bh, bx,      by + bh - cLen);
-                bracket(bx + bw-cLen, by + bh, bx + bw, by + bh, bx + bw, by + bh - cLen);
-                _ctx.shadowBlur  = 0;
-                _ctx.globalAlpha = 0.2;
-                _ctx.lineWidth   = 0.5;
-                _ctx.strokeRect(bx, by, bw, bh);
-                _ctx.globalAlpha = 1;
+                bracket(bx + cLen,      by,      bx,      by,      bx,      by + cLen);
+                bracket(bx + bw - cLen, by,      bx + bw, by,      bx + bw, by + cLen);
+                bracket(bx + cLen,      by + bh, bx,      by + bh, bx,      by + bh - cLen);
+                bracket(bx + bw - cLen, by + bh, bx + bw, by + bh, bx + bw, by + bh - cLen);
+
+                ctx.shadowBlur  = 0;
+                ctx.globalAlpha = 0.2;
+                ctx.lineWidth   = 0.5;
+                ctx.strokeRect(bx, by, bw, bh);
+                ctx.globalAlpha = 1;
             }
+
             loop();
         }
 
         function stopFaceOverlay() {
-            if (_overlayRaf) { cancelAnimationFrame(_overlayRaf); _overlayRaf = null; }
-            if (_ctx && _canvas) _ctx.clearRect(0, 0, _canvas.width, _canvas.height);
-            _smoothedBox = null;
+            if (_overlayToken) { _overlayToken.canceled = true; _overlayToken = null; }
+            var c = el('enrollFaceCanvas');
+            var x = c ? c.getContext('2d') : null;
+            if (x && c) x.clearRect(0, 0, c.width, c.height);
         }
 
-        // Camera start / stop — same as admin
         function startCamera() {
-            if (!liveEnrollment) return;
-            var videoEl  = el('enrollVideo');
+            if (_cameraStarted) return;
+            _cameraStarted = true;
+            if (!enroll) return;
+            var videoEl = el('enrollVideo');
             if (!videoEl) return;
-            updateLiveCaptureUI(0, minFrames);
-            updateLiveAngleDots([]);
-            capturedFrames = [];
+            resetCaptureUI();
             var statusEl = el('cameraStatusText');
-            liveEnrollment.startCamera(videoEl)
+            enroll.startCamera(videoEl)
                 .then(function () {
                     if (statusEl) statusEl.textContent = 'Camera active \u2014 look straight ahead';
-                    liveEnrollment.startAutoEnrollment();
-                    startFaceOverlay(videoEl, liveEnrollment);
+                    enroll.startAutoEnrollment();
+                    startFaceOverlay(videoEl, enroll);
                 })
                 .catch(function (e) {
+                    _cameraStarted = false;
                     var msg = (e && e.message) || 'Could not access camera.';
                     if (statusEl) statusEl.textContent = 'Camera error: ' + msg;
                     if (typeof Swal !== 'undefined') {
@@ -440,45 +464,37 @@
         }
 
         function stopCamera() {
-            if (liveEnrollment) liveEnrollment.stopCamera();
+            _cameraStarted = false;
             stopFaceOverlay();
-            capturedFrames = [];
+            if (enroll) enroll.stopCamera();
         }
 
-        // Enrollment callbacks — same as admin except onReadyToConfirm
-        if (liveEnrollment) {
+        function doRetake() {
+            if (!enroll) return;
+            enroll.startAutoEnrollment();
+            resetCaptureUI();
+            startFaceOverlay(el('enrollVideo'), enroll);
+        }
 
-            liveEnrollment.callbacks.onStatus = function (msg) {
-                var e = el('cameraStatusText');
-                if (e) e.textContent = msg || '';
+        if (enroll) {
+            enroll.callbacks.onStatus = function (msg) {
+                var e = el('cameraStatusText'); if (e) e.textContent = msg || '';
             };
-
-            liveEnrollment.callbacks.onLivenessUpdate = function (pct) {
+            enroll.callbacks.onLivenessUpdate = function (pct) {
                 var bar = el('livenessBar');  if (bar) bar.style.width = pct + '%';
                 var txt = el('livenessText'); if (txt) txt.textContent = pct + '%';
             };
-
-            liveEnrollment.callbacks.onCaptureProgress = function (current, target) {
-                capturedFrames = liveEnrollment.goodFrames.slice();
-                updateLiveCaptureUI(current, target);
-                updateLiveAngleDots(liveEnrollment.goodFrames);
+            enroll.callbacks.onCaptureProgress = function (current, target) {
+                updateCaptureUI(current, target);
+                updateAngleDots(enroll.goodFrames);
             };
-
-            liveEnrollment.callbacks.onAngleUpdate = function (next) {
+            enroll.callbacks.onAngleUpdate = function (next) {
                 if (!next || next.bucket === 'other') return;
                 var e = el('cameraStatusText');
                 if (e && next.prompt) e.textContent = next.prompt;
             };
 
-            // KEY DIFFERENCE vs admin:
-            // Admin calls performEnrollment() here because the employee already
-            // exists in the DB. Mobile: no DB employee yet — advance to Step 3.
-            // SubmitEnrollment() on the server creates the employee + pending device.
-            liveEnrollment.callbacks.onReadyToConfirm = function (data) {
-                // Debug log
-                console.log('[Mobile] Ready to confirm:', data);
-
-                // ── FIX (STUCK-02): Block submission if any angle is missing ─
+            enroll.callbacks.onReadyToConfirm = function (data) {
                 if (!data.allAngles) {
                     var REQUIRED = ['center', 'left', 'right', 'up', 'down'];
                     var capturedSet = {};
@@ -486,104 +502,72 @@
                         if (f.poseBucket && f.poseBucket !== 'other') capturedSet[f.poseBucket] = true;
                     });
                     var missing = REQUIRED.filter(function (a) { return !capturedSet[a]; });
-
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
-                            icon:              'warning',
-                            title:             'More angles needed',
-                            html:              'Please capture <b>all 5 angles</b> for reliable face recognition.' +
-                                               '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
-                                               '<br>Captured: ' + data.angleCount + ' / 5',
+                            icon: 'warning', title: 'More angles needed',
+                            html: 'Please capture <b>all 5 angles</b> for reliable face recognition.' +
+                                  '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
+                                  '<br>Captured: ' + data.angleCount + ' / 5',
                             confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',
-                            confirmButtonColor:'#3b82f6',
-                            background:        '#0f172a',
-                            color:             '#f8fafc',
-                            allowOutsideClick: false,
-                            allowEscapeKey:    false
-                        }).then(function () {
-                            // Resume scanning for missing angles
-                            liveEnrollment.startAutoEnrollment();
-                            updateLiveCaptureUI(0, minFrames);
-                            updateLiveAngleDots([]);
-                            capturedFrames = [];
-                            _smoothedBox = null;
-                        });
+                            confirmButtonColor: '#3b82f6', background: '#0f172a', color: '#f8fafc',
+                            allowOutsideClick: false, allowEscapeKey: false
+                        }).then(function () { doRetake(); });
                     } else {
-                        alert('Missing angles: ' + missing.join(', ') + '. Please continue capturing.');
-                        liveEnrollment.startAutoEnrollment();
-                        updateLiveCaptureUI(0, minFrames);
-                        updateLiveAngleDots([]);
-                        capturedFrames = [];
-                        _smoothedBox = null;
+                        alert('Missing angles: ' + missing.join(', '));
+                        doRetake();
                     }
-                    return; // block submission
+                    return;
                 }
 
-                // ── All 5 angles present — show confirm and advance to Step 3 ─
-                var thumbPromises = (data.frames || []).slice(0, 3).map(function (frame) {
-                    return new Promise(function (resolve) {
-                        if (!frame || !frame.blob) { resolve(null); return; }
-                        var reader = new FileReader();
-                        reader.onload = function (e) { resolve(e.target.result); };
-                        reader.onerror = function () { resolve(null); };
-                        reader.readAsDataURL(frame.blob);
-                    });
-                });
-
-                Promise.all(thumbPromises).then(function (dataUrls) {
-                    var thumbHtml = '';
-                    dataUrls.forEach(function (url) {
-                        if (url) {
-                            thumbHtml += '<img src="' + url + '" style="width:80px;height:80px;' +
-                                         'object-fit:cover;border-radius:8px;' +
-                                         'border:2px solid rgba(255,255,255,0.15);flex-shrink:0;margin:4px;" />';
-                        }
-                    });
+                Promise.all(
+                    (data.frames || []).slice(0, 3).map(function (frame) {
+                        return new Promise(function (resolve) {
+                            if (!frame || !frame.blob) { resolve(null); return; }
+                            var reader = new FileReader();
+                            reader.onload  = function (e) { resolve(e.target.result); };
+                            reader.onerror = function ()  { resolve(null); };
+                            reader.readAsDataURL(frame.blob);
+                        });
+                    })
+                ).then(function (dataUrls) {
+                    var thumbHtml = dataUrls.filter(Boolean).map(function (url) {
+                        return '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
+                               'border-radius:8px;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;margin:4px;" />';
+                    }).join('');
 
                     Swal.fire({
-                        title:             'Enrollment Complete!',
+                        title: 'Enrollment Complete!',
                         html:
                             '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
                             thumbHtml + '</div>' +
                             '<div style="font-size:.9rem;">' +
                             '<p>' + data.frameCount + ' frames captured</p>' +
-                            '<p><span style="color:#22c55e;">✓ All 5 angles captured</span></p>' +
-                            '<p>Best quality: ' + data.bestLiveness + '%</p>' +
-                            '</div>',
+                            '<p><span style="color:#22c55e;">\u2713 All 5 angles captured</span></p>' +
+                            '<p>Best quality: ' + data.bestLiveness + '%</p></div>',
                         showCancelButton:  true,
-                        confirmButtonText: 'Continue to Review →',
+                        confirmButtonText: 'Continue to Review \u2192',
                         cancelButtonText:  'Retake Photos',
-                        confirmButtonColor:'#22c55e',
-                        background:        '#0f172a',
-                        color:             '#f8fafc',
+                        confirmButtonColor: '#22c55e', background: '#0f172a', color: '#f8fafc',
                         allowOutsideClick: false
                     }).then(function (result) {
                         if (result.isConfirmed) {
-                            // CRITICAL: store frames then advance to Step 3
-                            state.capturedFrames = liveEnrollment.goodFrames.slice();
+                            state.capturedFrames = enroll.goodFrames.slice();
                             setStep(3);
                         } else {
-                            // Retake — restart scanning from scratch
-                            liveEnrollment.startAutoEnrollment();
-                            updateLiveCaptureUI(0, minFrames);
-                            updateLiveAngleDots([]);
-                            capturedFrames = [];
-                            _smoothedBox = null;
+                            doRetake();
                         }
                     });
                 });
             };
 
-            liveEnrollment.callbacks.onEnrollmentError = function (result) {
-                var msg = typeof liveEnrollment.describeEnrollError === 'function'
-                    ? liveEnrollment.describeEnrollError(result)
+            enroll.callbacks.onEnrollmentError = function (result) {
+                var msg = typeof enroll.describeEnrollError === 'function'
+                    ? enroll.describeEnrollError(result)
                     : ((result && (result.message || result.error)) || 'Scan error, retrying...');
-                var e = el('cameraStatusText');
-                if (e) e.textContent = msg;
+                var e = el('cameraStatusText'); if (e) e.textContent = msg;
             };
         }
 
-        // Wizard step navigation
         function setStep(step) {
             state.step = step;
             [1, 2, 3].forEach(function (n) {
@@ -593,11 +577,11 @@
                 if (stepEl) {
                     stepEl.classList.remove('active', 'done');
                     if (n === step) stepEl.classList.add('active');
-                    if (n < step)  stepEl.classList.add('done');
+                    if (n < step)   stepEl.classList.add('done');
                 }
             });
-            if (step === 2) { startCamera(); } else { stopCamera(); }
-            if (step === 3) { populateReview(); }
+            if (step === 2) startCamera(); else stopCamera();
+            if (step === 3) populateReview();
             window.scrollTo(0, 0);
         }
 
@@ -616,9 +600,9 @@
                     els.position   ? els.position.value   : '',
                     els.department ? els.department.value : ''
                 ].filter(Boolean).join(' / ') || '-',
-                reviewOffice:             officeTx,
-                reviewDeviceName:         els.deviceName ? els.deviceName.value : '-',
-                reviewSampleCount:        samples + ' / 8'
+                reviewOffice:      officeTx,
+                reviewDeviceName:  els.deviceName ? els.deviceName.value : '-',
+                reviewSampleCount: samples + ' / 8'
             };
             Object.keys(map).forEach(function (id) {
                 var e = el(id); if (e) e.textContent = map[id];
@@ -626,17 +610,17 @@
         }
 
         var Rules = {
-            employeeId : { min:5,  max:20,  pat:/^[A-Z0-9 \-]+$/,           label:'Employee ID' },
-            firstName  : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,            label:'First Name'  },
-            lastName   : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,            label:'Last Name'   },
-            middleName : { min:0,  max:50,  pat:/^[A-Z \.\-']*$/,            label:'Middle Name', opt:true },
-            position   : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/,  label:'Position'    },
-            department : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/,  label:'Department'  },
-            deviceName : { min:2,  max:50,  pat:/^[A-Z0-9 \._]+$/,          label:'Device Name' }
+            employeeId : { min:5,  max:20,  pat:/^[A-Z0-9 \-]+$/,          label:'Employee ID' },
+            firstName  : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,           label:'First Name'  },
+            lastName   : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,           label:'Last Name'   },
+            middleName : { min:0,  max:50,  pat:/^[A-Z \.\-']*$/,           label:'Middle Name', opt:true },
+            position   : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/, label:'Position'    },
+            department : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/, label:'Department'  },
+            deviceName : { min:2,  max:50,  pat:/^[A-Z0-9 \._]+$/,         label:'Device Name' }
         };
 
-        function validateField(input, rules, msgId) {
-            var val   = (input ? input.value : '').trim().toUpperCase();
+        function validateField(inputEl, rules, msgId) {
+            var val   = (inputEl ? inputEl.value : '').trim().toUpperCase();
             var msgEl = el(msgId);
             var ok    = false;
             if (!val && rules.opt) {
@@ -651,9 +635,9 @@
                 ok = true;
                 if (msgEl) msgEl.textContent = '';
             }
-            if (input) {
-                input.classList.toggle('valid',   ok);
-                input.classList.toggle('invalid', !ok && !!val);
+            if (inputEl) {
+                inputEl.classList.toggle('valid',   ok);
+                inputEl.classList.toggle('invalid', !ok && !!val);
             }
             return ok;
         }
@@ -686,12 +670,10 @@
             });
         }
 
-        // Button wiring
         if (els.btnToCapture)     els.btnToCapture.addEventListener('click',     function () { setStep(2); });
         if (els.btnBackToDetails) els.btnBackToDetails.addEventListener('click', function () { setStep(1); });
         if (els.btnBackToCapture) els.btnBackToCapture.addEventListener('click', function () { setStep(2); });
 
-        // Submit enrollment
         if (els.submitBtn) {
             els.submitBtn.addEventListener('click', function () {
                 var encodings = [];
@@ -748,6 +730,8 @@
                 });
             });
         }
+
+        window.addEventListener('beforeunload', stopCamera);
 
     }());
     </script>

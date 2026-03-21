@@ -316,6 +316,7 @@
     <Compile Include="Services\Biometrics\DuplicateCheckHelper.cs" />
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
     <Compile Include="Services\Biometrics\EnrollCandidate.cs" />
+    <Compile Include="Services\Biometrics\EnrollmentQualityGate.cs" />
     <Compile Include="Services\Biometrics\FaceEncodingHelper.cs" />
     <Compile Include="Services\Biometrics\FaceIndexBase.cs" />
     <Compile Include="Services\Biometrics\FaceQualityAnalyzer.cs" />
@@ -509,6 +510,7 @@
     <Content Include="Scripts\core\fa-helpers.js" />
     <Content Include="Scripts\core\facescan.js" />
     <Content Include="Scripts\core\notify.js" />
+    <Content Include="Scripts\enrollment-tracking.js" />
     <Content Include="Scripts\enrollment-ui.js" />
     <Content Include="Scripts\facescan-ui.js" />
     <Content Include="Scripts\jquery-3.7.1.js" />
@@ -557,7 +559,6 @@
     <Content Include="Views\MobileRegistration\Device.cshtml" />
     <Content Include="Views\MobileRegistration\DeviceNotRecognized.cshtml" />
     <Content Include="Views\MobileRegistration\Employee.cshtml" />
-    <Content Include="Views\MobileRegistration\Enroll.cshtml" />
     <Content Include="Views\MobileRegistration\Identify.cshtml" />
     <Content Include="Views\MobileRegistration\Index.cshtml" />
     <Content Include="Views\MobileRegistration\Success.cshtml" />
@@ -591,6 +592,7 @@
     <None Include="packages.config" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
+    <Content Include="Views\MobileRegistration\Enroll.cshtml" />
   </ItemGroup>
   <ItemGroup>
     <Service Include="{4A0DDDB5-7A95-4FBF-97CC-616D07737A77}" />
