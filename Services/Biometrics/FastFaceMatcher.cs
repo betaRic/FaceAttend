@@ -36,14 +36,18 @@ namespace FaceAttend.Services.Biometrics
         private static bool _isInitialized = false;
 
         // ── Tier thresholds (read at match time from config) ──────────────────
+        // Public accessors for KioskController MEDIUM confirmation integrity check
+        public static double HighDistThresholdPublic => HighDistThreshold;
+        public static double MedDistThresholdPublic  => MedDistThreshold;
+
         private static double HighDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.42);
+            => ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.38);
         private static double HighGapThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.12);
+            => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.15);
         private static double MedDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.55);
+            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.48);
         private static double MedGapThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.08);
+            => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.10);
 
         // ── DTOs ──────────────────────────────────────────────────────────────
 
@@ -224,7 +228,7 @@ namespace FaceAttend.Services.Biometrics
             }
 
             // ── Ambiguity guard (15% rule) ────────────────────────────────────
-            bool ambiguous = gap != double.PositiveInfinity && gap < (bestDist * 0.15);
+            bool ambiguous = gap != double.PositiveInfinity && gap < (bestDist * 0.20);
             if (ambiguous)
             {
                 logLine = string.Format(

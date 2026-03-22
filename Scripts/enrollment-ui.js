@@ -372,7 +372,7 @@
 
         // ── 3. State-based color (TRACK-03) ───────────────────────────────────
         //
-        //   green  — all 5 angles captured (ready to confirm)
+        //   green  — all 4 angles captured (ready to confirm)
         //   amber  — frames accumulating
         //   blue   — idle / scanning
         var done      = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
@@ -512,7 +512,7 @@
         }
     };
 
-    // ── onReadyToConfirm — enforce all 5 angles (FIX-ANGLE-01) ───────────────
+    // ── onReadyToConfirm — enforce all 4 angles (FIX-ANGLE-01) ───────────────
     enrollment.callbacks.onReadyToConfirm = function (data) {
         setStatus('Capture complete! Reviewing...', 'success');
 
@@ -554,7 +554,7 @@
             return;
         }
 
-        // Path 3: all 5 angles — show confirm dialog with thumbnails
+        // Path 3: all 4 angles — show confirm dialog with thumbnails
         var thumbPromises = data.frames.slice(0, 3).map(function (frame) {
             return new Promise(function (resolve) {
                 if (!frame || !frame.blob) { resolve(null); return; }
@@ -579,7 +579,7 @@
                     '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i>' +
                         '<strong>' + data.frameCount + '</strong> frames captured</div>' +
                     '<div><span style="color:#22c55e;"><i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>' +
-                        'All 5 angles captured</span></div>' +
+                        'all 4 angles captured</span></div>' +
                     '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>' +
                         'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
                 '</div>';
@@ -608,7 +608,7 @@
                 });
             } else {
                 var ok = window.confirm(
-                    'Ready to Enroll!\n\n' + data.frameCount + ' frames, all 5 angles.\n' +
+                    'Ready to Enroll!\n\n' + data.frameCount + ' frames, all 4 angles.\n' +
                     'Best liveness: ' + data.bestLiveness + '%\n\nConfirm?');
                 if (ok) { showProcessing(true, 'Processing enrollment...'); enrollment.performEnrollment(); }
                 else      _doRetake();

@@ -274,6 +274,34 @@ namespace FaceAttend.Controllers.Api
             // Checks: min vector count, angle diversity, intra-set diversity,
             // self-match verification, average quality floor.
             // Returns an actionable error message so the client can guide the user.
+            // Self-match quality filter: remove vectors too far from rest of set
+            // Catches bad enrollment frames that slipped past liveness (e.g. motion blur, partial occlusion)
+            // A vector that cannot match its siblings at <0.40 will cause MEDIUM-tier hits at attendance time
+            var selfMatchThreshold = ConfigurationService.GetDouble(
+                "Biometrics:Enroll:Gate:SelfMatchMaxDist", 0.40);
+            if (selected.Count > 1)
+            {
+                selected = selected.Where(candidate =>
+                {
+                    double minDist = double.PositiveInfinity;
+                    foreach (var other in selected)
+                    {
+                        if (ReferenceEquals(other, candidate)) continue;
+                        var d = DlibBiometrics.Distance(candidate.Vec, other.Vec);
+                        if (d < minDist) minDist = d;
+                    }
+                    return minDist <= selfMatchThreshold;
+                }).ToList();
+
+                if (selected.Count == 0)
+                    return JsonResponseBuilder.Error("NO_GOOD_FRAME", details: new
+                    {
+                        message  = "No vectors passed self-match quality check. Re-enroll with better lighting.",
+                        processed = processedCount,
+                        timeMs    = sw.ElapsedMilliseconds
+                    });
+            }
+
             var gate = EnrollmentQualityGate.Validate(selected);
             if (!gate.Passed)
                 return JsonResponseBuilder.Error(gate.ErrorCode, gate.Message);

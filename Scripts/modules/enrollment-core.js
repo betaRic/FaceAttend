@@ -39,7 +39,7 @@ FaceAttend.Enrollment = (function () {
         FACE_AREA_WARNING_RATIO: 0.07,
 
         ANGLE_SEQUENCE: ['center', 'left', 'right', 'down'],  // 'up' removed
-        AUTO_SUBMIT_ON_ALL_ANGLES: true,
+        AUTO_SUBMIT_ON_ALL_ANGLES: false,
         AUTO_CONFIRM_TIMEOUT_MS: 15000
     };
 
@@ -265,7 +265,7 @@ FaceAttend.Enrollment = (function () {
             pitch =  (((faceBox.y + faceBox.h / 2) / H) - 0.5) * 30;
         }
 
-        var CENTER_YAW = 12, CENTER_PITCH = 28;
+        var CENTER_YAW = 12, CENTER_PITCH = 40;
         var MAX_YAW = 45, MAX_PITCH = 55;
         var absYaw = Math.abs(yaw), absPitch = Math.abs(pitch);
 
@@ -558,7 +558,7 @@ FaceAttend.Enrollment = (function () {
         if (!blob) return;
 
         // Quality score: 70% liveness + 30% normalised sharpness (cap at 300 for norm)
-        var normSharp = typeof sharpness === 'number' ? Math.min(sharpness / 300, 1.0) : 0;
+        var normSharp = typeof sharpness === 'number' ? Math.min(sharpness / 500, 1.0) : 0;
         var liveness  = typeof probability === 'number' ? probability : 0;
         var quality   = liveness * 0.7 + normSharp * 0.3;
 
@@ -714,7 +714,7 @@ FaceAttend.Enrollment = (function () {
             });
 
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
-            var hasMaxFrames    = this.goodFrames.length >= CONSTANTS.CAPTURE_TARGET;
+            var hasMaxFrames    = this.goodFrames.length >= this.config.maxKeepFrames;
 
             if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling)
                 this._startConfirmTimer();

@@ -325,7 +325,7 @@
                 enrollUrl:         '/api/enrollment/enroll',
                 minGoodFrames:     MIN_FRAMES,
                 maxKeepFrames:     8,
-                perFrameThreshold: 0.60,
+                perFrameThreshold: 0.75,
                 enablePreview:     false
               })
             : null;
@@ -499,7 +499,7 @@
 
             enroll.callbacks.onReadyToConfirm = function (data) {
                 if (!data.allAngles) {
-                    var REQUIRED = ['center', 'left', 'right', 'up', 'down'];
+                    var REQUIRED = ['center', 'left', 'right', 'down'];
                     var capturedSet = {};
                     (data.frames || []).forEach(function (f) {
                         if (f.poseBucket && f.poseBucket !== 'other') capturedSet[f.poseBucket] = true;
@@ -508,7 +508,7 @@
                     if (typeof Swal !== 'undefined') {
                         Swal.fire({
                             icon: 'warning', title: 'More angles needed',
-                            html: 'Please capture <b>all 5 angles</b> for reliable face recognition.' +
+                            html: 'Please capture <b>all 4 angles</b> for reliable face recognition.' +
                                   '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
                                   '<br>Captured: ' + data.angleCount + ' / 5',
                             confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',
@@ -545,7 +545,7 @@
                             thumbHtml + '</div>' +
                             '<div style="font-size:.9rem;">' +
                             '<p>' + data.frameCount + ' frames captured</p>' +
-                            '<p><span style="color:#22c55e;">\u2713 All 5 angles captured</span></p>' +
+                            '<p><span style="color:#22c55e;">\u2713 all 4 angles captured</span></p>' +
                             '<p>Best quality: ' + data.bestLiveness + '%</p></div>',
                         showCancelButton:  true,
                         confirmButtonText: 'Continue to Review \u2192',

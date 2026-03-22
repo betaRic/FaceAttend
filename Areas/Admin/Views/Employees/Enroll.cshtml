@@ -383,7 +383,7 @@
             enroll.callbacks.onReadyToConfirm = function (data) {
                 // Not all angles captured — prompt to continue
                 if (!data.allAngles) {
-                    var REQUIRED = ['center', 'left', 'right', 'up', 'down'];
+                    var REQUIRED = ['center', 'left', 'right', 'down'];
                     var capturedSet = {};
                     (data.frames || []).forEach(function (f) {
                         if (f.poseBucket && f.poseBucket !== 'other') capturedSet[f.poseBucket] = true;
@@ -393,7 +393,7 @@
                     Swal.fire({
                         icon:              'warning',
                         title:             'More angles needed',
-                        html:              'Please capture <b>all 5 angles</b> for robust identification.' +
+                        html:              'Please capture <b>all 4 angles</b> for robust identification.' +
                                            '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
                                            '<br>Captured so far: ' + data.angleCount + ' / 5',
                         confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',
@@ -408,7 +408,7 @@
                     return;
                 }
 
-                // All 5 angles — show thumbnail confirmation dialog
+                // all 4 angles — show thumbnail confirmation dialog
                 Promise.all(
                     data.frames.slice(0, 3).map(function (frame) {
                         return new Promise(function (resolve) {
@@ -439,7 +439,7 @@
                                 '<strong>' + data.frameCount + '</strong> frames captured</div>' +
                             '<div style="color:#22c55e;">' +
                                 '<i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>' +
-                                'All 5 angles captured</div>' +
+                                'all 4 angles captured</div>' +
                             '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>' +
                                 'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
                         '</div>';

@@ -33,7 +33,7 @@ namespace FaceAttend.Services.Biometrics
             ConfigurationService.GetInt("Biometrics:Enroll:Gate:MinAngleBuckets", 3);
 
         private static double MaxIntraSetDistance =>
-            ConfigurationService.GetDouble("Biometrics:Enroll:Gate:MaxIntraSetDistance", 0.90);
+            ConfigurationService.GetDouble("Biometrics:Enroll:Gate:MaxIntraSetDistance", 0.55);
 
         private static double MinAverageQuality =>
             ConfigurationService.GetDouble("Biometrics:Enroll:Gate:MinAverageQuality", 0.10);

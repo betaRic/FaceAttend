@@ -515,12 +515,25 @@ namespace FaceAttend.Controllers
                             return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
                         }
 
-                        System.Diagnostics.Trace.TraceInformation(
-                            "[SCAN] MEDIUM_CONFIRMED | emp={0} d1={1:F3} d2={2:F3}",
-                            bestEmpId, existing.Distance, bestDist);
+                        // INTEGRITY CHECK: average of both frames must still be tight
+                        var avgDist = (existing.Distance + bestDist) / 2.0;
+                        var bestOfTwo = Math.Min(existing.Distance, bestDist);
 
-                        // Use better of the two distances for the attendance record
-                        bestDist = Math.Min(existing.Distance, bestDist);
+                        System.Diagnostics.Trace.TraceInformation(
+                            "[SCAN] MEDIUM_CONFIRMED | emp={0} d1={1:F3} d2={2:F3} avg={3:F3} best={4:F3}",
+                            bestEmpId, existing.Distance, bestDist, avgDist, bestOfTwo);
+
+                        // Reject if average is too high OR best frame still above HIGH threshold
+                        // Two borderline frames should not confirm each other
+                        if (avgDist > FastFaceMatcher.MedDistThresholdPublic ||
+                            bestOfTwo > FastFaceMatcher.HighDistThresholdPublic * 1.15)
+                        {
+                            System.Diagnostics.Trace.TraceInformation(
+                                "[SCAN] MEDIUM_REJECTED_WEAK | avg={0:F3} best={1:F3}", avgDist, bestOfTwo);
+                            return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
+                        }
+
+                        bestDist = bestOfTwo;
                     }
 
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);

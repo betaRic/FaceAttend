@@ -58,7 +58,7 @@ namespace FaceAttend.Controllers
                 ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
             }
             
-            return View();
+            return View("Enroll-mobile");
         }
 
         /// <summary>
@@ -82,8 +82,7 @@ namespace FaceAttend.Controllers
                     return JsonResponseBuilder.Error(scan.Error ?? "SCAN_FAIL", scan.Error);
 
                 // MOBILE: Use significantly lower liveness threshold (0.30 vs 0.75)
-                double livenessThreshold = isMobile ? 0.30 :
-                    ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
 
                 bool livenessOk = scan.LivenessOk && scan.LivenessScore >= (float)livenessThreshold;
 
@@ -151,7 +150,8 @@ namespace FaceAttend.Controllers
                     count = 1,
                     isMatch = !string.IsNullOrEmpty(duplicateEmployeeId),
                     matchEmployee = duplicateEmployeeId,
-                    encoding = scan.Base64Encoding,
+
+                    sharpnessOk = scan.Sharpness >= scan.SharpnessThreshold,
                     poseYaw = poseYaw,
                     posePitch = posePitch,
                     poseBucket = poseBucket,
