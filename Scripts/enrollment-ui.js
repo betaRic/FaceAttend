@@ -555,11 +555,22 @@
         }
 
         // Path 3: all 4 angles — show confirm dialog with thumbnails
-        var thumbPromises = data.frames.slice(0, 3).map(function (frame) {
+        // Pick best frame per bucket to show true angle diversity
+        var bucketOrder2 = ['center', 'left', 'right', 'down', 'up'];
+        var seenBuckets2 = {};
+        var previewFrames2 = [];
+        (data.frames || []).forEach(function(f) {
+            if (!seenBuckets2[f.poseBucket] && bucketOrder2.indexOf(f.poseBucket) >= 0) {
+                seenBuckets2[f.poseBucket] = true;
+                previewFrames2.push(f);
+            }
+        });
+        if (previewFrames2.length === 0) previewFrames2 = data.frames.slice(0, 3);
+        var thumbPromises = previewFrames2.slice(0, 4).map(function (frame) {
             return new Promise(function (resolve) {
                 if (!frame || !frame.blob) { resolve(null); return; }
                 var reader = new FileReader();
-                reader.onload  = function (e) { resolve(e.target.result); };
+                reader.onload  = function (e) { resolve({ dataUrl: e.target.result, bucket: frame.poseBucket || "" }); };
                 reader.onerror = function ()  { resolve(null); };
                 reader.readAsDataURL(frame.blob);
             });
@@ -567,10 +578,14 @@
 
         Promise.all(thumbPromises).then(function (dataUrls) {
             var thumbHtml = '';
-            dataUrls.forEach(function (url) {
-                if (url) thumbHtml +=
-                    '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
-                    'border-radius:8px;border:2px solid rgba(255,255,255,0.15);margin:4px;" />';
+            dataUrls.forEach(function (item) {
+                if (!item || !item.dataUrl) return;
+                thumbHtml +=
+                    '<div style="display:inline-flex;flex-direction:column;align-items:center;margin:4px;">' +
+                    '<img src="' + item.dataUrl + '" style="width:80px;height:80px;object-fit:cover;' +
+                    'border-radius:8px;border:2px solid rgba(255,255,255,0.25);" />' +
+                    '<span style="font-size:10px;color:#94a3b8;margin-top:3px;text-transform:uppercase;">' + item.bucket + '</span>' +
+                    '</div>';
             });
 
             var summaryHtml =

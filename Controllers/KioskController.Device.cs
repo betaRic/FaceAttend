@@ -37,6 +37,35 @@ namespace FaceAttend.Controllers
             }
         }
 
+        /// <summary>        /// <summary>
+        /// Returns the current mobile device registration state for the calling device.
+        /// Used by kiosk.js on page load to gate scan access for personal mobile devices.
+        /// </summary>
+        [HttpGet]
+        public ActionResult GetCurrentMobileDeviceState()
+        {
+            var fingerprint = DeviceService.GenerateFingerprint(Request);
+            var deviceToken = DeviceService.GetDeviceTokenFromCookie(Request);
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                Device device = null;
+
+                if (!string.IsNullOrEmpty(deviceToken))
+                    device = db.Devices.FirstOrDefault(d => d.DeviceToken == deviceToken);
+
+                if (device == null)
+                    device = db.Devices.FirstOrDefault(d => d.Fingerprint == fingerprint);
+
+                if (device == null)
+                    return Json(new { ok = true, deviceStatus = "not_registered" },
+                        JsonRequestBehavior.AllowGet);
+
+                return Json(new { ok = true, deviceStatus = device.Status.ToLowerInvariant() },
+                    JsonRequestBehavior.AllowGet);
+            }
+        }
+
         /// <summary>
         /// Check if current device is already registered
         /// </summary>

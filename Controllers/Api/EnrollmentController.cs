@@ -169,18 +169,19 @@ namespace FaceAttend.Controllers.Api
                     catch { return; }
 
                     // ── 8. Parallel: liveness + encoding ─────────────────────
-                    double[] vec         = null;
-                    float    livenessScr = 0f;
-                    bool     liveOk      = false;
+                    double[] vec            = null;
+                    float[]  enrollLandmarks = null;
+                    float    livenessScr     = 0f;
+                    bool     liveOk          = false;
 
                     Parallel.Invoke(
                         () =>
                         {
                             // Encoding from pre-extracted byte array only — Bitmap not touched
-                            float[] landmarks; string encErr;
+                            string encErr;
                             dlib.TryEncodeWithLandmarksFromRgbData(
                                 rgbData, imgW, imgH, faceLoc,
-                                out vec, out landmarks, out encErr);
+                                out vec, out enrollLandmarks, out encErr);
                         },
                         () =>
                         {
@@ -218,9 +219,13 @@ namespace FaceAttend.Controllers.Api
                     }
                     if (duplicateFound) return;
 
-                    // ── 11. Pose estimation → angle bucket ────────────────────
-                    var (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(faceBox, imgW, imgH);
-                    var bucket       = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
+                    // ── 11. Pose estimation → angle bucket (landmarks-first, matches client) ──
+                    float yaw, pitch;
+                    if (enrollLandmarks != null && enrollLandmarks.Length >= 6)
+                        (yaw, pitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(enrollLandmarks);
+                    else
+                        (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(faceBox, imgW, imgH);
+                    var bucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
                     if (bucket == "other") return;  // extreme angle — discard
 
                     int area = Math.Max(0, faceBox.Width) * Math.Max(0, faceBox.Height);

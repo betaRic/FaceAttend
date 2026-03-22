@@ -409,12 +409,25 @@
                 }
 
                 // all 4 angles — show thumbnail confirmation dialog
+                // Pick best frame PER bucket so thumbnails show actual angle diversity
+                var bucketOrder = ['center', 'left', 'right', 'down', 'up'];
+                var seenBuckets = {};
+                var previewFrames = [];
+                (data.frames || []).forEach(function(f) {
+                    if (!seenBuckets[f.poseBucket] && bucketOrder.indexOf(f.poseBucket) >= 0) {
+                        seenBuckets[f.poseBucket] = true;
+                        previewFrames.push(f);
+                    }
+                });
+                if (previewFrames.length === 0) previewFrames = data.frames.slice(0, 3);
                 Promise.all(
-                    data.frames.slice(0, 3).map(function (frame) {
+                    previewFrames.slice(0, 4).map(function (frame) {
                         return new Promise(function (resolve) {
                             if (!frame || !frame.blob) { resolve(null); return; }
                             var reader = new FileReader();
-                            reader.onload  = function (e) { resolve(e.target.result); };
+                            reader.onload  = function (e) {
+                                resolve({ dataUrl: e.target.result, bucket: frame.poseBucket });
+                            };
                             reader.onerror = function ()  { resolve(null); };
                             reader.readAsDataURL(frame.blob);
                         });
@@ -422,10 +435,15 @@
                 ).then(function (dataUrls) {
                     var thumbHtml = dataUrls
                         .filter(Boolean)
-                        .map(function (url) {
-                            return '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
-                                   'border-radius:8px;border:2px solid rgba(255,255,255,0.15);' +
-                                   'flex-shrink:0;margin:4px;" />';
+                        .map(function (item) {
+                            var url = item ? item.dataUrl : null;
+                            var bucket = item ? (item.bucket || '') : '';
+                            if (!url) return '';
+                            return '<div style="display:inline-flex;flex-direction:column;align-items:center;margin:4px;">' +
+                                   '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
+                                   'border-radius:8px;border:2px solid rgba(255,255,255,0.25);" />' +
+                                   '<span style="font-size:10px;color:#94a3b8;margin-top:3px;text-transform:uppercase;">' + bucket + '</span>' +
+                                   '</div>';
                         })
                         .join('');
 

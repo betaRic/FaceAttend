@@ -281,24 +281,16 @@ namespace FaceAttend.Services.Biometrics
             float absPitch = Math.Abs(pitch);
 
             // Extreme angles — discard
-            if (absYaw > 30f || absPitch > 25f) return "other";
+            if (absYaw > 45f || absPitch > 55f) return "other";
 
             // Center zone
-            if (absYaw < 15f && absPitch < 20f) return "center";
+            if (absYaw < 12f && absPitch < 40f) return "center";
 
-            // Dominant axis determines bucket
+            // Dominant axis determines bucket — no inner deadband, matches client exactly
             if (absYaw >= absPitch)
-            {
-                if (yaw < -10f) return "left";
-                if (yaw >  10f) return "right";
-            }
+                return yaw < 0f ? "left" : "right";
             else
-            {
-                if (pitch < -10f) return "up";
-                if (pitch >  10f) return "down";
-            }
-
-            return "center"; // Within threshold on both axes
+                return pitch < 0f ? "up" : "down";
         }
 
         // ── Quality Score ────────────────────────────────────────────────────────

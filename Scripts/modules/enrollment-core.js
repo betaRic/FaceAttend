@@ -254,7 +254,7 @@ FaceAttend.Enrollment = (function () {
                         var noseOffset  = nose.y - eyeMidY;
                         var absYawRad2  = Math.abs(yaw) * Math.PI / 180;
                         var eyeDistRef  = eyeDistX / Math.max(0.3, Math.cos(absYawRad2));
-                        pitch = (noseOffset / eyeDistRef - 0.10) * 100;
+                        pitch = (noseOffset / eyeDistRef - 0.90) * 100;
                     }
                 }
             }

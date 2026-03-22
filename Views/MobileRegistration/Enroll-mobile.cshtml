@@ -523,7 +523,14 @@
                 }
 
                 Promise.all(
-                    (data.frames || []).slice(0, 3).map(function (frame) {
+                    (function() {
+                        var bktOrd = ['center','left','right','down','up'];
+                        var seen = {}; var pf = [];
+                        (data.frames||[]).forEach(function(f){
+                            if(!seen[f.poseBucket]&&bktOrd.indexOf(f.poseBucket)>=0){seen[f.poseBucket]=true;pf.push(f);}
+                        });
+                        return pf.length ? pf.slice(0,4) : (data.frames||[]).slice(0,3);
+                    })().map(function (frame) {
                         return new Promise(function (resolve) {
                             if (!frame || !frame.blob) { resolve(null); return; }
                             var reader = new FileReader();

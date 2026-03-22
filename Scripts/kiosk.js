@@ -1,4 +1,4 @@
-﻿(function () {
+(function () {
     'use strict';
 
     // =========
@@ -262,7 +262,7 @@
         smoothedBox:     null,  // FIX-01: EMA smoothed bounding box
 
         latestLiveness:    null,
-        livenessThreshold: 0.60,  // UPDATED: More forgiving threshold
+        livenessThreshold: 0.75,  // Matches server Biometrics:LivenessThreshold default
 
         motionDiffNow:   null,
         frameDiffs:      [],
@@ -2660,6 +2660,34 @@ state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELA
                 setPrompt('Enrollment required.', 'Please register to use the system.');
                 armPostScanHold(5000);
             }
+            return;
+        }
+
+        if (err === 'SCAN_CONFIRM_NEEDED') {
+            // MEDIUM-tier match: server needs one more confirming frame
+            // Show message, minimal hold so user can scan immediately
+            if (ui.mainPrompt) ui.mainPrompt.textContent = j.message || 'Please look at the camera again.';
+            armPostScanHold(500);
+            return;
+        }
+
+        if (err === 'FACE_FAIL' || err === 'INVALID_IMAGE_FORMAT') {
+            // Face detection failed or image corrupt — silent retry
+            armPostScanHold(1000);
+            return;
+        }
+
+        if (err === 'ENCODING_FAIL') {
+            // Dlib encoding failed — silent retry
+            armPostScanHold(1000);
+            return;
+        }
+
+        if (err === 'WRONG_DEVICE') {
+            var matchedEmp = (j.details && j.details.matchedEmployee) || j.matchedEmployee || 'another employee';
+            toastError('This device is registered to ' + matchedEmp + '. Use your own device.');
+            setPrompt('Wrong device.', 'Use your own registered device.');
+            armPostScanHold(5000);
             return;
         }
 

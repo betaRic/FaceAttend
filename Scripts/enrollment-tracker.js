@@ -218,7 +218,7 @@
         var eyeSpanRef  = eyeSpanX / yawComp;
         // 0.10 offset: centers the neutral band for above-camera webcams (most common)
         // 100 multiplier: moderate sensitivity, CENTER_PITCH=28 gives ±28° of tolerance
-        var pitch = (noseBelow / eyeSpanRef - 0.55) * 100;
+        var pitch = (noseBelow / eyeSpanRef - 0.90) * 100;
 
         return {
             bucket: poseBucket(yaw, pitch),
