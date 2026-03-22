@@ -1,52 +1,33 @@
 /**
- * enrollment-tracker.js  v2.0
+ * enrollment-tracker.js  v2.1
  *
- * Self-contained 60fps face tracker for ALL enrollment pages.
- * Requires only:   <video id="enrollVideo">   <canvas id="enrollFaceCanvas">
+ * PITCH FIX (v2.1):
  *
- * WHAT'S NEW IN v2.0:
+ *   The old formula  (noseBelow / bb.height - 0.20) * 250  had two compounding bugs:
  *
- *   CAM-01  Camera focus enhancement.
- *           After the stream is live, this module grabs the video track and
- *           applies  focusMode:'continuous', zoom:1, resizeMode:'none'  plus
- *           continuous white-balance and exposure. All constraints are checked
- *           against getCapabilities() first — unsupported ones are silently
- *           skipped, so nothing breaks on fixed-focus webcams.
+ *   1. bb.height (BlazeFace raw bbox) is NOT stable across webcam heights.
+ *      A laptop camera positioned above the face produces noseBelow ≈ 0 at neutral
+ *      (nose appears at eye level from the camera angle). The constant 0.20 assumed
+ *      nose is 20% of bbox height below the eyes, which is only true for a camera
+ *      exactly at eye level. Result: neutral pose → P:-50° → flagged as UP forever.
  *
- *   CAM-02  Point-of-interest focus targeting.
- *           When a face is detected, the face-centre is fed back to the camera
- *           as a pointsOfInterest hint (throttled to once per second). On
- *           phones/laptops with hardware phase-detect AF this snaps focus to
- *           the face and eliminates the soft-focus that blurry scores report.
+ *   2. Multiplier 250 gave 0.4° per percentage point — CENTER required hitting a
+ *      0.04-wide window on a 0–1 ratio. Physically impossible to hold consistently.
  *
- *   POSE-01 Pose estimation from MediaPipe keypoints.
- *           FaceDetector returns 6 normalised keypoints per detection.
- *           Yaw (left/right) and pitch (up/down) are derived from the eye-
- *           midpoint vs nose-tip offset — same math as enrollment-core.js
- *           estimatePoseBucket().
+ *   FIX: Use yaw-compensated eyeSpanX as the pitch denominator.
+ *     • eyeSpanX / cos(yaw) restores the "frontal" inter-ocular distance regardless
+ *       of head turn — directly eliminates the yaw-amplification problem.
+ *     • Subtract 0.10 offset: empirically correct for cameras positioned above eye
+ *       level (the most common laptop/monitor webcam position).
+ *     • Multiplier 100 with CENTER_PITCH = 28 gives ±28° of tolerance for CENTER,
+ *       which safely captures all "neutral-ish" poses across all webcam heights.
  *
- *   POSE-02 Pose debug badge on bounding box.
- *           Top-right corner:    bucket label + arrow  e.g. "← LEFT"
- *           Bottom-right corner: yaw / pitch angles + detection confidence
- *           Coloured to match the box state (blue / amber / green).
- *
- * INTEGRATION:
- *   1. Add to enrollment bundle after vision_loader:
- *        .Include("~/Scripts/enrollment-tracker.js")
- *
- *   2. Remove the old startFaceOverlay() call and its RAF loop from
- *      Admin/Enroll.cshtml — this file replaces them completely.
- *
- *   3. Optionally add vision_loader tag to enrollment views to skip the
- *      dynamic-injection fallback:
- *        <script type="module"
- *          src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")">
- *        </script>
+ *   CENTER_PITCH widened from 10 → 28: the old 10° window was too tight to survive
+ *   natural head micro-movements AND the calibration error simultaneously.
  */
 (function () {
     'use strict';
 
-    // ── DOM guard ──────────────────────────────────────────────────────────────
     var video  = document.getElementById('enrollVideo');
     var canvas = document.getElementById('enrollFaceCanvas');
     if (!video || !canvas) return;
@@ -56,46 +37,32 @@
 
     var appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
 
-    // ── Constants ─────────────────────────────────────────────────────────────
-    var MIN_CONF     = 0.30;   // MediaPipe detection confidence floor
-    var ALPHA        = 0.35;   // EMA alpha — identical to kiosk smoothedBox
-    var SHIFT_UP     = 0.20;   // shift box up 20% of height to include forehead
-    var EXPAND_H     = 0.08;   // expand box height 8%
-    var ANGLES       = ['center', 'left', 'right', 'down'];  // 'up' removed
+    var MIN_CONF     = 0.30;
+    var ALPHA        = 0.35;
+    var SHIFT_UP     = 0.20;
+    var EXPAND_H     = 0.08;
+    var ANGLES       = ['center', 'left', 'right', 'down'];
 
-    // Pose bucket thresholds — same values as enrollment-core.js
+    // ── FIXED: CENTER_PITCH widened from 10 → 28 ─────────────────────────────
+    // 28° absorbs all realistic webcam-height variation while still demanding
+    // an obvious tilt to register as UP or DOWN.
     var CENTER_YAW   = 12;
-    var CENTER_PITCH = 10;
+    var CENTER_PITCH = 28;
     var MAX_YAW      = 45;
-    var MAX_PITCH    = 35;
+    var MAX_PITCH    = 55;
 
-    // ── Module state ──────────────────────────────────────────────────────────
     var detector      = null;
     var smoothed      = null;
     var scanLinePos   = 0;
     var active        = false;
     var lastTs        = -1;
 
-    // Pose state — updated every detection tick, consumed every draw tick
     var currentPose   = { bucket: '', yaw: 0, pitch: 0, conf: 0 };
-
-    // Face area ratio in normalised image space (0-1). Used for real distance check.
-    // Separate from pose bucket — a face can be 'other' (extreme angle) but still close.
     var currentFaceArea = 0;
 
-    // Camera focus state
-    var videoTrack   = null;   // MediaStreamTrack, set once stream is live
-    var poiThrottle  = 0;      // epoch ms — rate-limits pointsOfInterest calls
+    var videoTrack   = null;
+    var poiThrottle  = 0;
 
-    // ==========================================================================
-    // CAM-01 / CAM-02 — Camera focus enhancement
-    // ==========================================================================
-
-    /**
-     * Grab the video track from the live stream and apply all supported
-     * focus/quality constraints. Safe to call multiple times — checks
-     * capabilities before every applyConstraints().
-     */
     function enhanceCameraFocus() {
         var stream = video.srcObject;
         if (!stream || !(stream instanceof MediaStream)) return;
@@ -106,30 +73,24 @@
         videoTrack = tracks[0];
         var caps   = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
 
-        // Build advanced constraint set from what the camera actually supports
         var advanced = [];
 
-        // Continuous autofocus
         if (caps.focusMode && caps.focusMode.indexOf('continuous') !== -1) {
             advanced.push({ focusMode: 'continuous' });
         }
 
-        // Lock zoom to 1x — forces full sensor resolution, eliminates digital-zoom blur
         if (caps.zoom && caps.zoom.min <= 1 && caps.zoom.max >= 1) {
             advanced.push({ zoom: 1 });
         }
 
-        // Prevent browser from interpolating / blurring via software resize
         if (caps.resizeMode && caps.resizeMode.indexOf('none') !== -1) {
             advanced.push({ resizeMode: 'none' });
         }
 
-        // Continuous white balance
         if (caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('continuous') !== -1) {
             advanced.push({ whiteBalanceMode: 'continuous' });
         }
 
-        // Continuous exposure
         if (caps.exposureMode && caps.exposureMode.indexOf('continuous') !== -1) {
             advanced.push({ exposureMode: 'continuous' });
         }
@@ -145,14 +106,6 @@
             });
     }
 
-    /**
-     * CAM-02: Point-of-interest focus targeting.
-     * Sends the detected face centre to the camera as a focus hint.
-     * Throttled to once per second to avoid hammering the camera driver.
-     *
-     * @param {number} normX  face-centre X in normalised image coords (0-1)
-     * @param {number} normY  face-centre Y in normalised image coords (0-1)
-     */
     function applyFocusPoint(normX, normY) {
         if (!videoTrack) return;
         var now = Date.now();
@@ -170,10 +123,6 @@
         }).catch(function () {});
     }
 
-    // ==========================================================================
-    // Coordinate helpers — direct ports from kiosk.js
-    // ==========================================================================
-
     function toVideoBox(bb) {
         if (!bb || !video.videoWidth) return null;
         var isNorm = bb.width <= 1.5 && bb.height <= 1.5;
@@ -189,14 +138,14 @@
     function mapToCanvas(vbox, cssW, cssH) {
         if (!vbox || !video.videoWidth) return null;
         var vW    = video.videoWidth, vH = video.videoHeight;
-        var scale = Math.max(cssW / vW, cssH / vH);   // object-fit:cover
+        var scale = Math.max(cssW / vW, cssH / vH);
         var offX  = (cssW - vW * scale) / 2;
         var offY  = (cssH - vH * scale) / 2;
         var x     = offX + vbox.x * scale;
         var y     = offY + vbox.y * scale;
         var w     = vbox.w * scale;
         var h     = vbox.h * scale;
-        x = cssW - (x + w);                            // mirror X for CSS scaleX(-1)
+        x = cssW - (x + w);
         return { x: x, y: y, w: w, h: h };
     }
 
@@ -214,43 +163,24 @@
         return { w: cssW, h: cssH };
     }
 
-    // ==========================================================================
-    // POSE-01 — Pose estimation from MediaPipe keypoints
-    // ==========================================================================
-
-    /**
-     * MediaPipe FaceDetector keypoints (normalised 0-1, UNMIRRORED image coords):
-     *   0: right_eye  (subject's right)
-     *   1: left_eye   (subject's left)
-     *   2: nose_tip
-     *   3: mouth_center
-     *   4: right_ear_tragion
-     *   5: left_ear_tragion
-     *
-     * Yaw convention (matches enrollment-core.js FIX-POSE-01):
-     *   negative = face turning to subject's left
-     *   positive = face turning to subject's right
-     *
-     * Pitch convention:
-     *   negative = tilting head up (nose rises toward eyes)
-     *   positive = tilting head down (nose drops below eyes)
-     */
+    // =========================================================================
+    // FIXED estimatePose — yaw-compensated eyeSpanX pitch
+    // =========================================================================
     function estimatePose(detection) {
         var kps  = detection.keypoints;
         var bb   = detection.boundingBox;
         var conf = (detection.categories && detection.categories[0] &&
                     detection.categories[0].score) || 0;
 
-        // Fallback when keypoints are absent
         if (!kps || kps.length < 3) {
             var cx    = bb ? bb.originX + bb.width  / 2 : 0.5;
             var yawFB = -(cx - 0.5) * 60;
             return { bucket: poseBucket(yawFB, 0), yaw: Math.round(yawFB), pitch: 0, conf: conf };
         }
 
-        var rEye = kps[0]; // subject's right eye
-        var lEye = kps[1]; // subject's left eye
-        var nose = kps[2]; // nose tip
+        var rEye = kps[0];
+        var lEye = kps[1];
+        var nose = kps[2];
 
         var eyeMidX  = (lEye.x + rEye.x) / 2;
         var eyeMidY  = (lEye.y + rEye.y) / 2;
@@ -260,47 +190,35 @@
             return { bucket: 'center', yaw: 0, pitch: 0, conf: conf };
         }
 
-        // Yaw: nose horizontal offset from eye midpoint, normalised by eye span.
-        // Negated (FIX-POSE-01 convention) so positive yaw = turning right.
-        // Yaw uses eye span as denominator — correct because eye span is a
-        // horizontal measurement unaffected by pitch rotation.
+        // YAW — unchanged, works correctly
         var yaw = -((nose.x - eyeMidX) / eyeSpanX) * 90;
 
-        // FIX-DIST-01: Pitch MUST NOT use eyeSpanX as denominator.
+        // ── PITCH FIX ──────────────────────────────────────────────────────────
+        // Problem with old formula (noseBelow / bb.height - 0.20) * 250:
+        //   bb.height is NOT a reliable reference — it varies drastically with
+        //   webcam height. A laptop camera above the face makes noseBelow ≈ 0
+        //   at neutral, giving pitch ≈ (0 - 0.20) * 250 = -50° → flagged UP.
         //
-        // The OLD formula  pitch = (noseBelow / eyeSpanX - 0.5) * 100  had a
-        // critical flaw: eyeSpanX is a PROJECTED width that shrinks as the head
-        // turns (yaw rotation compresses the eye span by cos(yaw)). At 60° yaw,
-        // eyeSpanX ≈ 0.5× its frontal value, making the denominator 2× smaller
-        // → pitch score doubles for the same physical tilt. This is why P:71° was
-        // reported for a face that was only mildly tilted down.
+        // Fix: use eyeSpanX / cos(yaw) as the reference (yaw-compensated eye span).
+        //   This is self-calibrating: it scales with the face's own geometry and
+        //   compensates for the eye-span foreshortening caused by head turning.
         //
-        // FIX: normalise by bounding box HEIGHT instead of eye span.
-        // The bbox height from MediaPipe is measured along the image Y axis and is
-        // stable regardless of head yaw rotation. Face height and bbox height are
-        // proportional, so this measure is yaw-independent.
-        //
-        // Calibration:
-        //   At neutral (straight-ahead), the nose tip is ~20% of face bbox height
-        //   below the eye midpoint. This is the zero-pitch anchor.
-        //   pitch = (noseBelow/bboxH - 0.20) * 250
-        //   Examples:
-        //     noseBelow/bboxH = 0.20 → pitch = 0°  (neutral)
-        //     noseBelow/bboxH = 0.34 → pitch = 35° (MAX_PITCH threshold)
-        //     noseBelow/bboxH = 0.12 → pitch = -20° (tilted up, CENTER range)
-
-        var pitch = 0;
-        if (bb && bb.height > 0.01) {
-            var noseBelow = nose.y - eyeMidY;
-            pitch = (noseBelow / bb.height - 0.20) * 250;
-        } else {
-            // Fallback to eye-span normalisation when bbox unavailable,
-            // but apply a yaw-compensation factor to reduce the amplification.
-            var noseBelow2 = nose.y - eyeMidY;
-            var absYawRad  = Math.abs(yaw) * Math.PI / 180;
-            var yawComp    = Math.max(0.5, Math.cos(absYawRad)); // prevent over-correction
-            pitch = (noseBelow2 / (eyeSpanX / yawComp) - 0.5) * 100;
-        }
+        //   - At neutral (webcam above, noseBelow ≈ 0):
+        //       pitch = (0 / eyeSpanRef - 0.10) * 100 = -10° → CENTER ✓
+        //   - At neutral (webcam at eye level, noseBelow ≈ 0.35 × eyeSpanRef):
+        //       pitch = (0.35 - 0.10) * 100 = +25° → CENTER (within ±28°) ✓
+        //   - Obvious UP tilt (any webcam): noseBelow goes negative relative to eyeSpanRef
+        //       pitch < -28° → UP ✓
+        //   - Obvious DOWN tilt: noseBelow grows large
+        //       pitch > +28° → DOWN ✓
+        var noseBelow   = nose.y - eyeMidY;
+        var absYawRad   = Math.abs(yaw) * Math.PI / 180;
+        // cos(yaw) compensates eyeSpanX foreshortening; floor at 0.3 prevents divide explosion
+        var yawComp     = Math.max(0.3, Math.cos(absYawRad));
+        var eyeSpanRef  = eyeSpanX / yawComp;
+        // 0.10 offset: centers the neutral band for above-camera webcams (most common)
+        // 100 multiplier: moderate sensitivity, CENTER_PITCH=28 gives ±28° of tolerance
+        var pitch = (noseBelow / eyeSpanRef - 0.10) * 100;
 
         return {
             bucket: poseBucket(yaw, pitch),
@@ -314,23 +232,15 @@
         var absYaw   = Math.abs(yaw);
         var absPitch = Math.abs(pitch);
 
-        // Center: both axes within deadzone
         if (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) return 'center';
 
-        // Always classify to the nearest bucket — never return 'other'.
-        // The camera may be permanently below or to the side of the user,
-        // inflating one axis. Blocking on MAX thresholds means the system
-        // never registers a valid pose. Dominant axis wins unconditionally.
+        // Always classify to nearest bucket — never return 'other'
         if (absYaw >= absPitch) {
             return yaw < 0 ? 'left' : 'right';
         } else {
             return pitch < 0 ? 'up' : 'down';
         }
     }
-
-    // ==========================================================================
-    // State colour — matches kiosk palette
-    // ==========================================================================
 
     function stateColor() {
         var enroll = window.FaceAttendEnrollment;
@@ -352,10 +262,6 @@
             return { main: '#f59e0b', glow: 'rgba(245,158,11,0.50)' };
         return { main: '#4f9cf9', glow: 'rgba(79,156,249,0.45)' };
     }
-
-    // ==========================================================================
-    // Draw helpers
-    // ==========================================================================
 
     function bracket(ax, ay, mx, my, ex, ey) {
         ctx.beginPath();
@@ -379,11 +285,6 @@
         c.closePath();
     }
 
-    /**
-     * Pose debug badge inside the bounding box.
-     * Top-right:    pose label  e.g. CENTER / LEFT / RIGHT / UP / DOWN
-     * Bottom-right: Y/P angles + confidence
-     */
     function drawPoseBadge(bx, by, bw, bh, col) {
         var pose = currentPose;
         if (!pose.bucket) return;
@@ -397,7 +298,7 @@
         };
 
         var label = LABELS[pose.bucket];
-        if (!label) return; // unknown bucket — draw nothing
+        if (!label) return;
 
         var debug = 'Y:' + pose.yaw + '° P:' + pose.pitch + '°  ' +
                     Math.round(pose.conf * 100) + '%';
@@ -406,7 +307,6 @@
         ctx.save();
         ctx.textBaseline = 'middle';
 
-        // ── TOP-RIGHT: pose label ─────────────────────────────────────────────
         ctx.font = 'bold 11px "Helvetica Neue", Arial, sans-serif';
         var lw   = ctx.measureText(label).width;
         var lh   = 20;
@@ -423,7 +323,6 @@
         ctx.fillStyle   = '#ffffff';
         ctx.fillText(label, lx + pad, ly + lh / 2);
 
-        // ── BOTTOM-RIGHT: Y/P/confidence ──────────────────────────────────────
         ctx.font = '10px "Helvetica Neue", Arial, sans-serif';
         var dw   = ctx.measureText(debug).width;
         var dh   = 18;
@@ -443,10 +342,6 @@
         ctx.restore();
     }
 
-    // ==========================================================================
-    // Main RAF loop — detect + smooth + draw at ~60fps
-    // ==========================================================================
-
     function tick() {
         if (!active) return;
         requestAnimationFrame(tick);
@@ -455,7 +350,6 @@
         var cssW = dims.w, cssH = dims.h;
         ctx.clearRect(0, 0, cssW, cssH);
 
-        // ── 1. Detect ─────────────────────────────────────────────────────────
         var detectedBox = null;
 
         if (detector && video.videoWidth && video.videoHeight) {
@@ -471,7 +365,6 @@
                     });
 
                     if (valid.length) {
-                        // Always pick the largest (closest) face
                         var best = valid.reduce(function (a, b) {
                             var aA = a.boundingBox
                                 ? a.boundingBox.width * a.boundingBox.height : 0;
@@ -483,13 +376,10 @@
                         detectedBox = mapToCanvas(toVideoBox(best.boundingBox), cssW, cssH);
                         currentPose = estimatePose(best);
 
-                        // Store face area in NORMALISED coords for distance check.
-                        // This is independent of canvas/CSS sizing.
                         currentFaceArea = best.boundingBox
                             ? best.boundingBox.width * best.boundingBox.height
                             : 0;
 
-                        // CAM-02: feed face centre back to camera as focus hint
                         if (best.boundingBox) {
                             var ncx = best.boundingBox.originX + best.boundingBox.width  / 2;
                             var ncy = best.boundingBox.originY + best.boundingBox.height / 2;
@@ -500,12 +390,11 @@
                         currentFaceArea = 0;
                     }
                 } catch (e) {
-                    // Bad frame — keep loop alive, skip this tick
+                    // Bad frame — keep loop alive
                 }
             }
         }
 
-        // ── 2. EMA smooth ──────────────────────────────────────────────────────
         if (detectedBox) {
             if (!smoothed) {
                 smoothed = { x: detectedBox.x, y: detectedBox.y,
@@ -517,7 +406,6 @@
                 smoothed.h += ALPHA * (detectedBox.h - smoothed.h);
             }
         } else {
-            // Face lost — decay box away over ~10 frames then hide
             if (smoothed) {
                 smoothed.w *= 0.92;
                 smoothed.h *= 0.92;
@@ -529,11 +417,9 @@
 
         var bx = smoothed.x, by = smoothed.y, bw = smoothed.w, bh = smoothed.h;
 
-        // ── 3. State colour ───────────────────────────────────────────────────
         var col    = stateColor();
         var isBusy = !!(window.FaceAttendEnrollment && window.FaceAttendEnrollment.busy);
 
-        // ── 4. Scan line while a frame is being captured ──────────────────────
         if (isBusy) {
             scanLinePos = (scanLinePos + 0.016) % 1.0;
             var scanY = by + bh * scanLinePos;
@@ -557,7 +443,6 @@
             scanLinePos = 0;
         }
 
-        // ── 5. Corner brackets ────────────────────────────────────────────────
         var cLen = Math.min(bw, bh) * 0.20;
         var lw   = isBusy ? 3.5 : 2.5;
 
@@ -575,7 +460,6 @@
 
         ctx.restore();
 
-        // ── 6. Box outline + subtle fill ──────────────────────────────────────
         ctx.save();
         ctx.strokeStyle = col.main;
         ctx.lineWidth   = isBusy ? 2.0 : 1.5;
@@ -586,16 +470,12 @@
         ctx.fillRect(bx, by, bw, bh);
         ctx.restore();
 
-        // ── 7. POSE-02: pose debug badge ──────────────────────────────────────
         drawPoseBadge(bx, by, bw, bh, col);
 
-        // ── 8. Publish live box + pose for enrollment-ui.js / enrollment-core.js ─────
         if (window.FaceAttendEnrollment) {
             window.FaceAttendEnrollment.liveTrackingBox = {
                 x: bx, y: by, w: bw, h: bh
             };
-            // livePose is read by processScanResult() in enrollment-core.js so the
-            // tracker's pose (not the server re-estimate) is stored per captured frame.
             window.FaceAttendEnrollment.livePose = {
                 bucket: currentPose.bucket,
                 yaw:    currentPose.yaw,
@@ -604,10 +484,6 @@
             };
         }
     }
-
-    // ==========================================================================
-    // MediaPipe initialisation
-    // ==========================================================================
 
     function buildDetector(vision) {
         var modelPath = appBase +
@@ -636,7 +512,7 @@
                 detector = det;
                 active   = true;
                 requestAnimationFrame(tick);
-                console.log('[enrollment-tracker] v2.0 ready — 60fps + pose debug active');
+                console.log('[enrollment-tracker] v2.1 ready — fixed pitch formula');
             })
             .catch(function (e) {
                 console.warn('[enrollment-tracker] MediaPipe init failed:', e);
@@ -646,7 +522,6 @@
     function tryLoadMp() {
         if (typeof window.MpFilesetResolver === 'function') { initMp(); return; }
 
-        // Dynamic injection fallback
         var s  = document.createElement('script');
         s.type = 'module';
         s.src  = appBase + 'Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs';
@@ -657,16 +532,12 @@
             if (typeof window.MpFilesetResolver === 'function') {
                 clearInterval(iv);
                 initMp();
-            } else if (++attempts > 50) {   // 10s timeout
+            } else if (++attempts > 50) {
                 clearInterval(iv);
                 console.warn('[enrollment-tracker] vision_loader timed out.');
             }
         }, 200);
     }
-
-    // ==========================================================================
-    // Boot — wait for camera stream, enhance focus, then start MediaPipe
-    // ==========================================================================
 
     function waitForCamera() {
         if (video.videoWidth > 0) {
@@ -680,13 +551,12 @@
                 clearInterval(iv);
                 enhanceCameraFocus();
                 tryLoadMp();
-            } else if (++checks > 120) {   // 60s timeout
+            } else if (++checks > 120) {
                 clearInterval(iv);
             }
         }, 500);
     }
 
-    // Also hook the playing event in case the camera was live before this ran
     video.addEventListener('playing', function () {
         setTimeout(enhanceCameraFocus, 300);
     });

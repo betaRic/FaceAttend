@@ -16,7 +16,6 @@ using FaceAttend.Services.Helpers;
 using FaceAttend.Services.Security;
 using static FaceAttend.Services.Security.FileSecurityService;
 using static FaceAttend.Services.OfficeLocationService;
-// NOTE: KioskSessionService merged into DeviceService - use DeviceService.GetVisitorSessionBinding/GetShortDeviceFingerprint
 using FaceRecognitionDotNet;
 
 namespace FaceAttend.Controllers
@@ -38,6 +37,32 @@ namespace FaceAttend.Controllers
         private static int _activeScanCount;
         private const string VisitorScanPrefix = "VISITORSCAN::";
 
+        // --- Multi-frame voting: MEDIUM-tier matches need a second confirming frame ---
+        // A PendingScan is stored when the first frame is MEDIUM-tier.
+        // The second scan from the same device (within TTL) checks whether it matches
+        // the same employee. If yes → record. If not → reject both.
+        private class PendingScan
+        {
+            public string   EmployeeId   { get; set; }
+            public int      EmployeeDbId { get; set; }
+            public double   Distance     { get; set; }
+            public float    Liveness     { get; set; }
+            public double   AmbiguityGap { get; set; }
+            public int      OfficeId     { get; set; }
+            public string   OfficeName   { get; set; }
+            public string   DeviceKey    { get; set; }
+            public DateTime CreatedUtc   { get; set; }
+        }
+
+        private static readonly MemoryCache _pendingScans   = MemoryCache.Default;
+        private const string PendingScanPrefix = "PENDINGSCAN::";
+
+        private static int GetPendingScanTtlSeconds()
+        {
+            var s = ConfigurationService.GetInt("Kiosk:PendingScanTtlSeconds", 8);
+            return s < 3 ? 3 : (s > 30 ? 30 : s);
+        }
+
         private static int GetVisitorScanTtlSeconds()
         {
             var s = ConfigurationService.GetInt("Kiosk:VisitorScanTtlSeconds", 180);
@@ -52,9 +77,8 @@ namespace FaceAttend.Controllers
         [HttpGet]
         public ActionResult Index(string returnUrl, int? unlock)
         {
-            ViewBag.ReturnUrl = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
-            ViewBag.UnlockHint = (unlock ?? 0) == 1;
-            // SECURITY: Disable admin unlock on mobile devices
+            ViewBag.ReturnUrl   = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
+            ViewBag.UnlockHint  = (unlock ?? 0) == 1;
             ViewBag.AllowUnlock = !DeviceService.IsMobileDevice(Request);
             return View();
         }
@@ -67,7 +91,7 @@ namespace FaceAttend.Controllers
             using (var db = new FaceAttendDBEntities())
             {
                 bool gpsRequired = DeviceService.IsMobileDevice(Request);
-                bool hasCoords = lat.HasValue && lon.HasValue;
+                bool hasCoords   = lat.HasValue && lon.HasValue;
 
                 if (!hasCoords)
                 {
@@ -77,52 +101,39 @@ namespace FaceAttend.Controllers
                             db, "Location:GPSAccuracyRequired",
                             ConfigurationService.GetInt("Location:GPSAccuracyRequired", 50));
                         return JsonResponseBuilder.OfficeResolved(
-                            allowed: false, 
-                            gpsRequired: true, 
-                            reason: "GPS_REQUIRED", 
-                            requiredAccuracy: requiredAccuracy, 
-                            accuracy: accuracy);
+                            allowed: false, gpsRequired: true,
+                            reason: "GPS_REQUIRED", requiredAccuracy: requiredAccuracy, accuracy: accuracy);
                     }
 
                     var fallback = OfficeLocationService.GetFallbackOffice(db);
                     return JsonResponseBuilder.OfficeResolved(
-                        allowed: true, 
-                        gpsRequired: false, 
-                        officeId: fallback?.Id, 
-                        officeName: fallback?.Name);
+                        allowed: true, gpsRequired: false,
+                        officeId: fallback?.Id, officeName: fallback?.Name);
                 }
 
                 var pick = OfficeLocationService.PickOffice(db, lat.Value, lon.Value, accuracy);
                 if (!pick.Allowed)
                 {
                     return JsonResponseBuilder.OfficeResolved(
-                        allowed: false, 
-                        gpsRequired: gpsRequired, 
-                        reason: pick.Reason, 
-                        requiredAccuracy: pick.RequiredAccuracy, 
-                        accuracy: accuracy);
+                        allowed: false, gpsRequired: gpsRequired,
+                        reason: pick.Reason, requiredAccuracy: pick.RequiredAccuracy, accuracy: accuracy);
                 }
 
                 return JsonResponseBuilder.OfficeResolved(
-                    allowed: true, 
-                    gpsRequired: gpsRequired, 
-                    officeId: pick.Office.Id, 
-                    officeName: pick.Office.Name,
-                    reason: "OK");
+                    allowed: true, gpsRequired: gpsRequired,
+                    officeId: pick.Office.Id, officeName: pick.Office.Name, reason: "OK");
             }
         }
 
         [HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "KioskAttend", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
-        // OPT-SPEED-04: Accept face bbox from client to skip server-side detection
-        public ActionResult Attend(double? lat, double? lon, double? accuracy, 
+        public ActionResult Attend(double? lat, double? lon, double? accuracy,
             HttpPostedFileBase image,
             int? faceX, int? faceY, int? faceW, int? faceH,
             string deviceToken = null)
         {
-            
-            var requestedAtUtc = TimeZoneHelper.NowLocal(); // capture attendance time at request entry (local time)
+            var requestedAtUtc = TimeZoneHelper.NowLocal();
 
             var activeScans = Interlocked.Increment(ref _activeScanCount);
             try
@@ -135,27 +146,21 @@ namespace FaceAttend.Controllers
                     return JsonResponseBuilder.SystemBusy(2);
                 }
 
-                // Build face box from client params if provided
                 DlibBiometrics.FaceBox clientFaceBox = null;
-                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue 
+                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
                     && faceW.Value > 0 && faceH.Value > 0)
                 {
                     clientFaceBox = new DlibBiometrics.FaceBox
                     {
-                        Left = faceX.Value,
-                        Top = faceY.Value,
-                        Width = faceW.Value,
+                        Left   = faceX.Value,
+                        Top    = faceY.Value,
+                        Width  = faceW.Value,
                         Height = faceH.Value
                     };
                 }
 
                 return ScanAttendanceCore(
-                    lat,
-                    lon,
-                    accuracy,
-                    image,
-                    clientFaceBox,
-                    requestedAtUtc,
+                    lat, lon, accuracy, image, clientFaceBox, requestedAtUtc,
                     includePerfTimings: ConfigurationService.GetBool("Kiosk:EnablePerfTimings", false),
                     deviceToken: deviceToken);
             }
@@ -170,44 +175,39 @@ namespace FaceAttend.Controllers
             out DlibBiometrics.FaceBox faceBox,
             out FaceRecognitionDotNet.Location faceLoc)
         {
-            faceBox = null;
-            faceLoc = default(FaceRecognitionDotNet.Location);
+            faceBox  = null;
+            faceLoc  = default(FaceRecognitionDotNet.Location);
 
             if (sourceBox == null || sourceBox.Width <= 20 || sourceBox.Height <= 20)
                 return false;
 
-            var padX = Math.Max(6, (int)Math.Round(sourceBox.Width * 0.10));
-            var padY = Math.Max(6, (int)Math.Round(sourceBox.Height * 0.12));
-
-            var left = Math.Max(0, sourceBox.Left - padX);
-            var top = Math.Max(0, sourceBox.Top - padY);
-            var width = Math.Max(1, sourceBox.Width + (padX * 2));
+            var padX   = Math.Max(6, (int)Math.Round(sourceBox.Width  * 0.10));
+            var padY   = Math.Max(6, (int)Math.Round(sourceBox.Height * 0.12));
+            var left   = Math.Max(0, sourceBox.Left - padX);
+            var top    = Math.Max(0, sourceBox.Top  - padY);
+            var width  = Math.Max(1, sourceBox.Width  + (padX * 2));
             var height = Math.Max(1, sourceBox.Height + (padY * 2));
 
             faceBox = new DlibBiometrics.FaceBox
-            {
-                Left = left,
-                Top = top,
-                Width = width,
-                Height = height
-            };
+                { Left = left, Top = top, Width = width, Height = height };
 
             faceLoc = new FaceRecognitionDotNet.Location(
-                faceBox.Left,
-                faceBox.Top,
+                faceBox.Left, faceBox.Top,
                 faceBox.Left + faceBox.Width,
-                faceBox.Top + faceBox.Height);
+                faceBox.Top  + faceBox.Height);
 
             return true;
         }
 
-        // OPT-SPEED-05: Use client-provided face box to skip detection (~150ms saved)
-        private ActionResult ScanAttendanceCore(double? lat, double? lon, double? accuracy, 
-            HttpPostedFileBase image, DlibBiometrics.FaceBox clientFaceBox, 
-            DateTime requestedAtUtc, bool includePerfTimings,
+        private ActionResult ScanAttendanceCore(
+            double? lat, double? lon, double? accuracy,
+            HttpPostedFileBase image,
+            DlibBiometrics.FaceBox clientFaceBox,
+            DateTime requestedAtUtc,
+            bool includePerfTimings,
             string deviceToken = null)
         {
-            var sw = Stopwatch.StartNew();
+            var sw      = Stopwatch.StartNew();
             var timings = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
             System.Action<string> mark = key => { if (includePerfTimings) timings[key] = sw.ElapsedMilliseconds; };
 
@@ -218,21 +218,21 @@ namespace FaceAttend.Controllers
             if (image.ContentLength > max)
                 return JsonResponseBuilder.ErrorWithTimings("TOO_LARGE", timings, includePerfTimings);
 
-            // SECURITY: Validate file content is actually an image
             if (!IsValidImage(image.InputStream, new[] { ".jpg", ".jpeg", ".png" }))
                 return JsonResponseBuilder.ErrorWithTimings("INVALID_IMAGE_FORMAT", timings, includePerfTimings);
 
-            string path = null;
+            string path          = null;
             string processedPath = null;
 
             try
             {
                 using (var db = new FaceAttendDBEntities())
                 {
-                    Office office = null;
-                    bool gpsRequired = DeviceService.IsMobileDevice(Request);
-                    bool locationVerified = false;
-                    int requiredAcc = 0;
+                    // ── Office resolution ─────────────────────────────────────────────
+                    Office office           = null;
+                    bool   gpsRequired      = DeviceService.IsMobileDevice(Request);
+                    bool   locationVerified = false;
+                    int    requiredAcc      = 0;
 
                     if (lat.HasValue && lon.HasValue)
                     {
@@ -240,9 +240,9 @@ namespace FaceAttend.Controllers
                         if (!pick.Allowed)
                             return JsonResponseBuilder.ErrorWithTimings(pick.Reason, timings, includePerfTimings);
 
-                        office = pick.Office;
+                        office           = pick.Office;
                         locationVerified = true;
-                        requiredAcc = pick.RequiredAccuracy;
+                        requiredAcc      = pick.RequiredAccuracy;
                     }
                     else if (gpsRequired)
                     {
@@ -250,12 +250,14 @@ namespace FaceAttend.Controllers
                     }
                     else
                     {
-                        office = OfficeLocationService.GetFallbackOffice(db);
+                        office           = OfficeLocationService.GetFallbackOffice(db);
                         locationVerified = false;
                     }
+
                     if (office == null)
                         return NoOfficesResult(includePerfTimings, timings);
 
+                    // ── Image save + preprocess ───────────────────────────────────────
                     path = SaveTemp(image, "k_", max);
                     mark("saved_ms");
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
@@ -267,33 +269,19 @@ namespace FaceAttend.Controllers
 
                     var dlib = new DlibBiometrics();
 
-                    // OPT-SPEED-06: Use client face box if valid, skip server detection
-                    DlibBiometrics.FaceBox faceBox;
-                    FaceRecognitionDotNet.Location faceLoc;
-                    string faceErr;
-                    bool usedClientBox = false;
-
-                    // DEBUG: Log image dimensions for troubleshooting
-                    try
-                    {
-                        using (var dbgImg = System.Drawing.Image.FromFile(processedPath))
-                        {
-                            System.Diagnostics.Trace.TraceInformation($"[Kiosk] Image dimensions: {dbgImg.Width}x{dbgImg.Height}, ClientFaceBox: {clientFaceBox?.Left},{clientFaceBox?.Top},{clientFaceBox?.Width},{clientFaceBox?.Height}");
-                        }
-                    }
-                    catch { }
+                    // ── Face detection ────────────────────────────────────────────────
+                    DlibBiometrics.FaceBox          faceBox;
+                    FaceRecognitionDotNet.Location  faceLoc;
+                    string                          faceErr;
+                    bool                            usedClientBox = false;
 
                     if (TryBuildFaceLocationFromClientBox(clientFaceBox, out faceBox, out faceLoc))
                     {
-                        // Trust client detection when MediaPipe already has a stable face box.
                         usedClientBox = true;
-                        faceErr = null;
-                        System.Diagnostics.Trace.TraceInformation($"[Kiosk] Using client face box: {faceBox.Left},{faceBox.Top},{faceBox.Width},{faceBox.Height}");
+                        faceErr       = null;
                     }
                     else
                     {
-                        // Fallback: server-side detection with kiosk-friendly retry.
-                        System.Diagnostics.Trace.TraceInformation("[Kiosk] No client face box, using server detection");
                         if (!dlib.TryDetectBestFaceFromFile(processedPath, out faceBox, out faceLoc, out faceErr,
                             allowLargestFace: true, primaryUpsample: 0, retryUpsampleOnNoFace: true))
                         {
@@ -304,65 +292,63 @@ namespace FaceAttend.Controllers
                     mark(usedClientBox ? "detect_skip_ms" : "dlib_detect_ms");
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                    // OPTIMIZED: Use FastScanPipeline when no client face box provided
-                    // This runs liveness + encoding in parallel for ~100-150ms speedup
-                    double[] vec = null;
-                    float p = 0f;
-                    
-                    // Get liveness threshold (used by both paths)
+                    // ── Liveness threshold (read once) ────────────────────────────────
                     var liveTh = (float)ConfigurationService.GetDoubleCached(
                         "Biometrics:LivenessThreshold",
                         ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
-                    
-                    // Variables for FIX-04 (angle-aware tolerance)
-                    int actualImageWidth = 1280; // fallback, will be updated from scan result
-                    
+
+                    // ── Embedding + liveness ──────────────────────────────────────────
+                    double[] vec              = null;
+                    float    p                = 0f;
+                    bool     livenessConfirmed = false;   // FIX 2: explicit flag
+                    int      actualImageWidth  = 1280;
+
                     if (!usedClientBox && ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
                     {
-                        // Reset stream for FastScanPipeline
                         image.InputStream.Position = 0;
                         var fastResult = FastScanPipeline.ScanInMemory(image, includePerfTimings);
-                        
+
                         if (fastResult.Timings != null)
-                        {
                             foreach (var t in fastResult.Timings)
                                 timings["fast_" + t.Key] = t.Value;
-                        }
-                        
+
                         if (!fastResult.Ok)
                         {
                             var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
                             return JsonResponseBuilder.EncodingFail(fastResult.Error, timings, includePerfTimings, debug);
                         }
-                        
-                        vec = fastResult.FaceEncoding;
-                        p = fastResult.LivenessScore;
-                        actualImageWidth = fastResult.ImageWidth; // FIX-04: capture actual width
+
+                        // FIX 1: Liveness gate was missing from the fast pipeline path.
+                        // The legacy path returned LivenessFail here; the fast path did not.
+                        if (!fastResult.LivenessOk)
+                            return JsonResponseBuilder.LivenessFail(fastResult.LivenessScore, liveTh, timings, includePerfTimings);
+
+                        vec               = fastResult.FaceEncoding;
+                        p                 = fastResult.LivenessScore;
+                        actualImageWidth  = fastResult.ImageWidth;
+                        livenessConfirmed = true;   // FIX 2: liveness confirmed
                         mark("fast_pipeline_ms");
                     }
                     else
                     {
-                        // Legacy path: sequential liveness + encoding
-                        // Liveness (server truth)
-                        var live = new OnnxLiveness();
+                        // Legacy sequential path
+                        var live   = new OnnxLiveness();
                         var scored = live.ScoreFromFile(processedPath, faceBox);
                         mark("liveness_ms");
                         if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                        // DEBUG: Log liveness results
-
-
-                        // Allow bypassing liveness check for debugging
                         var skipLiveness = ConfigurationService.GetBool("Biometrics:SkipLiveness", false);
 
                         if (!scored.Ok && !skipLiveness)
                             return JsonResponseBuilder.ErrorWithTimings(scored.Error, timings, includePerfTimings);
 
                         p = scored.Probability ?? 0f;
+
                         if (p < liveTh && !skipLiveness)
                             return JsonResponseBuilder.LivenessFail(p, liveTh, timings, includePerfTimings);
 
-                        // Encode using known location (skips FaceLocations)
+                        livenessConfirmed = !skipLiveness;   // FIX 2: only confirmed if not skipped
+
                         string encErr;
                         if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encErr) || vec == null)
                         {
@@ -370,7 +356,6 @@ namespace FaceAttend.Controllers
                             return JsonResponseBuilder.EncodingFail(encErr, timings, includePerfTimings, debug);
                         }
 
-                        // For legacy path, get image width from processed file
                         try
                         {
                             if (!string.IsNullOrEmpty(processedPath) && System.IO.File.Exists(processedPath))
@@ -381,104 +366,41 @@ namespace FaceAttend.Controllers
 
                         mark("dlib_encode_ms");
                     }
-                    
+
                     if (vec == null)
-                    {
                         return JsonResponseBuilder.ErrorWithTimings("ENCODING_FAIL", timings, includePerfTimings);
-                    }
+
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                    // Use more lenient tolerance for attendance to handle head tilts and expressions
-                    // Enrollment: strict (0.45), Attendance: lenient (0.65 default, up to 0.75 max)
-                    var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.65);
-                    // Clamp between 0.55 (strict) and 0.75 (very lenient)
-                    attendanceTol = Math.Max(0.55, Math.Min(0.75, attendanceTol));
-                    
-                    // FIX-04 (moved): Angle-aware tolerance using ACTUAL image width from scan result
-                    if (clientFaceBox != null)
-                    {
-                        float actualImageCenterX = actualImageWidth / 2f;
-                        float faceCenterX = clientFaceBox.Left + clientFaceBox.Width / 2f;
-                        float normalizedOffset = Math.Abs(faceCenterX - actualImageCenterX) / actualImageCenterX;
+                    // ── FIX 3: Tolerance capped at 0.60. Angle-relax removed. ────────
+                    var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.60);
+                    attendanceTol = Math.Max(0.50, Math.Min(0.60, attendanceTol));
 
-                        if (normalizedOffset > 0.15f)
-                        {
-                            var angleRelax = Math.Min(normalizedOffset * 0.10, 0.08);
-                            attendanceTol = Math.Min(attendanceTol + angleRelax, 0.75);
-                        }
-                    }
-                    
-                    // OPT-SPEED-08: Use FastFaceMatcher (RAM cache) for INSTANT matching (~20ms vs 100ms)
-                    // FIX: Ensure matcher is initialized before use
+                    // ── Matching (single authority — FastFaceMatcher) ─────────────────
                     if (!FastFaceMatcher.IsInitialized)
                         FastFaceMatcher.Initialize();
-                    
-                    FastFaceMatcher.MatchResult matchResult = null;
-                    double bestDist = double.MaxValue;
-                    string bestEmpId = null;
-                    
-                    // Try matching with lenient tolerance first
-                    try
-                    {
-                        matchResult = FastFaceMatcher.FindBestMatch(vec, attendanceTol);
-                    }
-                    catch { /* Fallback to DB if cache fails */ }
-                    
-                    if (matchResult?.IsMatch == true)
-                    {
-                        bestEmpId = matchResult.Employee?.EmployeeId;
-                        bestDist = matchResult.Distance;
-                        mark("match_fast_ms");
-                        
-                        // SAFETY CHECK: If confidence is borderline (0.6-0.85), verify with DB
-                        // This prevents cache-related misidentification
-                        if (matchResult.Confidence < 0.85)
-                        {
-                            var dbEmpId = EmployeeFaceIndex.FindNearest(db, vec, attendanceTol, out var dbDist);
-                            if (dbEmpId != bestEmpId || dbDist > attendanceTol)
-                            {
-                                // Cache and DB disagree - use DB result (more reliable)
-                                System.Diagnostics.Trace.TraceWarning($"[Kiosk] Cache/DB mismatch: cache={bestEmpId}({bestDist:F3}), db={dbEmpId}({dbDist:F3})");
-                                bestEmpId = dbEmpId;
-                                bestDist = dbDist;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        // Fallback to DB search with same tolerance
-                        bestEmpId = EmployeeFaceIndex.FindNearest(db, vec, attendanceTol, out bestDist);
-                        mark("match_db_ms");
-                    }
-                    
-                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                    // DEBUG: Log match results for troubleshooting TOO_SOON vs VISITOR
+                    var matchResult = FastFaceMatcher.FindBestMatch(vec, attendanceTol);
+                    mark("match_ms");
 
-                    
-                    if (bestEmpId == null || bestDist > attendanceTol)
+                    // ── Unknown / visitor path ────────────────────────────────────────
+                    if (!matchResult.IsMatch)
                     {
-                        
-                        // Unknown employee - check if mobile device for self-enrollment
-                        var fingerprint = DeviceService.GenerateFingerprint(Request);
-                        var isMobile = DeviceService.IsMobileDevice(Request);
-                        
-                        // Check kiosk mode for unknown face handling too
-                        var kioskCookieUnknown = Request.Cookies["ForceKioskMode"];
-                        var forceKioskUnknown = (kioskCookieUnknown != null && kioskCookieUnknown.Value == "true");
-                        
-                        if (isMobile && !forceKioskUnknown)
+                        var fingerprint     = DeviceService.GenerateFingerprint(Request);
+                        var isMobile        = DeviceService.IsMobileDevice(Request);
+                        var kioskCookieUnk  = Request.Cookies["ForceKioskMode"];
+                        var forceKioskUnk   = (kioskCookieUnk != null && kioskCookieUnk.Value == "true");
+
+                        if (isMobile && !forceKioskUnk)
                         {
-                            // On mobile device - offer self-enrollment
                             return JsonResponseBuilder.SelfEnrollOffer(
                                 fingerprint,
                                 "Face not recognized. Would you like to enroll as a new employee?");
                         }
-                        
-                        // Not mobile (kiosk) -> visitor flow (known visitor or new visitor)
+
                         double vTol = ConfigurationService.GetDouble("Visitors:DlibTolerance", attendanceTol);
 
-                        int? bestVisitorId = null;
+                        int?   bestVisitorId   = null;
                         string bestVisitorName = null;
                         double bestVisitorDist = double.PositiveInfinity;
 
@@ -490,21 +412,15 @@ namespace FaceAttend.Controllers
                                 var d = DlibBiometrics.Distance(vec, e.Vec);
                                 if (d < bestVisitorDist)
                                 {
-                                    bestVisitorDist = d;
-                                    bestVisitorId = e.VisitorId;
-                                    bestVisitorName = e.Name;
+                                    bestVisitorDist  = d;
+                                    bestVisitorId    = e.VisitorId;
+                                    bestVisitorName  = e.Name;
                                 }
                             }
                         }
-                        catch
-                        {
-                            // If visitor index fails, we still allow "new visitor" flow.
-                        }
+                        catch { }
 
                         bool isKnownVisitor = bestVisitorId.HasValue && bestVisitorDist <= vTol;
-
-                        var scanId = NewScanId();
-                        var key = VisitorScanPrefix + scanId;
 
                         bool visitorEnabled = ConfigurationService.GetBool(
                             db, "Kiosk:VisitorEnabled",
@@ -513,14 +429,17 @@ namespace FaceAttend.Controllers
                         if (!visitorEnabled)
                             return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
 
+                        var scanId = NewScanId();
+                        var key    = VisitorScanPrefix + scanId;
+
                         _visitorScanCache.Set(
                             key,
                             new VisitorScanCacheItem
                             {
-                                Vec = vec,
-                                OfficeId = office.Id,
-                                VisitorId = isKnownVisitor ? bestVisitorId : (int?)null,
-                                VisitorName = isKnownVisitor ? bestVisitorName : null,
+                                Vec            = vec,
+                                OfficeId       = office.Id,
+                                VisitorId      = isKnownVisitor ? bestVisitorId    : (int?)null,
+                                VisitorName    = isKnownVisitor ? bestVisitorName  : null,
                                 SessionBinding = DeviceService.GetVisitorSessionBinding(HttpContext)
                             },
                             DateTimeOffset.UtcNow.AddSeconds(GetVisitorScanTtlSeconds()));
@@ -530,59 +449,121 @@ namespace FaceAttend.Controllers
                             timings, includePerfTimings);
                     }
 
+                    // ── Tier-based acceptance ─────────────────────────────────────────
+                    //
+                    // HIGH   → accept immediately.
+                    // MEDIUM → first frame stores a pending confirmation; second frame
+                    //          from the same device must match the same employee.
+                    //          This catches accidental single-frame false positives.
+                    // LOW    → reject (FindBestMatch already returns IsMatch=false for Low,
+                    //          so this branch is a safety backstop only).
+
+                    var bestEmpId = matchResult.Employee?.EmployeeId;
+                    var bestDist  = matchResult.Distance;
+
+                    if (matchResult.Tier == FastFaceMatcher.MatchTier.Medium)
+                    {
+                        // Device key: use token if available, fall back to fingerprint
+                        var deviceKeyMed = deviceToken
+                            ?? DeviceService.GetDeviceTokenFromCookie(Request)
+                            ?? DeviceService.GenerateFingerprint(Request);
+
+                        var pendingKey = PendingScanPrefix + deviceKeyMed;
+                        var existing   = _pendingScans.Get(pendingKey) as PendingScan;
+
+                        if (existing == null)
+                        {
+                            // First MEDIUM frame — store and ask the client to scan again
+                            _pendingScans.Set(
+                                pendingKey,
+                                new PendingScan
+                                {
+                                    EmployeeId   = bestEmpId,
+                                    EmployeeDbId = matchResult.Employee?.Id ?? 0,
+                                    Distance     = bestDist,
+                                    Liveness     = p,
+                                    AmbiguityGap = matchResult.AmbiguityGap,
+                                    OfficeId     = office.Id,
+                                    OfficeName   = office.Name,
+                                    DeviceKey    = deviceKeyMed,
+                                    CreatedUtc   = DateTime.UtcNow
+                                },
+                                DateTimeOffset.UtcNow.AddSeconds(GetPendingScanTtlSeconds()));
+
+                            System.Diagnostics.Trace.TraceInformation(
+                                "[SCAN] MEDIUM_PENDING | emp={0} d={1:F3} gap={2:F3} — awaiting confirm",
+                                bestEmpId, bestDist, matchResult.AmbiguityGap);
+
+                            return Json(new
+                            {
+                                ok      = false,
+                                error   = "SCAN_CONFIRM_NEEDED",
+                                message = "Almost there — please look at the camera one more time.",
+                                liveness  = p,
+                                threshold = liveTh
+                            });
+                        }
+
+                        // Second frame — check it matches the same employee
+                        _pendingScans.Remove(pendingKey);
+
+                        if (!string.Equals(existing.EmployeeId, bestEmpId, StringComparison.OrdinalIgnoreCase))
+                        {
+                            System.Diagnostics.Trace.TraceInformation(
+                                "[SCAN] MEDIUM_MISMATCH | frame1={0} frame2={1} — both rejected",
+                                existing.EmployeeId, bestEmpId);
+                            return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
+                        }
+
+                        System.Diagnostics.Trace.TraceInformation(
+                            "[SCAN] MEDIUM_CONFIRMED | emp={0} d1={1:F3} d2={2:F3}",
+                            bestEmpId, existing.Distance, bestDist);
+
+                        // Use better of the two distances for the attendance record
+                        bestDist = Math.Min(existing.Distance, bestDist);
+                    }
+
+                    if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
+
+                    // ── Look up employee record ───────────────────────────────────────
                     var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == bestEmpId && x.Status == "ACTIVE");
                     if (emp == null)
                         return JsonResponseBuilder.ErrorWithTimings("EMPLOYEE_NOT_FOUND", timings, includePerfTimings);
 
-                    // DEVICE CHECK: Verify if this is a mobile device and if it's registered
+                    // ── Device check (mobile only) ────────────────────────────────────
                     var deviceFingerprint = DeviceService.GenerateFingerprint(Request);
-                    var deviceIsMobile = DeviceService.IsMobileDevice(Request);
-                    
-                    // FORCE KIOSK MODE: Check for kiosk cookie or header (for tablets/laptops that detect as mobile)
-                    // Sec-CH-UA-Mobile overrides cookie - if hardware is mobile, NEVER treat as kiosk
-                    var kioskCookie = Request.Cookies["ForceKioskMode"];
-                    var chUaMobile  = Request.Headers["Sec-CH-UA-Mobile"];
-                    bool isHardwareMobile = (chUaMobile == "?1");
-                    
-                    // If hardware is mobile, NEVER treat as kiosk even if cookie says so
-                    var forceKiosk = !isHardwareMobile && (
-                        (kioskCookie != null && kioskCookie.Value == "true") ||
-                        (Request.Headers["X-Kiosk-Mode"] == "true")
-                    );
-                    
-                    // DEBUG: Log device detection
-                    var tokenFromCookie = DeviceService.GetDeviceTokenFromCookie(Request);
-                    string deviceTokenFromCheck = null; // Declare outside for later use
+                    var deviceIsMobile    = DeviceService.IsMobileDevice(Request);
 
+                    var kioskCookie    = Request.Cookies["ForceKioskMode"];
+                    var chUaMobile     = Request.Headers["Sec-CH-UA-Mobile"];
+                    bool isHardwareMobile = (chUaMobile == "?1");
+                    var forceKiosk     = !isHardwareMobile && (
+                        (kioskCookie != null && kioskCookie.Value == "true") ||
+                        (Request.Headers["X-Kiosk-Mode"] == "true"));
+
+                    var tokenFromCookie   = DeviceService.GetDeviceTokenFromCookie(Request);
+                    string deviceTokenFromCheck = null;
 
                     if (deviceIsMobile && !forceKiosk)
                     {
-                        // Check if this device is registered and active in the system.
-                        // Any active registered device can be used by any employee — no employee binding check.
                         var effectiveDeviceToken = deviceToken ?? tokenFromCookie;
-
-                        var activeDevice = db.Devices.FirstOrDefault(d => d.Status == "ACTIVE" && ((!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken) || d.Fingerprint == deviceFingerprint));
+                        var activeDevice = db.Devices.FirstOrDefault(d =>
+                            d.Status == "ACTIVE" && (
+                                (!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken)
+                                || d.Fingerprint == deviceFingerprint));
 
                         if (activeDevice == null)
                         {
-                            // Check if pending or blocked before saying not registered
                             var anyDevice = db.Devices.FirstOrDefault(d =>
                                 (!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken)
                                 || d.Fingerprint == deviceFingerprint);
 
                             if (anyDevice != null && anyDevice.Status == "PENDING")
-                            {
-                                return JsonResponseBuilder.DevicePending(
-                                    "Your device registration is pending admin approval.");
-                            }
+                                return JsonResponseBuilder.DevicePending("Your device registration is pending admin approval.");
 
                             if (anyDevice != null && anyDevice.Status == "BLOCKED")
-                            {
-                                return JsonResponseBuilder.DeviceBlocked(
-                                    "This device has been blocked. Contact administrator.");
-                            }
+                                return JsonResponseBuilder.DeviceBlocked("This device has been blocked. Contact administrator.");
 
-                            // Not registered at all
                             return JsonResponseBuilder.RegisterDeviceRequired(
                                 emp.Id,
                                 emp.FirstName + " " + emp.LastName,
@@ -590,16 +571,12 @@ namespace FaceAttend.Controllers
                                 "This device is not registered. Please register it to continue.");
                         }
 
-                        // Device is active — update usage stats and continue
                         activeDevice.LastUsedAt = DateTime.UtcNow;
-                        activeDevice.UseCount = activeDevice.UseCount + 1;
-                        deviceTokenFromCheck = activeDevice.DeviceToken;
+                        activeDevice.UseCount   = activeDevice.UseCount + 1;
+                        deviceTokenFromCheck    = activeDevice.DeviceToken;
                         if (!string.IsNullOrEmpty(deviceTokenFromCheck))
-                        {
                             DeviceService.SetDeviceTokenCookie(Response, deviceTokenFromCheck, Request.IsSecureConnection);
-                        }
                     }
-                    // For non-mobile (kiosk), deviceTokenFromCheck stays null
 
                     var displayName = emp.LastName + ", " + emp.FirstName +
                                       (string.IsNullOrWhiteSpace(emp.MiddleName) ? "" : " " + emp.MiddleName);
@@ -608,34 +585,31 @@ namespace FaceAttend.Controllers
                         ? Math.Max(0.0, Math.Min(1.0, 1.0 - (bestDist / attendanceTol)))
                         : (double?)null;
 
+                    // ── NeedsReview flags ─────────────────────────────────────────────
                     var nearMatchRatio = ConfigurationService.GetDoubleCached("NeedsReview:NearMatchRatio", 0.90);
                     var livenessMargin = ConfigurationService.GetDoubleCached("NeedsReview:LivenessMargin", 0.03);
-                    var gpsMargin = ConfigurationService.GetIntCached("NeedsReview:GPSAccuracyMargin", 10);
+                    var gpsMargin      = ConfigurationService.GetIntCached("NeedsReview:GPSAccuracyMargin", 10);
 
                     bool needsReviewFlag = false;
-                    var reviewNotes = new System.Text.StringBuilder();
+                    var  reviewNotes     = new System.Text.StringBuilder();
 
+                    // FIX 5: Near-match is now a REJECTION, not a flag-and-accept.
+                    // In a government attendance system a borderline match must not be
+                    // recorded — it must be re-attempted with better positioning/lighting.
                     if (attendanceTol > 0 && bestDist >= (attendanceTol * nearMatchRatio))
-                    {
-                        needsReviewFlag = true;
-                        reviewNotes.Append("Near match. Dist=")
-                            .Append(bestDist.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
-                            .Append(" of tol=")
-                            .Append(attendanceTol.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
-                            .Append(".");
-                    }
+                        return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
 
+                    // Liveness margin — flag only, liveness itself was already gated
                     if (p < (liveTh + livenessMargin))
                     {
-                        if (reviewNotes.Length > 0) reviewNotes.Append(" ");
                         needsReviewFlag = true;
                         reviewNotes.Append("Near liveness. Score=")
                             .Append(p.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
-                            .Append(" (th=")
-                            .Append(liveTh.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(" (th=").Append(liveTh.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
                             .Append(")");
                     }
 
+                    // GPS accuracy margin
                     if (gpsRequired && accuracy.HasValue && requiredAcc > 0)
                     {
                         var nearAcc = Math.Max(0, requiredAcc - gpsMargin);
@@ -649,7 +623,7 @@ namespace FaceAttend.Controllers
                         }
                     }
 
-                    // ANTI-SPOOFING: Check for mock GPS only (no teleportation check)
+                    // ── Anti-spoofing (GPS) ───────────────────────────────────────────
                     var deviceFp = DeviceService.GetShortDeviceFingerprint(HttpContext);
                     if (lat.HasValue && lon.HasValue)
                     {
@@ -657,49 +631,51 @@ namespace FaceAttend.Controllers
                             emp.Id, lat.Value, lon.Value, DateTime.UtcNow, deviceFp);
 
                         if (spoofCheck.Action == "BLOCK")
-                        {
                             return JsonResponseBuilder.SuspiciousLocation(
                                 "Location verification failed. Please contact admin.",
                                 timings, includePerfTimings);
-                        }
 
                         if (spoofCheck.Action == "WARN")
                         {
-                            // GPS repeat coordinates -- flag for admin review but allow the scan.
-                            // Admin sees this in the NeedsReview queue with the reason.
                             needsReviewFlag = true;
                             if (reviewNotes.Length > 0) reviewNotes.Append(" ");
                             reviewNotes.Append("GPS repeat: ").Append(spoofCheck.Reason).Append(".");
                         }
                     }
 
+                    // ── Record attendance ─────────────────────────────────────────────
+                    // Prepend tier + gap to notes so admins can filter by confidence level
+                    var tierNote = string.Format("Tier={0} d={1:F3} gap={2}",
+                        matchResult.Tier,
+                        bestDist,
+                        matchResult.AmbiguityGap == double.PositiveInfinity
+                            ? "inf"
+                            : matchResult.AmbiguityGap.ToString("F3"));
+                    if (reviewNotes.Length > 0) reviewNotes.Insert(0, tierNote + ". ");
+                    else reviewNotes.Append(tierNote);
+
                     var log = new AttendanceLog
                     {
-                        EmployeeId = emp.Id,
-                        OfficeId = office.Id,
-
+                        EmployeeId       = emp.Id,
+                        OfficeId         = office.Id,
                         EmployeeFullName = StringHelper.Truncate(displayName, 400),
-                        Department = StringHelper.Truncate(emp.Department, 200),
-                        OfficeType = StringHelper.Truncate(office.Type, 40),
-                        OfficeName = StringHelper.Truncate(office.Name, 400),
-
-                        GPSLatitude = OfficeLocationService.TruncateGpsCoordinate(lat),
-                        GPSLongitude = OfficeLocationService.TruncateGpsCoordinate(lon),
-                        GPSAccuracy = accuracy,
-
+                        Department       = StringHelper.Truncate(emp.Department, 200),
+                        OfficeType       = StringHelper.Truncate(office.Type, 40),
+                        OfficeName       = StringHelper.Truncate(office.Name, 400),
+                        GPSLatitude      = OfficeLocationService.TruncateGpsCoordinate(lat),
+                        GPSLongitude     = OfficeLocationService.TruncateGpsCoordinate(lon),
+                        GPSAccuracy      = accuracy,
                         LocationVerified = locationVerified,
-                        FaceDistance = bestDist,
-                        FaceSimilarity = similarity,
-                        MatchThreshold = attendanceTol,
-                        LivenessScore = p,
-                        LivenessResult = "PASS",
-
-                        ClientIP = StringHelper.Truncate(Request.UserHostAddress ?? "", 100),
-                        UserAgent = StringHelper.Truncate(Request.UserAgent ?? "", 1000),
-                        WiFiBSSID = StringHelper.Truncate(office.WiFiBSSID, 200),
-
-                        NeedsReview = needsReviewFlag,
-                        Notes = reviewNotes.Length == 0 ? null : reviewNotes.ToString()
+                        FaceDistance     = bestDist,
+                        FaceSimilarity   = similarity,
+                        MatchThreshold   = attendanceTol,
+                        LivenessScore    = p,
+                        LivenessResult   = "PASS",
+                        ClientIP         = StringHelper.Truncate(Request.UserHostAddress ?? "", 100),
+                        UserAgent        = StringHelper.Truncate(Request.UserAgent ?? "", 1000),
+                        WiFiBSSID        = StringHelper.Truncate(office.WiFiBSSID, 200),
+                        NeedsReview      = needsReviewFlag,
+                        Notes            = reviewNotes.ToString()
                     };
 
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
@@ -710,53 +686,51 @@ namespace FaceAttend.Controllers
 
                     if (!rec.Ok)
                     {
-
                         if (string.Equals(rec.Code, "TOO_SOON", StringComparison.OrdinalIgnoreCase))
                         {
                             var enforcedGap = rec.ApplicableGapSeconds > 0
                                 ? rec.ApplicableGapSeconds
                                 : ConfigurationService.GetInt(db, "Attendance:MinGapSeconds",
                                     ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
-
                             return JsonResponseBuilder.TooSoon(rec.Message, enforcedGap, timings, includePerfTimings);
                         }
-
                         return JsonResponseBuilder.ErrorWithTimings(rec.Code, timings, includePerfTimings, rec.Message);
                     }
 
-                    // Adaptive enrollment: if match is high-confidence, add this scan's
-                    // encoding as an additional vector (online learning).
-                    // Only when distance is very low (well under tolerance) to avoid
-                    // reinforcing borderline or wrong matches.
-                    if (rec.Ok && vec != null && bestDist < 0.40)
-                    {
-                        try
-                        {
-                            EnrollmentAdaptiveService.TryAddVector(db, emp.Id, vec, maxStored: 8);
-                        }
-                        catch { /* non-fatal — attendance already recorded */ }
-                    }
+                    // Adaptive enrollment REMOVED.
+                    // Any mechanism that writes face vectors from attendance scans is a
+                    // database poisoning vector: a spoofed or misidentified scan silently
+                    // overwrites legitimate enrollment data. Vectors are set only via the
+                    // admin-supervised EnrollmentController enrollment flow.
+
+                    // Distance log — grep "[MATCH]" to build threshold tuning dataset.
+                    System.Diagnostics.Trace.TraceInformation(
+                        "[MATCH] emp={0} event={1} tier={2} dist={3:F3} gap={4} liveness={5:F3} tol={6:F3} ms={7}",
+                        emp.EmployeeId,
+                        rec.EventType,
+                        matchResult.Tier,
+                        bestDist,
+                        matchResult.AmbiguityGap == double.PositiveInfinity
+                            ? "inf"
+                            : matchResult.AmbiguityGap.ToString("F3"),
+                        p,
+                        attendanceTol,
+                        sw.ElapsedMilliseconds);
 
                     mark("total_ms");
 
                     return JsonResponseBuilder.AttendanceSuccess(
                         emp.EmployeeId, displayName, displayName, rec.EventType, rec.Message,
-                        office.Id, office.Name, p, bestDist, requestedAtUtc, timings, includePerfTimings,
-                        deviceTokenFromCheck); // Pass token so client can save to localStorage
+                        office.Id, office.Name, p, bestDist, requestedAtUtc,
+                        timings, includePerfTimings, deviceTokenFromCheck);
                 }
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError("[Kiosk.Attend] ScanAttendanceCore failed: " + ex);
-                // Security hardening:
-                // generic lang sa client by default. Raw detail ay debug-only.
-                var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
+                var debug  = ConfigurationService.GetBool("Biometrics:Debug", false);
                 var baseEx = ex.GetBaseException();
-
-                return JsonResponseBuilder.ScanError(
-                    ex.Message, 
-                    baseEx?.Message, 
-                    timings, includePerfTimings, debug);
+                return JsonResponseBuilder.ScanError(ex.Message, baseEx?.Message, timings, includePerfTimings, debug);
             }
             finally
             {
@@ -764,6 +738,7 @@ namespace FaceAttend.Controllers
                 TryDelete(path);
             }
         }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "KioskSubmitVisitor", MaxRequests = 30, WindowSeconds = 60, Burst = 10)]
@@ -773,7 +748,7 @@ namespace FaceAttend.Controllers
             if (string.IsNullOrWhiteSpace(scanId))
                 return Json(new { ok = false, error = "SCAN_ID_REQUIRED", message = "Scan ID is required." });
 
-            var key = VisitorScanPrefix + scanId;
+            var key  = VisitorScanPrefix + scanId;
             var item = _visitorScanCache.Get(key) as VisitorScanCacheItem;
 
             if (item == null || item.Vec == null || item.Vec.Length != 128)
@@ -793,13 +768,7 @@ namespace FaceAttend.Controllers
 
                     if (item.VisitorId.HasValue)
                     {
-                        res = VisitorService.RecordVisit(
-                            db,
-                            item.VisitorId.Value,
-                            item.OfficeId,
-                            purpose,
-                            ip,
-                            ua);
+                        res = VisitorService.RecordVisit(db, item.VisitorId.Value, item.OfficeId, purpose, ip, ua);
                     }
                     else
                     {
@@ -807,46 +776,38 @@ namespace FaceAttend.Controllers
                         if (string.IsNullOrWhiteSpace(name))
                             return Json(new { ok = false, error = "NAME_REQUIRED", message = "Name is required." });
 
-                        var now = DateTime.UtcNow;
-
+                        var now   = DateTime.UtcNow;
                         var bytes = DlibBiometrics.EncodeToBytes(item.Vec);
-                        var b64 = BiometricCrypto.ProtectBase64Bytes(bytes);
+                        var b64   = BiometricCrypto.ProtectBase64Bytes(bytes);
 
                         if (string.IsNullOrWhiteSpace(b64))
                             return Json(new { ok = false, error = "ENCODE_ERROR", message = "Could not save face." });
 
                         var v = new Visitor
                         {
-                            Name = name,
+                            Name               = name,
                             FaceEncodingBase64 = b64,
-                            VisitCount = 0,
-                            FirstVisitDate = now,
-                            LastVisitDate = now,
-                            IsActive = true
+                            VisitCount         = 0,
+                            FirstVisitDate     = now,
+                            LastVisitDate      = now,
+                            IsActive           = true
                         };
 
                         db.Visitors.Add(v);
                         db.SaveChanges();
-
                         VisitorFaceIndex.Invalidate();
 
-                        res = VisitorService.RecordVisit(
-                            db,
-                            v.Id,
-                            item.OfficeId,
-                            purpose,
-                            ip,
-                            ua);
+                        res = VisitorService.RecordVisit(db, v.Id, item.OfficeId, purpose, ip, ua);
                     }
 
                     return Json(new
                     {
-                        ok = res.Ok,
-                        mode = "VISITOR_RECORDED",
-                        isKnown = res.IsKnown,
+                        ok          = res.Ok,
+                        mode        = "VISITOR_RECORDED",
+                        isKnown     = res.IsKnown,
                         visitorName = res.VisitorName,
-                        message = res.Message,
-                        error = res.Ok ? null : res.Code
+                        message     = res.Message,
+                        error       = res.Ok ? null : res.Code
                     });
                 }
                 catch
@@ -855,19 +816,16 @@ namespace FaceAttend.Controllers
                 }
                 finally
                 {
-                    // Important:
-                    // one-time lang ang scan cache item. Kahit validation fail o exception,
-                    // alisin para walang stale biometric payload na maiwan sa memory.
                     _visitorScanCache.Remove(key);
                 }
             }
         }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "UnlockPin", MaxRequests = 5, WindowSeconds = 60)]
         public ActionResult UnlockPin(string pin, string returnUrl)
         {
-            // SECURITY: Hard block admin unlock on mobile devices
             if (DeviceService.IsMobileDevice(Request))
             {
                 Response.StatusCode = 403;
@@ -875,7 +833,7 @@ namespace FaceAttend.Controllers
             }
 
             var safeReturn = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
-            var ip = Request.UserHostAddress;
+            var ip         = Request.UserHostAddress;
 
             if (!AdminAuthorizeAttribute.VerifyPin(pin, ip))
                 return Json(new { ok = false, error = "INVALID_PIN" });
@@ -885,6 +843,7 @@ namespace FaceAttend.Controllers
 
             return Json(new { ok = true, returnUrl = safeReturn });
         }
+
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult Lock()
@@ -893,17 +852,11 @@ namespace FaceAttend.Controllers
             return RedirectToAction("Index");
         }
 
-        /// <summary>
-        /// Returns active office locations for the idle map.
-        /// No auth required  only returns lat/lon/radius/name (no sensitive data).
-        /// </summary>
         [HttpGet]
         public ActionResult GetOfficesForMap()
         {
             using (var db = new FaceAttendDBEntities())
             {
-                // Latitude and Longitude are non-nullable `double` on the `Office` type.
-                // Removing the `!= null` checks fixes CS0472.
                 var offices = db.Offices
                     .Where(o => o.IsActive)
                     .Select(o => new
@@ -920,22 +873,18 @@ namespace FaceAttend.Controllers
             }
         }
 
-        // ------------------------------------------------------------
-        // Helpers
-        // ------------------------------------------------------------
+        // ── Helpers ───────────────────────────────────────────────────────────
 
         private static int GetMaxConcurrentScans()
         {
             var value = ConfigurationService.GetInt("Kiosk:MaxConcurrentScans", 16);
-            if (value < 1) value = 1;
-            return value;
+            return value < 1 ? 1 : value;
         }
 
         private static int GetRequestTimeoutMs()
         {
             var value = ConfigurationService.GetInt("Kiosk:RequestTimeoutMs", 28000);
-            if (value < 5000) value = 5000;
-            return value;
+            return value < 5000 ? 5000 : value;
         }
 
         private static bool IsRequestTimedOut(Stopwatch sw)
@@ -954,14 +903,5 @@ namespace FaceAttend.Controllers
         {
             return JsonResponseBuilder.NoOffices(timings, includePerfTimings);
         }
-
-        // PHASE 2 FIX: Removed unused methods - using KioskSessionService and OfficeLocationService instead
-        // - GetVisitorSessionBinding() → Use DeviceService.GetVisitorSessionBinding()
-        // - GetDeviceFingerprint() → Use DeviceService.GetShortDeviceFingerprint()
-        // - TruncateGpsCoordinate() → Use OfficeLocationService.TruncateGpsCoordinate()
-        // - OfficePick class → Use OfficeLocationService.OfficePickResult
-        // - IsGpsRequired() → Use Request.Browser.IsMobileDevice inline
-        // - GetFallbackOffice() → Use OfficeLocationService.GetFallbackOffice()
-        // - PickOffice() → Use OfficeLocationService.PickOffice()
     }
 }

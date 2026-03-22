@@ -1691,8 +1691,16 @@
                 // No faces detected
                 if (valid.length === 0) {
                     state.faceStatus  = 'none';
-                    state.mpBoxCanvas = null;
-                    state.smoothedBox = null;  // FIX-01: Reset EMA when face lost
+                    // FIX-CANVAS-GAP: During a scan in-flight, do NOT null the box.
+                    // MediaPipe can momentarily lose the face during the ~300-600ms
+                    // server round-trip (blink, micro-movement, lighting flicker).
+                    // Nulling here causes the bounding box to disappear mid-scan,
+                    // giving the impression the scan failed when it hasn't yet.
+                    // Keep the last smoothed box frozen until the scan completes.
+                    if (!state.liveInFlight) {
+                        state.mpBoxCanvas = null;
+                        state.smoothedBox = null;  // FIX-01: Reset EMA when face lost
+                    }
                     return;
                 }
 

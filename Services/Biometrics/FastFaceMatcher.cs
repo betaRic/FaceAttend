@@ -7,142 +7,188 @@ using System.Threading;
 namespace FaceAttend.Services.Biometrics
 {
     /// <summary>
-    /// ULTRA-FAST face matching with pre-loaded employee faces in RAM.
-    /// 
-    /// GOAL: Sub-50ms matching time for instant recognition.
-    /// 
-    /// Traditional approach: DB query every scan (~100-200ms)
-    /// FastFaceMatcher: RAM lookup (~5-20ms) = 10x faster!
-    /// 
-    /// REFACTORED: Now uses FaceEncodingHelper for consistent decoding
-    /// with EmployeeFaceIndex, eliminating code duplication.
+    /// In-memory face matcher with per-employee top-2 ambiguity guard and confidence tiering.
+    ///
+    /// MatchResult now includes:
+    ///   Distance           — Euclidean distance to best match
+    ///   SecondBestDistance — distance to nearest *different* employee
+    ///   AmbiguityGap       — SecondBestDist − BestDist (larger = more distinct)
+    ///   Tier               — HIGH / MEDIUM / LOW based on gap + absolute distance
+    ///
+    /// CONFIDENCE TIERS (all thresholds configurable via Web.config):
+    ///   HIGH   — dist ≤ 0.42 AND gap ≥ 0.12  → record immediately
+    ///   MEDIUM — dist ≤ 0.55 AND gap ≥ 0.08  → require a second confirming frame
+    ///   LOW    — anything else in-tolerance    → reject (treat as unknown)
+    ///
+    /// These are conservative defaults. Once real scan distances are logged from
+    /// production you can tune Biometrics:Match:* keys in Web.config.
+    ///
+    /// AMBIGUITY GUARD (15% rule):
+    ///   if gap &lt; bestDist * 0.15 → reject regardless of absolute distance.
     /// </summary>
     public static class FastFaceMatcher
     {
-        // EmployeeId -> Face Vectors (multiple photos per employee)
+        // ── In-memory state ───────────────────────────────────────────────────
         private static ConcurrentDictionary<string, List<double[]>> _employeeFaces;
-        
-        // EmployeeId -> Employee Info (name, dept, etc)
-        private static ConcurrentDictionary<string, EmployeeInfo> _employeeInfo;
-        
-        // Last update timestamp for cache invalidation
+        private static ConcurrentDictionary<string, EmployeeInfo>   _employeeInfo;
         private static DateTime _lastLoaded = DateTime.MinValue;
         private static readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
         private static bool _isInitialized = false;
 
+        // ── Tier thresholds (read at match time from config) ──────────────────
+        private static double HighDistThreshold
+            => ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.42);
+        private static double HighGapThreshold
+            => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.12);
+        private static double MedDistThreshold
+            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.55);
+        private static double MedGapThreshold
+            => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.08);
+
+        // ── DTOs ──────────────────────────────────────────────────────────────
+
         public class EmployeeInfo
         {
-            public int Id { get; set; }
+            public int    Id         { get; set; }
             public string EmployeeId { get; set; }
-            public string FirstName { get; set; }
-            public string LastName { get; set; }
+            public string FirstName  { get; set; }
+            public string LastName   { get; set; }
             public string MiddleName { get; set; }
             public string Department { get; set; }
-            
-            public string DisplayName => string.IsNullOrWhiteSpace(LastName) ? EmployeeId : 
-                $"{LastName}, {FirstName}" + (string.IsNullOrWhiteSpace(MiddleName) ? "" : $" {MiddleName}");
+
+            public string DisplayName => string.IsNullOrWhiteSpace(LastName)
+                ? EmployeeId
+                : $"{LastName}, {FirstName}" +
+                  (string.IsNullOrWhiteSpace(MiddleName) ? "" : $" {MiddleName}");
         }
+
+        public enum MatchTier { High, Medium, Low }
 
         public class MatchResult
         {
-            public bool IsMatch { get; set; }
-            public EmployeeInfo Employee { get; set; }
-            public double Distance { get; set; }
-            public double Confidence { get; set; } // 0.0 to 1.0
-            public string MatchedPhotoIndex { get; set; }
+            public bool         IsMatch            { get; set; }
+            public EmployeeInfo Employee           { get; set; }
+
+            /// <summary>Euclidean distance to the best-matching employee vector.</summary>
+            public double       Distance           { get; set; }
+
+            /// <summary>0–1 confidence relative to the acceptance tolerance.</summary>
+            public double       Confidence         { get; set; }
+
+            /// <summary>
+            /// Euclidean distance to the nearest *different* employee.
+            /// double.PositiveInfinity when only one employee exists in the DB.
+            /// </summary>
+            public double       SecondBestDistance { get; set; } = double.PositiveInfinity;
+
+            /// <summary>
+            /// SecondBestDistance − Distance.
+            /// Larger gap = more distinct, less ambiguous match.
+            /// </summary>
+            public double       AmbiguityGap       { get; set; }
+
+            /// <summary>HIGH / MEDIUM / LOW tier.</summary>
+            public MatchTier    Tier               { get; set; } = MatchTier.Low;
+
+            /// <summary>Index of the matching photo within the employee's stored vector list.</summary>
+            public string       MatchedPhotoIndex  { get; set; }
+
+            /// <summary>True if rejected because two employees were within 15% of each other.</summary>
+            public bool         WasAmbiguous       { get; set; }
         }
 
-        /// <summary>
-        /// Initialize the fast matcher by loading all active employee faces into RAM.
-        /// Call this at Application_Start.
-        /// </summary>
+        // ── Lifecycle ─────────────────────────────────────────────────────────
+
         public static void Initialize()
         {
             if (_isInitialized) return;
-            
             _lock.EnterWriteLock();
-            try
-            {
-                ReloadFromDatabase();
-                _isInitialized = true;
-            }
-            finally
-            {
-                _lock.ExitWriteLock();
-            }
+            try   { ReloadFromDatabase(); _isInitialized = true; }
+            finally { _lock.ExitWriteLock(); }
         }
 
-        /// <summary>
-        /// Reload all faces from database. Call when new employee added or faces updated.
-        /// Uses FaceEncodingHelper for consistent decoding with EmployeeFaceIndex.
-        /// </summary>
         public static void ReloadFromDatabase()
         {
-            var newEmployeeFaces = new ConcurrentDictionary<string, List<double[]>>(StringComparer.OrdinalIgnoreCase);
-            var newEmployeeInfo = new ConcurrentDictionary<string, EmployeeInfo>(StringComparer.OrdinalIgnoreCase);
+            var newFaces = new ConcurrentDictionary<string, List<double[]>>(StringComparer.OrdinalIgnoreCase);
+            var newInfo  = new ConcurrentDictionary<string, EmployeeInfo>(StringComparer.OrdinalIgnoreCase);
 
             using (var db = new FaceAttendDBEntities())
             {
-                // Use shared helper for loading (eliminates duplication with EmployeeFaceIndex)
-                var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
-                var employees = FaceEncodingHelper.LoadAllEmployeeFaces(db, maxPerEmployee);
+                var maxPer = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+                var emps   = FaceEncodingHelper.LoadAllEmployeeFaces(db, maxPer);
 
-                foreach (var emp in employees)
+                foreach (var emp in emps)
                 {
                     if (emp.FaceVectors.Count > 0)
                     {
-                        newEmployeeFaces[emp.EmployeeId] = emp.FaceVectors;
-                        newEmployeeInfo[emp.EmployeeId] = new EmployeeInfo
+                        newFaces[emp.EmployeeId] = emp.FaceVectors;
+                        newInfo[emp.EmployeeId]  = new EmployeeInfo
                         {
-                            Id = emp.Id,
+                            Id         = emp.Id,
                             EmployeeId = emp.EmployeeId,
-                            FirstName = emp.FirstName,
-                            LastName = emp.LastName,
+                            FirstName  = emp.FirstName,
+                            LastName   = emp.LastName,
                             MiddleName = emp.MiddleName,
-                            Department = emp.Department,
-
+                            Department = emp.Department
                         };
                     }
                 }
             }
 
-            _employeeFaces = newEmployeeFaces;
-            _employeeInfo = newEmployeeInfo;
-            _lastLoaded = DateTime.UtcNow;
+            _employeeFaces = newFaces;
+            _employeeInfo  = newInfo;
+            _lastLoaded    = DateTime.UtcNow;
         }
 
+        // ── Core matching ─────────────────────────────────────────────────────
+
         /// <summary>
-        /// Find best matching employee in under 50ms using RAM cache.
+        /// Finds the best-matching employee with ambiguity guard and confidence tiering.
+        /// Logs all match attempts to Trace for post-deployment threshold tuning.
         /// </summary>
-        public static MatchResult FindBestMatch(double[] faceVector, double tolerance = 0.60)
+        public static MatchResult FindBestMatch(double[] faceVector, double tolerance)
         {
             if (!_isInitialized) Initialize();
-            if (faceVector == null || faceVector.Length != 128) 
+
+            if (faceVector == null || faceVector.Length != 128)
                 return new MatchResult { IsMatch = false };
 
-            string bestEmployeeId = null;
-            double bestDistance = double.MaxValue;
-            int bestPhotoIndex = -1;
+            string bestEmpId    = null;
+            double bestDist     = double.MaxValue;
+            int    bestPhotoIdx = -1;
+
+            string secondEmpId  = null;
+            double secondDist   = double.MaxValue;
 
             _lock.EnterReadLock();
             try
             {
-                // Sequential search (faster for small datasets, less overhead than Parallel)
                 foreach (var kvp in _employeeFaces)
                 {
-                    string empId = kvp.Key;
+                    var empId   = kvp.Key;
                     var vectors = kvp.Value;
-                    
+
+                    // Per-employee minimum distance across all stored vectors
+                    double empMin = double.MaxValue;
+                    int    empIdx = -1;
                     for (int i = 0; i < vectors.Count; i++)
                     {
-                        double dist = DlibBiometrics.Distance(faceVector, vectors[i]);
-                        // Use <= for consistency - borderline matches should succeed
-                        if (dist <= tolerance && dist < bestDistance)
-                        {
-                            bestDistance = dist;
-                            bestEmployeeId = empId;
-                            bestPhotoIndex = i;
-                        }
+                        var d = DlibBiometrics.Distance(faceVector, vectors[i]);
+                        if (d < empMin) { empMin = d; empIdx = i; }
+                    }
+
+                    if (empMin < bestDist)
+                    {
+                        secondEmpId  = bestEmpId;
+                        secondDist   = bestDist;
+                        bestEmpId    = empId;
+                        bestDist     = empMin;
+                        bestPhotoIdx = empIdx;
+                    }
+                    else if (empMin < secondDist && empId != bestEmpId)
+                    {
+                        secondEmpId = empId;
+                        secondDist  = empMin;
                     }
                 }
             }
@@ -151,109 +197,163 @@ namespace FaceAttend.Services.Biometrics
                 _lock.ExitReadLock();
             }
 
-            if (bestEmployeeId != null && bestDistance <= tolerance)
+            double gap = (secondDist < double.MaxValue)
+                ? secondDist - bestDist
+                : double.PositiveInfinity;
+
+            // ── Distance logging — written to Windows trace / IIS log ─────────
+            // These lines are the raw data you need to tune thresholds.
+            // Format: [SCAN] result | emp | dist | 2nd | gap | tier
+            // Query from IIS logs with:  grep "\[SCAN\]" your_trace.log
+            string logLine;
+
+            // ── Outside tolerance ─────────────────────────────────────────────
+            if (bestEmpId == null || bestDist > tolerance)
             {
-                var confidence = tolerance > 0 ? Math.Max(0, Math.Min(1, 1.0 - (bestDistance / tolerance))) : 0;
-                
-                EmployeeInfo empInfo = null;
-                _employeeInfo.TryGetValue(bestEmployeeId, out empInfo);
-                
+                logLine = string.Format(
+                    "[SCAN] NO_MATCH | best={0} d={1:F3} | 2nd={2} d={3:F3} | gap={4} | tol={5:F3}",
+                    bestEmpId ?? "none",
+                    bestDist < double.MaxValue ? bestDist : -1,
+                    secondEmpId ?? "none",
+                    secondDist < double.MaxValue ? secondDist : -1,
+                    gap == double.PositiveInfinity ? "inf" : gap.ToString("F3"),
+                    tolerance);
+                System.Diagnostics.Trace.TraceInformation(logLine);
+
+                return new MatchResult { IsMatch = false };
+            }
+
+            // ── Ambiguity guard (15% rule) ────────────────────────────────────
+            bool ambiguous = gap != double.PositiveInfinity && gap < (bestDist * 0.15);
+            if (ambiguous)
+            {
+                logLine = string.Format(
+                    "[SCAN] AMBIGUOUS | best={0} d={1:F3} | 2nd={2} d={3:F3} | gap={4:F3} | tol={5:F3}",
+                    bestEmpId, bestDist, secondEmpId, secondDist, gap, tolerance);
+                System.Diagnostics.Trace.TraceInformation(logLine);
+
                 return new MatchResult
                 {
-                    IsMatch = true,
-                    Employee = empInfo,
-                    Distance = bestDistance,
-                    Confidence = confidence,
-                    MatchedPhotoIndex = bestPhotoIndex.ToString()
+                    IsMatch            = false,
+                    WasAmbiguous       = true,
+                    Distance           = bestDist,
+                    SecondBestDistance = secondDist,
+                    AmbiguityGap       = gap
                 };
             }
 
-            return new MatchResult { IsMatch = false };
-        }
+            var tier = ClassifyTier(bestDist, gap);
 
-        /// <summary>
-        /// Returns true if the matcher has been initialized.
-        /// </summary>
-        public static bool IsInitialized => _isInitialized;
-
-        /// <summary>
-        /// Get stats about the cache.
-        /// </summary>
-        public static object GetStats()
-        {
-            return new
+            // LOW tier = in-tolerance but not distinct enough — reject
+            if (tier == MatchTier.Low)
             {
-                IsInitialized = _isInitialized,
-                LastLoaded = _lastLoaded,
-                EmployeeCount = _employeeFaces?.Count ?? 0,
-                TotalFaceVectors = _employeeFaces?.Values.Sum(v => v.Count) ?? 0,
-                MemoryEstimateMB = (_employeeFaces?.Count ?? 0) * 128 * 8 / 1024.0 / 1024.0
+                logLine = string.Format(
+                    "[SCAN] LOW_TIER | best={0} d={1:F3} | 2nd={2} d={3:F3} | gap={4:F3} | tol={5:F3}",
+                    bestEmpId, bestDist,
+                    secondEmpId ?? "none",
+                    secondDist < double.MaxValue ? secondDist : -1,
+                    gap == double.PositiveInfinity ? "inf" : gap.ToString("F3"),
+                    tolerance);
+                System.Diagnostics.Trace.TraceInformation(logLine);
+
+                return new MatchResult { IsMatch = false };
+            }
+
+            var confidence = tolerance > 0
+                ? Math.Max(0, Math.Min(1, 1.0 - (bestDist / tolerance)))
+                : 0.0;
+
+            logLine = string.Format(
+                "[SCAN] {0} | emp={1} d={2:F3} | 2nd={3} d={4:F3} | gap={5:F3} | conf={6:F2} | tol={7:F3}",
+                tier.ToString().ToUpper(),
+                bestEmpId, bestDist,
+                secondEmpId ?? "none",
+                secondDist < double.MaxValue ? secondDist : -1,
+                gap == double.PositiveInfinity ? "inf" : gap.ToString("F3"),
+                confidence,
+                tolerance);
+            System.Diagnostics.Trace.TraceInformation(logLine);
+
+            EmployeeInfo info = null;
+            _employeeInfo.TryGetValue(bestEmpId, out info);
+
+            return new MatchResult
+            {
+                IsMatch            = true,
+                Employee           = info,
+                Distance           = bestDist,
+                Confidence         = confidence,
+                SecondBestDistance = secondDist,
+                AmbiguityGap       = gap,
+                Tier               = tier,
+                MatchedPhotoIndex  = bestPhotoIdx.ToString(),
+                WasAmbiguous       = false
             };
         }
 
-        /// <summary>
-        /// Returns the last time the cache was loaded from database.
-        /// </summary>
-        public static DateTime LastLoaded => _lastLoaded;
+        private static MatchTier ClassifyTier(double dist, double gap)
+        {
+            if (dist <= HighDistThreshold && gap >= HighGapThreshold) return MatchTier.High;
+            if (dist <= MedDistThreshold  && gap >= MedGapThreshold)  return MatchTier.Medium;
+            return MatchTier.Low;
+        }
 
-        /// <summary>
-        /// Add or update an employee in the cache (call after enrollment).
-        /// Uses FaceEncodingHelper for consistent decoding.
-        /// 
-        /// FIX: Also accepts DbContext to ensure transactional consistency.
-        /// If null, creates new context (backward compatible).
-        /// </summary>
+        // ── Cache management ──────────────────────────────────────────────────
+
         public static void UpdateEmployee(string employeeId, FaceAttendDBEntities db = null)
         {
             _lock.EnterWriteLock();
             try
             {
-                // If no context provided, create one (but this may have visibility issues)
                 if (db == null)
                 {
-                    db = new FaceAttendDBEntities();
-                    using (db)
-                    {
-                        UpdateEmployeeInternal(db, employeeId);
-                    }
+                    using (var ctx = new FaceAttendDBEntities())
+                        UpdateEmployeeInternal(ctx, employeeId);
                 }
                 else
                 {
-                    // Use provided context (ensures transactional consistency)
                     UpdateEmployeeInternal(db, employeeId);
                 }
             }
-            finally
-            {
-                _lock.ExitWriteLock();
-            }
+            finally { _lock.ExitWriteLock(); }
         }
-        
+
         private static void UpdateEmployeeInternal(FaceAttendDBEntities db, string employeeId)
         {
-            var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
-            var emp = FaceEncodingHelper.LoadEmployeeById(db, employeeId, maxPerEmployee);
+            var maxPer = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+            var emp    = FaceEncodingHelper.LoadEmployeeById(db, employeeId, maxPer);
 
             if (emp == null)
             {
-                // Remove if exists
                 _employeeFaces.TryRemove(employeeId, out _);
                 _employeeInfo.TryRemove(employeeId, out _);
                 return;
             }
 
             _employeeFaces[emp.EmployeeId] = emp.FaceVectors;
-            _employeeInfo[emp.EmployeeId] = new EmployeeInfo
+            _employeeInfo[emp.EmployeeId]  = new EmployeeInfo
             {
-                Id = emp.Id,
+                Id         = emp.Id,
                 EmployeeId = emp.EmployeeId,
-                FirstName = emp.FirstName,
-                LastName = emp.LastName,
+                FirstName  = emp.FirstName,
+                LastName   = emp.LastName,
                 MiddleName = emp.MiddleName,
-                Department = emp.Department,
+                Department = emp.Department
             };
-            
-            System.Diagnostics.Trace.TraceInformation($"[FastFaceMatcher] Updated employee {employeeId} with {emp.FaceVectors.Count} vectors");
         }
+
+        // ── Properties ────────────────────────────────────────────────────────
+
+        public static bool     IsInitialized => _isInitialized;
+        public static DateTime LastLoaded    => _lastLoaded;
+
+        public static object GetStats() => new
+        {
+            IsInitialized    = _isInitialized,
+            LastLoaded       = _lastLoaded,
+            EmployeeCount    = _employeeFaces?.Count ?? 0,
+            TotalFaceVectors = _employeeFaces?.Values.Sum(v => v.Count) ?? 0,
+            MemoryEstimateMB = (_employeeFaces?.Count ?? 0) * 128 * 8 / 1024.0 / 1024.0
+        };
     }
 }
