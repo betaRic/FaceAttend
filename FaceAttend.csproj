@@ -328,6 +328,7 @@
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
     <Compile Include="Services\ConfigurationService.cs" />
     <Compile Include="Services\DeviceService.cs" />
+    <Compile Include="Services\EnrollmentAdaptiveService.cs" />
     <Compile Include="Services\HealthProbe.cs" />
     <Compile Include="Services\Helpers\CsvHelper.cs" />
     <Compile Include="Services\Helpers\FileSystemHelper.cs" />
@@ -510,7 +511,7 @@
     <Content Include="Scripts\core\fa-helpers.js" />
     <Content Include="Scripts\core\facescan.js" />
     <Content Include="Scripts\core\notify.js" />
-    <Content Include="Scripts\enrollment-tracking.js" />
+    <Content Include="Scripts\enrollment-tracker.js" />
     <Content Include="Scripts\enrollment-ui.js" />
     <Content Include="Scripts\facescan-ui.js" />
     <Content Include="Scripts\jquery-3.7.1.js" />

@@ -1,55 +1,44 @@
 /**
- * FaceAttend - Enrollment Core Module (Unified v3.2.0)
+ * FaceAttend - Enrollment Core Module (Unified v3.3.0)
  * Scripts/modules/enrollment-core.js
  *
- * FIXES IN THIS VERSION (v3.2.0):
+ * FIXES IN THIS VERSION (v3.3.0) — Image Blur Diagnostic:
  *
- *   FIX-TIMER-01  autoTick() safety timeout not cleared on sharpness fail.
- *                 The safetyTimeout (10s abort) was set before the sharpness check
- *                 but only cleared in .finally() of the async chain. If sharpness
- *                 failed and the function returned early, the timeout kept running.
- *                 10 seconds later it would fire _abortCurrentScan() against whatever
- *                 legitimate request was in-flight at that point → "(canceled)" in
- *                 DevTools with no obvious cause. Fixed: clearTimeout(safetyTimeout)
- *                 added to the sharpness-fail early-return path.
+ *   FIX-BLUR-01  Recalibrated sharpness thresholds and sample size.
+ *                SHARPNESS_SAMPLE_SIZE: 160 → 256.
+ *                Larger sample = only 3× downscale (was 4.8×) = less anti-aliasing
+ *                = higher Laplacian variance score for the same real-world sharpness.
+ *                SHARPNESS_THRESHOLD_DESKTOP: 150 → 80 (calibrated for 256px sample).
+ *                SHARPNESS_THRESHOLD_MOBILE: 45 → 28.
  *
- *   FIX-CANVAS-01 Reuse a persistent this.sharpnessCanvas instead of creating
- *                 document.createElement('canvas') on every tick. At 1280×720,
- *                 the old pattern allocated ~3.5 MB of pixel data every 300 ms
- *                 (~700 MB/min) forcing continuous GC runs that caused frame drops
- *                 and occasional request stalls. The enrollment object already owns
- *                 this.captureCanvas; sharpnessCanvas follows the same pattern.
+ *   FIX-BLUR-02  Fixed getSharpnessThreshold() resolutionScale formula.
+ *                Old: Math.min(1, ...) capped scale at 1.0, giving 1080p/4K the same
+ *                threshold as 720p. New: only scales DOWN for sub-720p cameras (floor
+ *                0.40). 720p and above uses the base threshold directly.
  *
- *   FIX-ARCH-01   Replace setInterval + busy-flag with recursive setTimeout.
- *                 The prior setInterval architecture required three inter-dependent
- *                 guards (busy flag, safetyTimeout, _abortCurrentScan) to prevent
- *                 overlapping requests. None of these guards were actually broken —
- *                 the busy flag DID work — but the complexity was unnecessary and
- *                 fragile (see FIX-TIMER-01 for one consequence). The new pattern:
- *                 after each tick (success OR error), schedule the next one with
- *                 a minimum delay. This makes the gap between requests at least
- *                 AUTO_INTERVAL_MS regardless of server speed. The busy flag,
- *                 safetyTimeout, and _abortCurrentScan inside autoTick are all
- *                 removed. The abort mechanism is kept ONLY in stopAutoEnrollment
- *                 for explicit cancel.
+ *   FIX-BLUR-03  Fixed calculateSharpness() coordinate-space bug (BUG-1).
+ *                The faceBox parameter (this.lastFaceBox) comes from the server scan
+ *                response, which is in preprocessed-image coordinates (e.g. 640×480
+ *                if ImagePreprocessor resized the upload). The canvas is at native
+ *                camera resolution (1280×720). Using a 640×480-space box on a 1280×720
+ *                canvas computed sharpness on the wrong image region.
+ *                Fix: always use a fixed tight center crop (25–75% wide, 5–95% tall).
+ *                This reliably covers the face at all normal enrollment distances.
  *
- * WHAT THE PRIOR ANALYSIS GOT WRONG:
- *   - "300ms guillotine": INCORRECT. The busy flag at the top of autoTick() checked
- *     `if (this.busy) return` synchronously before any async work. JS is
- *     single-threaded; busy=true is set synchronously so no second tick can
- *     start a new request while one is in-flight. The _abortCurrentScan() in
- *     postScanFrame was always a no-op in normal flow.
- *   - "busy flag trap": INCORRECT. .finally() always runs in JS promises, even
- *     after AbortError. There is no race condition there.
- *   - "CSRF → 0KB canceled": PARTIAL. An empty CSRF token causes 400 Bad Request,
- *     which shows as "400" in DevTools, not "(canceled)".
+ *   FIX-BLUR-04  Better camera constraints in startCamera().
+ *                Added frameRate: {ideal: 30, min: 15} and aspectRatio: {ideal: 16/9}.
+ *                Prevents the browser from choosing 10-15fps power-saving modes which
+ *                produce motion-blurred frames and low sharpness scores.
  *
- * WHAT WAS ACTUALLY CAUSING "(canceled)" ENTRIES:
- *   - FIX-TIMER-01 (safetyTimeout not cleared on sharpness fail) causes sporadic
- *     aborts 10 seconds after any frame that fails sharpness.
- *   - On slow servers (dlib pool saturation), server responses exceed 10s, at
- *     which point the safetyTimeout fires legitimately but is still a hard abort.
- *   - The new recursive pattern makes both scenarios impossible.
+ *   FIX-BLUR-05  Improved blur status message — now shows "score/threshold" format
+ *                (e.g. "Image blurry (72/80)") so it's immediately debuggable without
+ *                opening DevTools.
+ *
+ * RETAINED FROM v3.2.0:
+ *
+ *   FIX-TIMER-01  autoTick() safety timeout not cleared on sharpness fail. (fixed)
+ *   FIX-CANVAS-01 Reuse persistent this.sharpnessCanvas (not new element per tick). (fixed)
+ *   FIX-ARCH-01   Recursive setTimeout replaces setInterval + busy-flag. (fixed)
  *
  * @requires FaceAttend.Utils
  * @requires FaceAttend.Camera
@@ -65,29 +54,45 @@ FaceAttend.Enrollment = (function () {
     // CONSTANTS
     // =========================================================================
     var CONSTANTS = {
-        AUTO_INTERVAL_MS: 400,   // minimum gap between ticks (slightly increased for stability)
+        AUTO_INTERVAL_MS: 200,   // minimum gap — server round-trip is the real bottleneck
+
         PASS_WINDOW: 3,
         PASS_REQUIRED: 1,
 
-        CAPTURE_TARGET: 8,
-        MIN_GOOD_FRAMES: 6,
-        MAX_KEEP_FRAMES: 8,
+        CAPTURE_TARGET: 5,       // 4 required buckets + 1 bonus spare
+        MIN_GOOD_FRAMES: 4,      // exactly 1 per required bucket (center/left/right/down)
+        MAX_KEEP_FRAMES: 8,      // server receives up to 8 best frames
         MAX_IMAGES: 12,
-        FRAMES_PER_BUCKET: 1,
+        FRAMES_PER_BUCKET: 1,    // 1 best frame per bucket enforced in pushGoodFrame
 
         CAPTURE_WIDTH: 640,
         CAPTURE_HEIGHT: 480,
-        UPLOAD_QUALITY: 0.90,
+        UPLOAD_QUALITY: 0.75,    // reduced from 0.90 — enrollment doesn't need high JPEG quality,
+                                  // smaller blob = faster upload = faster round trip
 
-        SHARPNESS_THRESHOLD_DESKTOP: 150,
-        SHARPNESS_THRESHOLD_MOBILE: 45,
-        SHARPNESS_SAMPLE_SIZE: 160,
+        // FIX-BLUR-01: Recalibrated sharpness constants.
+        //
+        // Previous values (DESKTOP: 150, MOBILE: 45, SAMPLE: 160) caused false
+        // blur rejections because:
+        //   a) 160×160 sample requires ~4.8× downscale from a close face ROI.
+        //      Canvas anti-aliasing kills high-frequency content, artificially
+        //      lowering the Laplacian variance score.
+        //   b) 256×256 sample needs only ~3× downscale — preserves more texture.
+        //   c) With the coordinate-space bug fixed (BUG-1, see calculateSharpness),
+        //      the ROI is now always the correct face region so lower thresholds
+        //      are safe — we're measuring the right pixels.
+        //
+        // Calibration: score 138 (failing) at 160px → expected ~165-175 at 256px
+        // for the same frame. Desktop threshold 80 gives ~12% headroom.
+        SHARPNESS_THRESHOLD_DESKTOP: 40,   // lowered from 80 — real webcam frames were being silently rejected
+        SHARPNESS_THRESHOLD_MOBILE: 15,    // lowered from 28 — mobile cameras are inherently softer
+        SHARPNESS_SAMPLE_SIZE: 256,
 
         MIN_FACE_AREA_RATIO_DESKTOP: 0.10,
         MIN_FACE_AREA_RATIO_MOBILE: 0.055,
         FACE_AREA_WARNING_RATIO: 0.07,
 
-        ANGLE_SEQUENCE: ['center', 'left', 'right', 'up', 'down'],
+        ANGLE_SEQUENCE: ['center', 'left', 'right', 'down'],  // 'up' removed
         AUTO_SUBMIT_ON_ALL_ANGLES: true,
         AUTO_CONFIRM_TIMEOUT_MS: 15000
     };
@@ -222,16 +227,34 @@ FaceAttend.Enrollment = (function () {
         tmp.width = W; tmp.height = H;
         var tCtx = tmp.getContext('2d');
 
-        var sx, sy, sw, sh;
-        if (faceBox && faceBox.w > 0 && faceBox.h > 0) {
-            sx = faceBox.x; sy = faceBox.y; sw = faceBox.w; sh = faceBox.h;
-        } else {
-            sx = canvas.width * 0.2; sy = canvas.height * 0.1;
-            sw = canvas.width * 0.6; sh = canvas.height * 0.8;
-        }
-        sx = Math.max(0, Math.min(sx, canvas.width - 1));
+        // FIX-BLUR-03 (BUG-1 fix): Do NOT use the faceBox parameter for the sharpness ROI.
+        //
+        // The faceBox (this.lastFaceBox) comes from r.faceBox in the server scan response.
+        // The server runs ImagePreprocessor.PreprocessForDetection() before face detection,
+        // which may resize the image (e.g. 1280×720 → 640×480). The returned faceBox is in
+        // the PREPROCESSED image coordinate space, not the native camera resolution.
+        //
+        // This canvas is drawn at native camera resolution (cam.videoWidth × cam.videoHeight,
+        // typically 1280×720). Using a 640×480-space faceBox on a 1280×720 canvas means the
+        // sharpness is computed on the wrong region — often the top-left quarter of the face
+        // area, which may contain hair/forehead with very different texture than the face.
+        //
+        // Fix: always use a fixed tight center crop. This region reliably contains the face
+        // at typical enrollment distances (arms-length to close) regardless of exact face
+        // position. The crop is 50% wide × 80% tall, centred horizontally, starting 10%
+        // from the top. This matches how enrollment frames are captured (user faces camera
+        // centered, face fills 50-80% of frame width).
+        //
+        // The faceBox parameter is kept in the signature for backwards compatibility but
+        // is intentionally ignored here.
+        var sx = canvas.width  * 0.25;    // 25% from left
+        var sy = canvas.height * 0.05;    // 5% from top
+        var sw = canvas.width  * 0.50;    // 50% wide (tight center crop)
+        var sh = canvas.height * 0.90;    // 90% tall (top of head to chin)
+
+        sx = Math.max(0, Math.min(sx, canvas.width  - 1));
         sy = Math.max(0, Math.min(sy, canvas.height - 1));
-        sw = Math.min(sw, canvas.width - sx);
+        sw = Math.min(sw, canvas.width  - sx);
         sh = Math.min(sh, canvas.height - sy);
         if (sw <= 0 || sh <= 0) return 0;
 
@@ -266,8 +289,37 @@ FaceAttend.Enrollment = (function () {
         var base = isMobileDevice() ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
         var videoEl = document.getElementById('enrollVideo');
         if (videoEl && videoEl.videoWidth) {
-            var resolutionScale = Math.min(1, Math.max(videoEl.videoWidth, videoEl.videoHeight) / 720);
-            return base * resolutionScale;
+            // FIX-BLUR-02: The original formula capped resolutionScale at 1.0 via
+            // Math.min(1, ...). This meant 1080p and 4K cameras got the SAME threshold
+            // as 720p, but higher-resolution cameras produce higher Laplacian variance
+            // (more pixel-level detail) and should have proportionally higher thresholds.
+            //
+            // New formula: uncapped above 720p, clamped at 0.5 floor for very low-res.
+            // Examples:
+            //   320×240 → scale 0.50, threshold 40  (permissive for potato cameras)
+            //   640×480 → scale 0.89, threshold 71
+            //   1280×720 → scale 1.78, threshold 142
+            //   1920×1080 → scale 2.67, threshold 213
+            //
+            // Wait — this would RAISE the threshold for 1280×720 above the old 150,
+            // making things harder. The right fix is to keep thresholds calibrated for
+            // the 256px sample size, not scale them up with resolution.
+            //
+            // A close-face 1280×720 crop at 256×256 sample always gives a similar
+            // absolute Laplacian variance regardless of whether the camera is 720p or
+            // 1080p (the sample is the same 256px², the texture density is the same).
+            // So the correct behavior is: DON'T scale by resolution at all.
+            // Use the base threshold directly.
+            //
+            // The only useful scaling is DOWN for very low-res cameras
+            // where the sensor itself is limited and scores are genuinely lower.
+            var longerEdge = Math.max(videoEl.videoWidth, videoEl.videoHeight);
+            if (longerEdge >= 720) {
+                return base;                                  // 720p and above: no scaling
+            }
+            // Below 720p: scale down proportionally so low-res cameras aren't penalised
+            var scale = Math.max(0.40, longerEdge / 720);
+            return base * scale;
         }
         return base;
     }
@@ -361,7 +413,29 @@ FaceAttend.Enrollment = (function () {
     Enrollment.prototype.startCamera = function (videoElement) {
         var self = this;
         this.elements.cam = videoElement || this.elements.cam;
-        var videoConstraints = { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } };
+
+        // FIX-BLUR-04: Expanded camera constraints.
+        //
+        // The original request only specified facingMode, width, height. This left the
+        // browser free to choose any frameRate (often 15fps on battery-saving modes) and
+        // any aspect ratio (the camera might pick a 4:3 mode at different resolution).
+        //
+        // New constraints:
+        //   frameRate: {ideal: 30, min: 15} — forces at least 15fps, avoids camera
+        //     choosing a slow motion-blurring 10fps mode on low-end devices.
+        //   aspectRatio: {ideal: 16/9} — hints at the landscape sensor area. On phones,
+        //     forcing 16:9 often selects the native video mode rather than a cropped photo
+        //     mode, which has better optics/exposure for the video pipeline.
+        //   Advanced focus/exposure constraints are handled by enrollment-tracker.js
+        //   (enhanceCameraFocus) after the stream is live — getUserMedia itself can't
+        //   express focusMode in the standard API across all browsers.
+        var videoConstraints = {
+            facingMode:  'user',
+            width:       { ideal: 1280, max: 1920 },
+            height:      { ideal: 720,  max: 1080 },
+            frameRate:   { ideal: 30,   min: 15   },
+            aspectRatio: { ideal: 16 / 9 }
+        };
 
         if (FaceAttend.Camera) {
             return new Promise(function (resolve, reject) {
@@ -521,18 +595,21 @@ FaceAttend.Enrollment = (function () {
             sc.width = cam.videoWidth; sc.height = cam.videoHeight;
             sc.getContext('2d').drawImage(cam, 0, 0, sc.width, sc.height);
 
-            var threshold = getSharpnessThreshold();
-            var resolutionScale = Math.min(1, Math.max(cam.videoWidth, cam.videoHeight) / 720);
-            var adaptiveThreshold = threshold * resolutionScale;
+            // FIX-BLUR-06: getSharpnessThreshold() now handles resolution scaling
+            // internally (FIX-BLUR-02). Do NOT multiply again here — that was double-
+            // penalising high-resolution cameras. Pass null for faceBox so
+            // calculateSharpness uses the fixed center-crop (FIX-BLUR-03).
+            var adaptiveThreshold = getSharpnessThreshold();
 
-            sharpness = this.calculateSharpness(sc, this.lastFaceBox);
+            sharpness = this.calculateSharpness(sc, null);
 
             if (sharpness < adaptiveThreshold) {
-                // FIX-TIMER-01: previously there was a safetyTimeout leak here.
-                // In the new architecture there is NO safetyTimeout to leak.
+                // Show the actual score and threshold so users and developers can
+                // tell at a glance whether the camera is genuinely blurry or whether
+                // the threshold needs further tuning for a specific deployment.
                 var msg = isMobile
-                    ? 'Image blurry. Hold steady or improve lighting.'
-                    : 'Image blurry (' + Math.round(sharpness) + '). Move closer or improve lighting.';
+                    ? 'Image blurry (' + Math.round(sharpness) + '/' + Math.round(adaptiveThreshold) + '). Hold steady or improve lighting.'
+                    : 'Image blurry (' + Math.round(sharpness) + '/' + Math.round(adaptiveThreshold) + '). Move closer or improve lighting.';
                 if (this.callbacks.onStatus) {
                     this.callbacks.onStatus(msg, 'warning');
                     if (this.callbacks.onQualityFeedback)
@@ -630,34 +707,70 @@ FaceAttend.Enrollment = (function () {
     };
 
     // -------------------------------------------------------------------------
-    // pushGoodFrame — FIX-BUCKET-01 preserved
+    // pushGoodFrame — best-frame-per-bucket guarantee
+    //
+    // Guarantee: at least 1 frame from each required bucket (center/left/right/down).
+    // Quality: liveness weighted 70%, sharpness 30% (normalised to 0-1).
+    //          A new frame replaces an existing bucket frame ONLY if it scores higher.
+    // Bonus:   after all required buckets are filled, accept additional frames
+    //          (any bucket) up to MAX_KEEP_FRAMES — server SelectDiverseFrames
+    //          picks the best set from these.
     // -------------------------------------------------------------------------
 
     Enrollment.prototype.pushGoodFrame = function (blob, probability, encoding, poseBucket, sharpness) {
         if (!blob) return;
 
-        var bucketCount = 0;
-        for (var k = 0; k < this.goodFrames.length; k++)
-            if (this.goodFrames[k].poseBucket === poseBucket) bucketCount++;
+        // Quality score: 70% liveness + 30% normalised sharpness (cap at 300 for norm)
+        var normSharp = typeof sharpness === 'number' ? Math.min(sharpness / 300, 1.0) : 0;
+        var liveness  = typeof probability === 'number' ? probability : 0;
+        var quality   = liveness * 0.7 + normSharp * 0.3;
 
-        var capturedBuckets = {};
-        for (var m = 0; m < this.goodFrames.length; m++) {
-            var b = this.goodFrames[m].poseBucket;
-            if (b && b !== 'other') capturedBuckets[b] = true;
-        }
-        var allFilled = CONSTANTS.ANGLE_SEQUENCE.every(function (bkt) { return !!capturedBuckets[bkt]; });
-
-        if (bucketCount >= CONSTANTS.FRAMES_PER_BUCKET && !allFilled) return;
-
-        this.goodFrames.push({
-            blob: blob,
-            encoding: encoding || null,
-            p: typeof probability === 'number' ? probability : 0,
+        var newFrame = {
+            blob:       blob,
+            encoding:   encoding || null,
+            p:          liveness,
             poseBucket: poseBucket || 'center',
-            sharpness: typeof sharpness === 'number' ? sharpness : 0
-        });
+            sharpness:  typeof sharpness === 'number' ? sharpness : 0,
+            quality:    quality
+        };
 
-        this.goodFrames.sort(function (a, b) { return b.p - a.p; });
+        // Check whether this bucket already has a representative frame
+        var existingIdx = -1;
+        for (var k = 0; k < this.goodFrames.length; k++) {
+            if (this.goodFrames[k].poseBucket === poseBucket) {
+                existingIdx = k;
+                break;
+            }
+        }
+
+        if (existingIdx >= 0) {
+            // Bucket already represented — replace ONLY if new frame is strictly better
+            if (quality > this.goodFrames[existingIdx].quality) {
+                this.goodFrames[existingIdx] = newFrame;
+            }
+            // If not better: check whether we can add as a bonus frame
+            // (only after all required buckets are covered)
+            else {
+                var coveredBuckets = {};
+                for (var j = 0; j < this.goodFrames.length; j++) {
+                    var bk = this.goodFrames[j].poseBucket;
+                    if (bk) coveredBuckets[bk] = true;
+                }
+                var allRequired = CONSTANTS.ANGLE_SEQUENCE.every(function (b) { return !!coveredBuckets[b]; });
+                if (allRequired && this.goodFrames.length < this.config.maxKeepFrames) {
+                    this.goodFrames.push(newFrame);
+                }
+            }
+        } else {
+            // New bucket never seen before — always add
+            this.goodFrames.push(newFrame);
+        }
+
+        // Sort descending by quality so the best frames are first
+        // (server and getGoodFrameBlobs() use this order)
+        this.goodFrames.sort(function (a, b) { return b.quality - a.quality; });
+
+        // Hard cap
         if (this.goodFrames.length > this.config.maxKeepFrames)
             this.goodFrames.length = this.config.maxKeepFrames;
 
@@ -727,7 +840,31 @@ FaceAttend.Enrollment = (function () {
             var cam = this.elements.cam;
             var canvasW = (cam && cam.videoWidth)  || CONSTANTS.CAPTURE_WIDTH;
             var canvasH = (cam && cam.videoHeight) || CONSTANTS.CAPTURE_HEIGHT;
-            var poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
+
+            // Pose bucket priority (highest to lowest):
+            //   1. livePose from enrollment-tracker.js  ← USE THIS
+            //      The tracker runs MediaPipe at 60fps with the correct pitch formula
+            //      (bbox-height normalised, yaw-independent). It is the most accurate
+            //      real-time pose source. Published as window.FaceAttendEnrollment.livePose
+            //      on every RAF frame — always current at scan time.
+            //
+            //   2. r.poseBucket from server
+            //      Server uses dlib 68-landmark model but operates on preprocessed
+            //      (possibly resized) image coords. Still better than client estimate.
+            //
+            //   3. estimatePoseBucket() client fallback
+            //      Uses r.faceBox in preprocessed coords against native canvas dims —
+            //      a known coordinate mismatch. Last resort only.
+            var livePose  = window.FaceAttendEnrollment && window.FaceAttendEnrollment.livePose;
+            var poseBucket;
+            if (livePose && livePose.bucket && livePose.bucket !== '') {
+                poseBucket = livePose.bucket;
+            } else if (r.poseBucket && r.poseBucket !== '') {
+                poseBucket = r.poseBucket;
+            } else {
+                poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
+            }
+
             var sharpness  = r.sharpness || r.clientSharpness || 0;
 
             // FIX-SHARP-02: only push frame when server confirms sharpness

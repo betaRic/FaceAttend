@@ -151,7 +151,9 @@ namespace FaceAttend
                 .Include("~/Scripts/core/notify.js")
                 .Include("~/Scripts/core/facescan.js")
                 .Include("~/Scripts/modules/enrollment-core.js")
+                .Include("~/Scripts/enrollment-tracker.js")
                 .Include("~/Scripts/enrollment-ui.js"));
+
 
             // =================================================================
             // CSS BUNDLES

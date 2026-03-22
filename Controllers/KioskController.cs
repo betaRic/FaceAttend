@@ -724,6 +724,19 @@ namespace FaceAttend.Controllers
                         return JsonResponseBuilder.ErrorWithTimings(rec.Code, timings, includePerfTimings, rec.Message);
                     }
 
+                    // Adaptive enrollment: if match is high-confidence, add this scan's
+                    // encoding as an additional vector (online learning).
+                    // Only when distance is very low (well under tolerance) to avoid
+                    // reinforcing borderline or wrong matches.
+                    if (rec.Ok && vec != null && bestDist < 0.40)
+                    {
+                        try
+                        {
+                            EnrollmentAdaptiveService.TryAddVector(db, emp.Id, vec, maxStored: 8);
+                        }
+                        catch { /* non-fatal — attendance already recorded */ }
+                    }
+
                     mark("total_ms");
 
                     return JsonResponseBuilder.AttendanceSuccess(

@@ -282,7 +282,7 @@
     (function () {
         'use strict';
 
-        var MIN_FRAMES = 8;
+        var MIN_FRAMES = 4;  // matches enrollment-core.js MIN_GOOD_FRAMES
 
         var state = {
             step:           1,
@@ -329,6 +329,9 @@
                 enablePreview:     false
               })
             : null;
+
+        // Allow enrollment-tracker.js to publish livePose to this instance
+        window.FaceAttendEnrollment = enroll;
 
         function updateCaptureUI(frameCount, target) {
             var c = el('captureCount');
@@ -473,7 +476,7 @@
             if (!enroll) return;
             enroll.startAutoEnrollment();
             resetCaptureUI();
-            startFaceOverlay(el('enrollVideo'), enroll);
+            // Do NOT call startFaceOverlay() — enrollment-tracker.js owns the canvas
         }
 
         if (enroll) {

@@ -377,7 +377,7 @@
         //   blue   — idle / scanning
         var done      = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
         var isBusy    = !!enrollment.busy;
-        var ANGLES    = ['center', 'left', 'right', 'up', 'down'];
+        var ANGLES    = ['center', 'left', 'right', 'down'];
         var captured  = {};
         if (enrollment.goodFrames) {
             enrollment.goodFrames.forEach(function (f) {
@@ -462,14 +462,20 @@
     if (overlayCanvas) drawFaceOverlay();
 
     // ── Internal retake ────────────────────────────────────────────────────────
-    // Defined BEFORE onReadyToConfirm which calls it (FIX-RETAKE-01).
+    // RETAKE BUG FIX:
+    // The stale lastBoxSmooth caused the overlay to keep drawing the old box
+    // position for several frames after retake. Clearing it here forces the
+    // EMA to restart from the tracker's next live detection instead of
+    // interpolating from a ghost position.
+    // DO NOT call startCamera() or stopCamera() here — the stream stays alive.
+    // DO NOT start a second overlay RAF loop — the tracker already owns the canvas.
     function _doRetake() {
+        lastBoxSmooth = null;           // clear stale EMA box — tracker resets on next tick
         enrollment.startAutoEnrollment();
-        updateProgress(0, cfg.minFrames || 8);
+        updateProgress(0, cfg.minFrames || 5);
         updateDots();
-        if (typeof enrollment.getNextAnglePrompt === 'function')
-            showAngle(enrollment.getNextAnglePrompt());
-        setStatus('Retaking — follow the angle prompts.', 'info');
+        setStatus('Ready. Look straight at the camera.', 'info');
+        setLiveness(0, 'info');
     }
 
     // ── Callbacks ──────────────────────────────────────────────────────────────
@@ -520,7 +526,7 @@
 
         // Path 2: missing angles — warn and resume
         if (!data.allAngles) {
-            var REQUIRED = ['center', 'left', 'right', 'up', 'down'];
+            var REQUIRED = ['center', 'left', 'right', 'down'];
             var capturedSet = {};
             (data.frames || []).forEach(function (f) {
                 if (f.poseBucket) capturedSet[f.poseBucket] = true;
@@ -531,7 +537,7 @@
                 Swal.fire({
                     icon:              'warning',
                     title:             'More angles needed',
-                    html:              'Please capture <b>all 5 angles</b> for robust identification.' +
+                    html:              'Please capture <b>all 4 angles</b> for robust identification.' +
                                        '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
                                        '<br>Captured so far: ' + data.angleCount + ' / 5',
                     confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',

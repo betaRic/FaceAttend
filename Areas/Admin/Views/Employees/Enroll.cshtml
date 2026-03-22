@@ -228,7 +228,7 @@
         'use strict';
 
         // ── Constants ────────────────────────────────────────────────────────
-        var MIN_FRAMES = 8; // must match CAPTURE_TARGET in enrollment-core.js
+        var MIN_FRAMES = 4;  // matches enrollment-core.js MIN_GOOD_FRAMES
 
         // ── State ────────────────────────────────────────────────────────────
         var selectedFiles   = [];   // upload pane
@@ -255,6 +255,9 @@
                 enablePreview:     false
               })
             : null;
+
+        // Allow enrollment-tracker.js to publish livePose to this instance
+        window.FaceAttendEnrollment = enroll;
 
         // ── Wizard navigation ─────────────────────────────────────────────────
 
@@ -601,7 +604,7 @@
 
             enroll.startCamera(videoEl)
                 .then(function () {
-                    if (statusEl) statusEl.textContent = 'Camera active — look straight ahead';
+                    if (statusEl) statusEl.textContent = 'Camera active, look straight ahead';
                     enroll.startAutoEnrollment();
                     startFaceOverlay(videoEl, enroll);
                 })
@@ -639,10 +642,7 @@
             if (!enroll) return;
             enroll.startAutoEnrollment();
             resetCaptureUI();
-            // Reset EMA so the overlay box doesn't ghost to the old position.
-            // The cancel-token approach means the current loop's 'smoothed' var
-            // is local; just restarting the loop gives a fresh smoothed=null.
-            startFaceOverlay(document.getElementById('enrollVideo'), enroll);
+            // Do NOT call startFaceOverlay() — enrollment-tracker.js owns the canvas
         }
 
         window.retake = function () {
