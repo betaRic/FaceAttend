@@ -472,6 +472,16 @@ FaceAttend.Enrollment = (function () {
             }
         }
 
+        // FIX: Snapshot tracker pose BEFORE async capture.
+        // enrollment-tracker.js writes livePose at 60fps.
+        // Server round-trip is 300-600ms — tracker has moved by then.
+        // Reading livePose HERE guarantees bucket matches the blob we are about to capture.
+        var capturedPoseBucket = null;
+        var _liveSnap = window.FaceAttendEnrollment && window.FaceAttendEnrollment.livePose;
+        if (_liveSnap && _liveSnap.bucket && _liveSnap.bucket !== '' && _liveSnap.bucket !== 'other') {
+            capturedPoseBucket = _liveSnap.bucket;
+        }
+
         // --- Capture blob and send ---
         return this.captureJpegBlob(CONSTANTS.UPLOAD_QUALITY)
             .then(function (blob) {
@@ -482,6 +492,7 @@ FaceAttend.Enrollment = (function () {
                 if (!result) return; // AbortError path (explicit stop)
                 result.lastBlob = capturedBlob;
                 result.clientSharpness = sharpness;
+                result.capturedPoseBucket = capturedPoseBucket;
                 self.processScanResult(result);
             })
             .catch(function (e) {
@@ -677,15 +688,17 @@ FaceAttend.Enrollment = (function () {
             var cam = this.elements.cam;
             var canvasW = (cam && cam.videoWidth)  || CONSTANTS.CAPTURE_WIDTH;
             var canvasH = (cam && cam.videoHeight) || CONSTANTS.CAPTURE_HEIGHT;
-            var livePose  = window.FaceAttendEnrollment && window.FaceAttendEnrollment.livePose;
-            var poseBucket;
-            if (livePose && livePose.bucket && livePose.bucket !== '') {
-                poseBucket = livePose.bucket;
-            } else if (r.poseBucket && r.poseBucket !== '') {
-                poseBucket = r.poseBucket;
-            } else {
-                poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
-            }
+        // FIX: capturedPoseBucket was snapped synchronously before capture.
+        // Server r.poseBucket uses Dlib 68-pt landmarks — these degrade at yaw>15deg
+        // (nose prediction snaps to frontal => near-zero yaw => always 'center').
+        // MediaPipe BlazeFace (tracker) is accurate at all angles and was snapped
+        // at the exact moment of capture — use it as the primary source.
+        var poseBucket;
+        if (r.capturedPoseBucket && r.capturedPoseBucket !== '' && r.capturedPoseBucket !== 'other') {
+            poseBucket = r.capturedPoseBucket;
+        } else {
+            poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
+        }
 
             var sharpness  = r.sharpness || r.clientSharpness || 0;
 

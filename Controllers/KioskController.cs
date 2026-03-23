@@ -374,7 +374,22 @@ namespace FaceAttend.Controllers
 
                     // ── FIX 3: Tolerance capped at 0.60. Angle-relax removed. ────────
                     var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.60);
-                    attendanceTol = Math.Max(0.50, Math.Min(0.60, attendanceTol));
+                    // Mobile cameras produce higher cross-device Dlib distances
+                    // (~0.62-0.70) vs same-device (~0.35-0.55) due to different
+                    // sensor/focal-length/ISP. Use a separate config key with a
+                    // higher cap so the match even reaches the tier logic.
+                    // Tier system (HighDist/MedDist/gap) provides the real security gate.
+                    var isMobileAttend = DeviceService.IsMobileDevice(Request);
+                    if (isMobileAttend)
+                    {
+                        var mobileTol = ConfigurationService.GetDouble(
+                            "Biometrics:MobileAttendanceTolerance", 0.68);
+                        attendanceTol = Math.Max(0.55, Math.Min(0.72, mobileTol));
+                    }
+                    else
+                    {
+                        attendanceTol = Math.Max(0.50, Math.Min(0.60, attendanceTol));
+                    }
 
                     // ── Matching (single authority — FastFaceMatcher) ─────────────────
                     if (!FastFaceMatcher.IsInitialized)
