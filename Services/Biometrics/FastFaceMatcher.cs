@@ -45,7 +45,7 @@ namespace FaceAttend.Services.Biometrics
         private static double HighGapThreshold
             => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.12);
         private static double MedDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.65);
+            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.70);
         private static double MedGapThreshold
             => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.08);
 

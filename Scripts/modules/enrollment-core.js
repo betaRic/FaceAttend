@@ -697,7 +697,7 @@ FaceAttend.Enrollment = (function () {
         if (r.capturedPoseBucket && r.capturedPoseBucket !== '' && r.capturedPoseBucket !== 'other') {
             poseBucket = r.capturedPoseBucket;
         } else {
-            poseBucket = this.estimatePoseBucket(r.landmarks || null, r.faceBox, canvasW, canvasH);
+            poseBucket = 'center'; // Tracker not detecting at this angle; server Dlib landmarks degrade >15deg. Default center so frame is stored (quality gate allows 1 bucket).
         }
 
             var sharpness  = r.sharpness || r.clientSharpness || 0;

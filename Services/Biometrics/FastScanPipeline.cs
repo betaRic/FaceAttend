@@ -327,8 +327,19 @@ namespace FaceAttend.Services.Biometrics
                     }
                     RecordTiming(timings, "detect", sw);
 
-                    // Compute sharpness on face ROI using bitmap (no temp file needed)
+                    // ===== QUALITY GATE =====
                     float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
+                    var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(false);
+
+                    if (sharpness < sharpTh * 0.75f)
+                    {
+                        return new ScanResult
+                        {
+                            Ok = false,
+                            Error = "LOW_QUALITY"
+                        };
+                    }
+
                     RecordTiming(timings, "sharpness_ms", sw);
 
                     // STEP 3: PARALLEL - Liveness + Encoding (both reuse same bitmap)
@@ -450,6 +461,19 @@ namespace FaceAttend.Services.Biometrics
                     }
                     RecordTiming(timings, "detect", sw);
 
+                // ===== QUALITY GATE =====
+                float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
+                var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(false);
+
+                if (sharpness < sharpTh * 0.75f)
+                {
+                    return new ScanResult
+                    {
+                        Ok = false,
+                        Error = "LOW_QUALITY"
+                    };
+                }
+
                     // STEP 3: PARALLEL - Liveness + Encoding
                     double[] encoding = null;
                     bool livenessOk = false;
@@ -518,6 +542,40 @@ namespace FaceAttend.Services.Biometrics
             if (timings != null)
             {
                 timings[key] = sw.ElapsedMilliseconds;
+            }
+        }
+
+        private static float ScoreFrame(Bitmap bitmap, DlibBiometrics.FaceBox faceBox)
+        {
+            try
+            {
+                float score = 0;
+
+                // 1. Face size score
+                float faceArea = faceBox.Width * faceBox.Height;
+                float imageArea = bitmap.Width * bitmap.Height;
+                float sizeRatio = faceArea / imageArea;
+                score += sizeRatio * 2.0f; // weight
+
+                // 2. Centering score
+                float faceCenterX = faceBox.Left + faceBox.Width / 2f;
+                float faceCenterY = faceBox.Top + faceBox.Height / 2f;
+
+                float dx = Math.Abs(faceCenterX - bitmap.Width / 2f) / bitmap.Width;
+                float dy = Math.Abs(faceCenterY - bitmap.Height / 2f) / bitmap.Height;
+
+                float centerPenalty = (dx + dy);
+                score += (1.0f - centerPenalty) * 2.0f;
+
+                // 3. Sharpness score
+                float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
+                score += Math.Min(sharpness / 100f, 1.0f);
+
+                return score;
+            }
+            catch
+            {
+                return 0;
             }
         }
     }

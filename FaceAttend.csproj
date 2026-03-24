@@ -591,6 +591,7 @@
   <ItemGroup>
     <Content Include="libman.json" />
     <None Include="packages.config" />
+    <Content Include="README.md" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
     <Content Include="Views\MobileRegistration\Enroll-mobile.cshtml" />

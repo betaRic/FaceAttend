@@ -293,7 +293,11 @@ namespace FaceAttend.Controllers
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
                     // ── Liveness threshold (read once) ────────────────────────────────
-                    var liveTh = (float)ConfigurationService.GetDoubleCached(
+                    var isMobileAttend = DeviceService.IsMobileDevice(Request);
+
+                   var liveTh = isMobileAttend
+                    ? (float)ConfigurationService.GetDouble("Biometrics:MobileLivenessThreshold", 0.68)
+                    : (float)ConfigurationService.GetDoubleCached(
                         "Biometrics:LivenessThreshold",
                         ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
 
@@ -379,7 +383,6 @@ namespace FaceAttend.Controllers
                     // sensor/focal-length/ISP. Use a separate config key with a
                     // higher cap so the match even reaches the tier logic.
                     // Tier system (HighDist/MedDist/gap) provides the real security gate.
-                    var isMobileAttend = DeviceService.IsMobileDevice(Request);
                     if (isMobileAttend)
                     {
                         var mobileTol = ConfigurationService.GetDouble(
@@ -621,11 +624,18 @@ namespace FaceAttend.Controllers
                     bool needsReviewFlag = false;
                     var  reviewNotes     = new System.Text.StringBuilder();
 
-                    // FIX 5: Near-match is now a REJECTION, not a flag-and-accept.
-                    // In a government attendance system a borderline match must not be
-                    // recorded — it must be re-attempted with better positioning/lighting.
+                    // Near-match: flag for admin review but DO NOT reject.
+                    // Tier system + 2-frame MEDIUM confirmation is the real security gate.
+                    // Rejecting here breaks angled-face recognition for enrolled employees
+                    // whose non-frontal dist (0.52-0.58) exceeds the 0.90*tol threshold.
                     if (attendanceTol > 0 && bestDist >= (attendanceTol * nearMatchRatio))
-                        return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
+                    {
+                        needsReviewFlag = true;
+                        reviewNotes.Append("Near-match dist=")
+                            .Append(bestDist.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(" tol=").Append((attendanceTol * nearMatchRatio).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(". ");
+                    }
 
                     // Liveness margin — flag only, liveness itself was already gated
                     if (p < (liveTh + livenessMargin))
