@@ -284,7 +284,7 @@ namespace FaceAttend.Services.Biometrics
             if (absYaw > 45f || absPitch > 55f) return "other";
 
             // Center zone
-            if (absYaw < 12f && absPitch < 40f) return "center";
+            if (absYaw < 12f && absPitch < 28f) return "center";
 
             // Dominant axis determines bucket — no inner deadband, matches client exactly
             if (absYaw >= absPitch)

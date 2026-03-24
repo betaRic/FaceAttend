@@ -254,7 +254,7 @@ FaceAttend.Enrollment = (function () {
                         var noseOffset  = nose.y - eyeMidY;
                         var absYawRad2  = Math.abs(yaw) * Math.PI / 180;
                         var eyeDistRef  = eyeDistX / Math.max(0.3, Math.cos(absYawRad2));
-                        pitch = (noseOffset / eyeDistRef - 0.90) * 100;
+                        pitch = (noseOffset / eyeDistRef - 0.10) * 100;
                     }
                 }
             }
@@ -265,7 +265,7 @@ FaceAttend.Enrollment = (function () {
             pitch =  (((faceBox.y + faceBox.h / 2) / H) - 0.5) * 30;
         }
 
-        var CENTER_YAW = 12, CENTER_PITCH = 40;
+        var CENTER_YAW = 12, CENTER_PITCH = 28;
         var MAX_YAW = 45, MAX_PITCH = 55;
         var absYaw = Math.abs(yaw), absPitch = Math.abs(pitch);
 

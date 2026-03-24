@@ -47,7 +47,7 @@
     // 28° absorbs all realistic webcam-height variation while still demanding
     // an obvious tilt to register as UP or DOWN.
     var CENTER_YAW   = 12;
-    var CENTER_PITCH = 40;
+    var CENTER_PITCH = 28;
     var MAX_YAW      = 45;
     var MAX_PITCH    = 55;
 
@@ -218,7 +218,7 @@
         var eyeSpanRef  = eyeSpanX / yawComp;
         // 0.10 offset: centers the neutral band for above-camera webcams (most common)
         // 100 multiplier: moderate sensitivity, CENTER_PITCH=28 gives ±28° of tolerance
-        var pitch = (noseBelow / eyeSpanRef - 0.90) * 100;
+        var pitch = (noseBelow / eyeSpanRef - 0.10) * 100;
 
         return {
             bucket: poseBucket(yaw, pitch),
