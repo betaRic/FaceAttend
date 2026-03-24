@@ -339,20 +339,26 @@ namespace FaceAttend.Services.Biometrics
                             Error = "LOW_QUALITY"
                         };
                     }
-
                     RecordTiming(timings, "sharpness_ms", sw);
 
                     // STEP 3: PARALLEL - Liveness + Encoding (both reuse same bitmap)
-                    double[] encoding = null;
+                    var encodings = new List<double[]>();
                     bool livenessOk = false;
                     float? livenessProb = null;
 
                     Parallel.Invoke(
                         () =>
                         {
-                            // Face encoding using bitmap (reuses loaded image)
-                            string encErr;
-                            dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out encoding, out encErr);
+                            for (int i = 0; i < 3; i++)
+                            {
+                                double[] tempEncoding;
+                                string encErr;
+
+                                dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out tempEncoding, out encErr);
+
+                                if (tempEncoding != null)
+                                    encodings.Add(tempEncoding);
+                            }
                         },
                         () =>
                         {
@@ -366,7 +372,7 @@ namespace FaceAttend.Services.Biometrics
                     RecordTiming(timings, "parallel_liveness_encode", sw);
 
                     // Check results
-                    if (encoding == null)
+                    if (encodings.Count == 0)
                     {
                         return new ScanResult 
                         { 
@@ -386,7 +392,7 @@ namespace FaceAttend.Services.Biometrics
                     return new ScanResult
                     {
                         Ok = true,
-                        FaceEncoding = encoding,
+                        FaceEncoding = encodings[0], // temporary (we improve next)
                         LivenessScore = livenessScore,
                         LivenessOk = livenessPassed,
                         FaceBox = faceBox,
@@ -475,15 +481,23 @@ namespace FaceAttend.Services.Biometrics
                 }
 
                     // STEP 3: PARALLEL - Liveness + Encoding
-                    double[] encoding = null;
+                    var encodings = new List<double[]>();
                     bool livenessOk = false;
                     float? livenessProb = null;
 
                     Parallel.Invoke(
                         () =>
                         {
-                            string encErr;
-                            dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out encoding, out encErr);
+                            for (int i = 0; i < 3; i++)
+                            {
+                                double[] tempEncoding;
+                                string encErr;
+
+                                dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out tempEncoding, out encErr);
+
+                                if (tempEncoding != null)
+                                    encodings.Add(tempEncoding);
+                            }
                         },
                         () =>
                         {
@@ -495,7 +509,7 @@ namespace FaceAttend.Services.Biometrics
                     );
                     RecordTiming(timings, "parallel_liveness_encode", sw);
 
-                    if (encoding == null)
+                    if (encodings.Count == 0)
                     {
                         return new ScanResult 
                         { 
@@ -515,7 +529,7 @@ namespace FaceAttend.Services.Biometrics
                     return new ScanResult
                     {
                         Ok = true,
-                        FaceEncoding = encoding,
+                        FaceEncoding = encodings[0], // temporary (we improve next)
                         LivenessScore = livenessScore,
                         LivenessOk = livenessPassed,
                         FaceBox = faceBox,

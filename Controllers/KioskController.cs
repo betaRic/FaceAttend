@@ -307,10 +307,11 @@ namespace FaceAttend.Controllers
                     bool     livenessConfirmed = false;   // FIX 2: explicit flag
                     int      actualImageWidth  = 1280;
 
+                    FastScanPipeline.ScanResult fastResult = null;
+
                     if (!usedClientBox && ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
                     {
                         image.InputStream.Position = 0;
-                        var fastResult = FastScanPipeline.ScanInMemory(image, includePerfTimings);
 
                         if (fastResult.Timings != null)
                             foreach (var t in fastResult.Timings)
@@ -398,7 +399,21 @@ namespace FaceAttend.Controllers
                     if (!FastFaceMatcher.IsInitialized)
                         FastFaceMatcher.Initialize();
 
-                    var matchResult = FastFaceMatcher.FindBestMatch(vec, attendanceTol);
+                    FastFaceMatcher.MatchResult matchResult = null;
+
+                    // multi-frame if available
+                    if (fastResult != null && fastResult.FaceEncoding != null && fastResult.FaceEncoding.Length > 0)
+                    {
+                        matchResult = FastFaceMatcher.FindBestMatch(fastResult.FaceEncoding, attendanceTol);
+                    }
+
+                    if (fastResult?.FaceEncoding != null)
+                    {
+                        matchResult = FastFaceMatcher.FindBestMatch(fastResult.FaceEncoding, attendanceTol);
+                    }
+
+                    matchResult = matchResult ?? new FastFaceMatcher.MatchResult { IsMatch = false };
+
                     mark("match_ms");
 
                     // ── Unknown / visitor path ────────────────────────────────────────
