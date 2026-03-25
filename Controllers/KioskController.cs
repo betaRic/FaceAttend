@@ -392,7 +392,7 @@ namespace FaceAttend.Controllers
                     }
                     else
                     {
-                        attendanceTol = Math.Max(0.48, Math.Min(0.55, attendanceTol));
+                        attendanceTol = Math.Max(0.50, Math.Min(0.58, attendanceTol));
                     }
 
                     // ── Matching (single authority — FastFaceMatcher) ─────────────────

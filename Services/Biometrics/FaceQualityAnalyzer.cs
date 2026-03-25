@@ -199,7 +199,7 @@ namespace FaceAttend.Services.Biometrics
 
             bool hasChin = landmarks.Length >= 8
                         && landmarks[7] > 0f   // chinY > 0 means chin was extracted
-                        && landmarks[7] > ntY; // sanity: chin must be below nose in image
+                        && (landmarks[7] - eyeMidY) > 10f; // chin meaningfully below eye level (works for upward tilts)
 
             if (hasChin)
             {
