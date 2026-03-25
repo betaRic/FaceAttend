@@ -41,13 +41,13 @@ namespace FaceAttend.Services.Biometrics
         public static double MedDistThresholdPublic  => MedDistThreshold;
 
         private static double HighDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.42);
+            => ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.40);
         private static double HighGapThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.15);
+            => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.20);
         private static double MedDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.65);
+            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.55);
         private static double MedGapThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.12);
+            => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.15);
 
         // ── DTOs ──────────────────────────────────────────────────────────────
 

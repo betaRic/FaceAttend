@@ -21,7 +21,7 @@ FaceAttend.Enrollment = (function () {
         PASS_REQUIRED: 1,
 
         CAPTURE_TARGET: 5,       // 4 required buckets + 1 bonus spare
-        MIN_GOOD_FRAMES: 4,      // exactly 1 per required bucket (center/left/right/down)
+        MIN_GOOD_FRAMES: 5,      // 1 per required bucket (center/left/right/down/up)
         MAX_KEEP_FRAMES: 8,      // server receives up to 8 best frames
         MAX_IMAGES: 12,
         FRAMES_PER_BUCKET: 1,    // 1 best frame per bucket enforced in pushGoodFrame
@@ -38,7 +38,7 @@ FaceAttend.Enrollment = (function () {
         MIN_FACE_AREA_RATIO_MOBILE: 0.055,
         FACE_AREA_WARNING_RATIO: 0.07,
 
-        ANGLE_SEQUENCE: ['center', 'left', 'right', 'down'],  // 'up' removed
+        ANGLE_SEQUENCE: ['center', 'left', 'right', 'down', 'up'],
         AUTO_SUBMIT_ON_ALL_ANGLES: false,
         AUTO_CONFIRM_TIMEOUT_MS: 15000
     };
@@ -688,16 +688,15 @@ FaceAttend.Enrollment = (function () {
             var cam = this.elements.cam;
             var canvasW = (cam && cam.videoWidth)  || CONSTANTS.CAPTURE_WIDTH;
             var canvasH = (cam && cam.videoHeight) || CONSTANTS.CAPTURE_HEIGHT;
-        // FIX: capturedPoseBucket was snapped synchronously before capture.
-        // Server r.poseBucket uses Dlib 68-pt landmarks — these degrade at yaw>15deg
-        // (nose prediction snaps to frontal => near-zero yaw => always 'center').
-        // MediaPipe BlazeFace (tracker) is accurate at all angles and was snapped
-        // at the exact moment of capture — use it as the primary source.
+        // Use server poseBucket first (68-pt landmarks, reliable 0-40deg).
+        // Fall back to tracker snapshot, then center.
         var poseBucket;
-        if (r.capturedPoseBucket && r.capturedPoseBucket !== '' && r.capturedPoseBucket !== 'other') {
+        if (r.poseBucket && r.poseBucket !== '' && r.poseBucket !== 'other') {
+            poseBucket = r.poseBucket;
+        } else if (r.capturedPoseBucket && r.capturedPoseBucket !== '' && r.capturedPoseBucket !== 'other') {
             poseBucket = r.capturedPoseBucket;
         } else {
-            poseBucket = 'center'; // Tracker not detecting at this angle; server Dlib landmarks degrade >15deg. Default center so frame is stored (quality gate allows 1 bucket).
+            poseBucket = 'center';
         }
 
             var sharpness  = r.sharpness || r.clientSharpness || 0;
@@ -730,9 +729,9 @@ FaceAttend.Enrollment = (function () {
             var hasMaxFrames    = this.goodFrames.length >= this.config.maxKeepFrames;
 
             if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling)
-                this._startConfirmTimer();
+            if (hasEnoughFrames && allAngles && !this.confirmTimer && !this.enrolled && !this.enrolling)
 
-            if ((allAngles && hasEnoughFrames && CONSTANTS.AUTO_SUBMIT_ON_ALL_ANGLES) || hasMaxFrames) {
+            if ((allAngles && hasEnoughFrames && CONSTANTS.AUTO_SUBMIT_ON_ALL_ANGLES) || (hasMaxFrames && allAngles)) {
                 this.stopAutoEnrollment(); // stops tick loop cleanly
                 this._fireReadyToConfirm();
                 return;

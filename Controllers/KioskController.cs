@@ -387,12 +387,12 @@ namespace FaceAttend.Controllers
                     if (isMobileAttend)
                     {
                         var mobileTol = ConfigurationService.GetDouble(
-                            "Biometrics:MobileAttendanceTolerance", 0.68);
-                        attendanceTol = Math.Max(0.55, Math.Min(0.72, mobileTol));
+                            "Biometrics:MobileAttendanceTolerance", 0.58);
+                        attendanceTol = Math.Max(0.50, Math.Min(0.60, mobileTol));
                     }
                     else
                     {
-                        attendanceTol = Math.Max(0.50, Math.Min(0.60, attendanceTol));
+                        attendanceTol = Math.Max(0.48, Math.Min(0.55, attendanceTol));
                     }
 
                     // ── Matching (single authority — FastFaceMatcher) ─────────────────
