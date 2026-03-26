@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -58,45 +58,59 @@ namespace FaceAttend.Services.Biometrics
         {
             if (selected == null || selected.Count == 0)
                 return Fail("NO_GOOD_FRAME",
-                    "No usable frames were captured. " +
-                    "Please ensure good lighting and look directly at the camera.");
+                    "No usable frames were captured. Ensure good lighting and face the camera.");
 
-            // ── Layer 1: minimum vector count ─────────────────────────────────
+            // Layer 1: minimum vector count
             if (selected.Count < MinVectors)
                 return Fail("INSUFFICIENT_FRAMES",
                     $"Only {selected.Count} frame(s) passed quality checks. " +
-                    $"At least {MinVectors} is required. " +
-                    "Please improve lighting and try again.");
+                    $"At least {MinVectors} required. Improve lighting and try again.");
 
-            // ── Layer 2: angle diversity ──────────────────────────────────────
+            // Layer 2: pose diversity — require at least 3 distinct non-other buckets
             var distinctBuckets = selected
                 .Where(c => !string.IsNullOrWhiteSpace(c.PoseBucket) && c.PoseBucket != "other")
                 .Select(c => c.PoseBucket)
                 .Distinct()
                 .Count();
 
-            if (distinctBuckets < MinAngleBuckets)
+            int minBuckets = Math.Max(3, ConfigurationService.GetInt("Biometrics:Enroll:Gate:MinAngleBuckets", 3));
+            if (distinctBuckets < minBuckets)
                 return Fail("INSUFFICIENT_ANGLE_DIVERSITY",
-                    $"Only {distinctBuckets} head angle(s) captured; " +
-                    $"at least {MinAngleBuckets} are needed. " +
-                    "Please follow the angle prompts (center, left, right, up, down).");
+                    $"Only {distinctBuckets} head angle(s) captured; at least {minBuckets} required. " +
+                    "Follow the angle prompts: look straight, then left, then right.");
 
-            // ── Layer 3: intra-set diversity (no near-duplicate vectors) ──────
-            for (int i = 0; i < selected.Count; i++)
+            // Layer 3: verify actual vector spread — fake diversity detection
+            // All near-identical vectors = user did not actually move during enrollment
+            if (selected.Count >= 2)
             {
-                for (int j = i + 1; j < selected.Count; j++)
+                double maxPairDistance = 0;
+                double minPairDistance = double.MaxValue;
+                for (int i = 0; i < selected.Count; i++)
                 {
-                    var dist = DlibBiometrics.Distance(selected[i].Vec, selected[j].Vec);
-                    if (dist > MaxIntraSetDistance)
-                        return Fail("LOW_INTRA_DIVERSITY",
-                            "The captured frames are too dissimilar — possible face swap or " +
-                            "multiple people detected. Please re-enroll with a single person.");
+                    for (int j = i + 1; j < selected.Count; j++)
+                    {
+                        var dist = DlibBiometrics.Distance(selected[i].Vec, selected[j].Vec);
+                        if (dist > maxPairDistance) maxPairDistance = dist;
+                        if (dist < minPairDistance) minPairDistance = dist;
+                    }
                 }
+
+                double minRequiredSpread = ConfigurationService.GetDouble(
+                    "Biometrics:Enroll:Gate:MinVectorSpread", 0.06);
+                if (maxPairDistance < minRequiredSpread)
+                    return Fail("FAKE_DIVERSITY",
+                        "All captured frames appear identical. You must actually move your head " +
+                        "to each angle when prompted. Do not stay still during enrollment.");
+
+                double maxAllowedDistance = ConfigurationService.GetDouble(
+                    "Biometrics:Enroll:Gate:MaxIntraSetDistance", 0.70);
+                if (minPairDistance > maxAllowedDistance)
+                    return Fail("LOW_INTRA_DIVERSITY",
+                        "Captured frames are too different — possible multiple people. " +
+                        "Re-enroll with a single person.");
             }
 
-            // ── Layer 4: self-match verification ──────────────────────────────
-            // The best-quality vector must match itself within the set.
-            // This catches degenerate encodings (all-zero, NaN, etc.).
+            // Layer 4: self-match verification
             if (selected.Count >= 2)
             {
                 var best = selected[0].Vec;
@@ -106,21 +120,17 @@ namespace FaceAttend.Services.Biometrics
                     var d = DlibBiometrics.Distance(best, selected[k].Vec);
                     if (d < minDist) minDist = d;
                 }
-
-                // A well-formed vector should match a different capture of the
-                // same face at < 0.60.  > 0.90 strongly suggests a bad encoding.
-                if (minDist > MaxIntraSetDistance)
+                if (minDist > 0.65)
                     return Fail("SELF_MATCH_FAIL",
-                        "Face encoding consistency check failed. " +
-                        "Please re-enroll with better lighting and a stable head position.");
+                        "Face encoding consistency check failed. Re-enroll with better lighting.");
             }
 
-            // ── Layer 5: average quality floor ────────────────────────────────
+            // Layer 5: average quality floor
             var avgQuality = selected.Average(c => (double)c.QualityScore);
             if (avgQuality < MinAverageQuality)
                 return Fail("LOW_QUALITY",
-                    $"Average frame quality ({avgQuality:P0}) is below the minimum threshold. " +
-                    "Please ensure good, even lighting and hold the camera steady.");
+                    $"Average frame quality ({avgQuality:P0}) is below minimum. " +
+                    "Ensure good lighting and hold steady.");
 
             return new GateResult { Passed = true };
         }

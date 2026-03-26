@@ -1604,7 +1604,7 @@
 
         var box = state.mpBoxCanvas;
         var result = {
-            x: Math.round(box.x * sx),
+            x: Math.round((displayW - box.x - box.w) * sx),
             y: Math.round(box.y * sy),
             w: Math.round(box.w * sx),
             h: Math.round(box.h * sy)

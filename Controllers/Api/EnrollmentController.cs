@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -274,6 +274,30 @@ namespace FaceAttend.Controllers.Api
 
             // ── Select the best angle-diverse frame set ───────────────────────
             var selected = SelectDiverseFrames(candidates.ToList(), maxStored, isMobile);
+
+            // Vector spread check — ensures enrollment vectors actually span different poses
+            // If all vectors are near-identical the user did not move during enrollment
+            if (selected.Count >= 2)
+            {
+                double maxSpread = 0;
+                for (int i = 0; i < selected.Count; i++)
+                    for (int j = i + 1; j < selected.Count; j++)
+                    {
+                        double d = DlibBiometrics.Distance(selected[i].Vec, selected[j].Vec);
+                        if (d > maxSpread) maxSpread = d;
+                    }
+
+                double minSpreadRequired = ConfigurationService.GetDouble(
+                    "Biometrics:Enroll:Gate:MinVectorSpread", 0.06);
+                if (maxSpread < minSpreadRequired)
+                    return JsonResponseBuilder.Error("FAKE_DIVERSITY", details: new
+                    {
+                        message  = "All captured frames are too similar. Move your head to each " +
+                                   "angle when prompted. Do not remain still during enrollment.",
+                        maxSpread = maxSpread,
+                        required  = minSpreadRequired
+                    });
+            }
 
             // ── 5-layer identity assurance gate ──────────────────────────────
             // Checks: min vector count, angle diversity, intra-set diversity,

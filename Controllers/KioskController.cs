@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
@@ -312,6 +312,7 @@ namespace FaceAttend.Controllers
                     if (!usedClientBox && ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
                     {
                         image.InputStream.Position = 0;
+                        fastResult = FastScanPipeline.ScanInMemory(image, includePerfTimings);
 
                         if (fastResult.Timings != null)
                             foreach (var t in fastResult.Timings)
@@ -392,7 +393,7 @@ namespace FaceAttend.Controllers
                     }
                     else
                     {
-                        attendanceTol = Math.Max(0.50, Math.Min(0.58, attendanceTol));
+                        attendanceTol = Math.Max(0.50, Math.Min(0.65, attendanceTol));
                     }
 
                     // ── Matching (single authority — FastFaceMatcher) ─────────────────

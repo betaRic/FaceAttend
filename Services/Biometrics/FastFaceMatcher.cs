@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -228,7 +228,7 @@ namespace FaceAttend.Services.Biometrics
             }
 
             // ── Ambiguity guard (15% rule) ────────────────────────────────────
-            bool ambiguous = gap != double.PositiveInfinity && gap < (bestDist * 0.20);
+            bool ambiguous = gap != double.PositiveInfinity && gap < (bestDist * 0.12);
             if (ambiguous)
             {
                 logLine = string.Format(

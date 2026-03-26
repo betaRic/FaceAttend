@@ -1,4 +1,4 @@
-/**
+﻿/**
  * FaceAttend - Enrollment Core Module (Unified v3.3.0)
  * Scripts/modules/enrollment-core.js
  * @requires FaceAttend.Utils
@@ -24,7 +24,7 @@ FaceAttend.Enrollment = (function () {
         MIN_GOOD_FRAMES: 5,      // 1 per required bucket (center/left/right/down/up)
         MAX_KEEP_FRAMES: 8,      // server receives up to 8 best frames
         MAX_IMAGES: 12,
-        FRAMES_PER_BUCKET: 1,    // 1 best frame per bucket enforced in pushGoodFrame
+        FRAMES_PER_BUCKET: 3,    // 1 best frame per bucket enforced in pushGoodFrame
 
         CAPTURE_WIDTH: 640,
         CAPTURE_HEIGHT: 480,
@@ -143,6 +143,12 @@ FaceAttend.Enrollment = (function () {
         this._tickRunning = false;   // true while one tick's promise is unsettled
         this._tickEnabled = false;   // true while auto-enrollment is active
         this._scanController = null; // only used for explicit cancel in stopAutoEnrollment
+        this._poseBuffer = {};         // bucket -> consecutive server reading count
+        this._lastConfirmedPose = null; // last pose accepted after stability check
+        this._poseBuffer = {};         // bucket -> consecutive server reading count
+        this._lastConfirmedPose = null; // last pose accepted after stability check
+        this._poseBuffer = {};         // bucket -> consecutive server reading count
+        this._lastConfirmedPose = null; // last pose accepted after stability check
 
         this.elements = {};
         this.callbacks = {
