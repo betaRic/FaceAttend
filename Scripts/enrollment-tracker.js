@@ -1,4 +1,4 @@
-/**
+﻿/**
  * enrollment-tracker.js  v2.1
  *
  * PITCH FIX (v2.1):
@@ -46,7 +46,7 @@
     // ── FIXED: CENTER_PITCH widened from 10 → 28 ─────────────────────────────
     // 28° absorbs all realistic webcam-height variation while still demanding
     // an obvious tilt to register as UP or DOWN.
-    var CENTER_YAW   = 12;
+    var CENTER_YAW   = 18; // widened to match server GetPoseBucket threshold
     var CENTER_PITCH = 28;
     var MAX_YAW      = 45;
     var MAX_PITCH    = 55;

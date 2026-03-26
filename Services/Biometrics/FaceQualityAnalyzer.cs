@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.IO;
@@ -283,14 +283,23 @@ namespace FaceAttend.Services.Biometrics
             // Extreme angles — discard
             if (absYaw > 45f || absPitch > 55f) return "other";
 
-            // Center zone
-            if (absYaw < 12f && absPitch < 28f) return "center";
+            // Center zone — widened yaw threshold to absorb landmark jitter
+            if (absYaw < 18f && absPitch < 28f) return "center";
 
-            // Dominant axis determines bucket — no inner deadband, matches client exactly
+            // Axis deadband: require 5-degree dominance to prevent boundary flipping
+            float axisDiff = absYaw - absPitch;
+            if (Math.Abs(axisDiff) < 5f && absYaw < 25f && absPitch < 35f) return "center";
+
             if (absYaw >= absPitch)
+            {
+                if (absYaw < 18f) return "center";
                 return yaw < 0f ? "left" : "right";
+            }
             else
+            {
+                if (absPitch < 28f) return "center";
                 return pitch < 0f ? "up" : "down";
+            }
         }
 
         // ── Quality Score ────────────────────────────────────────────────────────

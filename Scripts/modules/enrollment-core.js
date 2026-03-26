@@ -24,7 +24,7 @@ FaceAttend.Enrollment = (function () {
         MIN_GOOD_FRAMES: 5,      // 1 per required bucket (center/left/right/down/up)
         MAX_KEEP_FRAMES: 8,      // server receives up to 8 best frames
         MAX_IMAGES: 12,
-        FRAMES_PER_BUCKET: 3,    // 1 best frame per bucket enforced in pushGoodFrame
+        FRAMES_PER_BUCKET: 1,    // 1 stable frame per bucket (stability enforced by consecutive-reading check)
 
         CAPTURE_WIDTH: 640,
         CAPTURE_HEIGHT: 480,
@@ -521,6 +521,8 @@ FaceAttend.Enrollment = (function () {
         this.goodFrames = [];
         this.lastFaceBox = null;
 
+        this._poseBuffer = {};
+        this._lastConfirmedPose = null;
         this._tickEnabled = true;
         this._scheduleTick(); // kick off the first tick
     };
@@ -705,6 +707,21 @@ FaceAttend.Enrollment = (function () {
             poseBucket = 'center';
         }
 
+
+            // POSE STABILITY CHECK: require same server bucket N consecutive times
+            // Prevents single-frame landmark jitter from locking a bucket
+            var STABILITY_REQUIRED = 2;
+            if (!this._poseBuffer[poseBucket]) this._poseBuffer[poseBucket] = 0;
+            this._poseBuffer[poseBucket]++;
+            var _allPoseBuckets = ['center', 'left', 'right', 'up', 'down'];
+            for (var _bi = 0; _bi < _allPoseBuckets.length; _bi++) {
+                if (_allPoseBuckets[_bi] !== poseBucket) this._poseBuffer[_allPoseBuckets[_bi]] = 0;
+            }
+            if (this._poseBuffer[poseBucket] < STABILITY_REQUIRED) {
+                if (this.callbacks.onLivenessUpdate)
+                    this.callbacks.onLivenessUpdate(Math.round(p * 100), 'pass');
+                return; // pose not stable yet, skip this frame
+            }
             var sharpness  = r.sharpness || r.clientSharpness || 0;
 
             // FIX-SHARP-02: only push frame when server confirms sharpness
@@ -735,7 +752,7 @@ FaceAttend.Enrollment = (function () {
             var hasMaxFrames    = this.goodFrames.length >= this.config.maxKeepFrames;
 
             if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling)
-            if (hasEnoughFrames && allAngles && !this.confirmTimer && !this.enrolled && !this.enrolling)
+                this._startConfirmTimer();
 
             if ((allAngles && hasEnoughFrames && CONSTANTS.AUTO_SUBMIT_ON_ALL_ANGLES) || (hasMaxFrames && allAngles)) {
                 this.stopAutoEnrollment(); // stops tick loop cleanly
