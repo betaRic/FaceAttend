@@ -66,18 +66,29 @@ namespace FaceAttend.Services.Biometrics
                     $"Only {selected.Count} frame(s) passed quality checks. " +
                     $"At least {MinVectors} required. Improve lighting and try again.");
 
-            // Layer 2: pose diversity — require at least 3 distinct non-other buckets
-            var distinctBuckets = selected
+            // Layer 2: pose diversity — require all 5 pose buckets for robust recognition
+            var bucketCounts = selected
                 .Where(c => !string.IsNullOrWhiteSpace(c.PoseBucket) && c.PoseBucket != "other")
-                .Select(c => c.PoseBucket)
-                .Distinct()
-                .Count();
+                .GroupBy(c => c.PoseBucket)
+                .ToDictionary(g => g.Key, g => g.Count());
 
-            int minBuckets = Math.Max(3, ConfigurationService.GetInt("Biometrics:Enroll:Gate:MinAngleBuckets", 3));
+            int distinctBuckets = bucketCounts.Count;
+
+            int minBuckets = Math.Max(3, ConfigurationService.GetInt("Biometrics:Enroll:Gate:MinAngleBuckets", 5));
             if (distinctBuckets < minBuckets)
                 return Fail("INSUFFICIENT_ANGLE_DIVERSITY",
                     $"Only {distinctBuckets} head angle(s) captured; at least {minBuckets} required. " +
-                    "Follow the angle prompts: look straight, then left, then right.");
+                    "Follow the angle prompts: look straight, then left, right, up, and down.");
+
+            // Layer 2b: minimum frames per bucket — each pose must have enough vectors
+            int minPerBucket = ConfigurationService.GetInt("Biometrics:Enroll:Gate:MinFramesPerBucket", 3);
+            foreach (var kvp in bucketCounts)
+            {
+                if (kvp.Value < minPerBucket)
+                    return Fail("INSUFFICIENT_BUCKET_FRAMES",
+                        $"Pose '{kvp.Key}' has only {kvp.Value} frame(s); at least {minPerBucket} required. " +
+                        "Hold each pose steady until the progress updates.");
+            }
 
             // Layer 3: verify actual vector spread — fake diversity detection
             // All near-identical vectors = user did not actually move during enrollment

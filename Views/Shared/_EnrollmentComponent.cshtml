@@ -31,8 +31,8 @@
 @{
     var mode         = (string)(ViewBag.Mode ?? "admin");
     var isMobile     = (mode == "mobile");
-    var minFrames    = (int)(ViewBag.MinFrames ?? 10);
-    var maxFrames    = (int)(ViewBag.MaxFrames ?? 10);
+    var minFrames    = (int)(ViewBag.MinFrames ?? 25);
+    var maxFrames    = (int)(ViewBag.MaxFrames ?? 30);
     var liveTh       = (double)(ViewBag.LivenessThreshold ?? 0.75);
     var surfaceClass = isMobile ? "mobile-surface" : "admin-surface";
     var liveThStr    = liveTh.ToString("F2", System.Globalization.CultureInfo.InvariantCulture);

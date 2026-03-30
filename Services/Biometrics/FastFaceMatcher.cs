@@ -16,15 +16,15 @@ namespace FaceAttend.Services.Biometrics
     ///   Tier               — HIGH / MEDIUM / LOW based on gap + absolute distance
     ///
     /// CONFIDENCE TIERS (all thresholds configurable via Web.config):
-    ///   HIGH   — dist ≤ 0.42 AND gap ≥ 0.12  → record immediately
-    ///   MEDIUM — dist ≤ 0.55 AND gap ≥ 0.08  → require a second confirming frame
+    ///   HIGH   — dist ≤ 0.40 AND gap ≥ 0.15  → record immediately
+    ///   MEDIUM — dist ≤ 0.55 AND gap ≥ 0.15  → require a second confirming frame
     ///   LOW    — anything else in-tolerance    → reject (treat as unknown)
     ///
     /// These are conservative defaults. Once real scan distances are logged from
     /// production you can tune Biometrics:Match:* keys in Web.config.
     ///
-    /// AMBIGUITY GUARD (15% rule):
-    ///   if gap &lt; bestDist * 0.15 → reject regardless of absolute distance.
+    /// AMBIGUITY GUARD (20% rule + absolute minimum):
+    ///   if gap &lt; bestDist * 0.20 OR gap &lt; 0.08 → reject regardless of tier.
     /// </summary>
     public static class FastFaceMatcher
     {
@@ -227,8 +227,13 @@ namespace FaceAttend.Services.Biometrics
                 return new MatchResult { IsMatch = false };
             }
 
-            // ── Ambiguity guard (15% rule) ────────────────────────────────────
-            bool ambiguous = gap != double.PositiveInfinity && gap < (bestDist * 0.12);
+            // ── Ambiguity guard (20% rule + absolute minimum gap) ──────────
+            // Reject if the gap between best and second-best is too small.
+            // The 20% relative threshold catches proportional ambiguity.
+            // The 0.08 absolute floor catches cases where both distances are low
+            // (e.g. best=0.30, second=0.36 → gap=0.06 is 20% but still risky).
+            bool ambiguous = gap != double.PositiveInfinity
+                && (gap < (bestDist * 0.20) || gap < 0.08);
             if (ambiguous)
             {
                 logLine = string.Format(

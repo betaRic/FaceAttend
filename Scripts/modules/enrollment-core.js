@@ -20,11 +20,11 @@ FaceAttend.Enrollment = (function () {
         PASS_WINDOW: 3,
         PASS_REQUIRED: 1,
 
-        CAPTURE_TARGET: 5,       // 4 required buckets + 1 bonus spare
-        MIN_GOOD_FRAMES: 5,      // 1 per required bucket (center/left/right/down/up)
-        MAX_KEEP_FRAMES: 8,      // server receives up to 8 best frames
-        MAX_IMAGES: 12,
-        FRAMES_PER_BUCKET: 1,    // 1 stable frame per bucket (stability enforced by consecutive-reading check)
+        CAPTURE_TARGET: 25,      // 5 poses × 5 frames each
+        MIN_GOOD_FRAMES: 25,     // 5 per required bucket (center/left/right/down/up)
+        MAX_KEEP_FRAMES: 30,     // room for 5 poses × 5 + extras
+        MAX_IMAGES: 30,
+        FRAMES_PER_BUCKET: 5,    // 5 quality frames per bucket for robust recognition
 
         CAPTURE_WIDTH: 640,
         CAPTURE_HEIGHT: 480,
@@ -124,8 +124,8 @@ FaceAttend.Enrollment = (function () {
             scanUrl: '/api/scan/frame',
             enrollUrl: '/api/enrollment/enroll',
             redirectUrl: '/Admin/Employees',
-            minGoodFrames: 3,
-            maxKeepFrames: 8,
+            minGoodFrames: 25,
+            maxKeepFrames: 30,
             enablePreview: true,
             debug: false
         }, config);
@@ -271,7 +271,7 @@ FaceAttend.Enrollment = (function () {
             pitch =  (((faceBox.y + faceBox.h / 2) / H) - 0.5) * 30;
         }
 
-        var CENTER_YAW = 12, CENTER_PITCH = 28;
+        var CENTER_YAW = 18, CENTER_PITCH = 28;
         var MAX_YAW = 45, MAX_PITCH = 55;
         var absYaw = Math.abs(yaw), absPitch = Math.abs(pitch);
 
@@ -590,36 +590,24 @@ FaceAttend.Enrollment = (function () {
             quality:    quality
         };
 
-        // Check whether this bucket already has a representative frame
-        var existingIdx = -1;
+        // Collect all existing frames for this bucket
+        var bucketFrames = [];
         for (var k = 0; k < this.goodFrames.length; k++) {
             if (this.goodFrames[k].poseBucket === poseBucket) {
-                existingIdx = k;
-                break;
+                bucketFrames.push({ idx: k, quality: this.goodFrames[k].quality });
             }
         }
 
-        if (existingIdx >= 0) {
-            // Bucket already represented — replace ONLY if new frame is strictly better
-            if (quality > this.goodFrames[existingIdx].quality) {
-                this.goodFrames[existingIdx] = newFrame;
-            }
-            // If not better: check whether we can add as a bonus frame
-            // (only after all required buckets are covered)
-            else {
-                var coveredBuckets = {};
-                for (var j = 0; j < this.goodFrames.length; j++) {
-                    var bk = this.goodFrames[j].poseBucket;
-                    if (bk) coveredBuckets[bk] = true;
-                }
-                var allRequired = CONSTANTS.ANGLE_SEQUENCE.every(function (b) { return !!coveredBuckets[b]; });
-                if (allRequired && this.goodFrames.length < this.config.maxKeepFrames) {
-                    this.goodFrames.push(newFrame);
-                }
-            }
-        } else {
-            // New bucket never seen before — always add
+        if (bucketFrames.length < CONSTANTS.FRAMES_PER_BUCKET) {
+            // Bucket not yet full — always add
             this.goodFrames.push(newFrame);
+        } else {
+            // Bucket full — replace the worst frame if new one is better
+            bucketFrames.sort(function (a, b) { return a.quality - b.quality; });
+            var worstInBucket = bucketFrames[0];
+            if (quality > worstInBucket.quality) {
+                this.goodFrames[worstInBucket.idx] = newFrame;
+            }
         }
 
         // Sort descending by quality so the best frames are first
@@ -722,7 +710,33 @@ FaceAttend.Enrollment = (function () {
                     this.callbacks.onLivenessUpdate(Math.round(p * 100), 'pass');
                 return; // pose not stable yet, skip this frame
             }
+            // Write confirmed server bucket so enrollment-tracker.js can display it
+            if (window.FaceAttendEnrollment) {
+                window.FaceAttendEnrollment.confirmedPoseBucket = poseBucket;
+                window.FaceAttendEnrollment.confirmedPoseTs = Date.now();
+            }
+
             var sharpness  = r.sharpness || r.clientSharpness || 0;
+
+            // POSE GATE: only accept frame if this bucket still needs frames.
+            // Count how many frames we already have for this bucket.
+            var bucketFrameCount = 0;
+            for (var _fc = 0; _fc < this.goodFrames.length; _fc++) {
+                if (this.goodFrames[_fc].poseBucket === poseBucket) bucketFrameCount++;
+            }
+
+            if (bucketFrameCount >= CONSTANTS.FRAMES_PER_BUCKET) {
+                // This bucket is full — guide user to the next needed pose
+                var nextNeeded = this.getNextAnglePrompt();
+                if (nextNeeded && nextNeeded.bucket !== poseBucket) {
+                    this.handleStatus(
+                        poseBucket.toUpperCase() + ' complete (' + bucketFrameCount + '/' + CONSTANTS.FRAMES_PER_BUCKET +
+                        '). Now ' + nextNeeded.prompt, 'info');
+                }
+                if (this.callbacks.onAngleUpdate)
+                    this.callbacks.onAngleUpdate(nextNeeded);
+                return; // do NOT push — bucket already full
+            }
 
             // FIX-SHARP-02: only push frame when server confirms sharpness
             var serverSharpOk = (r.sharpnessOk === true || r.sharpnessOk === undefined);

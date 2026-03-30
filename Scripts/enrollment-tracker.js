@@ -41,7 +41,7 @@
     var ALPHA        = 0.35;
     var SHIFT_UP     = 0.20;
     var EXPAND_H     = 0.08;
-    var ANGLES       = ['center', 'left', 'right', 'down'];
+    var ANGLES       = ['center', 'left', 'right', 'down', 'up'];
 
     // ── FIXED: CENTER_PITCH widened from 10 → 28 ─────────────────────────────
     // 28° absorbs all realistic webcam-height variation while still demanding
@@ -287,6 +287,15 @@
 
     function drawPoseBadge(bx, by, bw, bh, col) {
         var pose = currentPose;
+
+        // Use server-confirmed bucket when fresh (within 800ms) to keep
+        // the badge in sync with what actually gets checked off
+        var enroll = window.FaceAttendEnrollment;
+        if (enroll && enroll.confirmedPoseBucket && enroll.confirmedPoseTs
+            && (Date.now() - enroll.confirmedPoseTs) < 800) {
+            pose = { bucket: enroll.confirmedPoseBucket, yaw: pose.yaw, pitch: pose.pitch, conf: pose.conf };
+        }
+
         if (!pose.bucket) return;
 
         var LABELS = {
