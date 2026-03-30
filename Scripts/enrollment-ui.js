@@ -62,7 +62,7 @@
         scanUrl:     root.getAttribute('data-scan-url')      || '/api/scan/frame',
         enrollUrl:   root.getAttribute('data-enroll-url')    || '/api/enrollment/enroll',
         redirectUrl: root.getAttribute('data-redirect-url')  || '',
-        minFrames:   parseInt(root.getAttribute('data-min-frames')    || '3',  10),
+        minFrames:   parseInt(root.getAttribute('data-min-frames')    || '25',  10),
         livenessTh:  parseFloat(root.getAttribute('data-liveness-th') || '0.75')
     };
 
@@ -377,7 +377,7 @@
         //   blue   — idle / scanning
         var done      = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
         var isBusy    = !!enrollment.busy;
-        var ANGLES    = ['center', 'left', 'right', 'down'];
+        var ANGLES    = ['center', 'left', 'right', 'down', 'up'];
         var captured  = {};
         if (enrollment.goodFrames) {
             enrollment.goodFrames.forEach(function (f) {

@@ -67,8 +67,8 @@ namespace FaceAttend.Controllers.Api
 
             // ── Read config ONCE — never inside the hot parallel loop ─────────
             var maxBytes    = ConfigurationService.GetInt("Biometrics:MaxUploadBytes",          10 * 1024 * 1024);
-            var maxImages   = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget",    20);
-            var maxStored   = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 8);
+            var maxImages   = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget",    30);
+            var maxStored   = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 25);
             var strictTol   = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
             var parallelism = Math.Min(files.Count,
                               ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
@@ -496,26 +496,29 @@ namespace FaceAttend.Controllers.Api
             var allBuckets = new[] { "center", "left", "right", "up", "down" };
             var selected   = new List<EnrollCandidate>(targetCount);
 
-            // Phase 1: one best frame per angle bucket
+            // Phase 1: top 5 frames per angle bucket for robust recognition
+            int framesPerBucket = ConfigurationService.GetInt("Biometrics:Enroll:FramesPerBucket", 5);
             foreach (var bucket in allBuckets)
             {
-                if (selected.Count >= targetCount) break;
-
-                var best = candidates
+                var bucketBest = candidates
                     .Where(c => c.PoseBucket == bucket && !selected.Contains(c))
                     .OrderByDescending(c => c.QualityScore)
-                    .FirstOrDefault();
+                    .Take(framesPerBucket);
 
-                if (best != null) selected.Add(best);
+                selected.AddRange(bucketBest);
+                if (selected.Count >= targetCount) break;
             }
 
             // Phase 2: fill remaining slots with any high-quality frame
-            var remaining = candidates
-                .Where(c => !selected.Contains(c))
-                .OrderByDescending(c => c.QualityScore)
-                .Take(targetCount - selected.Count);
+            if (selected.Count < targetCount)
+            {
+                var remaining = candidates
+                    .Where(c => !selected.Contains(c))
+                    .OrderByDescending(c => c.QualityScore)
+                    .Take(targetCount - selected.Count);
 
-            selected.AddRange(remaining);
+                selected.AddRange(remaining);
+            }
 
             // Return highest-quality first so selected[0] is always the best vector
             return selected.OrderByDescending(c => c.QualityScore).ToList();

@@ -274,30 +274,34 @@ namespace FaceAttend.Services.Biometrics
         /// attributes on diversity dots in _EnrollmentComponent.cshtml.
         /// Valid returns: "center", "left", "right", "up", "down", "other"
         /// "other" means extreme angle — frame should be discarded.
+        ///
+        /// YAW CONVENTION: Server computes yaw in image-space (positive = nose
+        /// right of eye midpoint in the raw image). The enrollment UI video is
+        /// CSS-mirrored (scaleX(-1)), so the user's physical left maps to
+        /// image-right. We negate yaw here so "left"/"right" labels match the
+        /// user's physical direction — consistent with the client-side tracker.
         /// </summary>
         public static string GetPoseBucket(float yaw, float pitch)
         {
+            // Negate yaw so "left"/"right" match the user's physical direction
+            // (server yaw is in image-space; UI is CSS-mirrored)
+            yaw = -yaw;
+
             float absYaw   = Math.Abs(yaw);
             float absPitch = Math.Abs(pitch);
 
             // Extreme angles — discard
             if (absYaw > 45f || absPitch > 55f) return "other";
 
-            // Center zone — widened yaw threshold to absorb landmark jitter
+            // Center zone
             if (absYaw < 18f && absPitch < 28f) return "center";
-
-            // Axis deadband: require 5-degree dominance to prevent boundary flipping
-            float axisDiff = absYaw - absPitch;
-            if (Math.Abs(axisDiff) < 5f && absYaw < 25f && absPitch < 35f) return "center";
 
             if (absYaw >= absPitch)
             {
-                if (absYaw < 18f) return "center";
                 return yaw < 0f ? "left" : "right";
             }
             else
             {
-                if (absPitch < 28f) return "center";
                 return pitch < 0f ? "up" : "down";
             }
         }

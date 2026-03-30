@@ -378,22 +378,20 @@ namespace FaceAttend.Controllers
 
                     if (IsRequestTimedOut(sw)) return RequestTimeoutResult(includePerfTimings, timings);
 
-                    // ── FIX 3: Tolerance capped at 0.60. Angle-relax removed. ────────
-                    var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.60);
-                    // Mobile cameras produce higher cross-device Dlib distances
-                    // (~0.62-0.70) vs same-device (~0.35-0.55) due to different
-                    // sensor/focal-length/ISP. Use a separate config key with a
-                    // higher cap so the match even reaches the tier logic.
-                    // Tier system (HighDist/MedDist/gap) provides the real security gate.
+                    // ── Tightened tolerance: with 25 stored vectors covering all angles,
+                    // the best-match distance should be much lower. Dropping from 0.60
+                    // to 0.50 eliminates the false-positive zone while keeping genuine
+                    // matches (which are typically 0.25-0.42 with good enrollment). ────
+                    var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.50);
                     if (isMobileAttend)
                     {
                         var mobileTol = ConfigurationService.GetDouble(
-                            "Biometrics:MobileAttendanceTolerance", 0.58);
-                        attendanceTol = Math.Max(0.50, Math.Min(0.60, mobileTol));
+                            "Biometrics:MobileAttendanceTolerance", 0.48);
+                        attendanceTol = Math.Max(0.40, Math.Min(0.55, mobileTol));
                     }
                     else
                     {
-                        attendanceTol = Math.Max(0.50, Math.Min(0.65, attendanceTol));
+                        attendanceTol = Math.Max(0.40, Math.Min(0.55, attendanceTol));
                     }
 
                     // ── Matching (single authority — FastFaceMatcher) ─────────────────
