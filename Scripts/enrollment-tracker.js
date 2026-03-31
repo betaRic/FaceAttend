@@ -1,30 +1,3 @@
-﻿/**
- * enrollment-tracker.js  v2.1
- *
- * PITCH FIX (v2.1):
- *
- *   The old formula  (noseBelow / bb.height - 0.20) * 250  had two compounding bugs:
- *
- *   1. bb.height (BlazeFace raw bbox) is NOT stable across webcam heights.
- *      A laptop camera positioned above the face produces noseBelow ≈ 0 at neutral
- *      (nose appears at eye level from the camera angle). The constant 0.20 assumed
- *      nose is 20% of bbox height below the eyes, which is only true for a camera
- *      exactly at eye level. Result: neutral pose → P:-50° → flagged as UP forever.
- *
- *   2. Multiplier 250 gave 0.4° per percentage point — CENTER required hitting a
- *      0.04-wide window on a 0–1 ratio. Physically impossible to hold consistently.
- *
- *   FIX: Use yaw-compensated eyeSpanX as the pitch denominator.
- *     • eyeSpanX / cos(yaw) restores the "frontal" inter-ocular distance regardless
- *       of head turn — directly eliminates the yaw-amplification problem.
- *     • Subtract 0.10 offset: empirically correct for cameras positioned above eye
- *       level (the most common laptop/monitor webcam position).
- *     • Multiplier 100 with CENTER_PITCH = 28 gives ±28° of tolerance for CENTER,
- *       which safely captures all "neutral-ish" poses across all webcam heights.
- *
- *   CENTER_PITCH widened from 10 → 28: the old 10° window was too tight to survive
- *   natural head micro-movements AND the calibration error simultaneously.
- */
 (function () {
     'use strict';
 
@@ -37,16 +10,12 @@
 
     var appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
 
-    var MIN_CONF     = 0.30;
-    var ALPHA        = 0.35;
-    var SHIFT_UP     = 0.20;
-    var EXPAND_H     = 0.08;
-    var ANGLES       = ['center', 'left', 'right', 'down', 'up'];
+    var MIN_CONF   = 0.30;
+    var ALPHA      = 0.35;
+    var SHIFT_UP   = 0.20;
+    var EXPAND_H   = 0.08;
 
-    // ── FIXED: CENTER_PITCH widened from 10 → 28 ─────────────────────────────
-    // 28° absorbs all realistic webcam-height variation while still demanding
-    // an obvious tilt to register as UP or DOWN.
-    var CENTER_YAW   = 18; // widened to match server GetPoseBucket threshold
+    var CENTER_YAW   = 18;
     var CENTER_PITCH = 28;
     var MAX_YAW      = 45;
     var MAX_PITCH    = 55;
@@ -57,11 +26,11 @@
     var active        = false;
     var lastTs        = -1;
 
-    var currentPose   = { bucket: '', yaw: 0, pitch: 0, conf: 0 };
+    var currentPose     = { bucket: '', yaw: 0, pitch: 0, conf: 0 };
     var currentFaceArea = 0;
 
-    var videoTrack   = null;
-    var poiThrottle  = 0;
+    var videoTrack  = null;
+    var poiThrottle = 0;
 
     function enhanceCameraFocus() {
         var stream = video.srcObject;
@@ -72,38 +41,21 @@
 
         videoTrack = tracks[0];
         var caps   = videoTrack.getCapabilities ? videoTrack.getCapabilities() : {};
-
         var advanced = [];
 
-        if (caps.focusMode && caps.focusMode.indexOf('continuous') !== -1) {
+        if (caps.focusMode && caps.focusMode.indexOf('continuous') !== -1)
             advanced.push({ focusMode: 'continuous' });
-        }
-
-        if (caps.zoom && caps.zoom.min <= 1 && caps.zoom.max >= 1) {
+        if (caps.zoom && caps.zoom.min <= 1 && caps.zoom.max >= 1)
             advanced.push({ zoom: 1 });
-        }
-
-        if (caps.resizeMode && caps.resizeMode.indexOf('none') !== -1) {
+        if (caps.resizeMode && caps.resizeMode.indexOf('none') !== -1)
             advanced.push({ resizeMode: 'none' });
-        }
-
-        if (caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('continuous') !== -1) {
+        if (caps.whiteBalanceMode && caps.whiteBalanceMode.indexOf('continuous') !== -1)
             advanced.push({ whiteBalanceMode: 'continuous' });
-        }
-
-        if (caps.exposureMode && caps.exposureMode.indexOf('continuous') !== -1) {
+        if (caps.exposureMode && caps.exposureMode.indexOf('continuous') !== -1)
             advanced.push({ exposureMode: 'continuous' });
-        }
 
         if (!advanced.length) return;
-
-        videoTrack.applyConstraints({ advanced: advanced })
-            .then(function () {
-                console.log('[enrollment-tracker] Focus constraints applied:', advanced);
-            })
-            .catch(function (e) {
-                console.warn('[enrollment-tracker] Focus constraint apply (non-fatal):', e.message);
-            });
+        videoTrack.applyConstraints({ advanced: advanced }).catch(function () {});
     }
 
     function applyFocusPoint(normX, normY) {
@@ -116,10 +68,7 @@
         if (!caps.pointsOfInterest) return;
 
         videoTrack.applyConstraints({
-            advanced: [{
-                pointsOfInterest: [{ x: normX, y: normY }],
-                focusMode: 'single-shot'
-            }]
+            advanced: [{ pointsOfInterest: [{ x: normX, y: normY }], focusMode: 'single-shot' }]
         }).catch(function () {});
     }
 
@@ -163,9 +112,6 @@
         return { w: cssW, h: cssH };
     }
 
-    // =========================================================================
-    // FIXED estimatePose — yaw-compensated eyeSpanX pitch
-    // =========================================================================
     function estimatePose(detection) {
         var kps  = detection.keypoints;
         var bb   = detection.boundingBox;
@@ -178,47 +124,22 @@
             return { bucket: poseBucket(yawFB, 0), yaw: Math.round(yawFB), pitch: 0, conf: conf };
         }
 
-        var rEye = kps[0];
-        var lEye = kps[1];
-        var nose = kps[2];
+        var rEye = kps[0], lEye = kps[1], nose = kps[2];
 
         var eyeMidX  = (lEye.x + rEye.x) / 2;
         var eyeMidY  = (lEye.y + rEye.y) / 2;
         var eyeSpanX = Math.abs(lEye.x - rEye.x);
 
-        if (eyeSpanX < 0.005) {
+        if (eyeSpanX < 0.005)
             return { bucket: 'center', yaw: 0, pitch: 0, conf: conf };
-        }
 
-        // YAW — unchanged, works correctly
         var yaw = -((nose.x - eyeMidX) / eyeSpanX) * 90;
 
-        // ── PITCH FIX ──────────────────────────────────────────────────────────
-        // Problem with old formula (noseBelow / bb.height - 0.20) * 250:
-        //   bb.height is NOT a reliable reference — it varies drastically with
-        //   webcam height. A laptop camera above the face makes noseBelow ≈ 0
-        //   at neutral, giving pitch ≈ (0 - 0.20) * 250 = -50° → flagged UP.
-        //
-        // Fix: use eyeSpanX / cos(yaw) as the reference (yaw-compensated eye span).
-        //   This is self-calibrating: it scales with the face's own geometry and
-        //   compensates for the eye-span foreshortening caused by head turning.
-        //
-        //   - At neutral (webcam above, noseBelow ≈ 0):
-        //       pitch = (0 / eyeSpanRef - 0.10) * 100 = -10° → CENTER ✓
-        //   - At neutral (webcam at eye level, noseBelow ≈ 0.35 × eyeSpanRef):
-        //       pitch = (0.35 - 0.10) * 100 = +25° → CENTER (within ±28°) ✓
-        //   - Obvious UP tilt (any webcam): noseBelow goes negative relative to eyeSpanRef
-        //       pitch < -28° → UP ✓
-        //   - Obvious DOWN tilt: noseBelow grows large
-        //       pitch > +28° → DOWN ✓
-        var noseBelow   = nose.y - eyeMidY;
-        var absYawRad   = Math.abs(yaw) * Math.PI / 180;
-        // cos(yaw) compensates eyeSpanX foreshortening; floor at 0.3 prevents divide explosion
-        var yawComp     = Math.max(0.3, Math.cos(absYawRad));
-        var eyeSpanRef  = eyeSpanX / yawComp;
-        // 0.10 offset: centers the neutral band for above-camera webcams (most common)
-        // 100 multiplier: moderate sensitivity, CENTER_PITCH=28 gives ±28° of tolerance
-        var pitch = (noseBelow / eyeSpanRef - 0.10) * 100;
+        var noseBelow  = nose.y - eyeMidY;
+        var absYawRad  = Math.abs(yaw) * Math.PI / 180;
+        var yawComp    = Math.max(0.3, Math.cos(absYawRad));
+        var eyeSpanRef = eyeSpanX / yawComp;
+        var pitch      = (noseBelow / eyeSpanRef - 0.10) * 100;
 
         return {
             bucket: poseBucket(yaw, pitch),
@@ -229,37 +150,21 @@
     }
 
     function poseBucket(yaw, pitch) {
-        var absYaw   = Math.abs(yaw);
-        var absPitch = Math.abs(pitch);
-
+        var absYaw = Math.abs(yaw), absPitch = Math.abs(pitch);
         if (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) return 'center';
-
-        // Always classify to nearest bucket — never return 'other'
-        if (absYaw >= absPitch) {
-            return yaw < 0 ? 'left' : 'right';
-        } else {
-            return pitch < 0 ? 'up' : 'down';
-        }
+        if (absYaw >= absPitch) return yaw < 0 ? 'left' : 'right';
+        return pitch < 0 ? 'up' : 'down';
     }
 
     function stateColor() {
         var enroll = window.FaceAttendEnrollment;
         if (!enroll) return { main: '#4f9cf9', glow: 'rgba(79,156,249,0.45)' };
 
-        var done     = enroll.goodFrames ? enroll.goodFrames.length : 0;
-        var target   = (enroll.config && enroll.config.minGoodFrames) || 6;
-        var captured = {};
-        if (enroll.goodFrames) {
-            enroll.goodFrames.forEach(function (f) {
-                if (f.poseBucket && f.poseBucket !== 'other') captured[f.poseBucket] = true;
-            });
-        }
-        var allAngles = ANGLES.every(function (a) { return !!captured[a]; });
+        var done   = enroll.goodFrames ? enroll.goodFrames.length : 0;
+        var target = (enroll.config && enroll.config.minGoodFrames) || 25;
 
-        if (allAngles && done >= target)
-            return { main: '#22c55e', glow: 'rgba(34,197,94,0.55)' };
-        if (done > 0)
-            return { main: '#f59e0b', glow: 'rgba(245,158,11,0.50)' };
+        if (done >= target) return { main: '#22c55e', glow: 'rgba(34,197,94,0.55)' };
+        if (done > 0)       return { main: '#f59e0b', glow: 'rgba(245,158,11,0.50)' };
         return { main: '#4f9cf9', glow: 'rgba(79,156,249,0.45)' };
     }
 
@@ -287,40 +192,23 @@
 
     function drawPoseBadge(bx, by, bw, bh, col) {
         var pose = currentPose;
-
-        // Use server-confirmed bucket when fresh (within 800ms) to keep
-        // the badge in sync with what actually gets checked off
-        var enroll = window.FaceAttendEnrollment;
-        if (enroll && enroll.confirmedPoseBucket && enroll.confirmedPoseTs
-            && (Date.now() - enroll.confirmedPoseTs) < 800) {
-            pose = { bucket: enroll.confirmedPoseBucket, yaw: pose.yaw, pitch: pose.pitch, conf: pose.conf };
-        }
-
         if (!pose.bucket) return;
 
-        var LABELS = {
-            center: 'CENTER',
-            left:   'LEFT',
-            right:  'RIGHT',
-            up:     'UP',
-            down:   'DOWN'
-        };
-
-        var label = LABELS[pose.bucket];
+        var LABELS = { center: 'CENTER', left: 'LEFT', right: 'RIGHT', up: 'UP', down: 'DOWN' };
+        var label  = LABELS[pose.bucket];
         if (!label) return;
 
-        var debug = 'Y:' + pose.yaw + '° P:' + pose.pitch + '°  ' +
-                    Math.round(pose.conf * 100) + '%';
+        var debug = 'Y:' + pose.yaw + '° P:' + pose.pitch + '°  ' + Math.round(pose.conf * 100) + '%';
         var pad = 6, r = 4;
 
         ctx.save();
         ctx.textBaseline = 'middle';
 
         ctx.font = 'bold 11px "Helvetica Neue", Arial, sans-serif';
-        var lw   = ctx.measureText(label).width;
-        var lh   = 20;
-        var lx   = bx + bw - lw - pad * 2 - 2;
-        var ly   = by + 2;
+        var lw  = ctx.measureText(label).width;
+        var lh  = 20;
+        var lx  = bx + bw - lw - pad * 2 - 2;
+        var ly  = by + 2;
         lx = Math.max(bx + 2, lx);
 
         ctx.globalAlpha = 0.88;
@@ -333,10 +221,10 @@
         ctx.fillText(label, lx + pad, ly + lh / 2);
 
         ctx.font = '10px "Helvetica Neue", Arial, sans-serif';
-        var dw   = ctx.measureText(debug).width;
-        var dh   = 18;
-        var dx   = bx + bw - dw - pad * 2 - 2;
-        var dy   = by + bh - dh - 2;
+        var dw  = ctx.measureText(debug).width;
+        var dh  = 18;
+        var dx  = bx + bw - dw - pad * 2 - 2;
+        var dy  = by + bh - dh - 2;
         dx = Math.max(bx + 2, dx);
 
         ctx.globalAlpha = 0.82;
@@ -375,19 +263,15 @@
 
                     if (valid.length) {
                         var best = valid.reduce(function (a, b) {
-                            var aA = a.boundingBox
-                                ? a.boundingBox.width * a.boundingBox.height : 0;
-                            var bA = b.boundingBox
-                                ? b.boundingBox.width * b.boundingBox.height : 0;
+                            var aA = a.boundingBox ? a.boundingBox.width * a.boundingBox.height : 0;
+                            var bA = b.boundingBox ? b.boundingBox.width * b.boundingBox.height : 0;
                             return aA >= bA ? a : b;
                         });
 
-                        detectedBox = mapToCanvas(toVideoBox(best.boundingBox), cssW, cssH);
-                        currentPose = estimatePose(best);
-
+                        detectedBox     = mapToCanvas(toVideoBox(best.boundingBox), cssW, cssH);
+                        currentPose     = estimatePose(best);
                         currentFaceArea = best.boundingBox
-                            ? best.boundingBox.width * best.boundingBox.height
-                            : 0;
+                            ? best.boundingBox.width * best.boundingBox.height : 0;
 
                         if (best.boundingBox) {
                             var ncx = best.boundingBox.originX + best.boundingBox.width  / 2;
@@ -398,16 +282,13 @@
                         currentPose     = { bucket: '', yaw: 0, pitch: 0, conf: 0 };
                         currentFaceArea = 0;
                     }
-                } catch (e) {
-                    // Bad frame — keep loop alive
-                }
+                } catch (e) {}
             }
         }
 
         if (detectedBox) {
             if (!smoothed) {
-                smoothed = { x: detectedBox.x, y: detectedBox.y,
-                             w: detectedBox.w, h: detectedBox.h };
+                smoothed = { x: detectedBox.x, y: detectedBox.y, w: detectedBox.w, h: detectedBox.h };
             } else {
                 smoothed.x += ALPHA * (detectedBox.x - smoothed.x);
                 smoothed.y += ALPHA * (detectedBox.y - smoothed.y);
@@ -425,7 +306,6 @@
         if (!smoothed) { scanLinePos = 0; return; }
 
         var bx = smoothed.x, by = smoothed.y, bw = smoothed.w, bh = smoothed.h;
-
         var col    = stateColor();
         var isBusy = !!(window.FaceAttendEnrollment && window.FaceAttendEnrollment.busy);
 
@@ -482,9 +362,7 @@
         drawPoseBadge(bx, by, bw, bh, col);
 
         if (window.FaceAttendEnrollment) {
-            window.FaceAttendEnrollment.liveTrackingBox = {
-                x: bx, y: by, w: bw, h: bh
-            };
+            window.FaceAttendEnrollment.liveTrackingBox = { x: bx, y: by, w: bw, h: bh };
             window.FaceAttendEnrollment.livePose = {
                 bucket: currentPose.bucket,
                 yaw:    currentPose.yaw,
@@ -521,7 +399,6 @@
                 detector = det;
                 active   = true;
                 requestAnimationFrame(tick);
-                console.log('[enrollment-tracker] v2.1 ready — fixed pitch formula');
             })
             .catch(function (e) {
                 console.warn('[enrollment-tracker] MediaPipe init failed:', e);
@@ -539,41 +416,26 @@
         var attempts = 0;
         var iv = setInterval(function () {
             if (typeof window.MpFilesetResolver === 'function') {
-                clearInterval(iv);
-                initMp();
+                clearInterval(iv); initMp();
             } else if (++attempts > 50) {
                 clearInterval(iv);
-                console.warn('[enrollment-tracker] vision_loader timed out.');
             }
         }, 200);
     }
 
     function waitForCamera() {
-        if (video.videoWidth > 0) {
-            enhanceCameraFocus();
-            tryLoadMp();
-            return;
-        }
+        if (video.videoWidth > 0) { enhanceCameraFocus(); tryLoadMp(); return; }
         var checks = 0;
         var iv = setInterval(function () {
-            if (video.videoWidth > 0) {
-                clearInterval(iv);
-                enhanceCameraFocus();
-                tryLoadMp();
-            } else if (++checks > 120) {
-                clearInterval(iv);
-            }
+            if (video.videoWidth > 0) { clearInterval(iv); enhanceCameraFocus(); tryLoadMp(); }
+            else if (++checks > 120) { clearInterval(iv); }
         }, 500);
     }
 
-    video.addEventListener('playing', function () {
-        setTimeout(enhanceCameraFocus, 300);
-    });
+    video.addEventListener('playing', function () { setTimeout(enhanceCameraFocus, 300); });
 
     if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', function () {
-            setTimeout(waitForCamera, 500);
-        });
+        document.addEventListener('DOMContentLoaded', function () { setTimeout(waitForCamera, 500); });
     } else {
         setTimeout(waitForCamera, 500);
     }
@@ -582,5 +444,4 @@
         active = false;
         if (detector) { try { detector.close(); } catch (e) {} }
     });
-
 })();

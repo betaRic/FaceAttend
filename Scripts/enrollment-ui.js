@@ -254,8 +254,6 @@
         enrollment.startCamera(ui.video)
             .then(function () {
                 enrollment.startAutoEnrollment();
-                if (typeof enrollment.getNextAnglePrompt === 'function')
-                    showAngle(enrollment.getNextAnglePrompt());
                 setStatus('Camera ready. Look straight at the camera.', 'info');
             })
             .catch(function (e) {
@@ -492,10 +490,6 @@
         }
     };
 
-    enrollment.callbacks.onAngleUpdate = function (next) {
-        if (next && next.bucket !== 'other') showAngle(next);
-    };
-
     enrollment.callbacks.onDistanceFeedback = function (feedback) {
         var statusEl = document.getElementById('cameraStatusText');
         if (!statusEl) return;
@@ -512,11 +506,9 @@
         }
     };
 
-    // ── onReadyToConfirm — enforce all 4 angles (FIX-ANGLE-01) ───────────────
     enrollment.callbacks.onReadyToConfirm = function (data) {
         setStatus('Capture complete! Reviewing...', 'success');
 
-        // Path 1: mobile wizard intercept
         if (typeof window.enrollCallbacks === 'object' &&
             window.enrollCallbacks !== null &&
             typeof window.enrollCallbacks.onReadyToConfirm === 'function') {
@@ -524,53 +516,12 @@
             return;
         }
 
-        // Path 2: missing angles — warn and resume
-        if (!data.allAngles) {
-            var REQUIRED = ['center', 'left', 'right', 'down'];
-            var capturedSet = {};
-            (data.frames || []).forEach(function (f) {
-                if (f.poseBucket) capturedSet[f.poseBucket] = true;
-            });
-            var missing = REQUIRED.filter(function (a) { return !capturedSet[a]; });
-
-            if (typeof Swal !== 'undefined') {
-                Swal.fire({
-                    icon:              'warning',
-                    title:             'More angles needed',
-                    html:              'Please capture <b>all 4 angles</b> for robust identification.' +
-                                       '<br><br>Missing: <b>' + missing.join(', ') + '</b>' +
-                                       '<br>Captured so far: ' + data.angleCount + ' / 5',
-                    confirmButtonText: '<i class="fa-solid fa-camera me-1"></i>Continue Capturing',
-                    confirmButtonColor: '#3b82f6',
-                    background:        dark() ? '#0f172a' : '#fff',
-                    color:             dark() ? '#f8fafc' : '#0f172a',
-                    allowOutsideClick: false,
-                    allowEscapeKey:    false
-                }).then(function () { _doRetake(); });
-            } else {
-                alert('Missing angles: ' + missing.join(', ') + '. Please continue capturing.');
-                _doRetake();
-            }
-            return;
-        }
-
-        // Path 3: all 4 angles — show confirm dialog with thumbnails
-        // Pick best frame per bucket to show true angle diversity
-        var bucketOrder2 = ['center', 'left', 'right', 'down', 'up'];
-        var seenBuckets2 = {};
-        var previewFrames2 = [];
-        (data.frames || []).forEach(function(f) {
-            if (!seenBuckets2[f.poseBucket] && bucketOrder2.indexOf(f.poseBucket) >= 0) {
-                seenBuckets2[f.poseBucket] = true;
-                previewFrames2.push(f);
-            }
-        });
-        if (previewFrames2.length === 0) previewFrames2 = data.frames.slice(0, 3);
-        var thumbPromises = previewFrames2.slice(0, 4).map(function (frame) {
+        var previewFrames = (data.frames || []).slice(0, 4);
+        var thumbPromises = previewFrames.map(function (frame) {
             return new Promise(function (resolve) {
                 if (!frame || !frame.blob) { resolve(null); return; }
                 var reader = new FileReader();
-                reader.onload  = function (e) { resolve({ dataUrl: e.target.result, bucket: frame.poseBucket || "" }); };
+                reader.onload  = function (e) { resolve(e.target.result); };
                 reader.onerror = function ()  { resolve(null); };
                 reader.readAsDataURL(frame.blob);
             });
@@ -578,41 +529,36 @@
 
         Promise.all(thumbPromises).then(function (dataUrls) {
             var thumbHtml = '';
-            dataUrls.forEach(function (item) {
-                if (!item || !item.dataUrl) return;
+            dataUrls.forEach(function (url) {
+                if (!url) return;
                 thumbHtml +=
-                    '<div style="display:inline-flex;flex-direction:column;align-items:center;margin:4px;">' +
-                    '<img src="' + item.dataUrl + '" style="width:80px;height:80px;object-fit:cover;' +
-                    'border-radius:8px;border:2px solid rgba(255,255,255,0.25);" />' +
-                    '<span style="font-size:10px;color:#94a3b8;margin-top:3px;text-transform:uppercase;">' + item.bucket + '</span>' +
-                    '</div>';
+                    '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
+                    'border-radius:8px;border:2px solid rgba(255,255,255,0.25);margin:4px;" />';
             });
 
             var summaryHtml =
-                '<div style="display:flex;justify-content:center;gap:8px;margin-bottom:14px;flex-wrap:wrap;">' + thumbHtml + '</div>' +
+                '<div style="display:flex;justify-content:center;gap:4px;margin-bottom:14px;flex-wrap:wrap;">' + thumbHtml + '</div>' +
                 '<div style="background:rgba(255,255,255,0.05);border-radius:10px;padding:12px 16px;text-align:left;font-size:0.875rem;line-height:2;">' +
                     '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i>' +
                         '<strong>' + data.frameCount + '</strong> frames captured</div>' +
-                    '<div><span style="color:#22c55e;"><i class="fa-solid fa-circle-check" style="margin-right:6px;"></i>' +
-                        'all 4 angles captured</span></div>' +
                     '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>' +
                         'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
                 '</div>';
 
             if (typeof Swal !== 'undefined') {
                 Swal.fire({
-                    title:             'Ready to Enroll',
-                    html:              summaryHtml,
-                    icon:              'success',
-                    showCancelButton:  true,
-                    confirmButtonText: '<i class="fa-solid fa-check" style="margin-right:6px;"></i>Confirm Enrollment',
-                    cancelButtonText:  '<i class="fa-solid fa-rotate-left" style="margin-right:6px;"></i>Retake',
+                    title:              'Ready to Enroll',
+                    html:               summaryHtml,
+                    icon:               'success',
+                    showCancelButton:   true,
+                    confirmButtonText:  '<i class="fa-solid fa-check" style="margin-right:6px;"></i>Confirm Enrollment',
+                    cancelButtonText:   '<i class="fa-solid fa-rotate-left" style="margin-right:6px;"></i>Retake',
                     confirmButtonColor: '#22c55e',
                     cancelButtonColor:  '#475569',
-                    background:        dark() ? '#0f172a' : '#fff',
-                    color:             dark() ? '#f8fafc' : '#0f172a',
-                    allowOutsideClick: false,
-                    allowEscapeKey:    false
+                    background:         dark() ? '#0f172a' : '#fff',
+                    color:              dark() ? '#f8fafc' : '#0f172a',
+                    allowOutsideClick:  false,
+                    allowEscapeKey:     false
                 }).then(function (result) {
                     if (result.isConfirmed) {
                         showProcessing(true, 'Processing enrollment...');
@@ -623,7 +569,7 @@
                 });
             } else {
                 var ok = window.confirm(
-                    'Ready to Enroll!\n\n' + data.frameCount + ' frames, all 4 angles.\n' +
+                    'Ready to Enroll!\n' + data.frameCount + ' frames captured.\n' +
                     'Best liveness: ' + data.bestLiveness + '%\n\nConfirm?');
                 if (ok) { showProcessing(true, 'Processing enrollment...'); enrollment.performEnrollment(); }
                 else      _doRetake();
@@ -652,7 +598,6 @@
     // ── Init ──────────────────────────────────────────────────────────────────
     updateProgress(0, cfg.minFrames || 8);
     setStatus('Waiting for camera...', 'info');
-    showAngle({ bucket: 'center', prompt: 'Look straight at the camera', icon: 'fa-circle-dot' });
     window.addEventListener('beforeunload', stopCamera);
 
     // ── Public API ────────────────────────────────────────────────────────────

@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using System.Web;
 using FaceRecognitionDotNet;
@@ -11,23 +10,8 @@ using FaceAttend.Services;
 
 namespace FaceAttend.Services.Biometrics
 {
-    /// <summary>
-    /// OPTIMIZED: Fast scan pipeline for walk-by kiosk.
-    /// 
-    /// PERFORMANCE IMPROVEMENTS:
-    /// 1. Single JPEG decode — image loaded once as Bitmap, reused for all operations (~30-45ms saved)
-    /// 2. Parallel liveness + encoding — run simultaneously (~100-150ms saved)
-    /// 3. Uses DlibBiometrics pool for thread-safe face recognition
-    /// 
-    /// PHASE 3 OPTIMIZATION (P-03): Removed temp file usage — all processing in-memory.
-    /// Previous: Save to temp file → 3× file reads (detect, encode, liveness)
-    /// Current:  Load Bitmap once → reuse for all operations
-    /// </summary>
     public static class FastScanPipeline
     {
-        /// <summary>
-        /// Fast scan result with timing information
-        /// </summary>
         public class ScanResult
         {
             public bool Ok { get; set; }
@@ -36,561 +20,241 @@ namespace FaceAttend.Services.Biometrics
             public float LivenessScore { get; set; }
             public bool LivenessOk { get; set; }
             public DlibBiometrics.FaceBox FaceBox { get; set; }
-            public float Sharpness { get; set; }          // NEW: Phase 1 - sharpness score
-            public int ImageWidth { get; set; }           // NEW: For angle-aware tolerance in KioskController
+            public float Sharpness { get; set; }
+            public int ImageWidth { get; set; }
             public long TimingMs { get; set; }
             public Dictionary<string, long> Timings { get; set; }
         }
 
-        /// <summary>
-        /// Enrollment scan result — superset of ScanResult, adds landmarks and encoding string.
-        /// </summary>
         public class EnrollmentScanResult
         {
-            public bool   Ok            { get; set; }
-            public string Error         { get; set; }
-            public string Base64Encoding { get; set; }   // for ScanFrame JSON response
-            public double[] FaceEncoding { get; set; }  // raw 128d vector
-            public float[]  Landmarks5  { get; set; }   // [leX,leY,reX,reY,ntX,ntY] pixels
-            public float    LivenessScore { get; set; }
-            public bool     LivenessOk  { get; set; }
-            public float    Sharpness   { get; set; }
-            public float    SharpnessThreshold { get; set; }
+            public bool Ok { get; set; }
+            public string Error { get; set; }
+            public string Base64Encoding { get; set; }
+            public double[] FaceEncoding { get; set; }
+            public float[] Landmarks5 { get; set; }
+            public float LivenessScore { get; set; }
+            public bool LivenessOk { get; set; }
+            public float Sharpness { get; set; }
+            public float SharpnessThreshold { get; set; }
             public DlibBiometrics.FaceBox FaceBox { get; set; }
-            public int      ImageWidth  { get; set; }
-            public int      ImageHeight { get; set; }
-            public long     TimingMs    { get; set; }
+            public int ImageWidth { get; set; }
+            public int ImageHeight { get; set; }
+            public long TimingMs { get; set; }
         }
 
-        /// <summary>
-        /// ENROLLMENT-OPTIMISED: single Bitmap decode, then three-way parallel:
-        ///   Thread A — liveness (ONNX, reuses Bitmap)
-        ///   Thread B — encoding (dlib ResNet, reuses Bitmap)
-        ///   Thread C — landmarks 5-point (dlib, same pool rent as encoding via combined method)
-        /// Sharpness runs on the main thread before the parallel block (fast, ~5ms).
-        ///
-        /// Replaces the 5-file-read sequential pipeline in ScanController.Frame.
-        /// Performance target: 300–600ms total (was 1–3s).
-        /// </summary>
+        private class CoreResult
+        {
+            public bool Ok { get; set; }
+            public string Error { get; set; }
+            public double[] Encoding { get; set; }
+            public float[] Landmarks5 { get; set; }
+            public float LivenessScore { get; set; }
+            public bool LivenessOk { get; set; }
+            public float Sharpness { get; set; }
+            public float SharpnessThreshold { get; set; }
+            public DlibBiometrics.FaceBox FaceBox { get; set; }
+            public int ImageWidth { get; set; }
+            public int ImageHeight { get; set; }
+        }
+
         public static EnrollmentScanResult EnrollmentScanInMemory(
             HttpPostedFileBase image,
             DlibBiometrics.FaceBox clientFaceBox = null,
             bool isMobile = false)
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew();
+            var sw = Stopwatch.StartNew();
 
-            // ── Step 1: Read ALL bytes into array first ─────────────────────
-            // CRITICAL: Never pass a MemoryStream directly to new Bitmap() inside a
-            // using block. Bitmap(Stream) for JPEG keeps a live stream reference and
-            // reads lazily — disposing the stream before pixel access throws
-            // ObjectDisposedException on the very first LockBits call.
-            byte[] rawBytes;
-            try
-            {
-                image.InputStream.Position = 0;
-                using (var readMs = new MemoryStream())
-                {
-                    image.InputStream.CopyTo(readMs);
-                    rawBytes = readMs.ToArray();
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError("[EnrollmentScan] Read failed: " + ex.Message);
-                return new EnrollmentScanResult { Ok = false, Error = "IMAGE_LOAD_FAIL" };
-            }
-
-            // ── Step 2: Decode to fully-independent Bitmap ──────────────────
-            // Clone() with an explicit PixelFormat forces a complete pixel data copy.
-            // The resulting Bitmap owns its own memory — no stream reference kept.
-            // This is the standard .NET fix for the "Bitmap from disposed stream" bug.
             Bitmap bitmap;
             int imageWidth, imageHeight;
-            try
-            {
-                using (var decodeMs = new MemoryStream(rawBytes))
-                using (var rawBmp = new Bitmap(decodeMs))
-                {
-                    imageWidth  = rawBmp.Width;
-                    imageHeight = rawBmp.Height;
-                    bitmap = rawBmp.Clone(
-                        new Rectangle(0, 0, rawBmp.Width, rawBmp.Height),
-                        System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-                }
-                // decodeMs and rawBmp disposed here — bitmap is safe, owns its pixels
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError("[EnrollmentScan] Bitmap decode failed: " + ex.Message);
-                return new EnrollmentScanResult
-                {
-                    Ok = false, Error = "IMAGE_LOAD_FAIL",
-                    TimingMs = sw.ElapsedMilliseconds
-                };
-            }
+            string loadErr;
+            if (!LoadBitmap(image.InputStream, out bitmap, out imageWidth, out imageHeight, out loadErr))
+                return new EnrollmentScanResult { Ok = false, Error = loadErr, TimingMs = sw.ElapsedMilliseconds };
 
             using (bitmap)
             {
-                // ── Step 3: Detect or trust client box ──────────────────────
-                var dlib = new DlibBiometrics();
-                DlibBiometrics.FaceBox faceBox;
-                Location faceLocation;
-                string detectErr;
+                var core = RunCore(bitmap, imageWidth, imageHeight, clientFaceBox, needLandmarks: true, isMobile: isMobile);
 
-                // reportedFaceBox = what we return to the client (stable, no padding)
-                // faceBox         = padded box used internally for encoding accuracy
-                DlibBiometrics.FaceBox reportedFaceBox;
-
-                if (clientFaceBox != null
-                    && clientFaceBox.Width > 20
-                    && clientFaceBox.Height > 20)
-                {
-                    // Return the CLIENT box as-is — client already knows this position.
-                    // Returning the padded box caused a feedback loop: padded box sent
-                    // back next frame → padded again → box grew ~20% per scan cycle.
-                    reportedFaceBox = clientFaceBox;
-
-                    // Padding used ONLY for encoding context — wider crop = better embedding
-                    var padX = Math.Max(6, (int)(clientFaceBox.Width  * 0.10));
-                    var padY = Math.Max(6, (int)(clientFaceBox.Height * 0.12));
-                    var left = Math.Max(0, clientFaceBox.Left - padX);
-                    var top  = Math.Max(0, clientFaceBox.Top  - padY);
-                    faceBox = new DlibBiometrics.FaceBox
-                    {
-                        Left   = left,
-                        Top    = top,
-                        Width  = Math.Min(imageWidth  - left, clientFaceBox.Width  + padX * 2),
-                        Height = Math.Min(imageHeight - top,  clientFaceBox.Height + padY * 2)
-                    };
-                    faceLocation = new Location(
-                        faceBox.Left, faceBox.Top,
-                        faceBox.Left + faceBox.Width,
-                        faceBox.Top  + faceBox.Height);
-                }
-                else if (!dlib.TryDetectSingleFaceFromBitmap(
-                    bitmap, out faceBox, out faceLocation, out detectErr))
-                {
-                    return new EnrollmentScanResult
-                    {
-                        Ok = false, Error = detectErr ?? "NO_FACE",
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-                }
-                else
-                {
-                    // Server-detected box — return this directly (no padding applied)
-                    reportedFaceBox = faceBox;
-                }
-
-                // ── Step 4: Sharpness — single-threaded, from Bitmap ─────────
-                var sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
-                var sharpTh   = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
-
-                // ── Step 5: Pre-extract RGB bytes (THREAD SAFETY) ───────────
-                // Bitmap.LockBits and Bitmap.Clone are NOT thread-safe when called
-                // concurrently on the same Bitmap instance. Pre-convert to a raw byte
-                // array here (single-threaded), then the encoding thread works only on
-                // the byte array — it never touches the Bitmap at all.
-                // The liveness thread is the only one that then accesses the Bitmap,
-                // so there is no concurrent pixel access.
-                byte[] rgbData;
-                try
-                {
-                    rgbData = DlibBiometrics.ExtractRgbData(bitmap);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.TraceError("[EnrollmentScan] RGB extract failed: " + ex.Message);
-                    return new EnrollmentScanResult
-                    {
-                        Ok = false, Error = "BITMAP_CONVERT_FAIL",
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-                }
-
-                // ── Step 6: Parallel — liveness (Bitmap) + encode (rgbData) ──
-                // Thread A (liveness): ScoreFromBitmap — does bitmap.Clone() then
-                //   LockBits on the CLONE only. Original bitmap not locked.
-                // Thread B (encoding): TryEncodeWithLandmarksFromRgbData — only
-                //   accesses rgbData byte array. Never calls LockBits on bitmap.
-                // These two are fully independent — zero shared mutable state.
-                double[] encoding   = null;
-                float[]  landmarks5 = null;
-                string   encErr     = null;
-                bool     liveOk     = false;
-                float?   liveProb   = null;
-
-                Parallel.Invoke(
-                    () =>
-                    {
-                        var live = new OnnxLiveness();
-                        var r = live.ScoreFromBitmap(bitmap, faceBox);
-                        liveOk   = r.Ok;
-                        liveProb = r.Probability;
-                    },
-                    () =>
-                    {
-                        dlib.TryEncodeWithLandmarksFromRgbData(
-                            rgbData, imageWidth, imageHeight, faceLocation,
-                            out encoding, out landmarks5, out encErr);
-                    }
-                );
-
-                if (encoding == null)
-                    return new EnrollmentScanResult
-                    {
-                        Ok = false, Error = encErr ?? "ENCODING_FAIL",
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-
-                var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
-                var liveScore = liveProb ?? 0f;
+                if (!core.Ok)
+                    return new EnrollmentScanResult { Ok = false, Error = core.Error, TimingMs = sw.ElapsedMilliseconds };
 
                 return new EnrollmentScanResult
                 {
-                    Ok             = true,
-                    Base64Encoding = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(encoding)),
-                    FaceEncoding   = encoding,
-                    Landmarks5     = landmarks5,
-                    LivenessScore  = liveScore,
-                    LivenessOk     = liveOk && liveScore >= liveTh,
-                    Sharpness      = sharpness,
-                    SharpnessThreshold = sharpTh,
-                    FaceBox        = reportedFaceBox,  // original — not padded, no feedback loop
-                    ImageWidth     = imageWidth,
-                    ImageHeight    = imageHeight,
-                    TimingMs       = sw.ElapsedMilliseconds
+                    Ok                 = true,
+                    Base64Encoding     = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(core.Encoding)),
+                    FaceEncoding       = core.Encoding,
+                    Landmarks5         = core.Landmarks5,
+                    LivenessScore      = core.LivenessScore,
+                    LivenessOk         = core.LivenessOk,
+                    Sharpness          = core.Sharpness,
+                    SharpnessThreshold = core.SharpnessThreshold,
+                    FaceBox            = core.FaceBox,
+                    ImageWidth         = core.ImageWidth,
+                    ImageHeight        = core.ImageHeight,
+                    TimingMs           = sw.ElapsedMilliseconds
                 };
             }
         }
 
-        /// <summary>
-        /// OPTIMIZED: Fast scan with single-decode + parallel liveness + encoding
-        /// 
-        /// Flow:
-        /// 1. Load image into Bitmap once (single JPEG decode)
-        /// 2. Detect face using DlibBiometrics pool (bitmap-based)
-        /// 3. Run liveness + encoding IN PARALLEL (both reuse same bitmap)
-        /// 4. Return result
-        /// 
-        /// Performance: ~30-40% faster than file-based pipeline
-        /// </summary>
         public static ScanResult ScanInMemory(HttpPostedFileBase image, bool includeTimings = false)
         {
             var sw = Stopwatch.StartNew();
             var timings = includeTimings ? new Dictionary<string, long>() : null;
 
-            try
+            Bitmap bitmap;
+            int imageWidth, imageHeight;
+            string loadErr;
+            if (!LoadBitmap(image.InputStream, out bitmap, out imageWidth, out imageHeight, out loadErr))
+                return new ScanResult { Ok = false, Error = loadErr, Timings = timings, TimingMs = sw.ElapsedMilliseconds };
+
+            using (bitmap)
             {
-                // STEP 1: Load image into memory ONCE (single decode)
-                Bitmap bitmap = null;
-                try
-                {
-                    using (var ms = new MemoryStream())
-                    {
-                        image.InputStream.CopyTo(ms);
-                        ms.Position = 0;
-                        bitmap = new Bitmap(ms);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.TraceError("[FastScanPipeline] Failed to load image: " + ex.Message);
-                    return new ScanResult 
-                    { 
-                        Ok = false, 
-                        Error = "IMAGE_LOAD_FAIL",
-                        Timings = timings,
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-                }
+                var core = RunCore(bitmap, imageWidth, imageHeight, null, needLandmarks: false, isMobile: false);
+                if (timings != null) timings["scan"] = sw.ElapsedMilliseconds;
 
-                RecordTiming(timings, "load_decode", sw);
+                if (!core.Ok)
+                    return new ScanResult { Ok = false, Error = core.Error, Timings = timings, TimingMs = sw.ElapsedMilliseconds };
 
-                using (bitmap)
-                {
-                    // STEP 2: Detect face using bitmap (no re-decode)
-                    var dlib = new DlibBiometrics();
-                    DlibBiometrics.FaceBox faceBox;
-                    Location faceLocation;
-                    string detectErr;
-                    
-                    if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLocation, out detectErr))
-                    {
-                        return new ScanResult 
-                        { 
-                            Ok = false, 
-                            Error = detectErr ?? "NO_FACE",
-                            Timings = timings,
-                            TimingMs = sw.ElapsedMilliseconds
-                        };
-                    }
-                    RecordTiming(timings, "detect", sw);
-
-                    // ===== QUALITY GATE =====
-                    float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
-                    var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(false);
-
-                    if (sharpness < sharpTh * 0.75f)
-                    {
-                        return new ScanResult
-                        {
-                            Ok = false,
-                            Error = "LOW_QUALITY"
-                        };
-                    }
-                    RecordTiming(timings, "sharpness_ms", sw);
-
-                    // STEP 3: PARALLEL - Liveness + Encoding (both reuse same bitmap)
-                    var encodings = new List<double[]>();
-                    bool livenessOk = false;
-                    float? livenessProb = null;
-
-                    Parallel.Invoke(
-                        () =>
-                        {
-                            for (int i = 0; i < 3; i++)
-                            {
-                                double[] tempEncoding;
-                                string encErr;
-
-                                dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out tempEncoding, out encErr);
-
-                                if (tempEncoding != null)
-                                    encodings.Add(tempEncoding);
-                            }
-                        },
-                        () =>
-                        {
-                            // Liveness check using bitmap (reuses loaded image)
-                            var live = new OnnxLiveness();
-                            var result = live.ScoreFromBitmap(bitmap, faceBox);
-                            livenessOk = result.Ok;
-                            livenessProb = result.Probability;
-                        }
-                    );
-                    RecordTiming(timings, "parallel_liveness_encode", sw);
-
-                    // Check results
-                    if (encodings.Count == 0)
-                    {
-                        return new ScanResult 
-                        { 
-                            Ok = false, 
-                            Error = "ENCODING_FAIL",
-                            Timings = timings,
-                            TimingMs = sw.ElapsedMilliseconds
-                        };
-                    }
-
-                    var liveTh = (float)ConfigurationService.GetDouble(
-                        "Biometrics:LivenessThreshold", 0.75);
-                    
-                    var livenessScore = livenessProb ?? 0f;
-                    var livenessPassed = livenessOk && livenessScore >= liveTh;
-
-                    return new ScanResult
-                    {
-                        Ok = true,
-                        FaceEncoding = encodings[0], // temporary (we improve next)
-                        LivenessScore = livenessScore,
-                        LivenessOk = livenessPassed,
-                        FaceBox = faceBox,
-                        Sharpness = sharpness,
-                        ImageWidth = bitmap.Width,  // For angle-aware tolerance
-                        Timings = timings,
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError("[FastScanPipeline] Error: " + ex);
-                return new ScanResult 
-                { 
-                    Ok = false, 
-                    Error = "SCAN_ERROR",
-                    Timings = timings,
-                    TimingMs = sw.ElapsedMilliseconds
-                };
-            }
-        }
-
-        /// <summary>
-        /// FALLBACK: File-based scan for compatibility with legacy code paths.
-        /// Use ScanInMemory for better performance.
-        /// </summary>
-        public static ScanResult ScanFromFile(string imagePath, bool includeTimings = false)
-        {
-            var sw = Stopwatch.StartNew();
-            var timings = includeTimings ? new Dictionary<string, long>() : null;
-
-            try
-            {
-                // STEP 1: Load image into Bitmap once
-                Bitmap bitmap;
-                try
-                {
-                    bitmap = new Bitmap(imagePath);
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.TraceError("[FastScanPipeline] Failed to load file: " + ex.Message);
-                    return new ScanResult 
-                    { 
-                        Ok = false, 
-                        Error = "IMAGE_LOAD_FAIL",
-                        Timings = timings,
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-                }
-
-                RecordTiming(timings, "load_decode", sw);
-
-                using (bitmap)
-                {
-                    // STEP 2: Detect face
-                    var dlib = new DlibBiometrics();
-                    DlibBiometrics.FaceBox faceBox;
-                    Location faceLocation;
-                    string detectErr;
-                    
-                    if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLocation, out detectErr))
-                    {
-                        return new ScanResult 
-                        { 
-                            Ok = false, 
-                            Error = detectErr ?? "NO_FACE",
-                            Timings = timings,
-                            TimingMs = sw.ElapsedMilliseconds
-                        };
-                    }
-                    RecordTiming(timings, "detect", sw);
-
-                // ===== QUALITY GATE =====
-                float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
                 var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(false);
+                if (core.Sharpness < sharpTh * 0.75f)
+                    return new ScanResult { Ok = false, Error = "LOW_QUALITY", Timings = timings, TimingMs = sw.ElapsedMilliseconds };
 
-                if (sharpness < sharpTh * 0.75f)
+                return new ScanResult
                 {
-                    return new ScanResult
-                    {
-                        Ok = false,
-                        Error = "LOW_QUALITY"
-                    };
-                }
-
-                    // STEP 3: PARALLEL - Liveness + Encoding
-                    var encodings = new List<double[]>();
-                    bool livenessOk = false;
-                    float? livenessProb = null;
-
-                    Parallel.Invoke(
-                        () =>
-                        {
-                            for (int i = 0; i < 3; i++)
-                            {
-                                double[] tempEncoding;
-                                string encErr;
-
-                                dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out tempEncoding, out encErr);
-
-                                if (tempEncoding != null)
-                                    encodings.Add(tempEncoding);
-                            }
-                        },
-                        () =>
-                        {
-                            var live = new OnnxLiveness();
-                            var result = live.ScoreFromBitmap(bitmap, faceBox);
-                            livenessOk = result.Ok;
-                            livenessProb = result.Probability;
-                        }
-                    );
-                    RecordTiming(timings, "parallel_liveness_encode", sw);
-
-                    if (encodings.Count == 0)
-                    {
-                        return new ScanResult 
-                        { 
-                            Ok = false, 
-                            Error = "ENCODING_FAIL",
-                            Timings = timings,
-                            TimingMs = sw.ElapsedMilliseconds
-                        };
-                    }
-
-                    var liveTh = (float)ConfigurationService.GetDouble(
-                        "Biometrics:LivenessThreshold", 0.75);
-                    
-                    var livenessScore = livenessProb ?? 0f;
-                    var livenessPassed = livenessOk && livenessScore >= liveTh;
-
-                    return new ScanResult
-                    {
-                        Ok = true,
-                        FaceEncoding = encodings[0], // temporary (we improve next)
-                        LivenessScore = livenessScore,
-                        LivenessOk = livenessPassed,
-                        FaceBox = faceBox,
-                        Timings = timings,
-                        TimingMs = sw.ElapsedMilliseconds
-                    };
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError("[FastScanPipeline] Error: " + ex);
-                return new ScanResult 
-                { 
-                    Ok = false, 
-                    Error = "SCAN_ERROR",
-                    Timings = timings,
-                    TimingMs = sw.ElapsedMilliseconds
+                    Ok            = true,
+                    FaceEncoding  = core.Encoding,
+                    LivenessScore = core.LivenessScore,
+                    LivenessOk    = core.LivenessOk,
+                    FaceBox       = core.FaceBox,
+                    Sharpness     = core.Sharpness,
+                    ImageWidth    = core.ImageWidth,
+                    Timings       = timings,
+                    TimingMs      = sw.ElapsedMilliseconds
                 };
             }
         }
 
-        private static void RecordTiming(Dictionary<string, long> timings, string key, Stopwatch sw)
+        private static bool LoadBitmap(Stream stream, out Bitmap bitmap, out int width, out int height, out string error)
         {
-            if (timings != null)
+            bitmap = null; width = 0; height = 0; error = null;
+            try
             {
-                timings[key] = sw.ElapsedMilliseconds;
+                stream.Position = 0;
+                byte[] raw;
+                using (var ms = new MemoryStream())
+                {
+                    stream.CopyTo(ms);
+                    raw = ms.ToArray();
+                }
+                using (var ms = new MemoryStream(raw))
+                using (var tmp = new Bitmap(ms))
+                {
+                    width  = tmp.Width;
+                    height = tmp.Height;
+                    bitmap = tmp.Clone(
+                        new Rectangle(0, 0, width, height),
+                        System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                }
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceError("[Scan] Load failed: " + ex.Message);
+                error = "IMAGE_LOAD_FAIL";
+                return false;
             }
         }
 
-        private static float ScoreFrame(Bitmap bitmap, DlibBiometrics.FaceBox faceBox)
+        private static CoreResult RunCore(
+            Bitmap bitmap, int imageWidth, int imageHeight,
+            DlibBiometrics.FaceBox clientFaceBox,
+            bool needLandmarks, bool isMobile)
         {
-            try
+            var dlib = new DlibBiometrics();
+            DlibBiometrics.FaceBox faceBox, reportedFaceBox;
+            Location faceLocation;
+
+            if (clientFaceBox != null && clientFaceBox.Width > 20 && clientFaceBox.Height > 20)
             {
-                float score = 0;
-
-                // 1. Face size score
-                float faceArea = faceBox.Width * faceBox.Height;
-                float imageArea = bitmap.Width * bitmap.Height;
-                float sizeRatio = faceArea / imageArea;
-                score += sizeRatio * 2.0f; // weight
-
-                // 2. Centering score
-                float faceCenterX = faceBox.Left + faceBox.Width / 2f;
-                float faceCenterY = faceBox.Top + faceBox.Height / 2f;
-
-                float dx = Math.Abs(faceCenterX - bitmap.Width / 2f) / bitmap.Width;
-                float dy = Math.Abs(faceCenterY - bitmap.Height / 2f) / bitmap.Height;
-
-                float centerPenalty = (dx + dy);
-                score += (1.0f - centerPenalty) * 2.0f;
-
-                // 3. Sharpness score
-                float sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
-                score += Math.Min(sharpness / 100f, 1.0f);
-
-                return score;
+                reportedFaceBox = clientFaceBox;
+                var padX = Math.Max(6, (int)(clientFaceBox.Width  * 0.10));
+                var padY = Math.Max(6, (int)(clientFaceBox.Height * 0.12));
+                var left = Math.Max(0, clientFaceBox.Left - padX);
+                var top  = Math.Max(0, clientFaceBox.Top  - padY);
+                faceBox = new DlibBiometrics.FaceBox
+                {
+                    Left   = left,
+                    Top    = top,
+                    Width  = Math.Min(imageWidth  - left, clientFaceBox.Width  + padX * 2),
+                    Height = Math.Min(imageHeight - top,  clientFaceBox.Height + padY * 2)
+                };
+                faceLocation = new Location(
+                    faceBox.Left, faceBox.Top,
+                    faceBox.Left + faceBox.Width,
+                    faceBox.Top  + faceBox.Height);
             }
-            catch
+            else
             {
-                return 0;
+                string detectErr;
+                if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLocation, out detectErr))
+                    return new CoreResult { Ok = false, Error = detectErr ?? "NO_FACE" };
+                reportedFaceBox = faceBox;
             }
+
+            var sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
+            var sharpTh   = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
+
+            byte[] rgbData;
+            try   { rgbData = DlibBiometrics.ExtractRgbData(bitmap); }
+            catch { return new CoreResult { Ok = false, Error = "BITMAP_CONVERT_FAIL" }; }
+
+            double[] encoding  = null;
+            float[]  landmarks = null;
+            string   encErr    = null;
+            bool     liveOk    = false;
+            float?   liveProb  = null;
+
+            Parallel.Invoke(
+                () =>
+                {
+                    var live = new OnnxLiveness();
+                    var r    = live.ScoreFromBitmap(bitmap, faceBox);
+                    liveOk   = r.Ok;
+                    liveProb = r.Probability;
+                },
+                () =>
+                {
+                    if (needLandmarks)
+                    {
+                        dlib.TryEncodeWithLandmarksFromRgbData(
+                            rgbData, imageWidth, imageHeight, faceLocation,
+                            out encoding, out landmarks, out encErr);
+                    }
+                    else
+                    {
+                        dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out encoding, out encErr);
+                    }
+                });
+
+            if (encoding == null)
+                return new CoreResult { Ok = false, Error = encErr ?? "ENCODING_FAIL" };
+
+            var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            var liveScore = liveProb ?? 0f;
+
+            return new CoreResult
+            {
+                Ok                 = true,
+                Encoding           = encoding,
+                Landmarks5         = landmarks,
+                LivenessScore      = liveScore,
+                LivenessOk         = liveOk && liveScore >= liveTh,
+                Sharpness          = sharpness,
+                SharpnessThreshold = sharpTh,
+                FaceBox            = reportedFaceBox,
+                ImageWidth         = imageWidth,
+                ImageHeight        = imageHeight
+            };
         }
     }
 }

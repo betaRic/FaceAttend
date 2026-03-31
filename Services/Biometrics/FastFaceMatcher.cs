@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -6,37 +6,14 @@ using System.Threading;
 
 namespace FaceAttend.Services.Biometrics
 {
-    /// <summary>
-    /// In-memory face matcher with per-employee top-2 ambiguity guard and confidence tiering.
-    ///
-    /// MatchResult now includes:
-    ///   Distance           — Euclidean distance to best match
-    ///   SecondBestDistance — distance to nearest *different* employee
-    ///   AmbiguityGap       — SecondBestDist − BestDist (larger = more distinct)
-    ///   Tier               — HIGH / MEDIUM / LOW based on gap + absolute distance
-    ///
-    /// CONFIDENCE TIERS (all thresholds configurable via Web.config):
-    ///   HIGH   — dist ≤ 0.40 AND gap ≥ 0.15  → record immediately
-    ///   MEDIUM — dist ≤ 0.55 AND gap ≥ 0.15  → require a second confirming frame
-    ///   LOW    — anything else in-tolerance    → reject (treat as unknown)
-    ///
-    /// These are conservative defaults. Once real scan distances are logged from
-    /// production you can tune Biometrics:Match:* keys in Web.config.
-    ///
-    /// AMBIGUITY GUARD (20% rule + absolute minimum):
-    ///   if gap &lt; bestDist * 0.20 OR gap &lt; 0.08 → reject regardless of tier.
-    /// </summary>
     public static class FastFaceMatcher
     {
-        // ── In-memory state ───────────────────────────────────────────────────
         private static ConcurrentDictionary<string, List<double[]>> _employeeFaces;
         private static ConcurrentDictionary<string, EmployeeInfo>   _employeeInfo;
         private static DateTime _lastLoaded = DateTime.MinValue;
         private static readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
         private static bool _isInitialized = false;
 
-        // ── Tier thresholds (read at match time from config) ──────────────────
-        // Public accessors for KioskController MEDIUM confirmation integrity check
         public static double HighDistThresholdPublic => HighDistThreshold;
         public static double MedDistThresholdPublic  => MedDistThreshold;
 
@@ -48,8 +25,6 @@ namespace FaceAttend.Services.Biometrics
             => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.55);
         private static double MedGapThreshold
             => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.15);
-
-        // ── DTOs ──────────────────────────────────────────────────────────────
 
         public class EmployeeInfo
         {
@@ -72,36 +47,14 @@ namespace FaceAttend.Services.Biometrics
         {
             public bool         IsMatch            { get; set; }
             public EmployeeInfo Employee           { get; set; }
-
-            /// <summary>Euclidean distance to the best-matching employee vector.</summary>
             public double       Distance           { get; set; }
-
-            /// <summary>0–1 confidence relative to the acceptance tolerance.</summary>
             public double       Confidence         { get; set; }
-
-            /// <summary>
-            /// Euclidean distance to the nearest *different* employee.
-            /// double.PositiveInfinity when only one employee exists in the DB.
-            /// </summary>
             public double       SecondBestDistance { get; set; } = double.PositiveInfinity;
-
-            /// <summary>
-            /// SecondBestDistance − Distance.
-            /// Larger gap = more distinct, less ambiguous match.
-            /// </summary>
             public double       AmbiguityGap       { get; set; }
-
-            /// <summary>HIGH / MEDIUM / LOW tier.</summary>
             public MatchTier    Tier               { get; set; } = MatchTier.Low;
-
-            /// <summary>Index of the matching photo within the employee's stored vector list.</summary>
             public string       MatchedPhotoIndex  { get; set; }
-
-            /// <summary>True if rejected because two employees were within 15% of each other.</summary>
             public bool         WasAmbiguous       { get; set; }
         }
-
-        // ── Lifecycle ─────────────────────────────────────────────────────────
 
         public static void Initialize()
         {
@@ -118,7 +71,7 @@ namespace FaceAttend.Services.Biometrics
 
             using (var db = new FaceAttendDBEntities())
             {
-                var maxPer = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+                var maxPer = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 25);
                 var emps   = FaceEncodingHelper.LoadAllEmployeeFaces(db, maxPer);
 
                 foreach (var emp in emps)
@@ -144,12 +97,6 @@ namespace FaceAttend.Services.Biometrics
             _lastLoaded    = DateTime.UtcNow;
         }
 
-        // ── Core matching ─────────────────────────────────────────────────────
-
-        /// <summary>
-        /// Finds the best-matching employee with ambiguity guard and confidence tiering.
-        /// Logs all match attempts to Trace for post-deployment threshold tuning.
-        /// </summary>
         public static MatchResult FindBestMatch(double[] faceVector, double tolerance)
         {
             if (!_isInitialized) Initialize();
@@ -160,7 +107,6 @@ namespace FaceAttend.Services.Biometrics
             string bestEmpId    = null;
             double bestDist     = double.MaxValue;
             int    bestPhotoIdx = -1;
-
             string secondEmpId  = null;
             double secondDist   = double.MaxValue;
 
@@ -172,7 +118,6 @@ namespace FaceAttend.Services.Biometrics
                     var empId   = kvp.Key;
                     var vectors = kvp.Value;
 
-                    // Per-employee minimum distance across all stored vectors
                     double empMin = double.MaxValue;
                     int    empIdx = -1;
                     for (int i = 0; i < vectors.Count; i++)
@@ -201,20 +146,13 @@ namespace FaceAttend.Services.Biometrics
                 _lock.ExitReadLock();
             }
 
-            double gap = (secondDist < double.MaxValue)
+            double gap = secondDist < double.MaxValue
                 ? secondDist - bestDist
                 : double.PositiveInfinity;
 
-            // ── Distance logging — written to Windows trace / IIS log ─────────
-            // These lines are the raw data you need to tune thresholds.
-            // Format: [SCAN] result | emp | dist | 2nd | gap | tier
-            // Query from IIS logs with:  grep "\[SCAN\]" your_trace.log
-            string logLine;
-
-            // ── Outside tolerance ─────────────────────────────────────────────
             if (bestEmpId == null || bestDist > tolerance)
             {
-                logLine = string.Format(
+                System.Diagnostics.Trace.TraceInformation(
                     "[SCAN] NO_MATCH | best={0} d={1:F3} | 2nd={2} d={3:F3} | gap={4} | tol={5:F3}",
                     bestEmpId ?? "none",
                     bestDist < double.MaxValue ? bestDist : -1,
@@ -222,25 +160,16 @@ namespace FaceAttend.Services.Biometrics
                     secondDist < double.MaxValue ? secondDist : -1,
                     gap == double.PositiveInfinity ? "inf" : gap.ToString("F3"),
                     tolerance);
-                System.Diagnostics.Trace.TraceInformation(logLine);
-
                 return new MatchResult { IsMatch = false };
             }
 
-            // ── Ambiguity guard (20% rule + absolute minimum gap) ──────────
-            // Reject if the gap between best and second-best is too small.
-            // The 20% relative threshold catches proportional ambiguity.
-            // The 0.08 absolute floor catches cases where both distances are low
-            // (e.g. best=0.30, second=0.36 → gap=0.06 is 20% but still risky).
             bool ambiguous = gap != double.PositiveInfinity
                 && (gap < (bestDist * 0.20) || gap < 0.08);
             if (ambiguous)
             {
-                logLine = string.Format(
+                System.Diagnostics.Trace.TraceInformation(
                     "[SCAN] AMBIGUOUS | best={0} d={1:F3} | 2nd={2} d={3:F3} | gap={4:F3} | tol={5:F3}",
                     bestEmpId, bestDist, secondEmpId, secondDist, gap, tolerance);
-                System.Diagnostics.Trace.TraceInformation(logLine);
-
                 return new MatchResult
                 {
                     IsMatch            = false,
@@ -253,18 +182,15 @@ namespace FaceAttend.Services.Biometrics
 
             var tier = ClassifyTier(bestDist, gap);
 
-            // LOW tier = in-tolerance but not distinct enough — reject
             if (tier == MatchTier.Low)
             {
-                logLine = string.Format(
+                System.Diagnostics.Trace.TraceInformation(
                     "[SCAN] LOW_TIER | best={0} d={1:F3} | 2nd={2} d={3:F3} | gap={4:F3} | tol={5:F3}",
                     bestEmpId, bestDist,
                     secondEmpId ?? "none",
                     secondDist < double.MaxValue ? secondDist : -1,
                     gap == double.PositiveInfinity ? "inf" : gap.ToString("F3"),
                     tolerance);
-                System.Diagnostics.Trace.TraceInformation(logLine);
-
                 return new MatchResult { IsMatch = false };
             }
 
@@ -272,7 +198,7 @@ namespace FaceAttend.Services.Biometrics
                 ? Math.Max(0, Math.Min(1, 1.0 - (bestDist / tolerance)))
                 : 0.0;
 
-            logLine = string.Format(
+            System.Diagnostics.Trace.TraceInformation(
                 "[SCAN] {0} | emp={1} d={2:F3} | 2nd={3} d={4:F3} | gap={5:F3} | conf={6:F2} | tol={7:F3}",
                 tier.ToString().ToUpper(),
                 bestEmpId, bestDist,
@@ -281,7 +207,6 @@ namespace FaceAttend.Services.Biometrics
                 gap == double.PositiveInfinity ? "inf" : gap.ToString("F3"),
                 confidence,
                 tolerance);
-            System.Diagnostics.Trace.TraceInformation(logLine);
 
             EmployeeInfo info = null;
             _employeeInfo.TryGetValue(bestEmpId, out info);
@@ -307,8 +232,6 @@ namespace FaceAttend.Services.Biometrics
             return MatchTier.Low;
         }
 
-        // ── Cache management ──────────────────────────────────────────────────
-
         public static void UpdateEmployee(string employeeId, FaceAttendDBEntities db = null)
         {
             _lock.EnterWriteLock();
@@ -329,7 +252,7 @@ namespace FaceAttend.Services.Biometrics
 
         private static void UpdateEmployeeInternal(FaceAttendDBEntities db, string employeeId)
         {
-            var maxPer = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+            var maxPer = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 25);
             var emp    = FaceEncodingHelper.LoadEmployeeById(db, employeeId, maxPer);
 
             if (emp == null)
@@ -350,8 +273,6 @@ namespace FaceAttend.Services.Biometrics
                 Department = emp.Department
             };
         }
-
-        // ── Properties ────────────────────────────────────────────────────────
 
         public static bool     IsInitialized => _isInitialized;
         public static DateTime LastLoaded    => _lastLoaded;
