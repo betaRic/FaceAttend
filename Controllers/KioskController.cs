@@ -395,23 +395,15 @@ namespace FaceAttend.Controllers
                     }
 
                     // ── Matching (single authority — FastFaceMatcher) ─────────────────
+                    // vec is always set by this point — either from FastScanPipeline
+                    // (fast path) or dlib.TryEncodeFromFileWithLocation (legacy path).
+                    // The previous two-block pattern was gated on fastResult != null,
+                    // which meant the legacy/client-box path never matched at all.
                     if (!FastFaceMatcher.IsInitialized)
                         FastFaceMatcher.Initialize();
 
-                    FastFaceMatcher.MatchResult matchResult = null;
-
-                    // multi-frame if available
-                    if (fastResult != null && fastResult.FaceEncoding != null && fastResult.FaceEncoding.Length > 0)
-                    {
-                        matchResult = FastFaceMatcher.FindBestMatch(fastResult.FaceEncoding, attendanceTol);
-                    }
-
-                    if (fastResult?.FaceEncoding != null)
-                    {
-                        matchResult = FastFaceMatcher.FindBestMatch(fastResult.FaceEncoding, attendanceTol);
-                    }
-
-                    matchResult = matchResult ?? new FastFaceMatcher.MatchResult { IsMatch = false };
+                    var matchResult = FastFaceMatcher.FindBestMatch(vec, attendanceTol)
+                                      ?? new FastFaceMatcher.MatchResult { IsMatch = false };
 
                     mark("match_ms");
 
