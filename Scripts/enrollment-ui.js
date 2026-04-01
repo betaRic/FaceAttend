@@ -100,7 +100,7 @@
         enrollUrl:         cfg.enrollUrl,
         redirectUrl:       cfg.redirectUrl,
         minGoodFrames:     cfg.minFrames,
-        maxKeepFrames:     8,
+        maxKeepFrames:     cfg.minFrames,
         enablePreview:     false
     });
 

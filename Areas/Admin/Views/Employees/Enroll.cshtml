@@ -98,10 +98,6 @@
                                     <span class="enroll-camera-status__dot"></span>
                                     <span id="cameraStatusText">Camera Active</span>
                                 </div>
-                                <div id="landscapeWarning" style="display:none;position:absolute;inset:0;z-index:10;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;flex-direction:column;color:#fff;text-align:center;padding:2rem;">
-                                    <i class="fa-solid fa-rotate fa-2x" style="margin-bottom:1rem;"></i>
-                                    <p style="font-weight:600;font-size:1.125rem;margin:0;">Please hold your device upright</p>
-                                </div>
                             </div>
                             <p class="enroll-guide-prompt" id="enrollGuidePrompt">
                                 <i class="fa-solid fa-circle-dot"></i> Position your face in the oval
@@ -214,13 +210,6 @@
         if (screen.orientation && screen.orientation.lock) {
             screen.orientation.lock('portrait-primary').catch(function () {});
         }
-        var mq = window.matchMedia('(orientation: landscape)');
-        function onOrientationChange(e) {
-            var warn = document.getElementById('landscapeWarning');
-            if (warn) warn.style.display = e.matches ? 'flex' : 'none';
-        }
-        onOrientationChange(mq);
-        mq.addEventListener('change', onOrientationChange);
     })();
     </script>
 
@@ -250,7 +239,7 @@
                 scanUrl:           '@Url.Content("~/api/scan/frame")',
                 enrollUrl:         '@Url.Content("~/api/enrollment/enroll")',
                 minGoodFrames:     MIN_FRAMES,
-                maxKeepFrames:     8,
+                maxKeepFrames:     MIN_FRAMES,
                 perFrameThreshold: 0.75,
                 enablePreview:     false
               })

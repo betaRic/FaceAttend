@@ -20,6 +20,7 @@ FaceAttend.Enrollment = (function () {
         MIN_FACE_AREA_RATIO_DESKTOP: 0.15, // Raised from 0.10: ~95x72px at 640x480 for reliable Dlib landmarks
         MIN_FACE_AREA_RATIO_MOBILE:  0.12, // Raised from 0.055: ~76x57px minimum for reliable Dlib encoding
         FACE_AREA_WARNING_RATIO:     0.09, // Amber guide warning fires just below enrollment threshold
+        MAX_FACE_AREA_RATIO:         0.60, // Face area ratio above which liveness CNN returns 0.00 (too close)
         AUTO_CONFIRM_TIMEOUT_MS:     15000
     };
 
@@ -317,6 +318,11 @@ FaceAttend.Enrollment = (function () {
                     threshold: minRatio
                 });
             }
+            return Promise.resolve();
+        }
+        // Too-close gate: liveness CNN has no depth/texture context when face fills the frame
+        if (liveArea > CONSTANTS.MAX_FACE_AREA_RATIO) {
+            this.handleStatus('Too close — back up.', 'warning');
             return Promise.resolve();
         }
 

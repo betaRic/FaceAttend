@@ -1450,22 +1450,6 @@
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        // ── Oval guide overlay ─────────────────────────────────────────────────
-        if (FaceAttend.FaceGuide) {
-            var kioskGuideState;
-            if (!state.mpBoxCanvas || state.faceStatus === 'none') {
-                kioskGuideState = 'none';
-            } else if (state.faceStatus === 'low') {
-                kioskGuideState = 'too_far';
-            } else {
-                kioskGuideState = 'good';
-            }
-            FaceAttend.FaceGuide.draw(
-                ctx, canvas.width, canvas.height,
-                kioskGuideState, 0, state.liveInFlight
-            );
-        }
-
         if (state.mpBoxCanvas) {
             var scanning = state.liveInFlight;
             var good     = state.faceStatus === 'good';
@@ -2099,7 +2083,7 @@
                     _lastProcessedGps.lat, _lastProcessedGps.lon,
                     _gpsSmoothed.lat, _gpsSmoothed.lon
                 );
-                if (_lastProcessedGps.lat !== null && movedM < 8) return;
+                if (_lastProcessedGps.lat !== null && movedM < 25) return;
 
                 _lastProcessedGps.lat = _gpsSmoothed.lat;
                 _lastProcessedGps.lon = _gpsSmoothed.lon;
@@ -2116,12 +2100,14 @@
                 state.gps.lat = state.gps.lon = state.gps.accuracy = null;
 
                 if (!isMobile) {
-                    setLocationState(
-                        'pending',
-                        'Checking kiosk office',
-                        'Looking for the registered office profile for this kiosk.',
-                        'Checking office...'
-                    );
+                    if (state.locationState === 'pending') {
+                        setLocationState(
+                            'pending',
+                            'Checking kiosk office',
+                            'Looking for the registered office profile for this kiosk.',
+                            'Checking office...'
+                        );
+                    }
                     resolveOfficeDesktopOnce();
                     return;
                 }
@@ -2213,21 +2199,25 @@
                 return resolveOfficeDesktopOnce();
             }
 
-            setLocationState(
-                'pending',
-                'Checking location',
-                'Waiting for a GPS fix. Stay within the DILG Region XII office area.',
-                'Locating...'
-            );
+            if (state.locationState === 'pending') {
+                setLocationState(
+                    'pending',
+                    'Checking location',
+                    'Waiting for a GPS fix. Stay within the DILG Region XII office area.',
+                    'Locating...'
+                );
+            }
             return Promise.resolve();
         }
 
-        setLocationState(
-            'pending',
-            'Checking location',
-            'Please wait while we verify the office radius.',
-            'Checking location...'
-        );
+        if (state.locationState === 'pending') {
+            setLocationState(
+                'pending',
+                'Checking location',
+                'Please wait while we verify the office radius.',
+                'Checking location...'
+            );
+        }
 
         var fd = new FormData();
         fd.append('__RequestVerificationToken', token);
@@ -2318,12 +2308,14 @@
             return Promise.resolve();
         }
 
-        setLocationState(
-            'pending',
-            'Checking kiosk office',
-            'Looking for the registered office profile for this kiosk.',
-            'Checking office...'
-        );
+        if (state.locationState === 'pending') {
+            setLocationState(
+                'pending',
+                'Checking kiosk office',
+                'Looking for the registered office profile for this kiosk.',
+                'Checking office...'
+            );
+        }
 
         var fd = new FormData();
         fd.append('__RequestVerificationToken', token);

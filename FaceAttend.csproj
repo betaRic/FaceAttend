@@ -415,7 +415,9 @@
     <Compile Include="Models\ViewModels\Admin\SettingsVm.cs" />
     <Compile Include="Models\ViewModels\Admin\VisitorLogRowVm.cs" />
     <Compile Include="Models\ViewModels\Admin\WizardViewModel.cs" />
+    <Compile Include="Models\ViewModels\Mobile\MobileEnrollmentFormViewModels.cs" />
     <Compile Include="Models\ViewModels\Mobile\MobileEnrollmentViewModel.cs" />
+    <Compile Include="Models\ViewModels\Mobile\MobilePortalViewModels.cs" />
     <Compile Include="Models\ViewModels\Shared\CameraViewModel.cs" />
     <Compile Include="Models\ViewModels\Shared\FaceProgressViewModel.cs" />
     <Compile Include="Models\ViewModels\Shared\FileUploaderViewModel.cs" />

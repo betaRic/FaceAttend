@@ -15,18 +15,11 @@
     var SHIFT_UP   = 0.20;
     var EXPAND_H   = 0.08;
 
-    var CENTER_YAW   = 18;
-    var CENTER_PITCH = 28;
-    var MAX_YAW      = 45;
-    var MAX_PITCH    = 55;
-
     var detector      = null;
     var smoothed      = null;
-    var scanLinePos   = 0;
     var active        = false;
     var lastTs        = -1;
 
-    var currentPose     = { bucket: '', yaw: 0, pitch: 0, conf: 0 };
     var currentFaceArea = 0;
 
     var videoTrack  = null;
@@ -112,133 +105,6 @@
         return { w: cssW, h: cssH };
     }
 
-    function estimatePose(detection) {
-        var kps  = detection.keypoints;
-        var bb   = detection.boundingBox;
-        var conf = (detection.categories && detection.categories[0] &&
-                    detection.categories[0].score) || 0;
-
-        if (!kps || kps.length < 3) {
-            var cx    = bb ? bb.originX + bb.width  / 2 : 0.5;
-            var yawFB = -(cx - 0.5) * 60;
-            return { bucket: poseBucket(yawFB, 0), yaw: Math.round(yawFB), pitch: 0, conf: conf };
-        }
-
-        var rEye = kps[0], lEye = kps[1], nose = kps[2];
-
-        var eyeMidX  = (lEye.x + rEye.x) / 2;
-        var eyeMidY  = (lEye.y + rEye.y) / 2;
-        var eyeSpanX = Math.abs(lEye.x - rEye.x);
-
-        if (eyeSpanX < 0.005)
-            return { bucket: 'center', yaw: 0, pitch: 0, conf: conf };
-
-        var yaw = -((nose.x - eyeMidX) / eyeSpanX) * 90;
-
-        var noseBelow  = nose.y - eyeMidY;
-        var absYawRad  = Math.abs(yaw) * Math.PI / 180;
-        var yawComp    = Math.max(0.3, Math.cos(absYawRad));
-        var eyeSpanRef = eyeSpanX / yawComp;
-        var pitch      = (noseBelow / eyeSpanRef - 0.10) * 100;
-
-        return {
-            bucket: poseBucket(yaw, pitch),
-            yaw:    Math.round(yaw),
-            pitch:  Math.round(pitch),
-            conf:   conf
-        };
-    }
-
-    function poseBucket(yaw, pitch) {
-        var absYaw = Math.abs(yaw), absPitch = Math.abs(pitch);
-        if (absYaw < CENTER_YAW && absPitch < CENTER_PITCH) return 'center';
-        if (absYaw >= absPitch) return yaw < 0 ? 'left' : 'right';
-        return pitch < 0 ? 'up' : 'down';
-    }
-
-    function stateColor() {
-        var enroll = window.FaceAttendEnrollment;
-        if (!enroll) return { main: '#4f9cf9', glow: 'rgba(79,156,249,0.45)' };
-
-        var done   = enroll.goodFrames ? enroll.goodFrames.length : 0;
-        var target = (enroll.config && enroll.config.minGoodFrames) || 25;
-
-        if (done >= target) return { main: '#22c55e', glow: 'rgba(34,197,94,0.55)' };
-        if (done > 0)       return { main: '#f59e0b', glow: 'rgba(245,158,11,0.50)' };
-        return { main: '#4f9cf9', glow: 'rgba(79,156,249,0.45)' };
-    }
-
-    function bracket(ax, ay, mx, my, ex, ey) {
-        ctx.beginPath();
-        ctx.moveTo(ax, ay);
-        ctx.lineTo(mx, my);
-        ctx.lineTo(ex, ey);
-        ctx.stroke();
-    }
-
-    function roundRect(c, x, y, w, h, r) {
-        c.beginPath();
-        c.moveTo(x + r, y);
-        c.lineTo(x + w - r, y);
-        c.arcTo(x + w, y,     x + w, y + r,     r);
-        c.lineTo(x + w, y + h - r);
-        c.arcTo(x + w, y + h, x + w - r, y + h, r);
-        c.lineTo(x + r, y + h);
-        c.arcTo(x,     y + h, x,      y + h - r, r);
-        c.lineTo(x,     y + r);
-        c.arcTo(x,     y,     x + r,  y,         r);
-        c.closePath();
-    }
-
-    function drawPoseBadge(bx, by, bw, bh, col) {
-        var pose = currentPose;
-        if (!pose.bucket) return;
-
-        var LABELS = { center: 'CENTER', left: 'LEFT', right: 'RIGHT', up: 'UP', down: 'DOWN' };
-        var label  = LABELS[pose.bucket];
-        if (!label) return;
-
-        var debug = 'Y:' + pose.yaw + '° P:' + pose.pitch + '°  ' + Math.round(pose.conf * 100) + '%';
-        var pad = 6, r = 4;
-
-        ctx.save();
-        ctx.textBaseline = 'middle';
-
-        ctx.font = 'bold 11px "Helvetica Neue", Arial, sans-serif';
-        var lw  = ctx.measureText(label).width;
-        var lh  = 20;
-        var lx  = bx + bw - lw - pad * 2 - 2;
-        var ly  = by + 2;
-        lx = Math.max(bx + 2, lx);
-
-        ctx.globalAlpha = 0.88;
-        ctx.fillStyle   = col.main;
-        roundRect(ctx, lx, ly, lw + pad * 2, lh, r);
-        ctx.fill();
-
-        ctx.globalAlpha = 1;
-        ctx.fillStyle   = '#ffffff';
-        ctx.fillText(label, lx + pad, ly + lh / 2);
-
-        ctx.font = '10px "Helvetica Neue", Arial, sans-serif';
-        var dw  = ctx.measureText(debug).width;
-        var dh  = 18;
-        var dx  = bx + bw - dw - pad * 2 - 2;
-        var dy  = by + bh - dh - 2;
-        dx = Math.max(bx + 2, dx);
-
-        ctx.globalAlpha = 0.82;
-        ctx.fillStyle   = 'rgba(0,0,0,0.65)';
-        roundRect(ctx, dx, dy, dw + pad * 2, dh, r);
-        ctx.fill();
-
-        ctx.globalAlpha = 1;
-        ctx.fillStyle   = '#e2e8f0';
-        ctx.fillText(debug, dx + pad, dy + dh / 2);
-
-        ctx.restore();
-    }
-
     function tick() {
         if (!active) return;
         requestAnimationFrame(tick);
@@ -269,7 +135,6 @@
                         });
 
                         detectedBox     = mapToCanvas(toVideoBox(best.boundingBox), cssW, cssH);
-                        currentPose     = estimatePose(best);
                         currentFaceArea = best.boundingBox
                             ? best.boundingBox.width * best.boundingBox.height : 0;
 
@@ -279,7 +144,6 @@
                             applyFocusPoint(ncx, ncy);
                         }
                     } else {
-                        currentPose     = { bucket: '', yaw: 0, pitch: 0, conf: 0 };
                         currentFaceArea = 0;
                     }
                 } catch (e) {}
@@ -321,6 +185,8 @@
         if (promptEl) {
             if (!smoothed || guideState === 'none') {
                 promptEl.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Position your face in the oval';
+            } else if (guideState === 'too_close') {
+                promptEl.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Too close — back up';
             } else if (guideState === 'too_far') {
                 promptEl.innerHTML = '<i class="fa-solid fa-arrow-up"></i> Move closer to the camera';
             } else if (guideState === 'off_center') {
@@ -334,72 +200,12 @@
             }
         }
 
-        if (!smoothed) { scanLinePos = 0; return; }
-
-        var bx = smoothed.x, by = smoothed.y, bw = smoothed.w, bh = smoothed.h;
-        var col    = stateColor();
-
-        if (isBusy) {
-            scanLinePos = (scanLinePos + 0.016) % 1.0;
-            var scanY = by + bh * scanLinePos;
-            var grad  = ctx.createLinearGradient(bx, scanY, bx + bw, scanY);
-            grad.addColorStop(0,    'rgba(0,0,0,0)');
-            grad.addColorStop(0.25, col.main);
-            grad.addColorStop(0.75, col.main);
-            grad.addColorStop(1,    'rgba(0,0,0,0)');
-            ctx.save();
-            ctx.globalAlpha = 0.55;
-            ctx.strokeStyle = grad;
-            ctx.lineWidth   = 1.5;
-            ctx.shadowColor = col.main;
-            ctx.shadowBlur  = 8;
-            ctx.beginPath();
-            ctx.moveTo(bx, scanY);
-            ctx.lineTo(bx + bw, scanY);
-            ctx.stroke();
-            ctx.restore();
-        } else {
-            scanLinePos = 0;
-        }
-
-        var cLen = Math.min(bw, bh) * 0.20;
-        var lw   = isBusy ? 3.5 : 2.5;
-
-        ctx.save();
-        ctx.strokeStyle = col.main;
-        ctx.lineWidth   = lw;
-        ctx.lineCap     = 'round';
-        ctx.shadowColor = col.glow;
-        ctx.shadowBlur  = 14;
-
-        bracket(bx + cLen,      by,      bx,      by,      bx,      by + cLen);
-        bracket(bx + bw - cLen, by,      bx + bw, by,      bx + bw, by + cLen);
-        bracket(bx + cLen,      by + bh, bx,      by + bh, bx,      by + bh - cLen);
-        bracket(bx + bw - cLen, by + bh, bx + bw, by + bh, bx + bw, by + bh - cLen);
-
-        ctx.restore();
-
-        ctx.save();
-        ctx.strokeStyle = col.main;
-        ctx.lineWidth   = isBusy ? 2.0 : 1.5;
-        ctx.globalAlpha = 0.75;
-        ctx.strokeRect(bx, by, bw, bh);
-        ctx.globalAlpha = 0.04;
-        ctx.fillStyle   = col.main;
-        ctx.fillRect(bx, by, bw, bh);
-        ctx.restore();
-
-        drawPoseBadge(bx, by, bw, bh, col);
+        if (!smoothed) return;
 
         if (window.FaceAttendEnrollment) {
+            var bx = smoothed.x, by = smoothed.y, bw = smoothed.w, bh = smoothed.h;
             window.FaceAttendEnrollment.liveTrackingBox = { x: bx, y: by, w: bw, h: bh };
             window.FaceAttendEnrollment.liveFaceArea     = currentFaceArea;
-            window.FaceAttendEnrollment.livePose = {
-                bucket: currentPose.bucket,
-                yaw:    currentPose.yaw,
-                pitch:  currentPose.pitch,
-                conf:   currentPose.conf
-            };
         }
     }
 
