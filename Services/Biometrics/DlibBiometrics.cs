@@ -14,48 +14,18 @@ using FaceRecognitionDotNet;
 namespace FaceAttend.Services.Biometrics
 {
     /// <summary>
-    /// Nagbibigay ng face detection at encoding gamit ang FaceRecognitionDotNet (DLib).
-    ///
-    /// PHASE 2 FIX (P-01): Instance Pool Pattern — pinalitan ang single global lock.
-    ///
-    /// PROBLEMA DATI:
-    ///   Isang static FaceRecognition instance lang ang ginagamit, na naka-lock sa
-    ///   buong tagal ng inference. Ibig sabihin, lahat ng concurrent scans ay
-    ///   nagpipila — isa-isa silang nare-serve. Sa 10 users = 12 segundo ang hihintayin
-    ///   ng huli. Sa 30 users = 36 segundo = HTTP timeout na.
-    ///
-    /// SOLUSYON NGAYON:
-    ///   Pool ng N instances ng FaceRecognition (default: 4, configurable).
-    ///   Bawat instance ay nagse-serve ng isang request sa isang pagkakataon.
-    ///   Hanggang N scans ang pwedeng mag-parallel.
-    ///   Ang SemaphoreSlim ay ginagamit para mag-gate ng access sa pool —
-    ///   kapag puno na ang pool, naghe-hold ang request (max 30 segundo)
-    ///   bago mag-timeout na may malinaw na error.
-    ///
-    /// MEMORY COST:
-    ///   Bawat FaceRecognition instance (HOG model) ≈ 30-50 MB.
-    ///   4 instances ≈ 120-200 MB dagdag na RAM — katanggap-tanggap para sa server.
-    ///
-    /// PAANO MAG-CONFIGURE:
-    ///   Web.config: Biometrics:DlibPoolSize (default 4)
-    ///               Biometrics:DlibPoolTimeoutMs (default 30000 = 30 segundo)
-    ///
-    ///   Kung may 8 CPU cores ang server: pwedeng itaas sa 6-8.
-    ///   Kung mababa ang RAM: ibaba sa 2.
-    ///
-    /// NOTA:
-    ///   Ang FaceRecognition.Create() ay HINDI thread-safe (gumagamit ng dlib C++ objects).
-    ///   Kaya bawat instance ay sa isang thread lang ginagamit sa isang pagkakataon.
-    ///   Hindi ito katulad ng OnnxLiveness kung saan ang InferenceSession ay thread-safe.
+    /// Face detection and encoding via FaceRecognitionDotNet (dlib HOG + ResNet).
+    /// Uses a pool of N FaceRecognition instances (Biometrics:DlibPoolSize, default 4)
+    /// so concurrent requests are served in parallel. Each instance is not thread-safe,
+    /// so access is gated with SemaphoreSlim. Pool is initialized once at Application_Start.
+    /// Config: Biometrics:DlibPoolSize, Biometrics:DlibPoolTimeoutMs (default 30 s).
     /// </summary>
     public class DlibBiometrics
     {
         // ─── FaceBox DTO ──────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Simpleng rectangle DTO na kumakatawan sa posisyon ng mukha sa larawan.
-        /// Ginagamit para ibalik ang face detection results nang hindi kailangang
-        /// i-expose ang FaceRecognitionDotNet.Location type sa mga caller.
+        /// Rectangle DTO wrapping face detection results without exposing FaceRecognitionDotNet.Location to callers.
         /// </summary>
         public class FaceBox
         {
@@ -83,34 +53,24 @@ namespace FaceAttend.Services.Biometrics
 
         // ─── Pool state ───────────────────────────────────────────────────────────
 
-        // Ang pool ng FaceRecognition instances.
-        // ConcurrentBag: thread-safe na "bag" ng objects — walang ordering.
         private static readonly ConcurrentBag<FaceRecognition> _pool =
             new ConcurrentBag<FaceRecognition>();
 
-        // SemaphoreSlim: nagko-control kung gaano karaming concurrent users ang
-        // maaaring kumuha ng instance mula sa pool.
-        // Ini-initialize sa Application_Start pagkatapos mabasa ang config.
+        // Initialized at Application_Start after config is read.
         private static SemaphoreSlim _semaphore;
 
-        // Lock para sa pool initialization — iniiwasan ang double-init.
         private static readonly object _initLock = new object();
         private static volatile bool   _poolReady = false;
 
-        // Dlib detector model — HOG (default, mas mabilis) o CNN (mas tumpak, mas mabagal).
+        // HOG (default, faster) or CNN (more accurate, slower).
         private static Model _model = Model.Hog;
 
-        // Absolute path ng Dlib models directory.
         private static string _absModelsDir;
 
         // ─── Pool initialization ──────────────────────────────────────────────────
 
         /// <summary>
-        /// Ini-initialize ang Dlib pool sa Application_Start.
-        /// DAPAT tawagin ito ISANG BESES lang sa Global.asax bago dumating ang requests.
-        ///
-        /// Thread-safe: gumagamit ng double-check locking para matiyak na
-        /// isang beses lang mag-initialize kahit multiple threads ang tatawag.
+        /// Initializes the pool at Application_Start. Safe to call multiple times (double-check lock).
         /// </summary>
         public static void InitializePool()
         {
@@ -122,7 +82,7 @@ namespace FaceAttend.Services.Biometrics
 
                 var poolSize   = ConfigurationService.GetInt("Biometrics:DlibPoolSize", 4);
                 if (poolSize < 1)  poolSize = 1;
-                if (poolSize > 16) poolSize = 16; // Safety cap — bawat instance ≈ 50 MB
+                if (poolSize > 16) poolSize = 16; // Safety cap — each instance ≈ 50 MB
 
                 var modelsRel  = ConfigurationService.GetString(
                     "Biometrics:DlibModelsDir",
@@ -131,42 +91,26 @@ namespace FaceAttend.Services.Biometrics
 
                 if (string.IsNullOrWhiteSpace(_absModelsDir) || !Directory.Exists(_absModelsDir))
                     throw new InvalidOperationException(
-                        "Hindi mahanap ang Dlib models directory: " + modelsRel);
+                        "Dlib models directory not found: " + modelsRel);
 
                 var detectorStr = ConfigurationService.GetString("Biometrics:DlibDetector", "hog");
                 _model = detectorStr.Equals("cnn", StringComparison.OrdinalIgnoreCase)
                     ? Model.Cnn
                     : Model.Hog;
 
-                // Gumawa ng pool instances.
-                // TALA: Ang FaceRecognition.Create() ay matagal (naglo-load ng mga model files).
-                // Kaya ginagawa ito sa Application_Start, hindi sa unang request.
                 _semaphore = new SemaphoreSlim(poolSize, poolSize);
-
                 for (int i = 0; i < poolSize; i++)
-                {
                     _pool.Add(FaceRecognition.Create(_absModelsDir));
-                }
 
                 _poolReady = true;
             }
         }
 
-        /// <summary>
-        /// Constructor — tinitiyak na initialized ang pool.
-        /// Para sa backward compatibility, ang existing na code na gumagamit ng
-        /// "new DlibBiometrics()" ay hindi na kailangang baguhin.
-        /// </summary>
         public DlibBiometrics()
         {
             EnsurePoolReady();
         }
 
-        /// <summary>
-        /// Tinitiyak na naka-initialize ang pool.
-        /// Kapag hindi pa naka-initialize (e.g. hindi natawag ang InitializePool sa startup),
-        /// ini-initialize ito inline — mas mabagal ang unang call pero hindi mag-crash.
-        /// </summary>
         private static void EnsurePoolReady()
         {
             if (!_poolReady)
@@ -175,35 +119,19 @@ namespace FaceAttend.Services.Biometrics
 
         // ─── Pool acquisition ─────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Kumukuha ng FaceRecognition instance mula sa pool.
-        /// Naghe-hold kung puno ang pool, hanggang sa DlibPoolTimeoutMs.
-        /// Nagrereturn ng null kapag nag-timeout.
-        ///
-        /// IMPORTANTENG GAMITIN KASAMA ANG try/finally para matiyak na
-        /// naibabalik ang instance sa pool:
-        ///
-        ///   var fr = RentInstance();
-        ///   if (fr == null) return null; // pool timeout
-        ///   try { /* gamitin ang fr */ }
-        ///   finally { ReturnInstance(fr); }
-        /// </summary>
+        // Returns null on pool timeout — always use in try/finally with ReturnInstance.
         private static FaceRecognition RentInstance()
         {
             EnsurePoolReady();
 
             var timeoutMs = ConfigurationService.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
 
-            // Hintayin ang available na slot sa pool.
-            // Kapag nag-timeout, ibabalik ang null.
             if (!_semaphore.Wait(timeoutMs))
-                return null; // Pool timeout — masyadong maraming concurrent scans.
+                return null;
 
-            // Kumuha ng instance mula sa bag.
             FaceRecognition instance;
             if (!_pool.TryTake(out instance))
             {
-                // Hindi dapat mangyari (may semaphore tayo), pero safety net lang.
                 _semaphore.Release();
                 return null;
             }
@@ -211,10 +139,6 @@ namespace FaceAttend.Services.Biometrics
             return instance;
         }
 
-        /// <summary>
-        /// Ibinabalik ang isang instance sa pool pagkatapos gamitin.
-        /// LAGING tawagin ito sa finally block para hindi maubusan ang pool.
-        /// </summary>
         private static void ReturnInstance(FaceRecognition instance)
         {
             if (instance == null) return;
@@ -224,21 +148,12 @@ namespace FaceAttend.Services.Biometrics
 
         // ─── Public inference methods ─────────────────────────────────────────────
 
-        /// <summary>
-        /// Nagde-detect ng mga mukha mula sa isang image file.
-        /// Ginagamit sa admin enrollment preview at ScanFramePipeline.
-        /// </summary>
         public FaceBox[] DetectFacesFromFile(string imagePath)
         {
             if (string.IsNullOrWhiteSpace(imagePath)) return Array.Empty<FaceBox>();
 
             var fr = RentInstance();
-            if (fr == null)
-            {
-                // Nag-timeout ang pool — masyadong maraming concurrent scans.
-                // Ibalik ang empty array para ang caller ay mag-handle ng NO_FACE error.
-                return Array.Empty<FaceBox>();
-            }
+            if (fr == null) return Array.Empty<FaceBox>();
 
             try
             {
@@ -260,20 +175,11 @@ namespace FaceAttend.Services.Biometrics
             }
             finally
             {
-                // LAGING ibalik ang instance — kahit nag-throw ng exception.
                 ReturnInstance(fr);
             }
         }
 
-        /// <summary>
-        /// Nagde-detect ng isang mukha at nagbibigay ng Location object
-        /// para gamitin sa encoding (para hindi na kailangang mag-detect ulit).
-        ///
-        /// Returns false kapag:
-        ///   - Walang nakitang mukha (error = "NO_FACE")
-        ///   - Maraming mukha (error = "MULTI_FACE")
-        ///   - Nag-timeout ang pool (error = "POOL_TIMEOUT")
-        /// </summary>
+        // Detects exactly one face. Returns false with error = NO_FACE / MULTI_FACE / POOL_TIMEOUT.
         public bool TryDetectSingleFaceFromFile(
             string       imagePath,
             out FaceBox  faceBox,
@@ -406,12 +312,6 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        /// <summary>
-        /// Nag-e-encode ng mukha gamit ang kilalang Location (hindi na kailangang
-        /// mag-detect ulit — mas mabilis ito).
-        ///
-        /// Ginagamit pagkatapos ng liveness check para maiwasan ang double detection.
-        /// </summary>
         public bool TryEncodeFromFileWithLocation(
             string       imagePath,
             Location     faceLocation,
@@ -931,28 +831,16 @@ namespace FaceAttend.Services.Biometrics
         // ─── Disposal ─────────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Nililinis ang lahat ng FaceRecognition instances sa pool.
-        /// Tawagin ito sa Global.asax Application_End para ma-release ang
-        /// unmanaged dlib resources bago mag-shutdown ang IIS app pool.
-        ///
-        /// Thread-safe: ligtas na tawagin kahit may ongoing requests,
-        /// kahit na magreresulta ito sa POOL_TIMEOUT errors para sa mga
-        /// requests na dumating habang nag-shutdown.
+        /// Disposes all pool instances. Call from Application_End to release unmanaged dlib resources.
         /// </summary>
         public static void DisposePool()
         {
             lock (_initLock)
             {
                 _poolReady = false;
-
-                // Alisin at i-dispose ang lahat ng instances.
                 while (_pool.TryTake(out var fr))
-                {
-                    try { fr.Dispose(); } catch { /* best effort */ }
-                }
-
-                // I-dispose ang semaphore.
-                try { _semaphore?.Dispose(); } catch { /* best effort */ }
+                    try { fr.Dispose(); } catch { }
+                try { _semaphore?.Dispose(); } catch { }
                 _semaphore = null;
             }
         }
@@ -973,11 +861,7 @@ namespace FaceAttend.Services.Biometrics
 
         // ─── Static helpers ───────────────────────────────────────────────────────
 
-        /// <summary>
-        /// Kinakalkula ang Euclidean distance sa pagitan ng dalawang 128-dim vectors.
-        /// Mas mababa ang distance = mas magkahawig ang mga mukha.
-        /// Typical threshold: 0.60 (configurable sa Biometrics:DlibTolerance).
-        /// </summary>
+        /// <summary>Euclidean distance between two 128-d face vectors. Lower = more similar.</summary>
         public static double Distance(double[] a, double[] b)
         {
             if (a == null || b == null || a.Length != b.Length)
@@ -992,10 +876,7 @@ namespace FaceAttend.Services.Biometrics
             return Math.Sqrt(sum);
         }
 
-        /// <summary>
-        /// Kino-convert ang 128-dim double vector papunta sa byte array
-        /// para ma-store sa database (8 bytes per double = 1024 bytes total).
-        /// </summary>
+        /// <summary>Serializes a 128-d vector to a 1024-byte array for DB storage.</summary>
         public static byte[] EncodeToBytes(double[] v)
         {
             if (v == null || v.Length != 128) return null;
@@ -1008,9 +889,7 @@ namespace FaceAttend.Services.Biometrics
             return bytes;
         }
 
-        /// <summary>
-        /// Kino-convert ang byte array mula sa database papunta sa 128-dim double vector.
-        /// </summary>
+        /// <summary>Deserializes a 1024-byte DB blob back to a 128-d vector.</summary>
         public static double[] DecodeFromBytes(byte[] bytes)
         {
             if (bytes == null || bytes.Length != 128 * 8) return null;

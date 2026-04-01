@@ -99,7 +99,7 @@
                         <div class="col-lg-8">
                             <div class="enroll-camera-wrap">
                                 <video id="enrollVideo" class="enroll-video" autoplay playsinline muted></video>
-                                
+
                                 @* Dynamic face bounding box — drawn by rAF loop below *@
                                 <canvas id="enrollFaceCanvas" class="enroll-face-canvas"></canvas>
 
@@ -108,7 +108,14 @@
                                     <span class="enroll-camera-status__dot"></span>
                                     <span id="cameraStatusText">Camera Active</span>
                                 </div>
+                                <div id="landscapeWarning" style="display:none;position:absolute;inset:0;z-index:10;background:rgba(0,0,0,0.92);align-items:center;justify-content:center;flex-direction:column;color:#fff;text-align:center;padding:2rem;">
+                                    <i class="fa-solid fa-rotate fa-2x" style="margin-bottom:1rem;"></i>
+                                    <p style="font-weight:600;font-size:1.125rem;margin:0;">Please hold your device upright</p>
+                                </div>
                             </div>
+                            <p class="enroll-guide-prompt" id="enrollGuidePrompt">
+                                <i class="fa-solid fa-circle-dot"></i> Position your face in the oval
+                            </p>
                         </div>
 
                         @* Stats Column *@
@@ -124,29 +131,6 @@
                                     <div class="progress-bar" id="captureProgress" style="width: 0%"></div>
                                 </div>
 
-                                @* Angles Grid *@
-                                <div class="enroll-angles-grid">
-                                    <div class="enroll-angle-item" data-angle="center">
-                                        <i class="fa-solid fa-circle-dot"></i>
-                                        <span>Center</span>
-                                    </div>
-                                    <div class="enroll-angle-item" data-angle="left">
-                                        <i class="fa-solid fa-arrow-left"></i>
-                                        <span>Left</span>
-                                    </div>
-                                    <div class="enroll-angle-item" data-angle="right">
-                                        <i class="fa-solid fa-arrow-right"></i>
-                                        <span>Right</span>
-                                    </div>
-                                    <div class="enroll-angle-item" data-angle="up">
-                                        <i class="fa-solid fa-arrow-up"></i>
-                                        <span>Up</span>
-                                    </div>
-                                    <div class="enroll-angle-item" data-angle="down">
-                                        <i class="fa-solid fa-arrow-down"></i>
-                                        <span>Down</span>
-                                    </div>
-                                </div>
 
                                 @* Liveness *@
                                 <div class="enroll-liveness-mini">
@@ -226,8 +210,24 @@
 </div>
 
 @section scripts{
-    @Scripts.Render("~/bundles/facescan-core")
+    @Scripts.Render("~/bundles/fa-core")
     @Scripts.Render("~/bundles/enrollment")
+
+    <script>
+    // Portrait orientation lock
+    (function () {
+        if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock('portrait-primary').catch(function () {});
+        }
+        var mq = window.matchMedia('(orientation: landscape)');
+        function onOrientationChange(e) {
+            var warn = document.getElementById('landscapeWarning');
+            if (warn) warn.style.display = e.matches ? 'flex' : 'none';
+        }
+        onOrientationChange(mq);
+        mq.addEventListener('change', onOrientationChange);
+    })();
+    </script>
 
     <script>
     (function() {
@@ -338,21 +338,7 @@
             // faceGuide removed — dynamic canvas overlay handles feedback via color change
         }
 
-        function updateLiveAngleDots(goodFrames) {
-            var captured = {};
-            if (goodFrames) {
-                for (var i = 0; i < goodFrames.length; i++) {
-                    var b = goodFrames[i].poseBucket;
-                    if (b && b !== 'other') captured[b] = true;
-                }
-            }
-            ['center', 'left', 'right', 'up', 'down'].forEach(function(angle) {
-                var item = document.querySelector('[data-angle="' + angle + '"]');
-                if (item) item.classList.toggle('is-captured', !!captured[angle]);
-            });
-        }
-
-        //  Wire enrollment callbacks to DOM 
+        //  Wire enrollment callbacks to DOM
 
         if (liveEnrollment) {
 
@@ -371,19 +357,10 @@
             liveEnrollment.callbacks.onCaptureProgress = function(current, target) {
                 capturedFrames = liveEnrollment.goodFrames.slice();
                 updateLiveCaptureUI(current, target);
-                updateLiveAngleDots(liveEnrollment.goodFrames);
             };
 
-            liveEnrollment.callbacks.onAngleUpdate = function(next) {
-                if (!next || next.bucket === 'other') return;
-                var el = document.getElementById('cameraStatusText');
-                if (el && next.prompt) el.textContent = next.prompt;
-            };
-
-            // FIX-002 integration: onReadyToConfirm shows Swal confirmation.
             liveEnrollment.callbacks.onReadyToConfirm = function(data) {
-                var topFrames = data.frames.slice(0, 3);
-                var thumbPromises = topFrames.map(function(frame) {
+                var thumbPromises = (data.frames || []).slice(0, 3).map(function(frame) {
                     return new Promise(function(resolve) {
                         if (!frame || !frame.blob) { resolve(null); return; }
                         var reader = new FileReader();
@@ -405,12 +382,6 @@
                         }
                     });
 
-                    var angleStatusHtml = data.allAngles
-                        ? '<span style="color:#22c55e;"><i class="fa-solid fa-circle-check" ' +
-                          'style="margin-right:6px;"></i>All 5 angles captured</span>'
-                        : '<span style="color:#f59e0b;"><i class="fa-solid fa-triangle-exclamation" ' +
-                          'style="margin-right:6px;"></i>' + data.angleCount + ' / 5 angles captured</span>';
-
                     var summaryHtml =
                         '<div style="display:flex;justify-content:center;gap:8px;' +
                         'margin-bottom:14px;flex-wrap:wrap;">' + thumbHtml + '</div>' +
@@ -419,7 +390,6 @@
                             '<div><i class="fa-solid fa-layer-group" ' +
                             'style="margin-right:8px;color:#3b82f6;"></i>' +
                             '<strong>' + data.frameCount + '</strong> frames captured</div>' +
-                            '<div>' + angleStatusHtml + '</div>' +
                             '<div><i class="fa-solid fa-shield-heart" ' +
                             'style="margin-right:8px;color:#22c55e;"></i>' +
                             'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
@@ -453,22 +423,20 @@
                             } else {
                                 liveEnrollment.startAutoEnrollment();
                                 updateLiveCaptureUI(0, minFrames);
-                                updateLiveAngleDots([]);
                                 var saveBtn = document.getElementById('saveBtn');
                                 if (saveBtn) {
                                     saveBtn.disabled = true;
                                     saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>' +
                                         'Save Enrollment';
                                 }
-                                _smoothedBox = null; // reset EMA so box doesn't ghost to old position
+                                _smoothedBox = null;
                                 var cameraStatus = document.getElementById('cameraStatusText');
-                                if (cameraStatus) cameraStatus.textContent = 'Retaking  look straight ahead';
+                                if (cameraStatus) cameraStatus.textContent = 'Retaking — look straight ahead';
                             }
                         });
                     } else {
                         if (window.confirm('Ready to enroll! ' + data.frameCount +
-                            ' frames, ' + data.angleCount + '/5 angles, ' +
-                            data.bestLiveness + '% liveness.\n\nConfirm?')) {
+                            ' frames captured, ' + data.bestLiveness + '% liveness.\n\nConfirm?')) {
                             liveEnrollment.performEnrollment();
                         } else {
                             liveEnrollment.startAutoEnrollment();
@@ -516,13 +484,16 @@
         var _overlayCanvas = document.getElementById('enrollFaceCanvas');
         var _overlayCtx    = _overlayCanvas ? _overlayCanvas.getContext('2d') : null;
         var _smoothedBox   = null;
-        var _overlayRunning = false;
+        var _overlayToken  = null;
 
         function startFaceOverlay(videoEl, enrollInst) {
-            if (_overlayRunning || !_overlayCanvas || !_overlayCtx) return;
-            _overlayRunning = true;
+            if (!_overlayCanvas || !_overlayCtx) return;
+            if (_overlayToken) _overlayToken.canceled = true;
+            var token = { canceled: false };
+            _overlayToken = token;
 
             function loop() {
+                if (token.canceled) return;
                 requestAnimationFrame(loop);
                 if (!_overlayCanvas || !_overlayCtx) return;
 
@@ -606,7 +577,6 @@
             }
 
             updateLiveCaptureUI(0, minFrames);
-            updateLiveAngleDots([]);
             capturedFrames = [];
 
             var cameraStatus = document.getElementById('cameraStatusText');
@@ -635,32 +605,31 @@
         }
 
         function stopCamera() {
+            if (_overlayToken) { _overlayToken.canceled = true; _overlayToken = null; }
             if (liveEnrollment) {
                 liveEnrollment.stopCamera();
             }
             capturedFrames = [];
         }
 
-        //  Retake and Save handlers 
+        //  Retake and Save handlers
 
         window.retake = function() {
             if (!liveEnrollment) return;
             liveEnrollment.startAutoEnrollment();
             updateLiveCaptureUI(0, minFrames);
-            updateLiveAngleDots([]);
             capturedFrames = [];
-            _smoothedBox = null; // reset EMA so box doesn't ghost to old position
+            _smoothedBox = null;
             var saveBtn = document.getElementById('saveBtn');
             if (saveBtn) {
                 saveBtn.disabled = true;
                 saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
             }
             var cameraStatus = document.getElementById('cameraStatusText');
-            if (cameraStatus) cameraStatus.textContent = 'Retaking  follow the angle prompts';
+            if (cameraStatus) cameraStatus.textContent = 'Retaking — look straight ahead';
         };
 
         window.saveEnrollment = function() {
-            // Manual override for edge cases: user clicks Save before all angles captured.
             if (!liveEnrollment) return;
             if (!liveEnrollment.goodFrames || liveEnrollment.goodFrames.length < minFrames) {
                 if (typeof Swal !== 'undefined') {
@@ -675,7 +644,7 @@
                 return;
             }
             liveEnrollment.stopAutoEnrollment();
-            liveEnrollment._fireReadyToConfirm();
+            liveEnrollment.performEnrollment();
         };
 
         // Clean up on page unload

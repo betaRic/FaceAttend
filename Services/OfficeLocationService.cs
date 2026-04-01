@@ -108,9 +108,6 @@ namespace FaceAttend.Services
         /// Calculates the distance between two GPS coordinates using the Haversine formula.
         /// Result is in meters.
         /// 
-        /// TAGALOG: Kinukuha ang layo sa pagitan ng dalawang punto sa globo.
-        ///         Ginagamit para malaman kung malapit ba ang empleyado sa office.
-        /// 
         /// FORMULA: Haversine formula - most accurate for short distances (&lt; 1km)
         /// Earth radius: 6,371 km (average)
         /// </summary>

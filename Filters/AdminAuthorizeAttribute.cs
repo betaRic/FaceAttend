@@ -15,32 +15,10 @@ namespace FaceAttend.Filters
 {
     /// <summary>
     /// Session-based admin authorization.
-    ///
-    /// Mga fix na inilapat:
-    ///   1. PIN brute-force lockout per client IP.
-    ///   2. Return-URL validation — pinipigilan ang open-redirect attacks.
-    ///   3. Session abandonment sa clear — nililinis ang buong session sa Lock().
-    ///   4. IP allowlist — AdminAccessControl.IsAllowed() tinatawag bago pa man
-    ///      maabot ng request ang PIN layer.
-    ///
-    /// PHASE 1 FIX (S-03):
-    ///   Ang Admin:PinHash ay HINDI na binabasa mula sa Web.config.
-    ///   Binabasa na ito mula sa IIS Environment Variable na "FACEATTEND_ADMIN_PIN_HASH"
-    ///   para hindi makita sa source control.
-    ///
-    ///   Paano mag-set ng environment variable:
-    ///     PowerShell (as Admin):
-    ///       [System.Environment]::SetEnvironmentVariable(
-    ///         "FACEATTEND_ADMIN_PIN_HASH",
-    ///         "PBKDF2$120000$...",   ← ang hash ng iyong PIN
-    ///         "Machine")
-    ///
-    ///   Para makuha ang hash ng bagong PIN, gamitin ang:
-    ///     AdminAuthorizeAttribute.HashPin("iyong-pin-dito")
-    ///
-    ///   Kung talagang hindi maiwasang nasa Web.config, gamitin ang IIS Manager:
-    ///     Sites > [site] > Configuration Editor > appSettings
-    ///     (hindi kasama ito sa .csproj at source control kapag ginawa sa IIS)
+    /// Features: PIN brute-force lockout per IP, open-redirect prevention on return URLs,
+    /// full session abandonment on lock, IP allowlist checked before the PIN layer.
+    /// PIN hash is read from IIS env var FACEATTEND_ADMIN_PIN_HASH (not Web.config).
+    /// Generate a hash with: AdminAuthorizeAttribute.HashPin("your-pin")
     /// </summary>
     public class AdminAuthorizeAttribute : AuthorizeAttribute
     {
@@ -49,8 +27,6 @@ namespace FaceAttend.Filters
         private const string UnlockCookieName     = "fa_admin_unlock";
         private static readonly string[] UnlockCookiePurpose = { "FaceAttend.AdminUnlock.v1" };
 
-        // Pangalan ng environment variable na naglalaman ng PIN hash.
-        // Itago ang actual na hash sa labas ng source control.
         private const string PinHashEnvVar = "FACEATTEND_ADMIN_PIN_HASH";
 
         // ─────────────────────────────────────────────────────────────────────
@@ -66,8 +42,7 @@ namespace FaceAttend.Filters
                 var requestUrl = httpContext.Request?.RawUrl ?? "unknown";
                 System.Diagnostics.Trace.TraceInformation("[AdminAuth] AuthorizeCore called for: " + requestUrl);
 
-                // Hakbang 1: IP allowlist check — blocked agad kung hindi naka-list ang IP.
-                // Kapag walang nilista sa Admin:AllowedIpRanges, lahat ng IP ay pinapayagan.
+                // Step 1: IP allowlist check — deny immediately if not in list.
                 var clientIp = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
                 if (!AdminAccessControl.IsAllowed(clientIp))
                 {
@@ -76,12 +51,11 @@ namespace FaceAttend.Filters
                     return false;
                 }
 
-                // Hakbang 2: Tingnan kung may valid na session na.
+                // Step 2: Check for valid session.
                 var authedUtcObj = httpContext.Session?[SessionKeyAuthedUtc];
                 if (!(authedUtcObj is DateTime authedUtc))
                 {
-                    // Walang session — subukang gamitin ang one-time unlock cookie
-                    // na ini-issue pagkatapos ng matagumpay na PIN verification.
+                    // No session — try the one-time unlock cookie issued after successful PIN verification.
                     System.Diagnostics.Trace.TraceInformation("[AdminAuth] No active session, trying unlock cookie");
                     var ip = StringHelper.NormalizeIp(httpContext.Request?.UserHostAddress);
                     var result = TryConsumeUnlockCookie(httpContext, ip);
@@ -89,7 +63,7 @@ namespace FaceAttend.Filters
                     return result;
                 }
 
-                // Hakbang 3: Tingnan kung expired na ang session.
+                // Step 3: Check session age.
                 var minutes = ConfigurationService.GetInt("Admin:SessionMinutes", 30);
                 var elapsed = DateTime.UtcNow - authedUtc;
                 var isValid = elapsed <= TimeSpan.FromMinutes(minutes);
@@ -108,8 +82,6 @@ namespace FaceAttend.Filters
 
         protected override void HandleUnauthorizedRequest(AuthorizationContext filterContext)
         {
-            // FIX: validate at sanitize ang returnUrl bago i-embed sa redirect
-            // para hindi magamit ng attacker para ma-redirect ang user sa external site.
             var rawUrl  = filterContext.HttpContext.Request.RawUrl ?? "/Admin";
             var safeUrl = SanitizeReturnUrl(rawUrl);
 
@@ -182,9 +154,8 @@ namespace FaceAttend.Filters
 
 
         /// <summary>
-        /// Nagro-rotate ng ASP.NET Session ID cookie para mabawasan ang session fixation risk.
-        /// IMPORTANTENG TALA: Huwag isulat ang sensitive auth data sa lumang session
-        /// pagkatapos tawagin ito. Gumamit ng short-lived unlock cookie para sa next request.
+        /// Rotates the ASP.NET session ID cookie to reduce session fixation risk.
+        /// Do not write auth data to the old session after this call — use the short-lived unlock cookie for the next request.
         /// </summary>
         public static void RotateSessionId(HttpContextBase httpContext)
         {
@@ -200,13 +171,12 @@ namespace FaceAttend.Filters
             }
             catch
             {
-                // Best effort — hindi dapat mag-crash ang app kapag nag-fail ang rotation.
+                // Best effort.
             }
         }
 
         /// <summary>
-        /// Nag-iisyu ng short-lived, protected unlock cookie na gagamitin sa susunod na request
-        /// para ma-mark ang BAGONG session bilang authenticated.
+        /// Issues a short-lived MachineKey-protected cookie. The next request consumes it to mark the new session as authenticated.
         /// </summary>
         public static void IssueUnlockCookie(HttpContextBase httpContext, string clientIp)
         {
@@ -244,8 +214,7 @@ namespace FaceAttend.Filters
         }
 
         /// <summary>
-        /// Kinokonsyumo ang unlock cookie (kung present at valid) at minumarka
-        /// ang kasalukuyang session bilang authenticated.
+        /// Consumes the unlock cookie (if present and valid) and marks the current session as authenticated.
         /// </summary>
         public static bool TryConsumeUnlockCookie(HttpContextBase httpContext, string clientIp)
         {
@@ -320,7 +289,7 @@ namespace FaceAttend.Filters
                 return false; 
             }
 
-            // Valid ang cookie — i-consume (i-expire agad) at i-mark ang session.
+            // Valid — consume (expire immediately) and mark session authenticated.
             System.Diagnostics.Trace.TraceInformation("[AdminAuth] Unlock cookie valid, marking session authenticated");
             ExpireUnlockCookie(httpContext);
             MarkAuthed(httpContext.Session);
@@ -357,17 +326,15 @@ namespace FaceAttend.Filters
             var maxAttempts    = ConfigurationService.GetInt("Admin:PinMaxAttempts",    5);
             var lockoutSeconds = ConfigurationService.GetInt("Admin:PinLockoutSeconds", 300);
 
-            // Hakbang 1: Tingnan kung naka-lockout ang IP.
+            // Step 1: Check lockout.
             if (!string.IsNullOrEmpty(ip) && _lockouts.TryGetValue(ip, out var lockout))
             {
                 if (lockout.LockedUntil > DateTime.UtcNow)
-                    return false; // Nasa lockout period pa — tanggihan agad.
+                    return false;
             }
 
-            // Hakbang 2: Basahin ang stored hash.
-            // PHASE 1 FIX (S-03): Binabasa muna sa environment variable,
-            // pagkatapos sa Web.config (backwards compat para sa dev environments).
-                        var stored = (
+            // Step 2: Read stored hash (env var preferred over Web.config).
+            var stored = (
                 Environment.GetEnvironmentVariable(PinHashEnvVar)
                 ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Process)
                 ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.User)
@@ -376,28 +343,22 @@ namespace FaceAttend.Filters
             ).Trim();
 
             if (stored.Length == 0)
-            {
-                // Walang PIN hash na naka-configure — tanggihan ang lahat ng attempts.
-                // Huwag i-log ang PIN attempt details para sa security.
-                return false;
-            }
+                return false; // No PIN hash configured — deny all.
 
-            // Hakbang 3: I-verify ang PIN gamit ang PBKDF2 (pangunahin) o SHA256 (fallback).
+            // Step 3: Verify PIN (PBKDF2 primary, SHA256 fallback).
             bool verified = TryVerifyPbkdf2(stored, pin)
                          || ConstantTimeEquals(stored, Sha256Base64(pin))
                          || ConstantTimeEquals(stored, Sha256Hex(pin));
 
-            // Hakbang 4: I-update ang lockout state.
+            // Step 4: Update lockout state.
             if (!string.IsNullOrEmpty(ip))
             {
                 if (verified)
                 {
-                    // Matagumpay — i-clear ang anumang lockout entry para sa IP na ito.
                     _lockouts.TryRemove(ip, out _);
                 }
                 else
                 {
-                    // Nabigo — dagdagan ang counter; i-lock kung na-reach na ang threshold.
                     _lockouts.AddOrUpdate(
                         ip,
                         _ => new LockoutEntry(1, maxAttempts, lockoutSeconds),
@@ -409,15 +370,13 @@ namespace FaceAttend.Filters
         }
 
         /// <summary>
-        /// Gumagawa ng PBKDF2 hash string na pwedeng i-set sa environment variable.
-        /// I-call ito sa development para makuha ang hash ng bagong PIN:
-        ///   var hash = AdminAuthorizeAttribute.HashPin("iyong-pin");
-        ///   // Pagkatapos: set FACEATTEND_ADMIN_PIN_HASH=hash sa IIS
+        /// Returns a PBKDF2 hash string suitable for the FACEATTEND_ADMIN_PIN_HASH env var.
+        /// Example: var hash = AdminAuthorizeAttribute.HashPin("your-pin");
         /// </summary>
         public static string HashPin(string pin)
         {
             if (string.IsNullOrWhiteSpace(pin))
-                throw new ArgumentException("Kailangan ng PIN.", nameof(pin));
+                throw new ArgumentException("PIN is required.", nameof(pin));
 
             const int iterations = 120_000;
             var salt = new byte[16];
@@ -439,7 +398,6 @@ namespace FaceAttend.Filters
         {
             if (string.IsNullOrWhiteSpace(url)) return "/Admin";
             url = url.Trim();
-            // Tanggapin lang ang relative URLs para maiwasan ang open-redirect.
             if (!url.StartsWith("/") || url.StartsWith("//"))
                 return "/Admin";
             return url;

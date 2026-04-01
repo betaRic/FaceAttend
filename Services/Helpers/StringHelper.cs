@@ -100,5 +100,37 @@ namespace FaceAttend.Services.Helpers
         {
             return value?.ToString() ?? "";
         }
+
+        /// <summary>
+        /// Sanitizes a display string for rendering in views.
+        /// Decodes HTML entities, normalises Unicode punctuation, removes control characters,
+        /// and replaces any remaining non-printable characters with a hyphen.
+        /// </summary>
+        public static string SanitizeDisplayText(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return input;
+
+            var decoded = System.Net.WebUtility.HtmlDecode(input);
+
+            var result = decoded
+                .Replace("\u2013", "-")   // En dash
+                .Replace("\u2014", "-")   // Em dash
+                .Replace("\u2212", "-")   // Minus sign
+                .Replace("\u2018", "'")   // Left single quote
+                .Replace("\u2019", "'")   // Right single quote
+                .Replace("\u201C", "\"")  // Left double quote
+                .Replace("\u201D", "\"")  // Right double quote
+                .Replace("\u2026", "...") // Ellipsis
+                .Replace("\u00A0", " ")   // Non-breaking space
+                .Replace("\u0000", "")    // Null character
+                .Replace("\uFFFD", "");   // Replacement character
+
+            result = System.Text.RegularExpressions.Regex.Replace(
+                result, @"[^\p{L}\p{N}\s\-\.\/\\\(\)\,\&\#\@\']", "-");
+            result = System.Text.RegularExpressions.Regex.Replace(result, @"-+", "-");
+
+            return result.Trim('-', ' ');
+        }
     }
 }

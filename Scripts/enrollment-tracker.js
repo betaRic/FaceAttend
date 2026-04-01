@@ -303,11 +303,41 @@
             }
         }
 
+        // ── Oval guide (always drawn, even without a face) ────────────────────
+        var enroll     = window.FaceAttendEnrollment;
+        var isBusy     = !!(enroll && enroll.busy);
+        var done       = enroll && enroll.goodFrames ? enroll.goodFrames.length : 0;
+        var target     = (enroll && enroll.config && enroll.config.minGoodFrames) || 25;
+        var guideState = (FaceAttend.FaceGuide && smoothed)
+            ? FaceAttend.FaceGuide.getState(currentFaceArea, smoothed, cssW, cssH)
+            : 'none';
+
+        if (FaceAttend.FaceGuide) {
+            FaceAttend.FaceGuide.draw(ctx, cssW, cssH, guideState, done / target, isBusy);
+        }
+
+        // ── Guide text prompt ─────────────────────────────────────────────────
+        var promptEl = document.getElementById('enrollGuidePrompt');
+        if (promptEl) {
+            if (!smoothed || guideState === 'none') {
+                promptEl.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Position your face in the oval';
+            } else if (guideState === 'too_far') {
+                promptEl.innerHTML = '<i class="fa-solid fa-arrow-up"></i> Move closer to the camera';
+            } else if (guideState === 'off_center') {
+                promptEl.innerHTML = '<i class="fa-solid fa-arrows-up-down-left-right"></i> Center your face in the oval';
+            } else if (done >= target) {
+                promptEl.innerHTML = '<i class="fa-solid fa-check"></i> Face captured';
+            } else if (isBusy) {
+                promptEl.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Hold still...';
+            } else {
+                promptEl.innerHTML = '<i class="fa-solid fa-circle-check"></i> Good position — hold still';
+            }
+        }
+
         if (!smoothed) { scanLinePos = 0; return; }
 
         var bx = smoothed.x, by = smoothed.y, bw = smoothed.w, bh = smoothed.h;
         var col    = stateColor();
-        var isBusy = !!(window.FaceAttendEnrollment && window.FaceAttendEnrollment.busy);
 
         if (isBusy) {
             scanLinePos = (scanLinePos + 0.016) % 1.0;
@@ -363,6 +393,7 @@
 
         if (window.FaceAttendEnrollment) {
             window.FaceAttendEnrollment.liveTrackingBox = { x: bx, y: by, w: bw, h: bh };
+            window.FaceAttendEnrollment.liveFaceArea     = currentFaceArea;
             window.FaceAttendEnrollment.livePose = {
                 bucket: currentPose.bucket,
                 yaw:    currentPose.yaw,

@@ -83,8 +83,8 @@
             detectMinConf:     0.30,
             acceptMinScore:    0.60,
             stableFramesMin:   2,
-            // FIX-02: 20ms stable hold (was 50) -- walk-by mode, just 20ms of relative stability
-            stableNeededMs:    20,
+            // Raised from 20ms: requires person to genuinely hold still, prevents walk-by captures
+            stableNeededMs:    600,
             multiMinAreaRatio: 0.015,
         },
 
@@ -112,8 +112,8 @@
         gating: {
             // OPT-08: 3 stable frames required (was 4)
             stableFramesRequired: 3,
-            stableMaxMovePx:      120,  // FIX-02: Increased from 60 - allows walking movement, burst handles accuracy
-            minFaceAreaRatio:     0.03,
+            stableMaxMovePx:      35,   // Lowered from 120: only genuinely still faces trigger scan
+            minFaceAreaRatio:     0.10, // Raised from 0.03: ensures ~64x48px face at 640x480 for reliable Dlib encoding
             safeEdgeMarginRatio:  0.02,
             centerMin:            0.12,
             centerMax:            0.88,
@@ -1450,6 +1450,22 @@
         resizeCanvas();
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+        // ── Oval guide overlay ─────────────────────────────────────────────────
+        if (FaceAttend.FaceGuide) {
+            var kioskGuideState;
+            if (!state.mpBoxCanvas || state.faceStatus === 'none') {
+                kioskGuideState = 'none';
+            } else if (state.faceStatus === 'low') {
+                kioskGuideState = 'too_far';
+            } else {
+                kioskGuideState = 'good';
+            }
+            FaceAttend.FaceGuide.draw(
+                ctx, canvas.width, canvas.height,
+                kioskGuideState, 0, state.liveInFlight
+            );
+        }
+
         if (state.mpBoxCanvas) {
             var scanning = state.liveInFlight;
             var good     = state.faceStatus === 'good';
@@ -1727,7 +1743,7 @@
                     videoHeight: video.videoHeight
                 };
                 // bbox debug log disabled
-state.faceStatus   = (box && box.w > 20 && box.h > 20) ? 'good' : 'low'; // RELAXED: just check minimum dimensions
+                state.faceStatus = (box && box.w > 20 && box.h > 20 && !isTooSmallFaceNorm(bb)) ? 'good' : 'low';
                 
                 // FIX-01: EMA smoothing for bounding box (glides instead of jumps)
                 if (!state.smoothedBox) {

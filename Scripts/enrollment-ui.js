@@ -209,15 +209,9 @@
 
     function updateDots() {
         if (!ui.diversityDots || !ui.diversityDots.length) return;
-        var captured = {};
-        for (var i = 0; i < enrollment.goodFrames.length; i++) {
-            var b = enrollment.goodFrames[i].poseBucket;
-            if (b) captured[b] = true;
-        }
-        ui.diversityDots.forEach(function (dot) {
-            dot.classList.toggle(
-                'enroll-diversity-dot--captured',
-                !!captured[dot.getAttribute('data-bucket')]);
+        var done = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
+        ui.diversityDots.forEach(function (dot, i) {
+            dot.classList.toggle('enroll-diversity-dot--captured', i < done);
         });
     }
 
@@ -370,22 +364,14 @@
 
         // ── 3. State-based color (TRACK-03) ───────────────────────────────────
         //
-        //   green  — all 4 angles captured (ready to confirm)
+        //   green  — min frames reached (ready to confirm)
         //   amber  — frames accumulating
         //   blue   — idle / scanning
-        var done      = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
-        var isBusy    = !!enrollment.busy;
-        var ANGLES    = ['center', 'left', 'right', 'down', 'up'];
-        var captured  = {};
-        if (enrollment.goodFrames) {
-            enrollment.goodFrames.forEach(function (f) {
-                if (f.poseBucket && f.poseBucket !== 'other') captured[f.poseBucket] = true;
-            });
-        }
-        var allAngles = ANGLES.every(function (a) { return !!captured[a]; });
+        var done   = enrollment.goodFrames ? enrollment.goodFrames.length : 0;
+        var isBusy = !!enrollment.busy;
 
         var mainColor, glowColor;
-        if (allAngles && done >= (cfg.minFrames || 6)) {
+        if (done >= (cfg.minFrames || 5)) {
             mainColor = '#22c55e'; glowColor = 'rgba(34,197,94,0.55)';
         } else if (done > 0) {
             mainColor = '#f59e0b'; glowColor = 'rgba(245,158,11,0.50)';

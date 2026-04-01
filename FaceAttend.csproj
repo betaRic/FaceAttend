@@ -460,8 +460,12 @@
     <Compile Include="Services\Interfaces\IAttendanceService.cs" />
     <Compile Include="Services\Interfaces\IConfigurationService.cs" />
     <Compile Include="Services\JsonResponseBuilder.cs" />
+    <Compile Include="Services\Mobile\EmployeePortalService.cs" />
     <Compile Include="Services\OfficeLocationService.cs" />
     <Compile Include="Services\OperationResult.cs" />
+    <Compile Include="Services\Recognition\AttendanceScanService.cs" />
+    <Compile Include="Services\Recognition\PendingScanService.cs" />
+    <Compile Include="Services\Recognition\VisitorScanService.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
     <Compile Include="Services\Security\FileSecurityService.cs" />
     <Compile Include="Services\Security\LocationAntiSpoof.cs" />
@@ -650,6 +654,7 @@
     <Content Include="Scripts\kiosk.js" />
     <Content Include="Scripts\modernizr-2.8.3.js" />
     <Content Include="Scripts\modules\enrollment-core.js" />
+    <Content Include="Scripts\modules\face-guide.js" />
     <Content Include="Scripts\toastr.js" />
     <Content Include="Scripts\toastr.min.js" />
     <Content Include="Scripts\vendor\datatables\buttons.bootstrap5.min.css" />

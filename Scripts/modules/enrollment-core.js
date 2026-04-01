@@ -13,13 +13,13 @@ FaceAttend.Enrollment = (function () {
         MAX_IMAGES:        30,
         CAPTURE_WIDTH:     640,
         CAPTURE_HEIGHT:    480,
-        UPLOAD_QUALITY:    0.75,
+        UPLOAD_QUALITY:    0.92,  // Raised from 0.75: JPEG artifacts degrade landmark accuracy on small faces
         SHARPNESS_THRESHOLD_DESKTOP: 40,
         SHARPNESS_THRESHOLD_MOBILE:  15,
         SHARPNESS_SAMPLE_SIZE:       256,
-        MIN_FACE_AREA_RATIO_DESKTOP: 0.10,
-        MIN_FACE_AREA_RATIO_MOBILE:  0.055,
-        FACE_AREA_WARNING_RATIO:     0.07,
+        MIN_FACE_AREA_RATIO_DESKTOP: 0.15, // Raised from 0.10: ~95x72px at 640x480 for reliable Dlib landmarks
+        MIN_FACE_AREA_RATIO_MOBILE:  0.12, // Raised from 0.055: ~76x57px minimum for reliable Dlib encoding
+        FACE_AREA_WARNING_RATIO:     0.09, // Amber guide warning fires just below enrollment threshold
         AUTO_CONFIRM_TIMEOUT_MS:     15000
     };
 
@@ -119,7 +119,8 @@ FaceAttend.Enrollment = (function () {
             onEnrollmentComplete: null,
             onEnrollmentError:    null,
             onMultiFaceWarning:   null,
-            onReadyToConfirm:     null
+            onReadyToConfirm:     null,
+            onDistanceFeedback:   null
         };
 
         this.captureCanvas   = document.createElement('canvas');
@@ -301,6 +302,45 @@ FaceAttend.Enrollment = (function () {
         if (this.enrolled || !this.stream) return Promise.resolve();
         var cam = this.elements.cam;
         if (!cam || !cam.videoWidth) return Promise.resolve();
+
+        // ── Client-side face area gate ────────────────────────────────────────
+        // liveFaceArea is the normalized area ratio (0-1) set by enrollment-tracker.js.
+        // Only gate when the tracker is active (liveFaceArea > 0); if tracker isn't
+        // loaded yet, let the server-side scan proceed normally.
+        var liveArea = this.liveFaceArea || 0;
+        var minRatio = getMinFaceAreaRatio();
+        if (liveArea > 0 && liveArea < minRatio) {
+            if (this.callbacks.onDistanceFeedback) {
+                this.callbacks.onDistanceFeedback({
+                    status:    liveArea < minRatio * 0.75 ? 'too_far' : 'borderline',
+                    ratio:     liveArea,
+                    threshold: minRatio
+                });
+            }
+            return Promise.resolve();
+        }
+
+        // ── Client-side centering gate ────────────────────────────────────────
+        // Reject frames where the face is near the edge of the canvas.
+        // liveTrackingBox is in CSS canvas pixels set by enrollment-tracker.js.
+        var liveBox      = this.liveTrackingBox;
+        var enrollCanvas = document.getElementById('enrollFaceCanvas');
+        if (liveBox && enrollCanvas) {
+            var cW = enrollCanvas.offsetWidth  || 0;
+            var cH = enrollCanvas.offsetHeight || 0;
+            if (cW > 0 && cH > 0) {
+                var faceCX = liveBox.x + liveBox.w / 2;
+                var faceCY = liveBox.y + liveBox.h / 2;
+                var margin = 0.20;
+                if (faceCX < cW * margin || faceCX > cW * (1 - margin) ||
+                    faceCY < cH * margin || faceCY > cH * (1 - margin)) {
+                    if (this.callbacks.onDistanceFeedback) {
+                        this.callbacks.onDistanceFeedback({ status: 'off_center' });
+                    }
+                    return Promise.resolve();
+                }
+            }
+        }
 
         var isMobile = isMobileDevice();
         var capturedBlob = null;

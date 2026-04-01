@@ -57,6 +57,12 @@
         <video id="kioskVideo" playsinline autoplay muted></video>
         <canvas id="overlayCanvas"></canvas>
 
+        <!-- Landscape orientation warning -->
+        <div id="kioskLandscapeWarning" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.95);align-items:center;justify-content:center;flex-direction:column;color:#fff;text-align:center;padding:2rem;">
+            <i class="fa-solid fa-rotate fa-3x" style="margin-bottom:1.25rem;opacity:0.8;"></i>
+            <p style="font-weight:700;font-size:1.25rem;margin:0;">Please hold your device upright</p>
+        </div>
+
         <!-- Idle Overlay -->
         <div id="idleOverlay" class="hidden" aria-hidden="true">
             <div class="idle-wrapper">
@@ -302,6 +308,15 @@
                 // Desktop / real kiosk
                 document.cookie = 'ForceKioskMode=true; path=/';
             }
+
+            // Landscape orientation warning (kiosk on phone)
+            var mq = window.matchMedia('(orientation: landscape)');
+            function onOrientationChange(e) {
+                var warn = document.getElementById('kioskLandscapeWarning');
+                if (warn) warn.style.display = e.matches ? 'flex' : 'none';
+            }
+            onOrientationChange(mq);
+            mq.addEventListener('change', onOrientationChange);
         })();
     </script>
 </body>

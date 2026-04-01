@@ -1,12 +1,4 @@
-// =========================================================================
-// CSV HELPER - Shared CSV utilities
-// -------------------------------------------------------------------------
-// PANGKARANIWANG PAGGAMIT: CSV export para sa reports
-// 
-// Ginagamit ng:
-//   - AttendanceController
-//   - VisitorsController
-// =========================================================================
+// CSV export utilities used by AttendanceController and VisitorsController.
 
 using System.Collections.Generic;
 using System.Linq;

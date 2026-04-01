@@ -7,37 +7,14 @@ using FaceAttend.Services;
 namespace FaceAttend.Services.Background
 {
     /// <summary>
-    /// Background na nag-cle-clean ng orphaned temp face image files.
-    ///
-    /// PHASE 3 FIX (P-06): Nag-iimplement ng periodic cleanup ng ~/App_Data/tmp/.
-    ///
-    /// PROBLEMA DATI:
-    ///   Ang mga temp files (upload files ng kiosk scan) ay nililinis ng mga
-    ///   finally blocks sa KioskController at ScanFramePipeline — kaya normal
-    ///   na workflow ay maliit lang ang tmp folder.
-    ///
-    ///   PERO: Kapag nag-crash ang IIS process (power outage, OOM, app pool crash),
-    ///   ang finally blocks ay HINDI natatakbo — naiiwan ang mga temp files.
-    ///   Sa matagal na panahon, ang tmp folder ay lumalaki hanggang maubusan ng disk.
-    ///   (Worst case WC-06: Disk full → lahat ng scans ay nag-fa-fail)
-    ///
-    /// SOLUSYON:
-    ///   Isang IRegisteredObject background thread na tumatakbo bawat N minuto
-    ///   at nagde-delete ng mga temp files na mas matanda sa MaxAgeMinutes.
-    ///
-    ///   Ginagamit ang IRegisteredObject para matiyak na ang cleanup thread ay
-    ///   maayos na nasasara kapag mag-shutdown ang IIS app pool.
-    ///
-    /// PAANO GAMITIN:
-    ///   Sa Global.asax Application_Start:
-    ///     TempFileCleanupTask.Start();
-    ///
-    ///   Ang Stop() ay awtomatikong tinatawag ng IIS sa app pool shutdown.
-    ///   Hindi na kailangan itawag sa Application_End.
+    /// Periodically deletes orphaned temp files from ~/App_Data/tmp/.
+    /// Temp files accumulate when IIS crashes and finally blocks don't run.
+    /// Uses IRegisteredObject so the cleanup thread shuts down cleanly on app pool stop.
+    /// Config: TempFile:MaxAgeMinutes (default 30), TempFile:CleanupIntervalMinutes (default 60).
+    /// Start from Global.asax Application_Start; Stop() is called automatically by IIS.
     /// </summary>
     public class TempFileCleanupTask : IRegisteredObject
     {
-        // Singleton — isang instance lang ang dapat mag-run sa isang pagkakataon.
         private static TempFileCleanupTask _instance;
         private static readonly object _startLock = new object();
 
@@ -47,17 +24,13 @@ namespace FaceAttend.Services.Background
         // ─── Configuration ────────────────────────────────────────────────────────
 
         /// <summary>
-        /// Gaano katagal na bago ang isang temp file ay ituring na "orphaned"
-        /// at pwedeng i-delete. Default: 30 minuto.
-        /// Ang normal na scans ay umaagal ng 2-5 segundo — 30 minuto ay
-        /// napaka-conservative.
+        /// Minimum age before a temp file is considered orphaned and deleted. Default: 30 minutes.
+        /// Normal scans complete in 2-5 seconds, so 30 minutes is very conservative.
         /// </summary>
         private static int MaxAgeMinutes =>
             ConfigurationService.GetInt("TempFile:MaxAgeMinutes", 30);
 
-        /// <summary>
-        /// Gaano kadalas mag-run ang cleanup. Default: 60 minuto.
-        /// </summary>
+        /// <summary>How often to run cleanup. Default: 60 minutes.</summary>
         private static int CleanupIntervalMinutes =>
             ConfigurationService.GetInt("TempFile:CleanupIntervalMinutes", 60);
 
@@ -72,21 +45,14 @@ namespace FaceAttend.Services.Background
             };
         }
 
-        /// <summary>
-        /// Ini-start ang cleanup background task.
-        /// Ligtas na tawagin ng maraming beses — ang double-check locking ay
-        /// nagtitigarantiya na isa lang ang instance ang mag-start.
-        /// </summary>
+        /// <summary>Starts the cleanup task. Safe to call multiple times.</summary>
         public static void Start()
         {
             lock (_startLock)
             {
-                if (_instance != null) return; // Already running
+                if (_instance != null) return;
 
                 _instance = new TempFileCleanupTask();
-
-                // I-register sa ASP.NET para matiyak na ang Stop() ay tinatawag
-                // ng IIS bago mag-shutdown ang app pool.
                 HostingEnvironment.RegisterObject(_instance);
 
                 _instance._thread.Start();
@@ -97,18 +63,12 @@ namespace FaceAttend.Services.Background
             }
         }
 
-        /// <summary>
-        /// Tinatawag ng IIS sa app pool shutdown (instance method — kinakailangan ng IRegisteredObject).
-        /// Ang immediate parameter:
-        ///   false = "please stop soon" — nagbibigay ng pagkakataon para matapos ang cleanup.
-        ///   true  = "stop NOW" — forced shutdown na.
-        /// </summary>
+        /// <summary>Called by IIS on app pool shutdown. immediate=false: stop soon; immediate=true: stop now.</summary>
         public void Stop(bool immediate)
         {
             _stopping = true;
-            _thread.Interrupt(); // Gisingin ang sleeping thread para makapag-exit agad.
+            _thread.Interrupt();
 
-            // Hintayin ang thread na matapos (max 5 segundo para sa graceful shutdown).
             if (!immediate)
                 _thread.Join(TimeSpan.FromSeconds(5));
 
@@ -116,16 +76,8 @@ namespace FaceAttend.Services.Background
         }
 
         /// <summary>
-        /// Static na convenience overload para sa Global.asax.cs Application_End.
-        ///
-        /// BAKIT KAILANGAN ITO:
-        ///   Ang IRegisteredObject.Stop(bool) ay instance method — kaya hindi pwedeng
-        ///   tawagin bilang TempFileCleanupTask.Stop(false) sa Global.asax.
-        ///   Ang static wrapper na ito ang nag-rereroute ng tawag sa singleton instance
-        ///   nang hindi kailangan ng panlabas na reference.
-        ///
-        ///   Kapag hindi pa na-start ang task (null si _instance), safe na mag-return lang —
-        ///   walang thread na kailangang ihinto.
+        /// Static wrapper so callers don't need to hold a reference to the singleton.
+        /// No-op if the task was never started.
         /// </summary>
         public static void StopSingleton(bool immediate)
         {
@@ -141,7 +93,7 @@ namespace FaceAttend.Services.Background
 
         private void RunLoop()
         {
-            // Maghintay ng 5 minuto sa simula para hindi mag-interfere sa app startup.
+            // Initial delay to avoid interfering with app startup.
             try { Thread.Sleep(TimeSpan.FromMinutes(5)); }
             catch (ThreadInterruptedException) { return; }
 
@@ -153,27 +105,22 @@ namespace FaceAttend.Services.Background
                 }
                 catch (Exception ex)
                 {
-                    // Hindi mag-crash ang background thread kahit nag-fail ang cleanup.
                     System.Diagnostics.Trace.TraceWarning(
-                        "[TempFileCleanup] Error sa cleanup: " + ex.Message);
+                        "[TempFileCleanup] Cleanup error: " + ex.Message);
                 }
 
-                // Matulog hanggang sa susunod na interval.
                 try
                 {
                     Thread.Sleep(TimeSpan.FromMinutes(CleanupIntervalMinutes));
                 }
                 catch (ThreadInterruptedException)
                 {
-                    // Naka-interrupt — baka nag-shutdown na ang app pool. Lumabas na.
-                    break;
+                    break; // App pool shutting down.
                 }
             }
         }
 
-        /// <summary>
-        /// Isang round ng cleanup — nagde-delete ng mga stale temp files.
-        /// </summary>
+        /// <summary>Deletes stale temp files from ~/App_Data/tmp/.</summary>
         private static void CleanupOnce()
         {
             var tmpDir = HostingEnvironment.MapPath("~/App_Data/tmp");
@@ -190,14 +137,10 @@ namespace FaceAttend.Services.Background
                 {
                     var info = new FileInfo(file);
 
-                    // Skip kung hindi pa matanda ang file — baka ginagamit pa ito.
-                    // Ginagamit natin ang LastWriteTimeUtc dahil ito ang pinaka-updated
-                    // pagkatapos ng SaveAs.
+                    // LastWriteTimeUtc is most recent after SaveAs.
                     if (info.LastWriteTimeUtc > cutoff)
                         continue;
 
-                    // Ang tmp folder ay para sa temp files lang.
-                    // Kapag stale na ang file, ligtas na itong alisin kahit ano pa ang extension.
                     File.Delete(file);
                     deleted++;
                 }
@@ -205,7 +148,7 @@ namespace FaceAttend.Services.Background
                 {
                     errors++;
                     System.Diagnostics.Trace.TraceWarning(
-                        $"[TempFileCleanup] Hindi ma-delete ang '{Path.GetFileName(file)}': " +
+                        $"[TempFileCleanup] Cannot delete '{Path.GetFileName(file)}': " +
                         ex.Message);
                 }
             }
@@ -213,8 +156,7 @@ namespace FaceAttend.Services.Background
             if (deleted > 0 || errors > 0)
             {
                 System.Diagnostics.Trace.TraceInformation(
-                    $"[TempFileCleanup] Natapos ang cleanup: {deleted} na-delete, " +
-                    $"{errors} error, cutoff={cutoff:HH:mm} UTC.");
+                    $"[TempFileCleanup] Done: {deleted} deleted, {errors} errors, cutoff={cutoff:HH:mm} UTC.");
             }
         }
     }

@@ -499,3 +499,14 @@
 .fa-camera__flash--active {
     opacity: 0.8;
 }
+
+/* Text prompt below camera — updated each frame by enrollment-tracker.js */
+.enroll-guide-prompt {
+    text-align: center;
+    margin-top: 0.75rem;
+    font-size: 0.9375rem;
+    font-weight: 500;
+    color: var(--text-muted);
+    min-height: 1.75em;
+    transition: color var(--transition, 0.2s);
+}
