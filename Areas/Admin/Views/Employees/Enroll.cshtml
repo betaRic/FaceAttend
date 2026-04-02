@@ -94,7 +94,7 @@
                             <div class="enroll-camera-wrap">
                                 <video id="enrollVideo" class="enroll-video" autoplay playsinline muted></video>
                                 <canvas id="enrollFaceCanvas" class="enroll-face-canvas"></canvas>
-                                <div class="enroll-camera-status">
+                                <div class="enroll-camera-status" style="display:none;">
                                     <span class="enroll-camera-status__dot"></span>
                                     <span id="cameraStatusText">Camera Active</span>
                                 </div>
@@ -240,7 +240,7 @@
                 enrollUrl:         '@Url.Content("~/api/enrollment/enroll")',
                 minGoodFrames:     MIN_FRAMES,
                 maxKeepFrames:     MIN_FRAMES,
-                perFrameThreshold: 0.75,
+                perFrameThreshold: 0.65,
                 enablePreview:     false
               })
             : null;
@@ -539,7 +539,9 @@
             enroll.startCamera(videoEl)
                 .then(function () {
                     if (statusEl) statusEl.textContent = 'Camera active, look straight ahead';
-                    enroll.startAutoEnrollment();
+                    // 1.5s warmup: camera auto-exposure needs time to stabilize.
+                    // First frames without this are dark/blurry → liveness ≈ 0.
+                    setTimeout(function () { enroll.startAutoEnrollment(); }, 1500);
                     startFaceOverlay(videoEl, enroll);
                 })
                 .catch(function (e) {

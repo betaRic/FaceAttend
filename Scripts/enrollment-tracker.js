@@ -134,9 +134,19 @@
                             return aA >= bA ? a : b;
                         });
 
-                        detectedBox     = mapToCanvas(toVideoBox(best.boundingBox), cssW, cssH);
-                        currentFaceArea = best.boundingBox
-                            ? best.boundingBox.width * best.boundingBox.height : 0;
+                        detectedBox = mapToCanvas(toVideoBox(best.boundingBox), cssW, cssH);
+
+                        if (best.boundingBox && video.videoWidth && video.videoHeight) {
+                            var bbW = best.boundingBox.width, bbH = best.boundingBox.height;
+                            var rawArea = bbW * bbH;
+                            // MediaPipe returns pixel-space coords; normalize to 0-1 ratio
+                            var isNormBb = bbW <= 1.5 && bbH <= 1.5;
+                            currentFaceArea = isNormBb
+                                ? rawArea
+                                : rawArea / (video.videoWidth * video.videoHeight);
+                        } else {
+                            currentFaceArea = 0;
+                        }
 
                         if (best.boundingBox) {
                             var ncx = best.boundingBox.originX + best.boundingBox.width  / 2;

@@ -247,8 +247,10 @@
         setStatus('Starting camera...', 'info');
         enrollment.startCamera(ui.video)
             .then(function () {
-                enrollment.startAutoEnrollment();
                 setStatus('Camera ready. Look straight at the camera.', 'info');
+                // 1.5s warmup: lets auto-exposure/focus stabilize before first scan.
+                // Without this, the first frames are dark/blurry → liveness ≈ 0.
+                setTimeout(function () { enrollment.startAutoEnrollment(); }, 1500);
             })
             .catch(function (e) {
                 _running = false;

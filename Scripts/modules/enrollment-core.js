@@ -20,7 +20,8 @@ FaceAttend.Enrollment = (function () {
         MIN_FACE_AREA_RATIO_DESKTOP: 0.15, // Raised from 0.10: ~95x72px at 640x480 for reliable Dlib landmarks
         MIN_FACE_AREA_RATIO_MOBILE:  0.12, // Raised from 0.055: ~76x57px minimum for reliable Dlib encoding
         FACE_AREA_WARNING_RATIO:     0.09, // Amber guide warning fires just below enrollment threshold
-        MAX_FACE_AREA_RATIO:         0.60, // Face area ratio above which liveness CNN returns 0.00 (too close)
+        MAX_FACE_AREA_RATIO:         0.90, // Face area ratio above which liveness CNN returns 0.00 (too close)
+        MIN_BRIGHTNESS:              40,   // Mean gray 0-255; below this liveness CNN returns ≈ 0 (too dark)
         AUTO_CONFIRM_TIMEOUT_MS:     15000
     };
 
@@ -89,7 +90,7 @@ FaceAttend.Enrollment = (function () {
     function Enrollment(config) {
         this.config = Object.assign({
             empId: '',
-            perFrameThreshold: 0.75,
+            perFrameThreshold: 0.65,
             scanUrl: '/api/scan/frame',
             enrollUrl: '/api/enrollment/enroll',
             redirectUrl: '/Admin/Employees',
@@ -108,9 +109,10 @@ FaceAttend.Enrollment = (function () {
         this.lastFaceBox     = null;
         this.confirmTimer    = null;
 
-        this._tickRunning    = false;
-        this._tickEnabled    = false;
-        this._scanController = null;
+        this._tickRunning          = false;
+        this._tickEnabled          = false;
+        this._scanController       = null;
+        this._zeroLivenessStreak   = 0;   // consecutive frames with liveness ≈ 0
 
         this.elements  = {};
         this.callbacks = {
@@ -162,6 +164,18 @@ FaceAttend.Enrollment = (function () {
         if (count === 0) return 0;
         var mean = sum / count;
         return (sumSq / count) - (mean * mean);
+    };
+
+    // Reads the sharpnessCanvas that calculateSharpness already drew — no extra decode.
+    Enrollment.prototype.calculateBrightness = function () {
+        var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE, H = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
+        var tmp = this.sharpnessCanvas;
+        if (!tmp || !tmp.width) return 128;
+        var imgData = tmp.getContext('2d').getImageData(0, 0, W, H).data;
+        var sum = 0;
+        for (var i = 0; i < imgData.length; i += 4)
+            sum += 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
+        return sum / (imgData.length >> 2);
     };
 
     function getMinFaceAreaRatio() {
@@ -318,11 +332,13 @@ FaceAttend.Enrollment = (function () {
                     threshold: minRatio
                 });
             }
+            if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
             return Promise.resolve();
         }
         // Too-close gate: liveness CNN has no depth/texture context when face fills the frame
         if (liveArea > CONSTANTS.MAX_FACE_AREA_RATIO) {
             this.handleStatus('Too close — back up.', 'warning');
+            if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
             return Promise.resolve();
         }
 
@@ -343,6 +359,7 @@ FaceAttend.Enrollment = (function () {
                     if (this.callbacks.onDistanceFeedback) {
                         this.callbacks.onDistanceFeedback({ status: 'off_center' });
                     }
+                    if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
                     return Promise.resolve();
                 }
             }
@@ -369,6 +386,18 @@ FaceAttend.Enrollment = (function () {
                     if (this.callbacks.onQualityFeedback)
                         this.callbacks.onQualityFeedback({ type: 'blur', score: sharpness, threshold: adaptiveThreshold });
                 }
+                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
+                return Promise.resolve();
+            }
+
+            // ── Brightness gate ───────────────────────────────────────────────────
+            // MiniFASNet liveness CNN returns ≈ 0 when the face is too dark to
+            // resolve texture. Bail early so the user gets a useful message instead
+            // of "Liveness: 0.00 — hold still".
+            var brightness = this.calculateBrightness();
+            if (brightness < CONSTANTS.MIN_BRIGHTNESS) {
+                this.handleStatus('Too dark — turn on a light facing you for liveness to work.', 'warning');
+                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
                 return Promise.resolve();
             }
         }
@@ -398,6 +427,7 @@ FaceAttend.Enrollment = (function () {
         this.enrolled = false;
         this.passHist = [];
         this.goodFrames = [];
+        this._zeroLivenessStreak = 0;
         this.lastFaceBox = null;
 
         this._tickEnabled = true;
@@ -523,9 +553,12 @@ FaceAttend.Enrollment = (function () {
             this.callbacks.onLivenessUpdate(Math.round(p * 100), pass ? 'pass' : 'fail');
 
         if (pass) {
+            // Liveness passed — reset adaptive streak
+            this._zeroLivenessStreak = 0;
+
             if (r.faceBox && r.faceBox.w > 0) this.lastFaceBox = r.faceBox;
 
-            var sharpness    = r.sharpness || r.clientSharpness || 0;
+            var sharpness     = r.sharpness || r.clientSharpness || 0;
             var serverSharpOk = (r.sharpnessOk === true || r.sharpnessOk === undefined);
 
             if (serverSharpOk) {
@@ -553,10 +586,49 @@ FaceAttend.Enrollment = (function () {
                 (needFrames > 0 ? ', need ' + needFrames + ' more.' : ', almost done!'),
                 'success');
         } else {
-            this.handleStatus(
-                'Detected. Liveness: ' + p.toFixed(2) +
-                ' (need ' + this.config.perFrameThreshold + '). Hold still, improve lighting.',
-                'warning');
+            // Liveness failed — track consecutive near-zero frames
+            if (p < 0.02 && r.count > 0) {
+                this._zeroLivenessStreak++;
+            } else {
+                this._zeroLivenessStreak = 0;
+            }
+
+            // Adaptive fallback: after 20 consecutive frames where liveness is
+            // essentially zero but the server successfully detected a face and
+            // produced a valid encoding, accept frames based on encoding quality.
+            // This handles liveness models that struggle in dim/specific lighting
+            // while still requiring real face detection and sharpness.
+            var adaptiveReady = this._zeroLivenessStreak >= 20
+                && r.encoding
+                && r.count > 0
+                && (r.sharpnessOk === true || r.sharpnessOk === undefined);
+
+            if (adaptiveReady) {
+                var adaptSharpness = r.sharpness || r.clientSharpness || 0;
+                this.pushGoodFrame(r.lastBlob || null, 0, r.encoding, adaptSharpness);
+
+                var adaptNeed = Math.max(0, this.config.minGoodFrames - this.goodFrames.length);
+                this.handleStatus(
+                    'Capturing... Frames: ' + this.goodFrames.length + '/' + this.config.minGoodFrames +
+                    (adaptNeed > 0 ? ', need ' + adaptNeed + ' more.' : ', almost done!'),
+                    'warning');
+
+                var adaptEnough = this.goodFrames.length >= this.config.minGoodFrames;
+                var adaptMax    = this.goodFrames.length >= this.config.maxKeepFrames;
+
+                if (adaptEnough && !this.confirmTimer && !this.enrolled && !this.enrolling)
+                    this._startConfirmTimer();
+                if (adaptMax) {
+                    this.stopAutoEnrollment();
+                    this._fireReadyToConfirm();
+                    return;
+                }
+            } else {
+                this.handleStatus(
+                    'Detected. Liveness: ' + p.toFixed(2) +
+                    ' (need ' + this.config.perFrameThreshold + '). Hold still, improve lighting.',
+                    'warning');
+            }
             this.passHist = [];
         }
     };

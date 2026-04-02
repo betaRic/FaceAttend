@@ -1,45 +1,18 @@
-/* FaceAttend.FaceGuide — Fixed oval face guide module
- * Used by: enrollment-tracker.js (enrollment flow) and kiosk.js (recognition flow)
- *
- * Fixed target mode (enrollment):
- *   A static portrait oval at the center of the canvas represents the ideal
- *   enrollment distance. The oval does NOT follow the face. Instead, the user
- *   moves toward/away from the camera until their face fits the oval.
- *   An entrance animation (EMA from small to full size) runs on first draw.
- *
- * States (enrollment): none → too_close → too_far → off_center → good
- *   too_close: face area > TOO_CLOSE_AREA (liveness CNN fails at close range)
- *   too_far:   face area < TOO_FAR_AREA
- *   off_center: face center outside CENTER_MARGIN band
- *   good:       face in the target zone
- */
 var FaceAttend = window.FaceAttend || {};
 
 FaceAttend.FaceGuide = (function () {
     'use strict';
 
-    // ── Fixed oval geometry (fractions of canvas dimensions) ──────────────────
-    // RX=0.25 keeps ry inside the 47% height clamp on any 4:3 canvas (640×480 video).
-    // ASPECT=0.85 → ry/rx ≈ 1.18:1, matching the face's actual H:W in canvas pixels
-    // (face from BlazeFace bbox is ~1.15–1.20:1 on 640×480) and keeps oval height at
-    // ~78% of canvas vs 89% with ASPECT=0.75.
     var CX_RATIO = 0.50;   // horizontal center
     var CY_RATIO = 0.49;   // vertical center — ~47px top margin on 4:3 canvas with ASPECT=0.85
-    var RX_RATIO = 0.25;   // horizontal radius — 50% of canvas width total
+    var RX_RATIO = 0.20;   // horizontal radius — 50% of canvas width total
     var ASPECT   = 0.85;   // ry = rx / ASPECT  → portrait; 0.85 matches face bbox H:W on 640×480
 
     // ── Entrance animation EMA ─────────────────────────────────────────────────
     var OVAL_ALPHA    = 0.12;  // slow convergence → ~1s grow-in
     var INIT_RX_RATIO = 0.10;  // starting radius = 40% of RX_RATIO target
     var _ema = { cx: null, cy: null, rx: null, ry: null };
-
-    // ── State thresholds ───────────────────────────────────────────────────────
-    // Empirically: BlazeFace bbox includes ~25% padding. On a standard desktop at 50cm,
-    // bb.width × bb.height reaches 0.35–0.52 with liveness=100%. Threshold must be above
-    // that zone. 0.60 corresponds to face filling ~75% of 640px frame width — confirmed
-    // liveness failure territory. Image #2 evidence: liveness=100% at faceArea > 0.30
-    // proves the original 0.30 was wrong.
-    var TOO_CLOSE_AREA = 0.60;  // face area ratio above this = liveness fails
+    var TOO_CLOSE_AREA = 0.90;  // face area ratio above this = liveness fails
     var TOO_FAR_AREA   = 0.09;  // face area ratio below this = amber "too far"
     var CENTER_MARGIN  = 0.15;  // face center must be within middle 70% of canvas
 
