@@ -23,6 +23,21 @@
     var _gpsSmoothed      = { lat: null, lon: null };
     var _lastProcessedGps = { lat: null, lon: null };
 
+    // ── Office-resolve retry (exponential backoff) ─────────────────────────────
+
+    var _resolveRetryCount = 0;
+
+    function _onRateLimited(retryAfterSeconds) {
+        _resolveRetryCount++;
+        var backoffMs = Math.min(30000, 1000 * Math.pow(2, _resolveRetryCount));
+        _state.officeResolveRetryUntil = Date.now() + Math.max(backoffMs, (retryAfterSeconds || 0) * 1000);
+    }
+
+    function _onResolveSuccess() {
+        _resolveRetryCount = 0;
+        _state.officeResolveRetryUntil = 0;
+    }
+
     // ── Helpers ────────────────────────────────────────────────────────────────
 
     function setCenterBlock(title, sub, show) {
@@ -368,8 +383,7 @@
             .then(function (j) {
                 if (!j || j.ok !== true) {
                     if (j && j.error === 'RATE_LIMIT_EXCEEDED') {
-                        var retryMs = Math.max(1000, Number(j.retryAfter || 0) * 1000);
-                        _state.officeResolveRetryUntil = Date.now() + retryMs;
+                        _onRateLimited(Number(j.retryAfter || 0));
                         var mappedBusy = humanizeResolveError(j.error, j.retryAfter, j.requiredAccuracy);
                         setLocationState('pending', mappedBusy.title, mappedBusy.sub, mappedBusy.banner);
                         return;
@@ -396,9 +410,9 @@
                 _state.currentOffice.name      = j.officeName;
                 _state.officeVerifiedUntil     = Date.now() + (_isMobile ? 60 * 1000 : 5 * 60 * 1000);
                 _state.lastVerifiedByGPS       = true;
-                _state.officeResolveRetryUntil = 0;
                 _state.lastVerifiedLat         = _state.gps.lat;
                 _state.lastVerifiedLon         = _state.gps.lon;
+                _onResolveSuccess();
 
                 setLocationState(
                     'allowed',
@@ -459,9 +473,9 @@
                     _state.currentOffice.name      = j.officeName;
                     _state.officeVerifiedUntil     = Date.now() + (5 * 60 * 1000);
                     _state.lastVerifiedByGPS       = false;
-                    _state.officeResolveRetryUntil = 0;
                     _state.lastVerifiedLat         = _state.gps.lat;
                     _state.lastVerifiedLon         = _state.gps.lon;
+                    _onResolveSuccess();
                     setLocationState(
                         'allowed',
                         'Location verified',
@@ -471,8 +485,7 @@
                     return;
                 }
 
-                var retryMs = Math.max(0, Number(j && j.retryAfter || 0) * 1000);
-                _state.officeResolveRetryUntil = retryMs > 0 ? (Date.now() + retryMs) : 0;
+                _onRateLimited(Number(j && j.retryAfter || 0));
 
                 var mapped = humanizeResolveError(j && (j.reason || j.error), j && j.retryAfter, j && j.requiredAccuracy);
                 setLocationState('blocked', mapped.title, mapped.sub, mapped.banner);
