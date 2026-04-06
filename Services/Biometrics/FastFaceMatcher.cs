@@ -283,7 +283,7 @@ namespace FaceAttend.Services.Biometrics
         public static bool     IsInitialized => _isInitialized;
         public static DateTime LastLoaded    => _lastLoaded;
 
-        public static object GetStats() => new
+        public static MatcherStats GetStats() => new MatcherStats
         {
             IsInitialized    = _isInitialized,
             LastLoaded       = _lastLoaded,

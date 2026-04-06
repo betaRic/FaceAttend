@@ -195,13 +195,16 @@ namespace FaceAttend.Controllers
             // Check Dlib pool status
             var dlibPoolStatus = DlibBiometrics.GetPoolStatus();
 
+            // Face matcher cache stats
+            var matcherStats = FaceAttend.Services.Biometrics.FastFaceMatcher.GetStats();
+
             return Json(new
             {
                 timestamp = DateTime.UtcNow,
                 warmUp = new
                 {
                     state = MvcApplication.WarmUpState,
-                    stateName = MvcApplication.WarmUpState == 1 ? "COMPLETE" : 
+                    stateName = MvcApplication.WarmUpState == 1 ? "COMPLETE" :
                                 MvcApplication.WarmUpState == 0 ? "RUNNING" : "FAILED",
                     message = MvcApplication.WarmUpMessage
                 },
@@ -216,6 +219,14 @@ namespace FaceAttend.Controllers
                 },
                 database = dbDetails,
                 dlibPool = dlibPoolStatus,
+                faceMatcher = new
+                {
+                    isInitialized    = matcherStats.IsInitialized,
+                    lastLoaded       = matcherStats.LastLoaded,
+                    employeeCount    = matcherStats.EmployeeCount,
+                    totalFaceVectors = matcherStats.TotalFaceVectors,
+                    memoryEstimateMB = matcherStats.MemoryEstimateMB
+                },
                 memory = new
                 {
                     workingSetMb = GC.GetTotalMemory(false) / (1024 * 1024)
