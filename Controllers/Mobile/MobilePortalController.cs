@@ -13,11 +13,13 @@ namespace FaceAttend.Controllers.Mobile
     /// and the employee attendance portal.
     /// URLs remain at /MobileRegistration/* for compatibility.
     /// </summary>
+    [RoutePrefix("MobileRegistration")]
     public class MobilePortalController : Controller
     {
         // ── Entry point ───────────────────────────────────────────────────────────
 
         [HttpGet]
+        [Route("")]
         public ActionResult Index()
         {
             if (!DeviceService.IsMobileDevice(Request))
@@ -32,6 +34,7 @@ namespace FaceAttend.Controllers.Mobile
         // ── Device registration ───────────────────────────────────────────────────
 
         [HttpGet]
+        [Route("Device")]
         public ActionResult Device(string employeeId, bool isNewEmployee = false, int? employeeDbId = null)
         {
             if (!DeviceService.IsMobileDevice(Request))
@@ -73,6 +76,7 @@ namespace FaceAttend.Controllers.Mobile
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Route("RegisterDevice")]
         public ActionResult RegisterDevice(DeviceRegistrationVm vm)
         {
             if (!ModelState.IsValid)
@@ -159,6 +163,7 @@ namespace FaceAttend.Controllers.Mobile
         // ── Completion ────────────────────────────────────────────────────────────
 
         [HttpGet]
+        [Route("Success")]
         public ActionResult Success(bool isNewEmployee = false, int? employeeDbId = null)
         {
             ViewBag.IsNewEmployee = isNewEmployee;
@@ -167,6 +172,7 @@ namespace FaceAttend.Controllers.Mobile
         }
 
         [HttpGet]
+        [Route("CheckStatus")]
         public ActionResult CheckStatus(int employeeDbId)
         {
             using (var db = new FaceAttendDBEntities())
@@ -192,6 +198,7 @@ namespace FaceAttend.Controllers.Mobile
         // ── Employee portal ───────────────────────────────────────────────────────
 
         [HttpGet]
+        [Route("Employee")]
         public ActionResult Employee()
         {
             if (!DeviceService.IsMobileDevice(Request))
@@ -310,6 +317,7 @@ namespace FaceAttend.Controllers.Mobile
         }
 
         [HttpGet]
+        [Route("ExportAttendance")]
         public ActionResult ExportAttendance()
         {
             if (!DeviceService.IsMobileDevice(Request))

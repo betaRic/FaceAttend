@@ -15,11 +15,13 @@ namespace FaceAttend.Controllers.Mobile
     /// for the mobile registration wizard.
     /// URLs remain at /MobileRegistration/* for compatibility.
     /// </summary>
+    [RoutePrefix("MobileRegistration")]
     public class MobileEnrollmentController : Controller
     {
         // ── New employee: face enrollment wizard ─────────────────────────────────
 
         [HttpGet]
+        [Route("Enroll")]
         public ActionResult Enroll()
         {
             if (!DeviceService.IsMobileDevice(Request))
@@ -37,6 +39,7 @@ namespace FaceAttend.Controllers.Mobile
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Route("ScanFrame")]
         public ActionResult ScanFrame()
         {
             try
@@ -141,6 +144,7 @@ namespace FaceAttend.Controllers.Mobile
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Route("SubmitEnrollment")]
         public ActionResult SubmitEnrollment(NewEmployeeEnrollmentVm vm)
         {
             try
@@ -297,6 +301,7 @@ namespace FaceAttend.Controllers.Mobile
         // ── Existing employee: face identification ────────────────────────────────
 
         [HttpGet]
+        [Route("Identify")]
         public ActionResult Identify()
         {
             if (!DeviceService.IsMobileDevice(Request))
@@ -310,6 +315,7 @@ namespace FaceAttend.Controllers.Mobile
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [Route("IdentifyEmployee")]
         public ActionResult IdentifyEmployee()
         {
             try
