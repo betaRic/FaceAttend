@@ -20,7 +20,22 @@ namespace FaceAttend.Services
     {
         private const string CachePrefix = "config:";
         private const int DefaultCacheSeconds = 60;
+        private const int StableCacheSeconds = 600; // 10 minutes
         private static readonly MemoryCache Cache = MemoryCache.Default;
+
+        // Keys that change only at deploy time — use long TTL to reduce DB round-trips
+        private static readonly System.Collections.Generic.HashSet<string> _stableKeys =
+            new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "Biometrics:DlibModelsDir",
+                "Biometrics:LivenessModelPath",
+                "Biometrics:DlibDetector",
+                "Biometrics:DlibPoolSize",
+                "App:TimeZoneId",
+                "Admin:AllowedIpRanges",
+                "TempFile:MaxAgeMinutes",
+                "TempFile:CleanupIntervalMinutes"
+            };
 
         // Track all known keys for cache invalidation
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte>
@@ -331,10 +346,11 @@ namespace FaceAttend.Services
                     var value = GetFromDb(db, key);
                     if (value == null) return null;
 
+                    var ttl = _stableKeys.Contains(key) ? StableCacheSeconds
+                            : cacheSeconds > 0 ? cacheSeconds : DefaultCacheSeconds;
                     var policy = new CacheItemPolicy
                     {
-                        AbsoluteExpiration = DateTimeOffset.UtcNow.AddSeconds(
-                            cacheSeconds > 0 ? cacheSeconds : DefaultCacheSeconds)
+                        AbsoluteExpiration = DateTimeOffset.UtcNow.AddSeconds(ttl)
                     };
 
                     Cache.Set(cacheKey, value, policy);
