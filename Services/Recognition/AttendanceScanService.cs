@@ -570,8 +570,7 @@ namespace FaceAttend.Services.Recognition
                         {
                             var enforcedGap = rec.ApplicableGapSeconds > 0
                                 ? rec.ApplicableGapSeconds
-                                : ConfigurationService.GetInt(db, "Attendance:MinGapSeconds",
-                                    ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
+                                : ConfigurationService.GetInt("Attendance:MinGapSeconds", 180);
                             return JsonResponseBuilder.TooSoon(rec.Message, enforcedGap, timings, includePerfTimings);
                         }
                         return JsonResponseBuilder.ErrorWithTimings(rec.Code, timings, includePerfTimings, rec.Message);

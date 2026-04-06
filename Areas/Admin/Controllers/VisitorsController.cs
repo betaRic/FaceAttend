@@ -106,7 +106,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var v = db.Visitors.FirstOrDefault(x => x.Id == id);
                 if (v == null) return HttpNotFound();
 
-                var perFrame = ConfigurationService.GetDouble(db, "Biometrics:LivenessThreshold", 0.75);
+                var perFrame = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
                 ViewBag.PerFrame = perFrame.ToString("0.00####", CultureInfo.InvariantCulture);
 
                 return View(v);

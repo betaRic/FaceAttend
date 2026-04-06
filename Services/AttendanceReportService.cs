@@ -50,10 +50,10 @@ namespace FaceAttend.Services
             public string   WiFiBSSID        { get; set; }
         }
 
-        public static AttendancePolicy LoadPolicy(FaceAttendDBEntities db)
+        public static AttendancePolicy LoadPolicy()
         {
-            var sStart = ConfigurationService.GetString(db, "Attendance:WorkStart", ConfigurationService.GetString("Attendance:WorkStart", "08:00"));
-            var sEnd   = ConfigurationService.GetString(db, "Attendance:WorkEnd",   ConfigurationService.GetString("Attendance:WorkEnd",   "17:00"));
+            var sStart = ConfigurationService.GetString("Attendance:WorkStart", "08:00");
+            var sEnd   = ConfigurationService.GetString("Attendance:WorkEnd",   "17:00");
 
             TimeSpan start;
             TimeSpan end;
@@ -64,11 +64,11 @@ namespace FaceAttend.Services
             {
                 WorkStart             = start,
                 WorkEnd               = end,
-                GraceMinutes          = ConfigurationService.GetInt(db, "Attendance:GraceMinutes",          ConfigurationService.GetInt("Attendance:GraceMinutes",          10)),
-                FullDayHours          = ConfigurationService.GetDouble(db, "Attendance:FullDayHours",       ConfigurationService.GetDouble("Attendance:FullDayHours",       8)),
-                HalfDayHours          = ConfigurationService.GetDouble(db, "Attendance:HalfDayHours",       ConfigurationService.GetDouble("Attendance:HalfDayHours",       4)),
-                LunchMinutes          = ConfigurationService.GetInt(db, "Attendance:LunchMinutes",          ConfigurationService.GetInt("Attendance:LunchMinutes",          60)),
-                LunchDeductAfterHours = ConfigurationService.GetDouble(db, "Attendance:LunchDeductAfterHours", ConfigurationService.GetDouble("Attendance:LunchDeductAfterHours", 5.5))
+                GraceMinutes          = ConfigurationService.GetInt("Attendance:GraceMinutes",          10),
+                FullDayHours          = ConfigurationService.GetDouble("Attendance:FullDayHours",       8),
+                HalfDayHours          = ConfigurationService.GetDouble("Attendance:HalfDayHours",       4),
+                LunchMinutes          = ConfigurationService.GetInt("Attendance:LunchMinutes",          60),
+                LunchDeductAfterHours = ConfigurationService.GetDouble("Attendance:LunchDeductAfterHours", 5.5)
             };
         }
 

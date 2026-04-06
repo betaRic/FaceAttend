@@ -337,7 +337,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     return RedirectToAction("Index", new { from = vm.From, to = vm.To, officeId });
                 }
 
-                var policy = AttendanceReportService.LoadPolicy(db);
+                var policy = AttendanceReportService.LoadPolicy();
 
                 var q = db.AttendanceLogs.AsNoTracking().AsQueryable();
 
@@ -511,7 +511,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     return File(bytesErr, "text/plain", "attendance_summary_error.txt");
                 }
 
-                var policy = AttendanceReportService.LoadPolicy(db);
+                var policy = AttendanceReportService.LoadPolicy();
 
                 var q = db.AttendanceLogs.AsNoTracking().AsQueryable();
 
