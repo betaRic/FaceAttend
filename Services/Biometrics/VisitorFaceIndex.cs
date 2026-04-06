@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace FaceAttend.Services.Biometrics
@@ -47,7 +48,10 @@ namespace FaceAttend.Services.Biometrics
                             });
                         }
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Trace.TraceWarning("[VisitorFaceIndex] Skip visitor " + v.Id + ": " + ex.Message);
+                    }
                 }
 
                 return list;

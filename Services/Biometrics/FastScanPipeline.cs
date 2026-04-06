@@ -206,7 +206,11 @@ namespace FaceAttend.Services.Biometrics
 
             byte[] rgbData;
             try   { rgbData = DlibBiometrics.ExtractRgbData(bitmap); }
-            catch { return new CoreResult { Ok = false, Error = "BITMAP_CONVERT_FAIL" }; }
+            catch (Exception ex)
+            {
+                Trace.TraceError("[FastScanPipeline] ExtractRgbData failed: " + ex.Message);
+                return new CoreResult { Ok = false, Error = "BITMAP_CONVERT_FAIL" };
+            }
 
             double[] encoding  = null;
             float[]  landmarks = null;

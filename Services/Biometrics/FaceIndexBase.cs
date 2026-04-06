@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 
 namespace FaceAttend.Services.Biometrics
@@ -102,8 +103,9 @@ namespace FaceAttend.Services.Biometrics
                         }).ToList(), 
                         leafSize);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Trace.TraceWarning("[FaceIndexBase] BallTree build failed: " + ex.Message);
                     _ballTree = null;
                 }
             }

@@ -70,9 +70,9 @@ namespace FaceAttend.Services
                 db.AdminAuditLogs.Add(row);
                 db.SaveChanges();
             }
-            catch
+            catch (Exception ex)
             {
-                // Audit write failed - silent
+                Trace.TraceWarning("[AuditHelper] Audit write failed: " + ex.Message);
             }
         }
 
@@ -84,9 +84,9 @@ namespace FaceAttend.Services
             {
                 return JsonConvert.SerializeObject(value);
             }
-            catch
+            catch (Exception ex)
             {
-                // JSON serialize failed - silent
+                Trace.TraceWarning("[AuditHelper] JSON serialize failed: " + ex.Message);
                 return null;
             }
         }
