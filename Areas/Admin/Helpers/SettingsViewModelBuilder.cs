@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Services;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Areas.Admin.Helpers
 {
@@ -76,10 +77,10 @@ namespace FaceAttend.Areas.Admin.Helpers
                 LunchDeductAfterHours = D(db, "Attendance:LunchDeductAfterHours", 5.5),
                 LunchMinutes          = I(db, "Attendance:LunchMinutes",          60),
 
-                // Review queue (DB-only, no web.config fallback needed)
-                NeedsReviewNearMatchRatio = ConfigurationService.GetDouble(db, "NeedsReview:NearMatchRatio",   0.90),
-                NeedsReviewLivenessMargin = ConfigurationService.GetDouble(db, "NeedsReview:LivenessMargin",   0.03),
-                NeedsReviewGpsMargin      = ConfigurationService.GetInt(db,    "NeedsReview:GPSAccuracyMargin", 10),
+                // Review queue
+                NeedsReviewNearMatchRatio = D(db, "NeedsReview:NearMatchRatio",    0.90),
+                NeedsReviewLivenessMargin = D(db, "NeedsReview:LivenessMargin",    0.03),
+                NeedsReviewGpsMargin      = I(db, "NeedsReview:GPSAccuracyMargin", 10),
 
                 // Visitors
                 VisitorEnabled      = B(db, "Kiosk:VisitorEnabled",      true),
@@ -219,24 +220,9 @@ namespace FaceAttend.Areas.Admin.Helpers
         private static string NormalizeTimeOrDefault(string value, string fallback)
         {
             TimeSpan time;
-            return TryParseTime(value, out time)
+            return TimeHelper.TryParseTime(value, out time)
                 ? time.ToString(@"hh\:mm", CultureInfo.InvariantCulture)
                 : fallback;
-        }
-
-        private static bool TryParseTime(string value, out TimeSpan result)
-        {
-            result = TimeSpan.Zero;
-
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
-            value = value.Trim();
-
-            return
-                TimeSpan.TryParseExact(value, @"hh\:mm", CultureInfo.InvariantCulture, out result) ||
-                TimeSpan.TryParseExact(value, @"hh\:mm\:ss", CultureInfo.InvariantCulture, out result) ||
-                TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result);
         }
 
         private static string NormalizeOrDefault(string value, string fallback)

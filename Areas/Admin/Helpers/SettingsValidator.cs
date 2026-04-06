@@ -1,8 +1,8 @@
 using System;
-using System.Globalization;
 using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Areas.Admin.Helpers
 {
@@ -62,10 +62,10 @@ namespace FaceAttend.Areas.Admin.Helpers
             lunchStartTs = TimeSpan.Zero;
             lunchEndTs = TimeSpan.Zero;
 
-            if (!TryParseTime(vm.WorkStart, out workStartTs))
+            if (!TimeHelper.TryParseTime(vm.WorkStart, out workStartTs))
                 modelState.AddModelError("WorkStart", "Use HH:mm.");
 
-            if (!TryParseTime(vm.WorkEnd, out workEndTs))
+            if (!TimeHelper.TryParseTime(vm.WorkEnd, out workEndTs))
                 modelState.AddModelError("WorkEnd", "Use HH:mm.");
 
             var hasLunchStart = !string.IsNullOrWhiteSpace(vm.LunchStart);
@@ -78,10 +78,10 @@ namespace FaceAttend.Areas.Admin.Helpers
             }
             else if (hasLunchStart && hasLunchEnd)
             {
-                if (!TryParseTime(vm.LunchStart, out lunchStartTs))
+                if (!TimeHelper.TryParseTime(vm.LunchStart, out lunchStartTs))
                     modelState.AddModelError("LunchStart", "Use HH:mm.");
 
-                if (!TryParseTime(vm.LunchEnd, out lunchEndTs))
+                if (!TimeHelper.TryParseTime(vm.LunchEnd, out lunchEndTs))
                     modelState.AddModelError("LunchEnd", "Use HH:mm.");
             }
 
@@ -123,23 +123,5 @@ namespace FaceAttend.Areas.Admin.Helpers
             }
         }
 
-        #region Private Helpers
-
-        private static bool TryParseTime(string value, out TimeSpan result)
-        {
-            result = TimeSpan.Zero;
-
-            if (string.IsNullOrWhiteSpace(value))
-                return false;
-
-            value = value.Trim();
-
-            return
-                TimeSpan.TryParseExact(value, @"hh\:mm", CultureInfo.InvariantCulture, out result) ||
-                TimeSpan.TryParseExact(value, @"hh\:mm\:ss", CultureInfo.InvariantCulture, out result) ||
-                TimeSpan.TryParse(value, CultureInfo.InvariantCulture, out result);
-        }
-
-        #endregion
     }
 }
