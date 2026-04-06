@@ -24,8 +24,18 @@ namespace FaceAttend.Areas.Admin.Helpers
             TimeSpan lunchEndTs,
             string modifiedBy)
         {
-            // ── Biometrics ────────────────────────────────────────────────────
+            SaveBiometricSettings(db, vm, modifiedBy);
+            SaveLocationSettings(db, vm, modifiedBy);
+            SaveAttendanceSettings(db, vm, workStartTs, workEndTs, lunchStartTs, lunchEndTs, modifiedBy);
+            SaveReviewQueueSettings(db, vm, modifiedBy);
+            SaveLivenessSettings(db, vm, modifiedBy);
+            CleanupLegacyKeys(db);
+            SavePerformanceSettings(db, vm, modifiedBy);
+            SaveVisitorSettings(db, vm, modifiedBy);
+        }
 
+        private static void SaveBiometricSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
+        {
             ConfigurationService.Upsert(
                 db,
                 "Biometrics:DlibTolerance",
@@ -42,8 +52,10 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "Minimum liveness score to accept a scan.",
                 modifiedBy);
 
-            // ── Location ──────────────────────────────────────────────────────
+        }
 
+        private static void SaveLocationSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
+        {
             ConfigurationService.Upsert(
                 db,
                 "Location:GPSAccuracyRequired",
@@ -68,8 +80,14 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "Office used for desktop kiosks when GPS is skipped. 0 = first active office.",
                 modifiedBy);
 
-            // ── Attendance ────────────────────────────────────────────────────
+        }
 
+        private static void SaveAttendanceSettings(
+            FaceAttendDBEntities db, SettingsVm vm,
+            TimeSpan workStartTs, TimeSpan workEndTs,
+            TimeSpan lunchStartTs, TimeSpan lunchEndTs,
+            string modifiedBy)
+        {
             ConfigurationService.Upsert(
                 db,
                 "Attendance:MinGapSeconds",
@@ -194,8 +212,10 @@ namespace FaceAttend.Areas.Admin.Helpers
                 vm.EnrollSharpnessThresholdMobile.ToString(CultureInfo.InvariantCulture), "double",
                 "Minimum Laplacian variance score for enrollment frames on mobile.", modifiedBy);
 
-            // ── Review queue ──────────────────────────────────────────────────
+        }
 
+        private static void SaveReviewQueueSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
+        {
             ConfigurationService.Upsert(
                 db,
                 "NeedsReview:NearMatchRatio",
@@ -220,8 +240,10 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "If GPS accuracy is within this margin of the required limit, mark record as NeedsReview.",
                 modifiedBy);
 
-            // ── Advanced liveness ─────────────────────────────────────────────
+        }
 
+        private static void SaveLivenessSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
+        {
             var decision = NormalizeOrDefault(vm.LivenessDecision, "max");
             var scales = (vm.LivenessMultiCropScales ?? "").Trim();
             var outputType = NormalizeOrDefault(vm.LivenessOutputType, "logits");
@@ -308,10 +330,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "Milliseconds considered slow for liveness inference.",
                 modifiedBy);
 
-            // Clean up removed / legacy keys while saving the current settings set.
-            ConfigurationService.Delete(db, "Biometrics:Liveness:GateWaitMs");
-            ConfigurationService.Delete(db, "Biometrics:FaceMatchTuner:Enabled");
-            ConfigurationService.Delete(db, "Biometrics:FaceMatchTunerEnabled");
+            // NOTE: CleanupLegacyKeys() is called by SaveSettings() after this method.
 
             ConfigurationService.Upsert(
                 db,
@@ -329,8 +348,17 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "How long to disable liveness after failures.",
                 modifiedBy);
 
-            // ── Performance ───────────────────────────────────────────────────
+        }
 
+        private static void CleanupLegacyKeys(FaceAttendDBEntities db)
+        {
+            ConfigurationService.Delete(db, "Biometrics:Liveness:GateWaitMs");
+            ConfigurationService.Delete(db, "Biometrics:FaceMatchTuner:Enabled");
+            ConfigurationService.Delete(db, "Biometrics:FaceMatchTunerEnabled");
+        }
+
+        private static void SavePerformanceSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
+        {
             ConfigurationService.Upsert(
                 db,
                 "Biometrics:BallTreeThreshold",
@@ -363,8 +391,10 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "JPEG quality of the resized temp image. Range 40–95.",
                 modifiedBy);
 
-            // ── Visitors ──────────────────────────────────────────────────────
+        }
 
+        private static void SaveVisitorSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
+        {
             ConfigurationService.Upsert(
                 db,
                 "Kiosk:VisitorEnabled",
