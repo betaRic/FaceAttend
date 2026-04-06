@@ -129,6 +129,10 @@ namespace FaceAttend
             bundles.Add(new ScriptBundle("~/bundles/mobile-enroll-page")
                 .Include("~/Scripts/mobile/mobile-enroll-page.js"));
 
+            // Admin Visitor Enrollment page (loaded after enrollment bundle)
+            bundles.Add(new ScriptBundle("~/bundles/visitor-enroll-page")
+                .Include("~/Scripts/admin/visitor-enroll-page.js"));
+
 
             // =================================================================
             // CSS BUNDLES

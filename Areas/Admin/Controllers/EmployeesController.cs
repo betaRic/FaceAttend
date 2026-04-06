@@ -183,7 +183,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             vm.MiddleName = (vm.MiddleName ?? "").Trim();
             vm.LastName = (vm.LastName ?? "").Trim();
             vm.Position = (vm.Position ?? "").Trim();
-            vm.Status = NormalizeStatus(vm.Status);
+            vm.Status = EmployeeQueryHelper.NormalizeStatus(vm.Status);
 
 
             using (var db = new FaceAttendDBEntities())

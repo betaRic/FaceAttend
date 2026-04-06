@@ -365,6 +365,7 @@
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
     <Compile Include="Areas\Admin\Filters\HandleAdminErrorAttribute.cs" />
     <Compile Include="Areas\Admin\Helpers\AdminQueryHelper.cs" />
+    <Compile Include="Areas\Admin\Helpers\EmployeeQueryHelper.cs" />
     <Compile Include="Areas\Admin\Helpers\SettingsSaver.cs" />
     <Compile Include="Areas\Admin\Helpers\SettingsValidator.cs" />
     <Compile Include="Areas\Admin\Helpers\SettingsViewModelBuilder.cs" />
@@ -377,7 +378,8 @@
     <Compile Include="Controllers\HealthController.cs" />
     <Compile Include="Controllers\KioskController.cs" />
     <Compile Include="Controllers\KioskController.Device.cs" />
-    <Compile Include="Controllers\MobileRegistrationController.cs" />
+    <Compile Include="Controllers\Mobile\MobileEnrollmentController.cs" />
+    <Compile Include="Controllers\Mobile\MobilePortalController.cs" />
     <Compile Include="Device.cs">
       <DependentUpon>FaceAttendDBEntities.tt</DependentUpon>
     </Compile>
@@ -405,10 +407,13 @@
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
     </Compile>
-    <Compile Include="Models\Dtos\EmployeeListRowVm.cs" />
+    <Compile Include="Infrastructure\ControllerExtensions.cs" />
+    <Compile Include="Models\Dtos\EmployeeListRowDto.cs" />
+    <Compile Include="Models\Dtos\EnrollCandidate.cs" />
     <Compile Include="Models\Dtos\OfficeDto.cs" />
     <Compile Include="Models\ViewModels\Admin\AttendanceDetailsVm.cs" />
     <Compile Include="Models\ViewModels\Admin\AttendanceIndexVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\AttendanceSummaryVm.cs" />
     <Compile Include="Models\ViewModels\Admin\DashboardViewModel.cs" />
     <Compile Include="Models\ViewModels\Admin\EmployeeEditVm.cs" />
     <Compile Include="Models\ViewModels\Admin\OfficeEditVm.cs" />
@@ -431,8 +436,8 @@
     <!-- NOTE: GeoUtil.cs merged into OfficeLocationService -->
     <!-- NOTE: KioskSessionService.cs merged into DeviceService -->
     <!-- NOTE: SystemConfigService.cs removed - use ConfigurationService instead -->
+    <Compile Include="Services\AttendanceReportService.cs" />
     <Compile Include="Services\AttendanceService.cs" />
-    <Compile Include="Services\AudioManager.cs" />
     <Compile Include="Services\AuditHelper.cs" />
     <Compile Include="Services\Background\TempFileCleanupTask.cs" />
     <Compile Include="Services\Biometrics\BallTreeIndex.cs" />
@@ -440,7 +445,6 @@
     <Compile Include="Services\Biometrics\DlibBiometrics.cs" />
     <Compile Include="Services\Biometrics\DuplicateCheckHelper.cs" />
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
-    <Compile Include="Services\Biometrics\EnrollCandidate.cs" />
     <Compile Include="Services\Biometrics\EnrollmentQualityGate.cs" />
     <Compile Include="Services\Biometrics\FaceEncodingHelper.cs" />
     <Compile Include="Services\Biometrics\FaceIndexBase.cs" />
@@ -448,18 +452,17 @@
     <Compile Include="Services\Biometrics\FastFaceMatcher.cs" />
     <Compile Include="Services\Biometrics\FastScanPipeline.cs" />
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
+    <Compile Include="Services\Biometrics\MatcherStats.cs" />
     <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
     <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
     <Compile Include="Services\ConfigurationService.cs" />
     <Compile Include="Services\DeviceService.cs" />
-    <Compile Include="Services\EnrollmentAdaptiveService.cs" />
     <Compile Include="Services\HealthProbe.cs" />
     <Compile Include="Services\Helpers\CsvHelper.cs" />
     <Compile Include="Services\Helpers\FileSystemHelper.cs" />
     <Compile Include="Services\Helpers\StringHelper.cs" />
+    <Compile Include="Services\Helpers\TimeHelper.cs" />
     <Compile Include="Services\Helpers\ValidationHelper.cs" />
-    <Compile Include="Services\Interfaces\IAttendanceService.cs" />
-    <Compile Include="Services\Interfaces\IConfigurationService.cs" />
     <Compile Include="Services\JsonResponseBuilder.cs" />
     <Compile Include="Services\Mobile\EmployeePortalService.cs" />
     <Compile Include="Services\OfficeLocationService.cs" />
@@ -468,6 +471,9 @@
     <Compile Include="Services\Recognition\PendingScanService.cs" />
     <Compile Include="Services\Recognition\VisitorScanService.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
+    <Compile Include="Services\Security\AdminPinService.cs" />
+    <Compile Include="Services\Security\AdminSessionService.cs" />
+    <Compile Include="Services\Security\AdminUnlockCookieService.cs" />
     <Compile Include="Services\Security\FileSecurityService.cs" />
     <Compile Include="Services\Security\LocationAntiSpoof.cs" />
     <Compile Include="Services\TimeZoneHelper.cs" />
@@ -543,6 +549,7 @@
     <Content Include="Content\fa-mobile.css" />
     <Content Include="Content\favicon.ico" />
     <Content Include="Content\images\dilg-logo.svg" />
+    <Content Include="Content\kiosk-bootstrap-compat.css" />
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\toastr.less" />
@@ -585,6 +592,14 @@
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
     </Content>
     <Content Include="Scripts\admin.js" />
+    <Content Include="Scripts\admin\admin-back-to-top.js" />
+    <Content Include="Scripts\admin\admin-confirm-links.js" />
+    <Content Include="Scripts\admin\admin-datatable.js" />
+    <Content Include="Scripts\admin\admin-idle-overlay.js" />
+    <Content Include="Scripts\admin\admin-map.js" />
+    <Content Include="Scripts\admin\enroll-page.js" />
+    <Content Include="Scripts\admin\visitor-enroll-page.js" />
+    <Content Include="Scripts\audio-manager.js" />
     <Content Include="Scripts\bootstrap.bundle.js" />
     <Content Include="Scripts\bootstrap.bundle.js.map" />
     <Content Include="Scripts\bootstrap.bundle.min.js" />
@@ -600,10 +615,8 @@
     <Content Include="Scripts\core\api.js" />
     <Content Include="Scripts\core\camera.js" />
     <Content Include="Scripts\core\fa-helpers.js" />
-    <Content Include="Scripts\core\facescan.js" />
     <Content Include="Scripts\core\notify.js" />
     <Content Include="Scripts\enrollment-tracker.js" />
-    <Content Include="Scripts\enrollment-ui.js" />
     <Content Include="Scripts\jquery-3.7.1.js" />
     <Content Include="Scripts\jquery-3.7.1.min.js" />
     <Content Include="Scripts\jquery-3.7.1.min.map" />
@@ -615,6 +628,20 @@
     <Content Include="Scripts\jquery.validate.unobtrusive.js" />
     <Content Include="Scripts\jquery.validate.unobtrusive.min.js" />
     <Content Include="Scripts\kiosk.js" />
+    <Content Include="Scripts\kiosk\kiosk-attendance.js" />
+    <Content Include="Scripts\kiosk\kiosk-canvas.js" />
+    <Content Include="Scripts\kiosk\kiosk-clock.js" />
+    <Content Include="Scripts\kiosk\kiosk-config.js" />
+    <Content Include="Scripts\kiosk\kiosk-device.js" />
+    <Content Include="Scripts\kiosk\kiosk-fullscreen.js" />
+    <Content Include="Scripts\kiosk\kiosk-location.js" />
+    <Content Include="Scripts\kiosk\kiosk-map.js" />
+    <Content Include="Scripts\kiosk\kiosk-mediapipe.js" />
+    <Content Include="Scripts\kiosk\kiosk-state.js" />
+    <Content Include="Scripts\kiosk\kiosk-unlock.js" />
+    <Content Include="Scripts\kiosk\kiosk-visitor.js" />
+    <Content Include="Scripts\kiosk\kiosk-warmup.js" />
+    <Content Include="Scripts\mobile\mobile-enroll-page.js" />
     <Content Include="Scripts\modules\enrollment-core.js" />
     <Content Include="Scripts\modules\face-guide.js" />
     <Content Include="Scripts\toastr.js" />
@@ -660,7 +687,6 @@
     <Content Include="Views\Shared\Components\_ProcessingModal.cshtml" />
     <Content Include="Views\Shared\Components\_Wizard.cshtml" />
     <Content Include="Views\Shared\ErrorPage.cshtml" />
-    <Content Include="Views\Shared\_EnrollmentComponent.cshtml" />
     <Content Include="Views\Shared\_EnrollmentLayout.cshtml" />
     <Content Include="Views\Shared\_MobileLayout.cshtml" />
     <Content Include="Views\Web.config" />

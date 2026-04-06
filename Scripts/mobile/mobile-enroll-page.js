@@ -18,7 +18,6 @@
     };
 
     var _cameraStarted = false;
-    var _overlayToken  = null;
 
     function el(id) { return document.getElementById(id); }
 
@@ -69,88 +68,9 @@
         var txt = el('livenessText'); if (txt) txt.textContent = '0%';
     }
 
-    function startFaceOverlay(videoEl, enrollInst) {
-        var overlayCanvas = el('enrollFaceCanvas');
-        var ctx = overlayCanvas ? overlayCanvas.getContext('2d') : null;
-        if (!overlayCanvas || !ctx) return;
-
-        if (_overlayToken) _overlayToken.canceled = true;
-        var token = { canceled: false };
-        _overlayToken = token;
-
-        var smoothed = null;
-        var EMA = 0.25;
-
-        function loop() {
-            if (token.canceled) return;
-            requestAnimationFrame(loop);
-
-            var cw = overlayCanvas.offsetWidth;
-            var ch = overlayCanvas.offsetHeight;
-            if (cw < 1 || ch < 1) return;
-            overlayCanvas.width  = cw;
-            overlayCanvas.height = ch;
-            ctx.clearRect(0, 0, cw, ch);
-
-            var raw = enrollInst && enrollInst.lastFaceBox;
-            if (!raw || !raw.w || !videoEl.videoWidth) { smoothed = null; return; }
-
-            if (!smoothed) {
-                smoothed = { x: raw.x, y: raw.y, w: raw.w, h: raw.h };
-            } else {
-                smoothed.x += EMA * (raw.x - smoothed.x);
-                smoothed.y += EMA * (raw.y - smoothed.y);
-                smoothed.w += EMA * (raw.w - smoothed.w);
-                smoothed.h += EMA * (raw.h - smoothed.h);
-            }
-
-            var sx = cw / videoEl.videoWidth;
-            var sy = ch / videoEl.videoHeight;
-
-            // Mirror X to match CSS transform:scaleX(-1) on the video element
-            var bx = (videoEl.videoWidth - smoothed.x - smoothed.w) * sx;
-            var by = smoothed.y * sy;
-            var bw = smoothed.w * sx;
-            var bh = smoothed.h * sy;
-
-            var done      = enrollInst && enrollInst.goodFrames ? enrollInst.goodFrames.length : 0;
-            var color     = done >= MIN_FRAMES ? '#22c55e' : '#3b82f6';
-            var glowColor = done >= MIN_FRAMES ? 'rgba(34,197,94,0.5)' : 'rgba(59,130,246,0.5)';
-            var cLen      = Math.min(bw, bh) * 0.18;
-
-            ctx.strokeStyle = color;
-            ctx.lineWidth   = 2.5;
-            ctx.lineCap     = 'round';
-            ctx.lineJoin    = 'round';
-            ctx.shadowColor = glowColor;
-            ctx.shadowBlur  = 12;
-
-            function bracket(ax, ay, bx2, by2, cx2, cy2) {
-                ctx.beginPath();
-                ctx.moveTo(ax, ay); ctx.lineTo(bx2, by2); ctx.lineTo(cx2, cy2);
-                ctx.stroke();
-            }
-            bracket(bx + cLen,      by,      bx,      by,      bx,      by + cLen);
-            bracket(bx + bw - cLen, by,      bx + bw, by,      bx + bw, by + cLen);
-            bracket(bx + cLen,      by + bh, bx,      by + bh, bx,      by + bh - cLen);
-            bracket(bx + bw - cLen, by + bh, bx + bw, by + bh, bx + bw, by + bh - cLen);
-
-            ctx.shadowBlur  = 0;
-            ctx.globalAlpha = 0.2;
-            ctx.lineWidth   = 0.5;
-            ctx.strokeRect(bx, by, bw, bh);
-            ctx.globalAlpha = 1;
-        }
-
-        loop();
-    }
-
-    function stopFaceOverlay() {
-        if (_overlayToken) { _overlayToken.canceled = true; _overlayToken = null; }
-        var c = el('enrollFaceCanvas');
-        var x = c ? c.getContext('2d') : null;
-        if (x && c) x.clearRect(0, 0, c.width, c.height);
-    }
+    // Note: enrollment-tracker.js owns enrollFaceCanvas. It draws the oval
+    // guide (FaceGuide) using real-time MediaPipe detection. No separate
+    // canvas overlay needed here — enrollment-tracker handles it.
 
     function startCamera() {
         if (_cameraStarted) return;
@@ -164,7 +84,6 @@
             .then(function () {
                 if (statusEl) statusEl.textContent = 'Camera active \u2014 look straight ahead';
                 enroll.startAutoEnrollment();
-                startFaceOverlay(videoEl, enroll);
             })
             .catch(function (e) {
                 _cameraStarted = false;
@@ -179,7 +98,6 @@
 
     function stopCamera() {
         _cameraStarted = false;
-        stopFaceOverlay();
         if (enroll) enroll.stopCamera();
     }
 
