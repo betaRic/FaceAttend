@@ -74,7 +74,7 @@
 }
 
 .fa-camera__guide.is-scanning {
-  border-color: var(--color-brand-primary);
+  border-color: var(--color-primary);
   animation: fa-camera-pulse 1.5s ease-in-out infinite;
 }
 
@@ -176,7 +176,7 @@
 /* Face Detection Box */
 .fa-camera__face-box {
   position: absolute;
-  border: 3px solid var(--color-brand-primary);
+  border: 3px solid var(--color-primary);
   border-radius: var(--radius-lg);
   box-shadow: 
     0 0 20px rgba(59, 130, 246, 0.5),
@@ -212,7 +212,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    var(--color-brand-primary),
+    var(--color-primary),
     transparent
   );
   animation: fa-camera-scan 2s linear infinite;

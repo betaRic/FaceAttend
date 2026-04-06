@@ -77,11 +77,15 @@ namespace FaceAttend
             bundles.Add(faCore);
             
 
-            // Admin Scripts
+            // Admin Scripts — notify.js first so window.ui is ready before admin.js runs
             bundles.Add(new ScriptBundle("~/bundles/admin")
+                .Include("~/Scripts/core/notify.js")
                 .Include("~/Scripts/admin.js")
                 .Include("~/Scripts/admin/admin-datatable.js")
-                .Include("~/Scripts/admin/admin-map.js"));
+                .Include("~/Scripts/admin/admin-map.js")
+                .Include("~/Scripts/admin/admin-confirm-links.js")
+                .Include("~/Scripts/admin/admin-idle-overlay.js")
+                .Include("~/Scripts/admin/admin-back-to-top.js"));
 
             // Audio Manager (loaded by kiosk and mobile layouts)
             bundles.Add(new ScriptBundle("~/bundles/audio-manager")
