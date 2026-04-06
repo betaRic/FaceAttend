@@ -119,7 +119,7 @@
                             <div class="enroll-stats-panel">
                                 <div class="d-flex justify-content-between align-items-center mb-3">
                                     <span class="fw-semibold"><i class="fa-solid fa-bullseye me-2 text-primary"></i>Progress</span>
-                                    <span class="fs-4 fw-bold text-primary"><span id="captureCount">0</span><small class="text-muted fs-6">/3</small></span>
+                                    <span class="fs-4 fw-bold text-primary"><span id="captureCount">0</span><small class="text-muted fs-6">/5</small></span>
                                 </div>
 
                                 @* Progress Bar *@
@@ -278,7 +278,7 @@
 
         // Visitor enrollment — same architecture as Employees/Enroll.cshtml.
         // Key differences:
-        // - minFrames = 3 (visitors need fewer samples than employees)
+        // - minFrames = 5 (same target as employees)
         // - empId = Model.Id (visitor primary key as string)
         // - enrollUrl = /api/enrollment/enroll (NOTE: this endpoint only
         //   handles db.Employees. Visitor enrollment requires a server-side
