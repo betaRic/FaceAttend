@@ -780,6 +780,30 @@ FaceAttend.Enrollment = (function () {
         return (r.error || 'Enrollment failed') + timeInfo;
     };
 
+    /**
+     * Fetches enrollment thresholds from the server and merges them into this
+     * instance's config and the shared CONSTANTS object.  Call immediately after
+     * create() so values are live before the first frame is processed.
+     * Silently falls back to the compile-time CONSTANTS if the fetch fails.
+     *
+     * @param  {string} [url]  Override URL — defaults to /api/enrollment/config
+     * @return {Promise<void>}
+     */
+    Enrollment.prototype.loadServerConfig = function (url) {
+        var self = this;
+        return fetch(url || '/api/enrollment/config', { credentials: 'same-origin' })
+            .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+            .then(function (cfg) {
+                if (!cfg || typeof cfg !== 'object') return;
+                if (typeof cfg.livenessThreshold  === 'number') self.config.perFrameThreshold       = cfg.livenessThreshold;
+                if (typeof cfg.sharpnessDesktop   === 'number') CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP = cfg.sharpnessDesktop;
+                if (typeof cfg.sharpnessMobile    === 'number') CONSTANTS.SHARPNESS_THRESHOLD_MOBILE  = cfg.sharpnessMobile;
+                if (typeof cfg.minFaceAreaDesktop === 'number') CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP  = cfg.minFaceAreaDesktop;
+                if (typeof cfg.minFaceAreaMobile  === 'number') CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE   = cfg.minFaceAreaMobile;
+            })
+            .catch(function () { /* network error — CONSTANTS remain as compile-time defaults */ });
+    };
+
     Enrollment.prototype.enableDebug  = function () { this.config.debug = true;  };
     Enrollment.prototype.disableDebug = function () { this.config.debug = false; };
     Enrollment.prototype.getState     = function () {

@@ -31,7 +31,7 @@ namespace FaceAttend.Controllers.Mobile
             {
                 ViewBag.Offices = db.Offices.Where(o => o.IsActive).ToList();
                 ViewBag.Fingerprint = DeviceService.GenerateFingerprint(Request);
-                ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
             }
 
             return View("~/Views/MobileRegistration/Enroll-mobile.cshtml");
@@ -55,7 +55,7 @@ namespace FaceAttend.Controllers.Mobile
                 if (!scan.Ok)
                     return JsonResponseBuilder.Error(scan.Error ?? "SCAN_FAIL", scan.Error);
 
-                double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+                double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
 
                 bool livenessOk = scan.LivenessOk && scan.LivenessScore >= (float)livenessThreshold;
 
@@ -308,7 +308,7 @@ namespace FaceAttend.Controllers.Mobile
                 return RedirectToRoute(new { controller = "Kiosk", action = "Index", area = "" });
 
             ViewBag.Fingerprint = DeviceService.GenerateFingerprint(Request);
-            ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
 
             return View("~/Views/MobileRegistration/Identify.cshtml");
         }

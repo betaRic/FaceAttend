@@ -175,7 +175,7 @@ namespace FaceAttend.Services.Recognition
                         ? (float)ConfigurationService.GetDouble("Biometrics:MobileLivenessThreshold", 0.68)
                         : (float)ConfigurationService.GetDoubleCached(
                             "Biometrics:LivenessThreshold",
-                            ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
+                            ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65));
 
                     // ── Embedding + liveness ──────────────────────────────────────────
                     double[] vec               = null;

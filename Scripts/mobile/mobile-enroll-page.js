@@ -42,15 +42,18 @@
 
     var enroll = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
         ? FaceAttend.Enrollment.create({
-            empId:             '',
-            scanUrl:           '/MobileRegistration/ScanFrame',
-            enrollUrl:         '/api/enrollment/enroll',
-            minGoodFrames:     MIN_FRAMES,
-            maxKeepFrames:     8,
-            perFrameThreshold: 0.75,
-            enablePreview:     false
+            empId:         '',
+            scanUrl:       '/MobileRegistration/ScanFrame',
+            enrollUrl:     '/api/enrollment/enroll',
+            minGoodFrames: MIN_FRAMES,
+            maxKeepFrames: 8,
+            enablePreview: false
           })
         : null;
+
+    // Sync liveness + sharpness + face-area thresholds from server config so client
+    // and server gates always match, even after Web.config edits.
+    if (enroll) enroll.loadServerConfig('/api/enrollment/config');
 
     // Allow enrollment-tracker.js to publish livePose to this instance
     window.FaceAttendEnrollment = enroll;

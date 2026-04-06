@@ -420,7 +420,7 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 |---|---|---|
 | `Biometrics:DlibTolerance` | `0.60` | Face match tolerance for enrollment duplicate check. Lower = stricter. |
 | `Biometrics:AttendanceTolerance` | `0.65` | Face match tolerance for attendance scanning (clamped 0.55–0.75). |
-| `Biometrics:LivenessThreshold` | `0.75` | MiniFASNet liveness probability threshold. |
+| `Biometrics:LivenessThreshold` | `0.65` | MiniFASNet liveness probability threshold. |
 | `Biometrics:EnrollmentStrictTolerance` | `0.45` | Duplicate check tolerance during new employee enrollment. |
 | `Biometrics:DlibPoolSize` | `4` | Number of dlib `FaceRecognition` instances in the pool. Reduce to 2 to cut cold-start time. |
 | `Biometrics:BallTreeThreshold` | `50` | Employee count above which BallTree index is used instead of linear scan. |
@@ -512,7 +512,7 @@ Matching time: ~5–20ms (RAM), compared to ~100–200ms for a database query.
 
 ### Liveness Detection — MiniFASNet
 
-Each scan runs the captured frame through `MiniFASNet` (a lightweight ONNX model) to determine whether the face belongs to a live person or a photo/screen. The liveness probability must exceed `Biometrics:LivenessThreshold` (default 0.75) for the scan to proceed.
+Each scan runs the captured frame through `MiniFASNet` (a lightweight ONNX model) to determine whether the face belongs to a live person or a photo/screen. The liveness probability must exceed `Biometrics:LivenessThreshold` (default 0.65) for the scan to proceed.
 
 A **circuit breaker** monitors ONNX inference failures. After `CircuitFailStreak` consecutive failures, liveness checking is temporarily disabled for `CircuitDisableSeconds` seconds to prevent total system lockout during model errors.
 

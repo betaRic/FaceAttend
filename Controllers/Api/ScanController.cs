@@ -121,7 +121,7 @@ namespace FaceAttend.Controllers.Api
                     count            = 1,
                     liveness         = scan.LivenessScore,
                     livenessOk       = scan.LivenessOk,
-                    livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75),
+                    livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65),
                     sharpness        = scan.Sharpness,
                     sharpnessThreshold = scan.SharpnessThreshold,
                     sharpnessOk      = scan.Sharpness >= scan.SharpnessThreshold,

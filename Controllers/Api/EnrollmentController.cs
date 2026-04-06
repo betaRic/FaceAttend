@@ -47,7 +47,7 @@ namespace FaceAttend.Controllers.Api
             var parallelism = Math.Min(files.Count,
                               ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
             var isMobile    = DeviceService.IsMobileDevice(Request);
-            var liveTh      = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            var liveTh      = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
             var sharpTh     = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
             var minAreaRatio = isMobile
                 ? ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio:Mobile", 0.05)
@@ -243,6 +243,24 @@ namespace FaceAttend.Controllers.Api
                 savedVectors = selected.Count,
                 timeMs       = sw.ElapsedMilliseconds
             });
+        }
+
+        /// <summary>
+        /// Returns enrollment quality thresholds so the JS client stays in sync with server config.
+        /// Values here mirror the server-side gates used during /api/enrollment/enroll processing.
+        /// </summary>
+        [HttpGet]
+        [Route("config")]
+        public ActionResult Config()
+        {
+            return Json(new
+            {
+                livenessThreshold  = ConfigurationService.GetDouble("Biometrics:LivenessThreshold",               0.65),
+                sharpnessDesktop   = ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold",       50.0),
+                sharpnessMobile    = ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold:Mobile", 40.0),
+                minFaceAreaDesktop = ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio",          0.15),
+                minFaceAreaMobile  = ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio:Mobile",   0.12)
+            }, JsonRequestBehavior.AllowGet);
         }
 
         [HttpPost]

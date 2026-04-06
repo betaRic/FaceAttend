@@ -27,16 +27,18 @@
 
     var liveEnrollment = (typeof FaceAttend !== 'undefined' && FaceAttend.Enrollment)
         ? FaceAttend.Enrollment.create({
-            empId:             visitorId,
-            scanUrl:           scanUrl,
-            enrollUrl:         enrollUrl,
-            redirectUrl:       '',
-            minGoodFrames:     MIN_FRAMES,
-            maxKeepFrames:     MIN_FRAMES,
-            perFrameThreshold: 0.75,
-            enablePreview:     false
+            empId:         visitorId,
+            scanUrl:       scanUrl,
+            enrollUrl:     enrollUrl,
+            redirectUrl:   '',
+            minGoodFrames: MIN_FRAMES,
+            maxKeepFrames: MIN_FRAMES,
+            enablePreview: false
           })
         : null;
+
+    // Sync liveness + sharpness + face-area thresholds from server config.
+    if (liveEnrollment) liveEnrollment.loadServerConfig('/api/enrollment/config');
 
     // Allow enrollment-tracker.js to publish livePose to this instance
     window.FaceAttendEnrollment = liveEnrollment;

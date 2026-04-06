@@ -25,7 +25,7 @@ namespace FaceAttend.Areas.Admin.Helpers
             {
                 // Biometrics
                 DlibTolerance             = GetDlibToleranceWithLegacyFallback(db),
-                LivenessThreshold         = D(db, "Biometrics:LivenessThreshold", 0.75),
+                LivenessThreshold         = D(db, "Biometrics:LivenessThreshold", 0.65),
                 AttendanceTolerance       = attendTol,
                 EnrollmentStrictTolerance = D(db, "Biometrics:EnrollmentStrictTolerance", 0.45),
                 DlibPoolSize              = I(db, "Biometrics:DlibPoolSize", 4),
@@ -106,7 +106,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                     " — Defaults are shown below. Save to persist them.",
 
                 DlibTolerance = ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60),
-                LivenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75),
+                LivenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65),
 
                 GPSAccuracyRequired = ConfigurationService.GetInt("Location:GPSAccuracyRequired", 50),
                 GPSRadiusDefault = ConfigurationService.GetInt("Location:GPSRadiusDefault", 100),

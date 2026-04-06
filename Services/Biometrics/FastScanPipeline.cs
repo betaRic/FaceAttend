@@ -243,7 +243,7 @@ namespace FaceAttend.Services.Biometrics
             if (encoding == null)
                 return new CoreResult { Ok = false, Error = encErr ?? "ENCODING_FAIL" };
 
-            var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
+            var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
             var liveScore = liveProb ?? 0f;
 
             return new CoreResult
