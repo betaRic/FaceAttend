@@ -94,11 +94,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     FirstName = vm.FirstName,
                     MiddleName = string.IsNullOrWhiteSpace(vm.MiddleName) ? null : vm.MiddleName,
                     LastName = vm.LastName,
-                    // FIX-004: Use null (not "-") when Position is blank.
-                    // Previously stored a literal dash string which displayed
-                    // as "-" in the UI, exports, and attendance reports.
-                    // Consistent with MiddleName and Department which use null.
-                    // The Edit action already uses this same null pattern.
+                    // Store null for blank Position — consistent with MiddleName and Department.
                     Position = string.IsNullOrWhiteSpace(vm.Position) ? null : vm.Position.Trim(),
                     Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim(),
                     OfficeId = vm.OfficeId,
@@ -226,7 +222,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 emp.FirstName = vm.FirstName;
                 emp.MiddleName = string.IsNullOrWhiteSpace(vm.MiddleName) ? null : vm.MiddleName;
                 emp.LastName = vm.LastName;
-                // FIX-004: Consistent null handling for blank Position in Edit action.
+                // Store null for blank Position — consistent with Create action.
                 emp.Position = string.IsNullOrWhiteSpace(vm.Position) ? null : vm.Position.Trim();
                 emp.Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim();
                 emp.OfficeId = vm.OfficeId;
@@ -298,7 +294,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         Status = vm.Status
                     });
 
-                // FIX: Ensure face matcher is fully reloaded after any employee edit
+                // Reload face matcher so changes take effect immediately.
                 EmployeeFaceIndex.Invalidate();
                 FastFaceMatcher.ReloadFromDatabase();
                 if (!FastFaceMatcher.IsInitialized)
@@ -325,7 +321,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 if (result.Success)
                 {
-                    // FIX: Ensure face matcher cache is fully reloaded after approval
+                    // Reload face matcher so the approved employee can be recognized.
                     EmployeeFaceIndex.Invalidate();
                     FastFaceMatcher.ReloadFromDatabase();
                     // Also ensure matcher is initialized

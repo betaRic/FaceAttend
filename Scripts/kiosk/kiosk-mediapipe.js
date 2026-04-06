@@ -78,7 +78,7 @@
         var move = Math.hypot(c.x - _state.mpPrevCenter.x, c.y - _state.mpPrevCenter.y);
         _state.mpPrevCenter = c;
 
-        // FIX-02: Walk-by mode - velocity-based decay instead of hard reset
+        // Walk-by mode: velocity-based decay instead of hard reset
         if (move > _cfg.gating.stableMaxMovePx * 2) {
             // Actually running/thrashing - hard reset
             _state.mpStableStart = 0;
@@ -167,12 +167,12 @@
                 // No faces detected
                 if (valid.length === 0) {
                     _state.faceStatus = 'none';
-                    // FIX-CANVAS-GAP: During a scan in-flight, do NOT null the box.
+                    // During a scan in-flight, do NOT null the box.
                     // MediaPipe can momentarily lose the face during the ~300-600ms
                     // server round-trip. Keep the last smoothed box frozen until the scan completes.
                     if (!_state.liveInFlight) {
                         _state.mpBoxCanvas = null;
-                        _state.smoothedBox = null;  // FIX-01: Reset EMA when face lost
+                        _state.smoothedBox = null;  // Reset EMA when face lost
                     }
                     return;
                 }
@@ -200,7 +200,7 @@
 
                 _state.faceStatus = (box && box.w > 20 && box.h > 20 && !isTooSmallFaceNorm(bb)) ? 'good' : 'low';
 
-                // FIX-01: EMA smoothing for bounding box (glides instead of jumps)
+                // EMA smoothing for bounding box (glides instead of jumps)
                 if (!_state.smoothedBox) {
                     _state.smoothedBox = { x: box.x, y: box.y, w: box.w, h: box.h };
                 } else {
