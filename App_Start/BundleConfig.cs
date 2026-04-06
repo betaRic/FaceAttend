@@ -73,8 +73,7 @@ namespace FaceAttend
                 .Include("~/Scripts/core/fa-helpers.js")
                 .Include("~/Scripts/core/camera.js")
                 .Include("~/Scripts/core/api.js")
-                .Include("~/Scripts/core/notify.js")
-                .Include("~/Scripts/core/facescan.js");
+                .Include("~/Scripts/core/notify.js");
             bundles.Add(faCore);
             
 
@@ -114,11 +113,17 @@ namespace FaceAttend
                 .Include("~/Scripts/core/camera.js")
                 .Include("~/Scripts/core/api.js")
                 .Include("~/Scripts/core/notify.js")
-                .Include("~/Scripts/core/facescan.js")
                 .Include("~/Scripts/modules/face-guide.js")
                 .Include("~/Scripts/modules/enrollment-core.js")
-                .Include("~/Scripts/enrollment-tracker.js")
-                .Include("~/Scripts/enrollment-ui.js"));
+                .Include("~/Scripts/enrollment-tracker.js"));
+
+            // Admin Employee Enrollment page (loaded after enrollment bundle)
+            bundles.Add(new ScriptBundle("~/bundles/enroll-page")
+                .Include("~/Scripts/admin/enroll-page.js"));
+
+            // Mobile Enrollment page (loaded after enrollment bundle)
+            bundles.Add(new ScriptBundle("~/bundles/mobile-enroll-page")
+                .Include("~/Scripts/mobile/mobile-enroll-page.js"));
 
 
             // =================================================================
