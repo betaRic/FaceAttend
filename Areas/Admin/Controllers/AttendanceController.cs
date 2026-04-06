@@ -356,7 +356,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (cap > 200000) cap = 200000;
 
                 var raw = q
-                    .Include(x => x.Employee)
                     .Select(x => new AttendanceReportService.RawLog
                     {
                         EmpId      = x.Employee.EmployeeId,
