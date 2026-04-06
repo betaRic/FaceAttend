@@ -745,12 +745,12 @@
                             <h6 class="card-title">Current Settings</h6>
                             <dl class="row mb-0" style="font-size: 0.85rem;">
                                 <dt class="col-6">Threshold:</dt>
-                                <dd class="col-6">@ViewBag.LivenessThreshold</dd>
+                                <dd class="col-6">@Model.LivenessThreshold</dd>
                                 <dt class="col-6">Model Path:</dt>
-                                <dd class="col-6 text-truncate" title="@ViewBag.LivenessModelPath">@ViewBag.LivenessModelPath</dd>
+                                <dd class="col-6 text-truncate" title="@Model.LivenessModelPath">@Model.LivenessModelPath</dd>
                                 <dt class="col-6">Model Exists:</dt>
                                 <dd class="col-6">
-                                    @if (ViewBag.LivenessModelExists == true)
+                                    @if (Model.LivenessModelExists)
                                     {
                                         <span class="text-success"><i class="fa-solid fa-check"></i> Yes</span>
                                     }

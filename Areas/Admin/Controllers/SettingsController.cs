@@ -24,17 +24,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                 {
                     var vm = SettingsViewModelBuilder.BuildVm(db);
                     vm.SavedMessage = TempData["msg"] as string;
-                    ViewBag.FaceCacheStats = FastFaceMatcher.GetStats()?.ToString();
-                    
-                    // Liveness diagnostics
-                    ViewBag.LivenessThreshold = ConfigurationService.GetDouble(
-                        db, "Biometrics:LivenessThreshold",
-                        ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75));
-                    var modelPath = System.Web.Hosting.HostingEnvironment.MapPath(
+                    vm.FaceCacheStats = FastFaceMatcher.GetStats()?.ToString();
+                    vm.LivenessModelPath = System.Web.Hosting.HostingEnvironment.MapPath(
                         ConfigurationService.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx"));
-                    ViewBag.LivenessModelPath = modelPath;
-                    ViewBag.LivenessModelExists = System.IO.File.Exists(modelPath);
-                    
+                    vm.LivenessModelExists = System.IO.File.Exists(vm.LivenessModelPath);
                     return View(vm);
                 }
             }
