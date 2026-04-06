@@ -8,6 +8,7 @@ using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Models.Dtos;
 using FaceAttend.Filters;
+using FaceAttend.Infrastructure;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 
@@ -116,15 +117,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                 }
                 catch (System.Data.Entity.Validation.DbEntityValidationException ex)
                 {
-                    var errors = ex.EntityValidationErrors
-                        .SelectMany(e => e.ValidationErrors)
-                        .Select(e => $"{e.PropertyName}: {e.ErrorMessage}");
-                    
-                    ModelState.AddModelError("", "Validation error: " + string.Join("; ", errors));
+                    ModelState.AddDbValidationErrors(ex);
                     SetOffices(db, vm.OfficeId);
                     return View(vm);
                 }
-                
+
                 DeviceService.SetEmployeeStatus(db, emp.Id, "ACTIVE", actor);
 
                 AuditHelper.Log(
@@ -244,11 +241,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 }
                 catch (System.Data.Entity.Validation.DbEntityValidationException ex)
                 {
-                    var errors = ex.EntityValidationErrors
-                        .SelectMany(e => e.ValidationErrors)
-                        .Select(e => $"{e.PropertyName}: {e.ErrorMessage}");
-                    
-                    ModelState.AddModelError("", "Validation error: " + string.Join("; ", errors));
+                    ModelState.AddDbValidationErrors(ex);
                     SetOffices(db, vm.OfficeId);
                     return View(vm);
                 }
@@ -493,12 +486,12 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
         }
 
-        private List<EmployeeListRowVm> QueryEmployeeRows(FaceAttendDBEntities db, string q, string status)
+        private List<EmployeeListRowDto> QueryEmployeeRows(FaceAttendDBEntities db, string q, string status)
         {
             var term = (q ?? "").Trim();
             var like = "%" + term + "%";
 
-            return db.Database.SqlQuery<EmployeeListRowVm>(@"
+            return db.Database.SqlQuery<EmployeeListRowDto>(@"
 SELECT e.Id,
        e.EmployeeId,
        e.FirstName,

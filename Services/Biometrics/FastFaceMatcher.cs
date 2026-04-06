@@ -64,6 +64,12 @@ namespace FaceAttend.Services.Biometrics
             finally { _lock.ExitWriteLock(); }
         }
 
+        /// <summary>
+        /// Clears the in-memory cache and reloads all face vectors from the database.
+        /// Call this after any enrollment or deletion that changes stored face data.
+        /// </summary>
+        public static void InvalidateAndReload() => ReloadFromDatabase();
+
         public static void ReloadFromDatabase()
         {
             var newFaces = new ConcurrentDictionary<string, List<double[]>>(StringComparer.OrdinalIgnoreCase);

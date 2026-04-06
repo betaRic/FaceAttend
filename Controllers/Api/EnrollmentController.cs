@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
+using FaceAttend.Models.Dtos;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Security;

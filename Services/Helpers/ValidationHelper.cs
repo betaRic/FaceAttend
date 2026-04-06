@@ -69,31 +69,7 @@ namespace FaceAttend.Services.Helpers
             return (true, null);
         }
 
-        /// <summary>
-        /// Validates GPS coordinates are within Philippines bounds.
-        /// </summary>
-        public static bool IsValidPhilippinesCoordinates(double latitude, double longitude)
-        {
-            // Philippines approximate bounds
-            // Latitude: 4.5°N to 21.0°N
-            // Longitude: 116.0°E to 127.0°E
-            return latitude >= 4.5 && latitude <= 21.0 &&
-                   longitude >= 116.0 && longitude <= 127.0;
-        }
-
-        /// <summary>
-        /// Validates GPS coordinates and returns an error message if invalid.
-        /// </summary>
-        public static (bool IsValid, string ErrorMessage) ValidatePhilippinesCoordinates(double? latitude, double? longitude)
-        {
-            if (!latitude.HasValue || !longitude.HasValue)
-                return (false, "GPS coordinates are required.");
-
-            if (!IsValidPhilippinesCoordinates(latitude.Value, longitude.Value))
-                return (false, "GPS coordinates are outside Philippines bounds.");
-
-            return (true, null);
-        }
+        // Philippines coordinate validation is in OfficeLocationService.IsValidPhilippinesCoordinates()
 
         /// <summary>
         /// Validates an email address format.

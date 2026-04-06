@@ -3,25 +3,7 @@ using System;
 namespace FaceAttend.Services.Helpers
 {
     /// <summary>
-    /// Centralized string utility methods to avoid code duplication across the application.
-    /// </summary>
-    public static class StringExtensions
-    {
-        /// <summary>
-        /// Truncates a string to the specified maximum length.
-        /// </summary>
-        public static string Truncate(this string value, int maxLength)
-            => StringHelper.Truncate(value, maxLength);
-
-        /// <summary>
-        /// Truncates and trims a string to the specified maximum length.
-        /// </summary>
-        public static string TruncateAndTrim(this string value, int maxLength)
-            => StringHelper.TruncateAndTrim(value, maxLength);
-    }
-
-    /// <summary>
-    /// Centralized string utility methods to avoid code duplication across the application.
+    /// Centralized string utility methods.
     /// </summary>
     public static class StringHelper
     {

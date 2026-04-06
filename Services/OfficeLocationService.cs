@@ -139,5 +139,33 @@ namespace FaceAttend.Services
         }
 
         #endregion
+
+        #region Philippines coordinate validation
+
+        /// <summary>
+        /// Returns true if the coordinates fall within the Philippines' approximate bounding box
+        /// (4.5°N–21.0°N, 116.0°E–127.0°E).
+        /// </summary>
+        public static bool IsValidPhilippinesCoordinates(double latitude, double longitude)
+        {
+            return latitude >= 4.5 && latitude <= 21.0 &&
+                   longitude >= 116.0 && longitude <= 127.0;
+        }
+
+        /// <summary>
+        /// Validates GPS coordinates and returns an error message if invalid.
+        /// </summary>
+        public static (bool IsValid, string ErrorMessage) ValidatePhilippinesCoordinates(double? latitude, double? longitude)
+        {
+            if (!latitude.HasValue || !longitude.HasValue)
+                return (false, "GPS coordinates are required.");
+
+            if (!IsValidPhilippinesCoordinates(latitude.Value, longitude.Value))
+                return (false, "GPS coordinates are outside Philippines bounds.");
+
+            return (true, null);
+        }
+
+        #endregion
     }
 }

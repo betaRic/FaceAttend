@@ -276,9 +276,8 @@
             });
         }
 
-        //  FIX-004: Real enrollment pipeline (Visitor variant) 
-        //
-        // Same architecture as Employees/Enroll.cshtml. Key differences:
+        // Visitor enrollment — same architecture as Employees/Enroll.cshtml.
+        // Key differences:
         // - minFrames = 3 (visitors need fewer samples than employees)
         // - empId = Model.Id (visitor primary key as string)
         // - enrollUrl = /api/enrollment/enroll (NOTE: this endpoint only
@@ -709,7 +708,7 @@
             return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
         }
 
-        // FIX-003: Wire visitor upload pane to the real enrollment API.
+        // Visitor upload pane wired to /Admin/Visitors/EnrollFace.
         //
         // !! SERVER-SIDE PREREQUISITE !!
         // This client code POSTs to /Admin/Visitors/EnrollFace which must be

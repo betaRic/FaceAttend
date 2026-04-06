@@ -2,41 +2,14 @@
 using System.Data;
 using System.Linq;
 
-using FaceAttend.Services.Interfaces;
-
 namespace FaceAttend.Services
 {
     /// <summary>
-    /// SAGUPA: Nagre-record ng attendance events (Time In / Time Out).
-    /// 
-    /// PAGLALARAWAN (Description):
-    ///   Ang service na ito ang nagha-handle ng lahat ng attendance recording
-    ///   para sa mga empleyado. Sinusubaybayan nito ang:
-    ///   - Time In (pagpasok)
-    ///   - Time Out (paglabas)
-    ///   - MinGap checking (anti-double tap)
-    ///   - Directional gaps (IN→OUT vs OUT→IN)
-    /// 
-    /// GINAGAMIT SA:
-    ///   - KioskController.Attend() - kapag nag-scan ang empleyado
-    ///   - Admin dashboard - manual entry (kung mayroon)
-    /// 
-    /// IMPORTANTENG PAALALA:
-    ///   [OPTIMIZATION NEEDED] Ang Serializable isolation ay pinakamabagal at 
-    ///   nagdudulot ng deadlocks sa maraming concurrent users. Isasaalang-alang
-    ///   ang pagpalit sa Snapshot isolation kung supported ng SQL Express.
-    /// 
-    /// FIX APPLIED (Race Condition):
-    ///   Dati, dalawang sabay na scan (same employee) ay puwedeng parehong 
-    ///   makapasa sa MinGap check bago mag-insert — nagdudulot ng duplicate.
-    /// 
-    ///   Ang solusyon: SERIALIZABLE transaction. Hindi makakapag-insert ang
-    ///   pangalawang scan habang may transaction ang unang scan.
-    /// 
-    ///   Note: Para sa high-volume, magdagdag ng unique filtered index sa DB:
-    ///   (EmployeeId, CAST(Timestamp AS DATE), EventType)
+    /// Records attendance events (Time In / Time Out) with min-gap anti-double-tap
+    /// protection and directional gap enforcement (IN→OUT vs OUT→IN).
+    /// Uses SERIALIZABLE transaction to prevent duplicate entries from concurrent scans.
     /// </summary>
-    public class AttendanceService : IAttendanceService
+    public class AttendanceService
     {
         private readonly FaceAttendDBEntities _db;
 

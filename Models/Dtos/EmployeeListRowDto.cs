@@ -5,7 +5,7 @@ namespace FaceAttend.Models.Dtos
     /// <summary>
     /// Slim employee row for list views (SQL query result)
     /// </summary>
-    public class EmployeeListRowVm
+    public class EmployeeListRowDto
     {
         public int Id { get; set; }
         public string EmployeeId { get; set; }

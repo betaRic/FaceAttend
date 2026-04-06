@@ -89,7 +89,9 @@
         }
     </style>
 </head>
-<body class="mobile-app">
+<body class="mobile-app"
+      data-audio-success="@Url.Content("~/Content/audio/success.mp3")"
+      data-audio-notif="@Url.Content("~/Content/audio/notif.mp3")">
     <div class="container-fluid px-3 px-sm-4 py-3">
         <div class="row justify-content-center">
             <div class="col-12 col-sm-11 col-md-8 col-lg-6">
@@ -200,9 +202,8 @@
         };
     </script>
     
-    <!-- Audio Manager -->
-    @FaceAttend.Services.AudioManager.GetAudioManagerScript(Context)
-    
+    @Scripts.Render("~/bundles/audio-manager")
+
     <!-- Mobile/Desktop Mode Detection & Enforcement -->
     <script>
         (function() {

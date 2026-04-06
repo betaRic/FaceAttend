@@ -17,275 +17,79 @@ namespace FaceAttend.Areas.Admin.Helpers
         /// </summary>
         public static SettingsVm BuildVm(FaceAttendDBEntities db)
         {
-            // Biometrics
-            var tolFallback = ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60);
-            var tol = ConfigurationService.GetDouble(
-                db,
-                "Biometrics:DlibTolerance",
-                ConfigurationService.GetDouble(db, "DlibTolerance", tolFallback));
-
-            var liveFallback = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.75);
-            var live = ConfigurationService.GetDouble(db, "Biometrics:LivenessThreshold", liveFallback);
-
-            // Location
-            var accFallback = ConfigurationService.GetInt("Location:GPSAccuracyRequired", 50);
-            var acc = ConfigurationService.GetInt(db, "Location:GPSAccuracyRequired", accFallback);
-
-            var radFallback = ConfigurationService.GetInt("Location:GPSRadiusDefault", 100);
-            var rad = ConfigurationService.GetInt(db, "Location:GPSRadiusDefault", radFallback);
-
-            var fbFallback = ConfigurationService.GetInt("Kiosk:FallbackOfficeId", 0);
-            var fb = ConfigurationService.GetInt(db, "Kiosk:FallbackOfficeId", fbFallback);
-
-            // Attendance
-            var gapFallback = ConfigurationService.GetInt("Attendance:MinGapSeconds", 10);
-            var gap = ConfigurationService.GetInt(db, "Attendance:MinGapSeconds", gapFallback);
-
-            var workStart = ConfigurationService.GetString(
-                db,
-                "Attendance:WorkStart",
-                ConfigurationService.GetString("Attendance:WorkStart", "08:00"));
-
-            var workEnd = ConfigurationService.GetString(
-                db,
-                "Attendance:WorkEnd",
-                ConfigurationService.GetString("Attendance:WorkEnd", "17:00"));
-
-            var lunchStart = ConfigurationService.GetString(
-                db,
-                "Attendance:LunchStart",
-                ConfigurationService.GetString("Attendance:LunchStart", "12:00"));
-
-            var lunchEnd = ConfigurationService.GetString(
-                db,
-                "Attendance:LunchEnd",
-                ConfigurationService.GetString("Attendance:LunchEnd", "13:00"));
-
-            var flexiRequiredHours = ConfigurationService.GetDouble(
-                db,
-                "Attendance:FlexiRequiredHours",
-                ConfigurationService.GetDouble("Attendance:FlexiRequiredHours", 8.0));
-
-            var noGracePeriod = ConfigurationService.GetBool(
-                db,
-                "Attendance:NoGracePeriod",
-                ConfigurationService.GetBool("Attendance:NoGracePeriod", true));
-
-            // Review queue
-            var nearMatch = ConfigurationService.GetDouble(db, "NeedsReview:NearMatchRatio", 0.90);
-            var liveMargin = ConfigurationService.GetDouble(db, "NeedsReview:LivenessMargin", 0.03);
-            var gpsMargin = ConfigurationService.GetInt(db, "NeedsReview:GPSAccuracyMargin", 10);
-
-            // Advanced liveness
-            var decision = ConfigurationService.GetString(
-                db,
-                "Biometrics:Liveness:Decision",
-                ConfigurationService.GetString("Biometrics:Liveness:Decision", "max"));
-
-            var scales = ConfigurationService.GetString(
-                db,
-                "Biometrics:Liveness:MultiCropScales",
-                ConfigurationService.GetString("Biometrics:Liveness:MultiCropScales", ""));
-
-            var inputSize = ConfigurationService.GetInt(
-                db,
-                "Biometrics:LivenessInputSize",
-                ConfigurationService.GetInt("Biometrics:LivenessInputSize", 128));
-
-            var cropScale = ConfigurationService.GetDouble(
-                db,
-                "Biometrics:Liveness:CropScale",
-                ConfigurationService.GetDouble("Biometrics:Liveness:CropScale", 2.7));
-
-            var realIndex = ConfigurationService.GetInt(
-                db,
-                "Biometrics:Liveness:RealIndex",
-                ConfigurationService.GetInt("Biometrics:Liveness:RealIndex", 1));
-
-            var outputType = ConfigurationService.GetString(
-                db,
-                "Biometrics:Liveness:OutputType",
-                ConfigurationService.GetString("Biometrics:Liveness:OutputType", "logits"));
-
-            var normalize = ConfigurationService.GetString(
-                db,
-                "Biometrics:Liveness:Normalize",
-                ConfigurationService.GetString("Biometrics:Liveness:Normalize", "0_1"));
-
-            var chanOrder = ConfigurationService.GetString(
-                db,
-                "Biometrics:Liveness:ChannelOrder",
-                ConfigurationService.GetString("Biometrics:Liveness:ChannelOrder", "RGB"));
-
-            var timeoutMs = ConfigurationService.GetInt(
-                db,
-                "Biometrics:Liveness:RunTimeoutMs",
-                ConfigurationService.GetInt("Biometrics:Liveness:RunTimeoutMs", 1500));
-
-            var slowMs = ConfigurationService.GetInt(
-                db,
-                "Biometrics:Liveness:SlowMs",
-                ConfigurationService.GetInt("Biometrics:Liveness:SlowMs", 1200));
-
-            var failStreak = ConfigurationService.GetInt(
-                db,
-                "Biometrics:Liveness:CircuitFailStreak",
-                ConfigurationService.GetInt("Biometrics:Liveness:CircuitFailStreak", 3));
-
-            var disableSec = ConfigurationService.GetInt(
-                db,
-                "Biometrics:Liveness:CircuitDisableSeconds",
-                ConfigurationService.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30));
-
-            // Performance
-            var ballTreeTh = ConfigurationService.GetInt(
-                db,
-                "Biometrics:BallTreeThreshold",
-                ConfigurationService.GetInt("Biometrics:BallTreeThreshold", 50));
-
-            var ballTreeLeaf = ConfigurationService.GetInt(
-                db,
-                "Biometrics:BallTreeLeafSize",
-                ConfigurationService.GetInt("Biometrics:BallTreeLeafSize", 16));
-
-            var maxDim = ConfigurationService.GetInt(
-                db,
-                "Biometrics:MaxImageDimension",
-                ConfigurationService.GetInt("Biometrics:MaxImageDimension", 1280));
-
-            var jpegQ = ConfigurationService.GetInt(
-                db,
-                "Biometrics:PreprocessJpegQuality",
-                ConfigurationService.GetInt("Biometrics:PreprocessJpegQuality", 85));
-
-            // Attendance — directional gaps and schedule details
-            var inToOut = ConfigurationService.GetInt(db, "Attendance:MinGap:InToOutSeconds",
-                ConfigurationService.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
-            var outToIn = ConfigurationService.GetInt(db, "Attendance:MinGap:OutToInSeconds",
-                ConfigurationService.GetInt("Attendance:MinGap:OutToInSeconds", 300));
-            var grace = ConfigurationService.GetInt(db, "Attendance:GraceMinutes",
-                ConfigurationService.GetInt("Attendance:GraceMinutes", 10));
-            var fullDay = ConfigurationService.GetDouble(db, "Attendance:FullDayHours",
-                ConfigurationService.GetDouble("Attendance:FullDayHours", 8.0));
-            var halfDay = ConfigurationService.GetDouble(db, "Attendance:HalfDayHours",
-                ConfigurationService.GetDouble("Attendance:HalfDayHours", 4.0));
-            var lunchDeductAfter = ConfigurationService.GetDouble(db, "Attendance:LunchDeductAfterHours",
-                ConfigurationService.GetDouble("Attendance:LunchDeductAfterHours", 5.5));
-            var lunchMinutes = ConfigurationService.GetInt(db, "Attendance:LunchMinutes",
-                ConfigurationService.GetInt("Attendance:LunchMinutes", 60));
-
-            // Biometrics — scan and enrollment tolerances, pool
-            var attendTol = ConfigurationService.GetDouble(db, "Biometrics:AttendanceTolerance",
-                ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.65));
-            var strictTol = ConfigurationService.GetDouble(db, "Biometrics:EnrollmentStrictTolerance",
-                ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45));
-            var dlibPool = ConfigurationService.GetInt(db, "Biometrics:DlibPoolSize",
-                ConfigurationService.GetInt("Biometrics:DlibPoolSize", 4));
-            var maxScans = ConfigurationService.GetInt(db, "Kiosk:MaxConcurrentScans",
-                ConfigurationService.GetInt("Kiosk:MaxConcurrentScans", 4));
-            var enrollTarget = ConfigurationService.GetInt(db, "Biometrics:Enroll:CaptureTarget",
-                ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget", 8));
-            var enrollMaxVec = ConfigurationService.GetInt(db, "Biometrics:Enroll:MaxStoredVectors",
-                ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 5));
-            var visitorTol = ConfigurationService.GetDouble(db, "Visitors:DlibTolerance",
-                ConfigurationService.GetDouble("Visitors:DlibTolerance", attendTol));
-            var sharpDesktop = ConfigurationService.GetDouble(db, "Biometrics:Enroll:SharpnessThreshold",
-                ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold", 80.0));
-            var sharpMobile = ConfigurationService.GetDouble(db, "Biometrics:Enroll:SharpnessThreshold:Mobile",
-                ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold:Mobile", 50.0));
-
-            // Visitors
-            var visitorEnabled = ConfigurationService.GetBool(
-                db,
-                "Kiosk:VisitorEnabled",
-                ConfigurationService.GetBool("Kiosk:VisitorEnabled", true));
-
-            var visMaxRec = ConfigurationService.GetInt(
-                db,
-                "Visitors:MaxRecords",
-                ConfigurationService.GetInt("Visitors:MaxRecords", 10000));
-
-            var visRetYears = ConfigurationService.GetInt(
-                db,
-                "Visitors:RetentionYears",
-                ConfigurationService.GetInt("Visitors:RetentionYears", 2));
+            var attendTol = D(db, "Biometrics:AttendanceTolerance", 0.65);
+            var fb        = I(db, "Kiosk:FallbackOfficeId", 0);
 
             var vm = new SettingsVm
             {
                 // Biometrics
-                DlibTolerance = tol,
-                LivenessThreshold = live,
+                DlibTolerance             = GetDlibToleranceWithLegacyFallback(db),
+                LivenessThreshold         = D(db, "Biometrics:LivenessThreshold", 0.75),
+                AttendanceTolerance       = attendTol,
+                EnrollmentStrictTolerance = D(db, "Biometrics:EnrollmentStrictTolerance", 0.45),
+                DlibPoolSize              = I(db, "Biometrics:DlibPoolSize", 4),
+                MaxConcurrentScans        = I(db, "Kiosk:MaxConcurrentScans", 4),
+                EnrollCaptureTarget       = I(db, "Biometrics:Enroll:CaptureTarget", 8),
+                EnrollMaxStoredVectors    = I(db, "Biometrics:Enroll:MaxStoredVectors", 5),
+                VisitorDlibTolerance      = D(db, "Visitors:DlibTolerance", attendTol),
+                EnrollSharpnessThreshold       = D(db, "Biometrics:Enroll:SharpnessThreshold",        80.0),
+                EnrollSharpnessThresholdMobile = D(db, "Biometrics:Enroll:SharpnessThreshold:Mobile", 50.0),
 
                 // Advanced liveness
-                LivenessDecision = NormalizeOrDefault(decision, "max"),
-                LivenessMultiCropScales = (scales ?? "").Trim(),
-                LivenessInputSize = inputSize,
-                LivenessCropScale = cropScale,
-                LivenessRealIndex = realIndex,
-                LivenessOutputType = NormalizeOrDefault(outputType, "logits"),
-                LivenessNormalize = NormalizeOrDefault(normalize, "0_1"),
-                LivenessChannelOrder = NormalizeOrDefault(chanOrder, "RGB"),
-                LivenessRunTimeoutMs = timeoutMs,
-                LivenessSlowMs = slowMs,
-                LivenessCircuitFailStreak = failStreak,
-                LivenessCircuitDisableSeconds = disableSec,
+                LivenessDecision              = NormalizeOrDefault(S(db, "Biometrics:Liveness:Decision",       "max"),    "max"),
+                LivenessMultiCropScales       = (S(db, "Biometrics:Liveness:MultiCropScales", "") ?? "").Trim(),
+                LivenessInputSize             = I(db, "Biometrics:LivenessInputSize", 128),
+                LivenessCropScale             = D(db, "Biometrics:Liveness:CropScale", 2.7),
+                LivenessRealIndex             = I(db, "Biometrics:Liveness:RealIndex", 1),
+                LivenessOutputType            = NormalizeOrDefault(S(db, "Biometrics:Liveness:OutputType",  "logits"), "logits"),
+                LivenessNormalize             = NormalizeOrDefault(S(db, "Biometrics:Liveness:Normalize",   "0_1"),    "0_1"),
+                LivenessChannelOrder          = NormalizeOrDefault(S(db, "Biometrics:Liveness:ChannelOrder","RGB"),     "RGB"),
+                LivenessRunTimeoutMs          = I(db, "Biometrics:Liveness:RunTimeoutMs",        1500),
+                LivenessSlowMs                = I(db, "Biometrics:Liveness:SlowMs",              1200),
+                LivenessCircuitFailStreak     = I(db, "Biometrics:Liveness:CircuitFailStreak",   3),
+                LivenessCircuitDisableSeconds = I(db, "Biometrics:Liveness:CircuitDisableSeconds", 30),
 
                 // Performance
-                BallTreeThreshold = ballTreeTh,
-                BallTreeLeafSize = ballTreeLeaf,
-                MaxImageDimension = maxDim,
-                PreprocessJpegQuality = jpegQ,
+                BallTreeThreshold     = I(db, "Biometrics:BallTreeThreshold",      50),
+                BallTreeLeafSize      = I(db, "Biometrics:BallTreeLeafSize",        16),
+                MaxImageDimension     = I(db, "Biometrics:MaxImageDimension",     1280),
+                PreprocessJpegQuality = I(db, "Biometrics:PreprocessJpegQuality",   85),
 
                 // Location
-                GPSAccuracyRequired = acc,
-                GPSRadiusDefault = rad,
-                FallbackOfficeId = fb,
+                GPSAccuracyRequired = I(db, "Location:GPSAccuracyRequired", 50),
+                GPSRadiusDefault    = I(db, "Location:GPSRadiusDefault",   100),
+                FallbackOfficeId    = fb,
 
                 // Attendance
-                MinGapSeconds = gap,
-                WorkStart = NormalizeTimeOrDefault(workStart, "08:00"),
-                WorkEnd = NormalizeTimeOrDefault(workEnd, "17:00"),
-                LunchStart = NormalizeTimeOrDefault(lunchStart, "12:00"),
-                LunchEnd = NormalizeTimeOrDefault(lunchEnd, "13:00"),
-                FlexiRequiredHours = flexiRequiredHours,
-                NoGracePeriod = noGracePeriod,
+                MinGapSeconds     = I(db, "Attendance:MinGapSeconds", 10),
+                WorkStart         = NormalizeTimeOrDefault(S(db, "Attendance:WorkStart",  "08:00"), "08:00"),
+                WorkEnd           = NormalizeTimeOrDefault(S(db, "Attendance:WorkEnd",    "17:00"), "17:00"),
+                LunchStart        = NormalizeTimeOrDefault(S(db, "Attendance:LunchStart", "12:00"), "12:00"),
+                LunchEnd          = NormalizeTimeOrDefault(S(db, "Attendance:LunchEnd",   "13:00"), "13:00"),
+                FlexiRequiredHours    = D(db, "Attendance:FlexiRequiredHours",    8.0),
+                NoGracePeriod         = B(db, "Attendance:NoGracePeriod",         true),
+                MinGapInToOutSeconds  = I(db, "Attendance:MinGap:InToOutSeconds", 1800),
+                MinGapOutToInSeconds  = I(db, "Attendance:MinGap:OutToInSeconds", 300),
+                GraceMinutes          = I(db, "Attendance:GraceMinutes",          10),
+                FullDayHours          = D(db, "Attendance:FullDayHours",          8.0),
+                HalfDayHours          = D(db, "Attendance:HalfDayHours",          4.0),
+                LunchDeductAfterHours = D(db, "Attendance:LunchDeductAfterHours", 5.5),
+                LunchMinutes          = I(db, "Attendance:LunchMinutes",          60),
 
-                // Attendance directional gaps
-                MinGapInToOutSeconds = inToOut,
-                MinGapOutToInSeconds = outToIn,
-                GraceMinutes = grace,
-                FullDayHours = fullDay,
-                HalfDayHours = halfDay,
-                LunchDeductAfterHours = lunchDeductAfter,
-                LunchMinutes = lunchMinutes,
-
-                // Biometrics extended
-                AttendanceTolerance = attendTol,
-                EnrollmentStrictTolerance = strictTol,
-                DlibPoolSize = dlibPool,
-                MaxConcurrentScans = maxScans,
-                EnrollCaptureTarget = enrollTarget,
-                EnrollMaxStoredVectors = enrollMaxVec,
-                VisitorDlibTolerance = visitorTol,
-                EnrollSharpnessThreshold = sharpDesktop,
-                EnrollSharpnessThresholdMobile = sharpMobile,
-
-                // Review queue
-                NeedsReviewNearMatchRatio = nearMatch,
-                NeedsReviewLivenessMargin = liveMargin,
-                NeedsReviewGpsMargin = gpsMargin,
+                // Review queue (DB-only, no web.config fallback needed)
+                NeedsReviewNearMatchRatio = ConfigurationService.GetDouble(db, "NeedsReview:NearMatchRatio",   0.90),
+                NeedsReviewLivenessMargin = ConfigurationService.GetDouble(db, "NeedsReview:LivenessMargin",   0.03),
+                NeedsReviewGpsMargin      = ConfigurationService.GetInt(db,    "NeedsReview:GPSAccuracyMargin", 10),
 
                 // Visitors
-                VisitorEnabled = visitorEnabled,
-                VisitorMaxRecords = visMaxRec,
-                VisitorRetentionYears = visRetYears,
+                VisitorEnabled      = B(db, "Kiosk:VisitorEnabled",      true),
+                VisitorMaxRecords   = I(db, "Visitors:MaxRecords",     10000),
+                VisitorRetentionYears = I(db, "Visitors:RetentionYears", 2),
 
                 OfficeOptions = AdminQueryHelper.BuildOfficeOptionsWithAuto(db, fb)
             };
 
-            // Check for legacy keys and add warnings
             vm.WarningMessage = BuildWarningMessages(db);
-
             return vm;
         }
 
@@ -387,6 +191,30 @@ namespace FaceAttend.Areas.Admin.Helpers
         }
 
         #region Helper Methods
+
+        // ── Short-hand DB readers (DB value with Web.config fallback) ─────────
+        // Each reads from DB first; if not found, falls back to Web.config; if
+        // not found there either, uses the hard-coded default.
+
+        private static double D(FaceAttendDBEntities db, string key, double def)
+            => ConfigurationService.GetDouble(db, key, ConfigurationService.GetDouble(key, def));
+
+        private static int I(FaceAttendDBEntities db, string key, int def)
+            => ConfigurationService.GetInt(db, key, ConfigurationService.GetInt(key, def));
+
+        private static string S(FaceAttendDBEntities db, string key, string def)
+            => ConfigurationService.GetString(db, key, ConfigurationService.GetString(key, def));
+
+        private static bool B(FaceAttendDBEntities db, string key, bool def)
+            => ConfigurationService.GetBool(db, key, ConfigurationService.GetBool(key, def));
+
+        // Special case: DlibTolerance has a legacy key in the DB as an intermediate fallback.
+        private static double GetDlibToleranceWithLegacyFallback(FaceAttendDBEntities db)
+        {
+            var webConfigDefault = ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60);
+            var legacyDbValue    = ConfigurationService.GetDouble(db, "DlibTolerance", webConfigDefault);
+            return ConfigurationService.GetDouble(db, "Biometrics:DlibTolerance", legacyDbValue);
+        }
 
         private static string NormalizeTimeOrDefault(string value, string fallback)
         {

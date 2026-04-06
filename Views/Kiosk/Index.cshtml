@@ -47,7 +47,9 @@
     data-unlock-hint="@ViewBag.UnlockHint"
     data-allow-unlock="@(((bool?)ViewBag.AllowUnlock ?? false) ? "true" : "false")"
     data-org-name="DILG Region XII"
-    data-org-subtitle="Face Attendance Kiosk">
+    data-org-subtitle="Face Attendance Kiosk"
+    data-audio-success="@Url.Content("~/Content/audio/success.mp3")"
+    data-audio-notif="@Url.Content("~/Content/audio/notif.mp3")">
 
     @Html.AntiForgeryToken()
 
@@ -256,9 +258,8 @@
     @Scripts.Render("~/bundles/fa-core")
     @Scripts.Render("~/bundles/kiosk")
     
-    <!-- Audio Manager for Success Sounds -->
-    @FaceAttend.Services.AudioManager.GetAudioManagerScript(Context)
-    
+    @Scripts.Render("~/bundles/audio-manager")
+
     <style>
         /* Mobile Registration Button Styles */
         .mobile-register-container { animation: fadeInUp 0.5s ease; }

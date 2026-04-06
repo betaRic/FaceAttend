@@ -359,11 +359,5 @@ namespace FaceAttend.Areas.Admin.Controllers
             return RedirectToAction("Logs");
         }
 
-        private class EnrollCandidate
-        {
-            public double[] Vec { get; set; }
-            public float Liveness { get; set; }
-            public int Area { get; set; }
-        }
     }
 }

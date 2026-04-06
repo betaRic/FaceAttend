@@ -27,75 +27,7 @@ namespace FaceAttend.Models.ViewModels.Admin
         public int    Total      => InCount + OutCount;
     }
 
-    // ── Per-employee summary rows (populated on SummaryReport only) ──────────────
-
-    public class EmployeeSummaryRow
-    {
-        public string EmployeeId       { get; set; }
-        public string EmployeeFullName { get; set; }
-        public string Department       { get; set; }
-
-        // One entry per calendar day (UTC date) that has at least one event.
-        public List<DailyEmployeeRow> Days { get; set; } = new List<DailyEmployeeRow>();
-    }
-
-    public class DailyEmployeeRow
-    {
-        // Local date (NOT UTC date)
-        public DateTime DateLocal { get; set; }
-
-        // Raw UTC timestamps (stored in DB)
-        public DateTime? FirstInUtc { get; set; }
-        public DateTime? LastOutUtc { get; set; }
-
-        // ADD THESE FOUR - AM/PM split (noon boundary for DILG)
-        public DateTime? AmIn  { get; set; }   // first IN before noon
-        public DateTime? AmOut { get; set; }   // first OUT before noon
-        public DateTime? PmIn  { get; set; }   // first IN at/after noon
-        public DateTime? PmOut { get; set; }   // last OUT at/after noon
-
-        // Computed values
-        public double? HoursRaw { get; set; }
-        public double? HoursNet { get; set; }
-
-        // Status
-        public string StatusCode { get; set; }
-        public string StatusLabel { get; set; }
-        public string StatusBadgeClass { get; set; }
-
-        public int? LateMinutes { get; set; }
-        public int? UndertimeMinutes { get; set; }
-
-        // Display helpers
-        public string DateLabel => DateLocal.ToString("yyyy-MM-dd");
-
-        // Timestamps are now stored in local time - no conversion needed
-        public string FirstInDisplay => FirstInUtc.HasValue
-            ? FirstInUtc.Value.ToString("HH:mm")
-            : "-";
-
-        public string LastOutDisplay => LastOutUtc.HasValue
-            ? LastOutUtc.Value.ToString("HH:mm")
-            : "-";
-
-        public string HoursDisplay
-        {
-            get
-            {
-                var h = HoursNet ?? HoursRaw;
-                return h.HasValue ? h.Value.ToString("0.0") + "h" : "-";
-            }
-        }
-
-        public string LateDisplay => LateMinutes.HasValue ? (LateMinutes.Value + "m") : "-";
-        public string UndertimeDisplay => UndertimeMinutes.HasValue ? (UndertimeMinutes.Value + "m") : "-";
-
-        // AM/PM display helpers
-        public string AmInDisplay  => AmIn.HasValue  ? AmIn.Value.ToString("HH:mm")  : "-";
-        public string AmOutDisplay => AmOut.HasValue ? AmOut.Value.ToString("HH:mm") : "-";
-        public string PmInDisplay  => PmIn.HasValue  ? PmIn.Value.ToString("HH:mm")  : "-";
-        public string PmOutDisplay => PmOut.HasValue ? PmOut.Value.ToString("HH:mm") : "-";
-    }
+    // EmployeeSummaryRow and DailyEmployeeRow are in AttendanceSummaryVm.cs
 
     // ── Row in the main attendance table ─────────────────────────────────────────
 

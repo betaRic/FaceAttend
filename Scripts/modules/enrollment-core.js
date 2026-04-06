@@ -14,8 +14,8 @@ FaceAttend.Enrollment = (function () {
         CAPTURE_WIDTH:     640,
         CAPTURE_HEIGHT:    480,
         UPLOAD_QUALITY:    0.92,  // Raised from 0.75: JPEG artifacts degrade landmark accuracy on small faces
-        SHARPNESS_THRESHOLD_DESKTOP: 40,
-        SHARPNESS_THRESHOLD_MOBILE:  15,
+        SHARPNESS_THRESHOLD_DESKTOP: 50,  // Matches Biometrics:Enroll:SharpnessThreshold (Web.config)
+        SHARPNESS_THRESHOLD_MOBILE:  40,  // Matches Biometrics:Enroll:SharpnessThreshold:Mobile (Web.config)
         SHARPNESS_SAMPLE_SIZE:       256,
         MIN_FACE_AREA_RATIO_DESKTOP: 0.15, // Raised from 0.10: ~95x72px at 640x480 for reliable Dlib landmarks
         MIN_FACE_AREA_RATIO_MOBILE:  0.12, // Raised from 0.055: ~76x57px minimum for reliable Dlib encoding

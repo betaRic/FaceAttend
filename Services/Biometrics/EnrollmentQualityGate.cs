@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FaceAttend.Models.Dtos;
 
 namespace FaceAttend.Services.Biometrics
 {
