@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -126,8 +127,20 @@ namespace FaceAttend.Services.Biometrics
 
             var timeoutMs = ConfigurationService.GetInt("Biometrics:DlibPoolTimeoutMs", 30_000);
 
+            var sw = Stopwatch.StartNew();
             if (!_semaphore.Wait(timeoutMs))
                 return null;
+            sw.Stop();
+
+            if (sw.ElapsedMilliseconds > 500)
+            {
+                var poolSize  = ConfigurationService.GetInt("Biometrics:DlibPoolSize", 4);
+                var occupancy = poolSize - _semaphore.CurrentCount;
+                Trace.TraceWarning(
+                    "[DlibPool] Semaphore wait: {0}ms. Pool occupancy: {1}/{2}. " +
+                    "Consider increasing Biometrics:DlibPoolSize.",
+                    sw.ElapsedMilliseconds, occupancy, poolSize);
+            }
 
             FaceRecognition instance;
             if (!_pool.TryTake(out instance))
