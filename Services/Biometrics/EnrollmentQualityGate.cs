@@ -57,7 +57,8 @@ namespace FaceAttend.Services.Biometrics
                     var d = DlibBiometrics.Distance(best, selected[k].Vec);
                     if (d < minDist) minDist = d;
                 }
-                if (minDist > 0.65)
+                var selfMatchMax = ConfigurationService.GetDouble("Biometrics:Enroll:Gate:SelfMatchMaxDist", 0.60);
+                if (minDist > selfMatchMax)
                     return Fail("SELF_MATCH_FAIL",
                         "Face encoding consistency check failed. Re-enroll with better lighting.");
             }
