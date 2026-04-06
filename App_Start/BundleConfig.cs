@@ -80,11 +80,30 @@ namespace FaceAttend
 
             // Admin Scripts
             bundles.Add(new ScriptBundle("~/bundles/admin")
-                .Include("~/Scripts/admin.js"));
+                .Include("~/Scripts/admin.js")
+                .Include("~/Scripts/admin/admin-datatable.js")
+                .Include("~/Scripts/admin/admin-map.js"));
 
-            // Kiosk Scripts — face-guide.js must be before kiosk.js
+            // Audio Manager (loaded by kiosk and mobile layouts)
+            bundles.Add(new ScriptBundle("~/bundles/audio-manager")
+                .Include("~/Scripts/audio-manager.js"));
+
+            // Kiosk Scripts — load order is strict (each module depends on prior ones)
             bundles.Add(new ScriptBundle("~/bundles/kiosk")
                 .Include("~/Scripts/modules/face-guide.js")
+                .Include("~/Scripts/kiosk/kiosk-config.js")
+                .Include("~/Scripts/kiosk/kiosk-state.js")
+                .Include("~/Scripts/kiosk/kiosk-clock.js")
+                .Include("~/Scripts/kiosk/kiosk-warmup.js")
+                .Include("~/Scripts/kiosk/kiosk-fullscreen.js")
+                .Include("~/Scripts/kiosk/kiosk-unlock.js")
+                .Include("~/Scripts/kiosk/kiosk-visitor.js")
+                .Include("~/Scripts/kiosk/kiosk-device.js")
+                .Include("~/Scripts/kiosk/kiosk-location.js")
+                .Include("~/Scripts/kiosk/kiosk-map.js")
+                .Include("~/Scripts/kiosk/kiosk-canvas.js")
+                .Include("~/Scripts/kiosk/kiosk-mediapipe.js")
+                .Include("~/Scripts/kiosk/kiosk-attendance.js")
                 .Include("~/Scripts/kiosk.js"));
 
             // Enrollment Bundle (Core + Enrollment logic)
@@ -152,7 +171,8 @@ namespace FaceAttend
 
             // Kiosk CSS - Use NonMinifiedStyleBundle to preserve CSS custom properties
             bundles.Add(new NonMinifiedStyleBundle("~/Content/kiosk")
-                .Include("~/Content/kiosk.css"));
+                .Include("~/Content/kiosk.css")
+                .Include("~/Content/kiosk-bootstrap-compat.css"));
             
             // Mobile CSS - Use NonMinifiedStyleBundle to preserve CSS custom properties
             bundles.Add(new NonMinifiedStyleBundle("~/Content/fa-mobile")
