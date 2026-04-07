@@ -48,5 +48,22 @@ namespace FaceAttend
     
             return ((IObjectContextAdapter)this).ObjectContext.ExecuteFunction<sp_CheckDuplicateFace_Result>("sp_CheckDuplicateFace", excludeEmployeeIdParameter, toleranceParameter);
         }
+    
+        public virtual int sp_PurgeOldAttendanceLogs(Nullable<int> retentionYears, Nullable<int> batchSize, Nullable<bool> dryRun)
+        {
+            var retentionYearsParameter = retentionYears.HasValue ?
+                new ObjectParameter("RetentionYears", retentionYears) :
+                new ObjectParameter("RetentionYears", typeof(int));
+    
+            var batchSizeParameter = batchSize.HasValue ?
+                new ObjectParameter("BatchSize", batchSize) :
+                new ObjectParameter("BatchSize", typeof(int));
+    
+            var dryRunParameter = dryRun.HasValue ?
+                new ObjectParameter("DryRun", dryRun) :
+                new ObjectParameter("DryRun", typeof(bool));
+    
+            return ((IObjectContextAdapter)this).ObjectContext.ExecuteFunction("sp_PurgeOldAttendanceLogs", retentionYearsParameter, batchSizeParameter, dryRunParameter);
+        }
     }
 }

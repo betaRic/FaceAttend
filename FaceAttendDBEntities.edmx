@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <edmx:Edmx Version="3.0" xmlns:edmx="http://schemas.microsoft.com/ado/2009/11/edmx">
   <!-- EF Runtime content -->
   <edmx:Runtime>
@@ -232,6 +232,11 @@
           <Parameter Name="ExcludeEmployeeId" Type="nvarchar" Mode="In" />
           <Parameter Name="Tolerance" Type="float" Mode="In" />
         </Function>
+        <Function Name="sp_PurgeOldAttendanceLogs" Aggregate="false" BuiltIn="false" NiladicFunction="false" IsComposable="false" ParameterTypeSemantics="AllowImplicitConversion" Schema="dbo">
+          <Parameter Name="RetentionYears" Type="int" Mode="In" />
+          <Parameter Name="BatchSize" Type="int" Mode="In" />
+          <Parameter Name="DryRun" Type="bit" Mode="In" />
+        </Function>
         <EntityContainer Name="FaceAttendDBModelStoreContainer">
           <EntitySet Name="AdminAuditLogs" EntityType="Self.AdminAuditLogs" Schema="dbo" store:Type="Tables" />
           <EntitySet Name="AttendanceLogs" EntityType="Self.AttendanceLogs" Schema="dbo" store:Type="Tables" />
@@ -307,6 +312,11 @@
             <End Role="Visitor" EntitySet="Visitors" />
             <End Role="VisitorLog" EntitySet="VisitorLogs" />
           </AssociationSet>
+          <FunctionImport Name="sp_PurgeOldAttendanceLogs">
+            <Parameter Name="RetentionYears" Mode="In" Type="Int32" />
+            <Parameter Name="BatchSize" Mode="In" Type="Int32" />
+            <Parameter Name="DryRun" Mode="In" Type="Boolean" />
+          </FunctionImport>
           </EntityContainer>
         <ComplexType Name="sp_CheckDuplicateFace_Result">
           <Property Type="String" Name="EmployeeId" Nullable="false" MaxLength="20" />
@@ -720,6 +730,7 @@
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
+          <FunctionImportMapping FunctionImportName="sp_PurgeOldAttendanceLogs" FunctionName="FaceAttendDBModel.Store.sp_PurgeOldAttendanceLogs" />
           </EntityContainerMapping>
       </Mapping>
     </edmx:Mappings>
