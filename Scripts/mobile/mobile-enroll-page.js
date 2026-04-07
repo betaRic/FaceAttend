@@ -1,6 +1,11 @@
 /*
  * Scripts/mobile/mobile-enroll-page.js
  * Enrollment page controller for Views/MobileRegistration/Enroll-mobile.cshtml.
+ *
+ * Changes vs previous version:
+ *  - Full-screen camera in step 2: captureProgress is now the 5 enDot* divs
+ *  - onDistanceFeedback wired so users see "move closer" guidance instead of silent 0%
+ *  - Liveness bar colour tracks score (red / amber / green)
  */
 (function () {
     'use strict';
@@ -51,128 +56,55 @@
           })
         : null;
 
-    // Sync liveness + sharpness + face-area thresholds from server config so client
-    // and server gates always match, even after Web.config edits.
+    // Sync thresholds from server config so client and server always agree
     if (enroll) enroll.loadServerConfig('/api/enrollment/config');
 
-    // Allow enrollment-tracker.js to publish livePose to this instance
     window.FaceAttendEnrollment = enroll;
 
+    /* ── UI helpers ────────────────────────────────────────────────────────── */
+
+    function setStatusText(msg) {
+        var e = el('cameraStatusText');
+        if (e) e.textContent = msg || '';
+    }
+
+    /* Update the 5 capture dots + counter */
     function updateCaptureUI(frameCount, target) {
-        var c = el('captureCount');
-        if (c) c.textContent = frameCount;
-        var p = el('captureProgress');
-        if (p) p.style.width = Math.min(100, Math.round((frameCount / (target || MIN_FRAMES)) * 100)) + '%';
+        var cnt = el('captureCount');
+        if (cnt) cnt.textContent = frameCount;
+
+        for (var i = 0; i < 5; i++) {
+            var dot = el('enDot' + i);
+            if (dot) dot.classList.toggle('captured', i < frameCount);
+        }
     }
 
     function resetCaptureUI() {
         updateCaptureUI(0, MIN_FRAMES);
-        var bar = el('livenessBar');  if (bar) bar.style.width = '0%';
-        var txt = el('livenessText'); if (txt) txt.textContent = '0%';
+        var bar = el('livenessBar');
+        if (bar) { bar.style.width = '0%'; bar.className = 'cam-fs-liveness-fill'; }
+        var txt = el('livenessText');
+        if (txt) txt.textContent = '0%';
+        setStatusText('Initializing camera…');
     }
 
-    // Note: enrollment-tracker.js owns enrollFaceCanvas. It draws the oval
-    // guide (FaceGuide) using real-time MediaPipe detection. No separate
-    // canvas overlay needed here — enrollment-tracker handles it.
-
-    function startCamera() {
-        if (_cameraStarted) return;
-        _cameraStarted = true;
-        if (!enroll) return;
-        var videoEl = el('enrollVideo');
-        if (!videoEl) return;
-        resetCaptureUI();
-        var statusEl = el('cameraStatusText');
-        enroll.startCamera(videoEl)
-            .then(function () {
-                if (statusEl) statusEl.textContent = 'Camera active \u2014 look straight ahead';
-                enroll.startAutoEnrollment();
-            })
-            .catch(function (e) {
-                _cameraStarted = false;
-                var msg = (e && e.message) || 'Could not access camera.';
-                if (statusEl) statusEl.textContent = 'Camera error: ' + msg;
-                if (typeof Swal !== 'undefined') {
-                    Swal.fire({ icon: 'error', title: 'Camera Error', text: msg,
-                        background: '#0f172a', color: '#f8fafc' });
-                }
-            });
+    /* Colour the liveness bar based on score 0-100 */
+    function setLivenessUI(pct) {
+        var bar = el('livenessBar');
+        var txt = el('livenessText');
+        if (bar) {
+            bar.style.width = pct + '%';
+            bar.className = 'cam-fs-liveness-fill' +
+                (pct >= 65 ? ' high' : pct >= 35 ? ' mid' : ' low');
+        }
+        if (txt) txt.textContent = pct + '%';
     }
 
-    function stopCamera() {
-        _cameraStarted = false;
-        if (enroll) enroll.stopCamera();
-    }
-
-    function doRetake() {
-        if (!enroll) return;
-        enroll.startAutoEnrollment();
-        resetCaptureUI();
-    }
-
-    if (enroll) {
-        enroll.callbacks.onStatus = function (msg) {
-            var e = el('cameraStatusText'); if (e) e.textContent = msg || '';
-        };
-        enroll.callbacks.onLivenessUpdate = function (pct) {
-            var bar = el('livenessBar');  if (bar) bar.style.width = pct + '%';
-            var txt = el('livenessText'); if (txt) txt.textContent = pct + '%';
-        };
-        enroll.callbacks.onCaptureProgress = function (current, target) {
-            updateCaptureUI(current, target);
-        };
-
-        enroll.callbacks.onReadyToConfirm = function (data) {
-            Promise.all(
-                (data.frames || []).slice(0, 4).map(function (frame) {
-                    return new Promise(function (resolve) {
-                        if (!frame || !frame.blob) { resolve(null); return; }
-                        var reader = new FileReader();
-                        reader.onload  = function (e) { resolve(e.target.result); };
-                        reader.onerror = function ()  { resolve(null); };
-                        reader.readAsDataURL(frame.blob);
-                    });
-                })
-            ).then(function (dataUrls) {
-                var thumbHtml = dataUrls.filter(Boolean).map(function (url) {
-                    return '<img src="' + url + '" style="width:80px;height:80px;object-fit:cover;' +
-                           'border-radius:8px;border:2px solid rgba(255,255,255,0.15);flex-shrink:0;margin:4px;" />';
-                }).join('');
-
-                Swal.fire({
-                    title: 'Enrollment Complete!',
-                    html:
-                        '<div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
-                        thumbHtml + '</div>' +
-                        '<div style="font-size:.9rem;">' +
-                        '<p>' + data.frameCount + ' frames captured</p>' +
-                        '<p>Best quality: ' + data.bestLiveness + '%</p></div>',
-                    showCancelButton:  true,
-                    confirmButtonText: 'Continue to Review \u2192',
-                    cancelButtonText:  'Retake Photos',
-                    confirmButtonColor: '#22c55e', background: '#0f172a', color: '#f8fafc',
-                    allowOutsideClick: false
-                }).then(function (result) {
-                    if (result.isConfirmed) {
-                        state.capturedFrames = enroll.goodFrames.slice();
-                        setStep(3);
-                    } else {
-                        doRetake();
-                    }
-                });
-            });
-        };
-
-        enroll.callbacks.onEnrollmentError = function (result) {
-            var msg = typeof enroll.describeEnrollError === 'function'
-                ? enroll.describeEnrollError(result)
-                : ((result && (result.message || result.error)) || 'Scan error, retrying...');
-            var e = el('cameraStatusText'); if (e) e.textContent = msg;
-        };
-    }
+    /* ── Step navigation ───────────────────────────────────────────────────── */
 
     function setStep(step) {
         state.step = step;
+
         [1, 2, 3].forEach(function (n) {
             var pane   = el('step' + n);
             var stepEl = document.querySelector('.wizard-step[data-step="' + n + '"]');
@@ -183,10 +115,15 @@
                 if (n < step)   stepEl.classList.add('done');
             }
         });
+
         if (step === 2) startCamera(); else stopCamera();
         if (step === 3) populateReview();
-        window.scrollTo(0, 0);
+
+        // Only scroll when NOT in camera mode (camera step is fixed-position)
+        if (step !== 2) window.scrollTo(0, 0);
     }
+
+    /* ── Review panel ──────────────────────────────────────────────────────── */
 
     function populateReview() {
         var sel      = els.officeId;
@@ -211,6 +148,8 @@
             var e = el(id); if (e) e.textContent = map[id];
         });
     }
+
+    /* ── Form validation ───────────────────────────────────────────────────── */
 
     var Rules = {
         employeeId : { min:5,  max:20,  pat:/^[A-Z0-9 \-]+$/,          label:'Employee ID' },
@@ -273,6 +212,135 @@
         });
     }
 
+    /* ── Camera lifecycle ──────────────────────────────────────────────────── */
+
+    function startCamera() {
+        if (_cameraStarted) return;
+        _cameraStarted = true;
+        if (!enroll) return;
+        var videoEl = el('enrollVideo');
+        if (!videoEl) return;
+        resetCaptureUI();
+        enroll.startCamera(videoEl)
+            .then(function () {
+                setStatusText('Look straight at the camera');
+                enroll.startAutoEnrollment();
+            })
+            .catch(function (e) {
+                _cameraStarted = false;
+                var msg = (e && e.message) || 'Could not access camera.';
+                setStatusText('Camera error: ' + msg);
+                if (typeof Swal !== 'undefined') {
+                    Swal.fire({ icon: 'error', title: 'Camera Error', text: msg,
+                        background: '#0f172a', color: '#f8fafc' });
+                }
+            });
+    }
+
+    function stopCamera() {
+        _cameraStarted = false;
+        if (enroll) enroll.stopCamera();
+    }
+
+    function doRetake() {
+        if (!enroll) return;
+        enroll.startAutoEnrollment();
+        resetCaptureUI();
+    }
+
+    /* ── Enrollment callbacks ──────────────────────────────────────────────── */
+
+    if (enroll) {
+
+        /* Plain status text updates */
+        enroll.callbacks.onStatus = function (msg) {
+            setStatusText(msg || '');
+        };
+
+        /* Liveness bar + colour */
+        enroll.callbacks.onLivenessUpdate = function (pct) {
+            setLivenessUI(pct);
+        };
+
+        /* Dot progress */
+        enroll.callbacks.onCaptureProgress = function (current, target) {
+            updateCaptureUI(current, target);
+        };
+
+        /*
+         * Distance / centering feedback.
+         * This fires instead of sending to server when the face is too small/far.
+         * Without this, liveness stays at 0% and users get no guidance.
+         */
+        enroll.callbacks.onDistanceFeedback = function (data) {
+            var guideEl = el('enrollGuidePrompt');
+            if (data.status === 'too_far' || data.status === 'borderline') {
+                setStatusText('Move closer to the camera');
+                if (guideEl)
+                    guideEl.innerHTML = '<i class="fa-solid fa-arrow-up"></i> Move closer — face too small';
+            } else if (data.status === 'too_close') {
+                setStatusText('Back up a little');
+                if (guideEl)
+                    guideEl.innerHTML = '<i class="fa-solid fa-arrow-down"></i> Too close — back up slightly';
+            } else if (data.status === 'off_center') {
+                setStatusText('Center your face');
+                if (guideEl)
+                    guideEl.innerHTML = '<i class="fa-solid fa-arrows-up-down-left-right"></i> Center your face in the frame';
+            }
+        };
+
+        /* Ready to confirm — show thumbnail confirmation dialog */
+        enroll.callbacks.onReadyToConfirm = function (data) {
+            Promise.all(
+                (data.frames || []).slice(0, 4).map(function (frame) {
+                    return new Promise(function (resolve) {
+                        if (!frame || !frame.blob) { resolve(null); return; }
+                        var reader = new FileReader();
+                        reader.onload  = function (e) { resolve(e.target.result); };
+                        reader.onerror = function ()  { resolve(null); };
+                        reader.readAsDataURL(frame.blob);
+                    });
+                })
+            ).then(function (dataUrls) {
+                var thumbHtml = dataUrls.filter(Boolean).map(function (url) {
+                    return '<img src="' + url + '" style="width:72px;height:72px;object-fit:cover;' +
+                           'border-radius:8px;border:2px solid rgba(255,255,255,0.15);margin:4px;" />';
+                }).join('');
+
+                Swal.fire({
+                    title: 'Enrollment Complete!',
+                    html:
+                        '<div style="display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin-bottom:12px;">' +
+                        thumbHtml + '</div>' +
+                        '<div style="font-size:.9rem;">' +
+                        '<p>' + data.frameCount + ' frames captured</p>' +
+                        '<p>Best liveness: ' + data.bestLiveness + '%</p></div>',
+                    showCancelButton:  true,
+                    confirmButtonText: 'Continue to Review \u2192',
+                    cancelButtonText:  'Retake',
+                    confirmButtonColor: '#22c55e', background: '#0f172a', color: '#f8fafc',
+                    allowOutsideClick: false
+                }).then(function (result) {
+                    if (result.isConfirmed) {
+                        state.capturedFrames = enroll.goodFrames.slice();
+                        setStep(3);
+                    } else {
+                        doRetake();
+                    }
+                });
+            });
+        };
+
+        enroll.callbacks.onEnrollmentError = function (result) {
+            var msg = typeof enroll.describeEnrollError === 'function'
+                ? enroll.describeEnrollError(result)
+                : ((result && (result.message || result.error)) || 'Scan error, retrying…');
+            setStatusText(msg);
+        };
+    }
+
+    /* ── Button wiring ─────────────────────────────────────────────────────── */
+
     if (els.btnToCapture)     els.btnToCapture.addEventListener('click',     function () { setStep(2); });
     if (els.btnBackToDetails) els.btnBackToDetails.addEventListener('click', function () { setStep(1); });
     if (els.btnBackToCapture) els.btnBackToCapture.addEventListener('click', function () { setStep(2); });
@@ -284,6 +352,7 @@
                 var enc = f.encoding || f.enc;
                 if (enc) encodings.push(enc);
             });
+
             if (encodings.length === 0) {
                 if (typeof Swal !== 'undefined') {
                     Swal.fire({ icon: 'error', title: 'No Face Data',
@@ -292,6 +361,7 @@
                 }
                 return;
             }
+
             var tokenInput = document.querySelector('input[name="__RequestVerificationToken"]');
             var form = new FormData();
             form.append('EmployeeId',           els.employeeId ? els.employeeId.value.trim().toUpperCase() : '');
@@ -307,7 +377,7 @@
             if (tokenInput) form.append('__RequestVerificationToken', tokenInput.value);
 
             els.submitBtn.disabled = true;
-            els.submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Submitting...';
+            els.submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Submitting…';
 
             fetch('/MobileRegistration/SubmitEnrollment', {
                 method: 'POST', body: form, credentials: 'same-origin'

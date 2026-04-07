@@ -9,6 +9,7 @@
     @Styles.Render("~/Content/fa-mobile")
     @Styles.Render("~/Content/enrollment")
     <style>
+        /* ── Step 1 & 3 wizard chrome ─────────────────────────────────── */
         .wizard-steps {
             display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
         }
@@ -55,8 +56,6 @@
             border-radius: 10px; font-size: 12px; color: #4ade80; margin-top: 4px;
         }
         .uppercase { text-transform: uppercase; }
-        #step2 .enroll-camera-wrap { max-height: 44vh; max-height: 44dvh; }
-        #step2 .enroll-video       { max-height: 44vh; max-height: 44dvh; }
         .review-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
         .review-item {
             padding: 12px 14px; border-radius: 12px;
@@ -70,6 +69,228 @@
         }
         .status-bar.success { background: rgba(34,197,94,0.1); color: #34d399; border: 1px solid rgba(34,197,94,0.2); }
         .status-bar.error   { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+
+        /* ── Step 2: Full-screen camera ───────────────────────────────── */
+
+        /* When step 2 is active, break it out of normal flow */
+        #step2.active {
+            position: fixed !important;
+            inset: 0 !important;
+            z-index: 1000 !important;
+            background: #000 !important;
+            overflow: hidden !important;
+            animation: none !important;
+        }
+
+        .cam-fs-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            height: 100dvh;
+            overflow: hidden;
+        }
+
+        /* Full-screen video — mirrors naturally */
+        .cam-fs-video {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transform: scaleX(-1);
+        }
+
+        /* Canvas overlay for face detection boxes */
+        .cam-fs-canvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        /* ── Top HUD ─────────────────────────────────────────────────── */
+        .cam-fs-top {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            z-index: 10;
+            padding: calc(env(safe-area-inset-top, 12px) + 0.75rem) 1rem 2rem;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.72) 0%, transparent 100%);
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .cam-fs-back-btn {
+            flex-shrink: 0;
+            width: 42px; height: 42px;
+            display: flex; align-items: center; justify-content: center;
+            background: rgba(255,255,255,0.15);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            border: 1px solid rgba(255,255,255,0.2);
+            border-radius: 50%;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        .cam-fs-status-wrap {
+            flex: 1;
+            min-width: 0;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .cam-fs-status-dot {
+            flex-shrink: 0;
+            width: 8px; height: 8px;
+            background: #22c55e;
+            border-radius: 50%;
+            animation: camDotPulse 2s ease-in-out infinite;
+        }
+
+        .cam-fs-status-text {
+            color: rgba(255,255,255,0.9);
+            font-size: 0.8125rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .cam-fs-counter {
+            flex-shrink: 0;
+            color: #fff;
+            font-size: 1.375rem;
+            font-weight: 700;
+            font-variant-numeric: tabular-nums;
+            line-height: 1;
+        }
+
+        .cam-fs-counter sub {
+            font-size: 0.75rem;
+            font-weight: 400;
+            color: rgba(255,255,255,0.55);
+            vertical-align: baseline;
+        }
+
+        @@keyframes camDotPulse {
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.35; }
+        }
+
+        /* ── Center guide pill ───────────────────────────────────────── */
+        .cam-fs-guide-pill {
+            position: absolute;
+            bottom: 38%;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 10;
+            padding: 0.45rem 1.1rem;
+            background: rgba(0,0,0,0.55);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 1px solid rgba(255,255,255,0.15);
+            border-radius: 9999px;
+            color: #fff;
+            font-size: 0.875rem;
+            font-weight: 500;
+            white-space: nowrap;
+            max-width: 88vw;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: center;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        /* ── Bottom HUD ──────────────────────────────────────────────── */
+        .cam-fs-bottom {
+            position: absolute;
+            bottom: 0; left: 0; right: 0;
+            z-index: 10;
+            padding: 2.5rem 1.5rem calc(env(safe-area-inset-bottom, 16px) + 1.25rem);
+            background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%);
+        }
+
+        /* Liveness row */
+        .cam-fs-liveness {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.25rem;
+        }
+
+        .cam-fs-liveness-label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: rgba(255,255,255,0.6);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            flex-shrink: 0;
+            width: 4rem;
+        }
+
+        .cam-fs-liveness-track {
+            flex: 1;
+            height: 5px;
+            background: rgba(255,255,255,0.18);
+            border-radius: 9999px;
+            overflow: hidden;
+        }
+
+        .cam-fs-liveness-fill {
+            height: 100%;
+            width: 0%;
+            background: #22c55e;
+            border-radius: 9999px;
+            transition: width 0.35s ease, background-color 0.35s ease;
+        }
+
+        .cam-fs-liveness-fill.low  { background: #ef4444; }
+        .cam-fs-liveness-fill.mid  { background: #f59e0b; }
+        .cam-fs-liveness-fill.high { background: #22c55e; }
+
+        .cam-fs-liveness-pct {
+            font-size: 0.8125rem;
+            font-weight: 700;
+            color: #fff;
+            min-width: 2.25rem;
+            text-align: right;
+            flex-shrink: 0;
+        }
+
+        /* Frame dots */
+        .cam-fs-dots {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 0.75rem;
+        }
+
+        .cam-fs-dot {
+            width: 14px; height: 14px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        .cam-fs-dot.captured {
+            background: #22c55e;
+            border-color: #22c55e;
+            box-shadow: 0 0 10px rgba(34,197,94,0.7);
+            transform: scale(1.15);
+        }
+
+        .cam-fs-hint {
+            text-align: center;
+            font-size: 0.75rem;
+            color: rgba(255,255,255,0.45);
+        }
     </style>
 }
 
@@ -86,7 +307,9 @@
     <div class="wizard-step"        data-step="3">3. Review</div>
 </div>
 
-@* STEP 1 — Details *@
+@* ═══════════════════════════════════════════════════════════
+   STEP 1 — Employee details form  (unchanged)
+   ═══════════════════════════════════════════════════════════ *@
 <div class="wizard-pane active" id="step1">
     <div class="form-section">
 
@@ -99,12 +322,12 @@
 
         <div class="form-row">
             <div class="form-group">
-                <label>First Name <span class="required">*</span> <span class="hint">(Letters only)</span></label>
+                <label>First Name <span class="required">*</span></label>
                 <input type="text" id="firstName" class="uppercase" required maxlength="50" autocomplete="given-name" />
                 <div class="validation-message" id="firstNameValidation"></div>
             </div>
             <div class="form-group">
-                <label>Last Name <span class="required">*</span> <span class="hint">(Letters only)</span></label>
+                <label>Last Name <span class="required">*</span></label>
                 <input type="text" id="lastName" class="uppercase" required maxlength="50" autocomplete="family-name" />
                 <div class="validation-message" id="lastNameValidation"></div>
             </div>
@@ -158,7 +381,7 @@
 
     <div class="wizard-actions">
         <button type="button" class="btn btn-primary" id="btnToCapture" disabled>
-            <i class="fa-solid fa-arrow-right me-2"></i>Continue to Face Capture
+            <i class="fa-solid fa-camera me-2"></i>Continue to Face Capture
         </button>
         <a href="/MobileRegistration" class="btn btn-secondary">
             <i class="fa-solid fa-arrow-left me-2"></i>Back
@@ -166,59 +389,72 @@
     </div>
 </div>
 
-@* STEP 2 — Face capture *@
+@* ═══════════════════════════════════════════════════════════
+   STEP 2 — Full-screen camera capture
+   ═══════════════════════════════════════════════════════════ *@
 <div class="wizard-pane" id="step2">
-    <div class="row g-4">
+    <div class="cam-fs-inner">
 
-        <div class="col-lg-8">
-            <div class="enroll-camera-wrap">
-                <video id="enrollVideo" class="enroll-video" autoplay playsinline muted></video>
-                <canvas id="enrollFaceCanvas" class="enroll-face-canvas"></canvas>
-                <div class="enroll-camera-status">
-                    <span class="enroll-camera-status__dot"></span>
-                    <span id="cameraStatusText">Camera Active</span>
-                </div>
+        {{-- Video feed: object-fit cover fills the full screen --}}
+        <video id="enrollVideo" class="cam-fs-video" autoplay playsinline muted></video>
+
+        {{-- Canvas: enrollment-tracker.js draws face detection boxes here --}}
+        <canvas id="enrollFaceCanvas" class="cam-fs-canvas"></canvas>
+
+        {{-- ── Top HUD ────────────────────────────────────────────────────── --}}
+        <div class="cam-fs-top">
+            <button type="button" class="cam-fs-back-btn" id="btnBackToDetails" aria-label="Back">
+                <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
+            </button>
+
+            <div class="cam-fs-status-wrap">
+                <div class="cam-fs-status-dot"></div>
+                <span class="cam-fs-status-text" id="cameraStatusText">Starting camera…</span>
             </div>
-            <p class="enroll-guide-prompt" id="enrollGuidePrompt">
-                <i class="fa-solid fa-circle-dot"></i> Position your face in the oval
-            </p>
-        </div>
 
-        <div class="col-lg-4">
-            <div class="enroll-stats-panel">
-                <div class="d-flex justify-content-between align-items-center mb-3">
-                    <span class="fw-semibold">
-                        <i class="fa-solid fa-bullseye me-2 text-primary"></i>Progress
-                    </span>
-                    <span class="fs-4 fw-bold text-primary">
-                        <span id="captureCount">0</span><small class="text-muted fs-6">/5</small>
-                    </span>
-                </div>
-                <div class="progress mb-3" style="height:8px;">
-                    <div class="progress-bar" id="captureProgress" style="width:0%"></div>
-                </div>
-                <div class="enroll-liveness-mini">
-                    <div class="d-flex justify-content-between mb-1">
-                        <span class="small fw-semibold">Liveness</span>
-                        <span class="small fw-bold" id="livenessText">0%</span>
-                    </div>
-                    <div class="progress" style="height:6px;">
-                        <div class="progress-bar bg-success" id="livenessBar" style="width:0%"></div>
-                    </div>
-                </div>
+            <div class="cam-fs-counter">
+                <span id="captureCount">0</span><sub>/5</sub>
             </div>
         </div>
 
-    </div>
+        {{-- ── Guide pill (center) ────────────────────────────────────────── --}}
+        <p class="cam-fs-guide-pill" id="enrollGuidePrompt">
+            <i class="fa-solid fa-circle-dot"></i> Position your face in the frame
+        </p>
 
-    <div class="wizard-actions mt-3">
-        <button type="button" class="btn btn-secondary" id="btnBackToDetails">
-            <i class="fa-solid fa-arrow-left me-2"></i>Back to Details
-        </button>
+        {{-- ── Bottom HUD ─────────────────────────────────────────────────── --}}
+        <div class="cam-fs-bottom">
+
+            {{-- Liveness bar --}}
+            <div class="cam-fs-liveness">
+                <span class="cam-fs-liveness-label">Liveness</span>
+                <div class="cam-fs-liveness-track">
+                    <div class="cam-fs-liveness-fill" id="livenessBar"></div>
+                </div>
+                <span class="cam-fs-liveness-pct" id="livenessText">0%</span>
+            </div>
+
+            {{-- 5 capture-progress dots --}}
+            <div class="cam-fs-dots">
+                <div class="cam-fs-dot" id="enDot0"></div>
+                <div class="cam-fs-dot" id="enDot1"></div>
+                <div class="cam-fs-dot" id="enDot2"></div>
+                <div class="cam-fs-dot" id="enDot3"></div>
+                <div class="cam-fs-dot" id="enDot4"></div>
+            </div>
+
+            <p class="cam-fs-hint">Hold still &amp; look directly at the camera</p>
+        </div>
+
+        {{-- Hidden progress bar (kept for JS compatibility in enrollment-core.js) --}}
+        <div id="captureProgress" style="display:none"></div>
+
     </div>
 </div>
 
-@* STEP 3 — Review and submit *@
+@* ═══════════════════════════════════════════════════════════
+   STEP 3 — Review and submit  (unchanged)
+   ═══════════════════════════════════════════════════════════ *@
 <div class="wizard-pane" id="step3">
     <div class="hint-box">Review your details before sending the enrollment request.</div>
     <div class="form-section">
@@ -255,7 +491,7 @@
             <i class="fa-solid fa-paper-plane me-2"></i>Submit Enrollment
         </button>
         <button type="button" class="btn btn-secondary" id="btnBackToCapture">
-            <i class="fa-solid fa-arrow-left me-2"></i>Back to Capture
+            <i class="fa-solid fa-arrow-left me-2"></i>Re-capture Face
         </button>
     </div>
 </div>
