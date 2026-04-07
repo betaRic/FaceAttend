@@ -59,7 +59,7 @@ namespace FaceAttend.Controllers.Mobile
 
                 bool livenessOk = scan.LivenessOk && scan.LivenessScore >= (float)livenessThreshold;
 
-                var enrollStrictTolerance = isMobile ? 0.50 :
+                var enrollStrictTolerance =
                     ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
 
                 string duplicateEmployeeId = null;
@@ -199,7 +199,7 @@ namespace FaceAttend.Controllers.Mobile
                         return JsonResponseBuilder.Error("FACE_REQUIRED", "Face enrollment is required.");
                     }
 
-                    var strictTolerance = isMobile ? 0.50 :
+                    var strictTolerance =
                         ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
 
                     var duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(
@@ -240,6 +240,15 @@ namespace FaceAttend.Controllers.Mobile
 
                     db.Employees.Add(employee);
                     db.SaveChanges();
+
+                    // Register the device as PENDING so it is auto-approved when admin
+                    // approves this employee via ApprovePendingEmployee / Edit flow.
+                    DeviceService.CreatePendingDevice(
+                        db,
+                        employee.Id,
+                        fingerprint,
+                        vm.DeviceName,
+                        Request.UserHostAddress);
 
                     Services.Biometrics.EmployeeFaceIndex.Invalidate();
 

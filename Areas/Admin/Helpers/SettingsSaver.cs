@@ -247,8 +247,8 @@ namespace FaceAttend.Areas.Admin.Helpers
             var decision = NormalizeOrDefault(vm.LivenessDecision, "max");
             var scales = (vm.LivenessMultiCropScales ?? "").Trim();
             var outputType = NormalizeOrDefault(vm.LivenessOutputType, "logits");
-            var normalize = NormalizeOrDefault(vm.LivenessNormalize, "0_1");
-            var channelOrder = NormalizeOrDefault(vm.LivenessChannelOrder, "RGB");
+            var normalize = NormalizeOrDefault(vm.LivenessNormalize, "minus1_1");
+            var channelOrder = NormalizeOrDefault(vm.LivenessChannelOrder, "BGR");
 
             ConfigurationService.Upsert(
                 db,

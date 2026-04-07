@@ -11,6 +11,7 @@
     'use strict';
 
     var MIN_FRAMES = 5;
+    var MAX_FRAMES = 10;
 
     var state = {
         step:           1,
@@ -51,7 +52,7 @@
             scanUrl:       '/MobileRegistration/ScanFrame',
             enrollUrl:     '/api/enrollment/enroll',
             minGoodFrames: MIN_FRAMES,
-            maxKeepFrames: 8,
+            maxKeepFrames: MAX_FRAMES,
             enablePreview: false
           })
         : null;
@@ -68,12 +69,12 @@
         if (e) e.textContent = msg || '';
     }
 
-    /* Update the 5 capture dots + counter */
+    /* Update the 10 capture dots + counter */
     function updateCaptureUI(frameCount, target) {
         var cnt = el('captureCount');
         if (cnt) cnt.textContent = frameCount;
 
-        for (var i = 0; i < 5; i++) {
+        for (var i = 0; i < MAX_FRAMES; i++) {
             var dot = el('enDot' + i);
             if (dot) dot.classList.toggle('captured', i < frameCount);
         }
@@ -142,7 +143,7 @@
             ].filter(Boolean).join(' / ') || '-',
             reviewOffice:      officeTx,
             reviewDeviceName:  els.deviceName ? els.deviceName.value : '-',
-            reviewSampleCount: samples + ' / 5'
+            reviewSampleCount: samples + ' / ' + MAX_FRAMES
         };
         Object.keys(map).forEach(function (id) {
             var e = el(id); if (e) e.textContent = map[id];
@@ -246,6 +247,8 @@
         if (!enroll) return;
         enroll.startAutoEnrollment();
         resetCaptureUI();
+        var guideEl = el('enrollGuidePrompt');
+        if (guideEl) guideEl.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Position your face in the frame';
     }
 
     /* ── Enrollment callbacks ──────────────────────────────────────────────── */
@@ -343,7 +346,7 @@
 
     if (els.btnToCapture)     els.btnToCapture.addEventListener('click',     function () { setStep(2); });
     if (els.btnBackToDetails) els.btnBackToDetails.addEventListener('click', function () { setStep(1); });
-    if (els.btnBackToCapture) els.btnBackToCapture.addEventListener('click', function () { setStep(2); });
+    if (els.btnBackToCapture) els.btnBackToCapture.addEventListener('click', function () { doRetake(); setStep(2); });
 
     if (els.submitBtn) {
         els.submitBtn.addEventListener('click', function () {
@@ -405,10 +408,5 @@
     }
 
     window.addEventListener('beforeunload', stopCamera);
-
-    // Portrait orientation lock
-    if (screen.orientation && screen.orientation.lock) {
-        screen.orientation.lock('portrait-primary').catch(function () {});
-    }
 
 }());

@@ -61,6 +61,34 @@ namespace FaceAttend.Controllers.Api
                     return JsonResponseBuilder.Error("EMPLOYEE_NOT_FOUND");
             }
 
+            // Fast path: if client sent pre-computed encodings from per-frame ScanFrame calls,
+            // skip disk I/O, ImagePreprocessor, dlib detection, ONNX liveness, and dlib encoding.
+            // Cuts typical 30-60 s "Saving frames" wait down to < 1 s.
+            if (!string.IsNullOrEmpty(allEncodingsJson))
+            {
+                try
+                {
+                    var rawList = JsonConvert.DeserializeObject<List<string>>(allEncodingsJson);
+                    if (rawList != null && rawList.Count > 0)
+                    {
+                        var fastCandidates = new List<EnrollCandidate>();
+                        foreach (var b64 in rawList)
+                        {
+                            var bytes = Convert.FromBase64String(b64);
+                            var vec   = DlibBiometrics.DecodeFromBytes(bytes);
+                            if (vec != null && vec.Length == 128)
+                                fastCandidates.Add(new EnrollCandidate { Vec = vec, Liveness = 1f, QualityScore = 1f });
+                        }
+                        if (fastCandidates.Count > 0)
+                            return FinalizeEnrollment(employeeId, fastCandidates, maxStored, strictTol, sw);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Trace.TraceWarning("[Enroll] Fast-path parse failed, falling back to blob processing: {0}", ex.Message);
+                }
+            }
+
             var candidates     = new ConcurrentBag<EnrollCandidate>();
             int processedCount = 0;
 
@@ -171,10 +199,19 @@ namespace FaceAttend.Controllers.Api
                     timeMs    = sw.ElapsedMilliseconds
                 });
 
-            var selected = SelectDiverseByEmbedding(candidates.ToList(), maxStored);
+            return FinalizeEnrollment(employeeId, candidates.ToList(), maxStored, strictTol, sw);
+        }
 
-            // Check ALL selected vectors — not just selected[0] — to catch cases where
-            // one enrolled vector closely matches another employee's stored vectors.
+        private ActionResult FinalizeEnrollment(
+            string employeeId,
+            List<EnrollCandidate> candidates,
+            int maxStored,
+            double strictTol,
+            Stopwatch sw)
+        {
+            var selected = SelectDiverseByEmbedding(candidates, maxStored);
+
+            // Check ALL selected vectors to catch cases where one closely matches another employee.
             string duplicateId = null;
             using (var checkDb = new FaceAttendDBEntities())
             {
@@ -189,7 +226,6 @@ namespace FaceAttend.Controllers.Api
                 return JsonResponseBuilder.Error("FACE_ALREADY_ENROLLED", details: new
                 {
                     matchEmployeeId = duplicateId,
-                    processed       = processedCount,
                     timeMs          = sw.ElapsedMilliseconds
                 });
 
@@ -212,9 +248,8 @@ namespace FaceAttend.Controllers.Api
                 if (selected.Count == 0)
                     return JsonResponseBuilder.Error("NO_GOOD_FRAME", details: new
                     {
-                        message   = "No vectors passed self-match quality check. Re-enroll with better lighting.",
-                        processed = processedCount,
-                        timeMs    = sw.ElapsedMilliseconds
+                        message = "No vectors passed self-match quality check. Re-enroll with better lighting.",
+                        timeMs  = sw.ElapsedMilliseconds
                     });
             }
 

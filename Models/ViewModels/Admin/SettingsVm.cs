@@ -32,11 +32,11 @@ namespace FaceAttend.Models.ViewModels.Admin
         [Display(Name = "Max concurrent scans")]
         public int MaxConcurrentScans { get; set; }
 
-        [Range(3, 20)]
+        [Range(5, 25)]
         [Display(Name = "Enrollment capture target (frames)")]
         public int EnrollCaptureTarget { get; set; }
 
-        [Range(1, 10)]
+        [Range(1, 25)]
         [Display(Name = "Enrollment stored vectors per employee")]
         public int EnrollMaxStoredVectors { get; set; }
 
@@ -44,11 +44,11 @@ namespace FaceAttend.Models.ViewModels.Admin
         [Display(Name = "Visitor match tolerance")]
         public double VisitorDlibTolerance { get; set; }
 
-        [Range(10, 500)]
+        [Range(10, 150)]
         [Display(Name = "Enrollment sharpness threshold (desktop)")]
         public double EnrollSharpnessThreshold { get; set; }
 
-        [Range(10, 500)]
+        [Range(10, 100)]
         [Display(Name = "Enrollment sharpness threshold (mobile)")]
         public double EnrollSharpnessThresholdMobile { get; set; }
 

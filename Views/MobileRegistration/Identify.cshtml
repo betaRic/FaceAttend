@@ -275,7 +275,7 @@
             
             let identifiedEmployeeId = null;
             let scanAttempts = 0;
-            const maxAttempts = 5;
+            const maxAttempts = 10;
             let isScanning = false;
             let lastFaceBox = null;
             let detectionInterval = null;
@@ -512,18 +512,19 @@
                 faceOverlay.classList.remove('scanning');
                 scanOverlay.classList.remove('active');
                 
-                if (data.error === 'NOT_RECOGNIZED' || data.error === 'NO_FACE') {
-                    // Silent retry
+                const transientErrors = ['NOT_RECOGNIZED', 'NO_FACE', 'ENCODING_FAIL', 'NETWORK_ERROR', 'IMAGE_LOAD_FAIL'];
+                if (transientErrors.includes(data.error)) {
+                    // Silent retry — transient errors that are worth retrying automatically
                     cameraContainer.classList.add('error');
                     faceOverlay.classList.remove('active');
                     setStatus('retrying', 'Retrying...');
-                    
+
                     setTimeout(() => {
                         cameraContainer.classList.remove('error');
                         startIdentification();
                     }, 800);
                 } else {
-                    // Other errors
+                    // Non-transient errors (INVALID_STATUS, SERVER_ERROR, etc.)
                     if (typeof MobileSwal !== 'undefined') {
                         MobileSwal.error('Identification Failed', data.message || 'Please try again.');
                     }

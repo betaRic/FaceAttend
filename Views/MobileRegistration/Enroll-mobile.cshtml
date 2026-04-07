@@ -395,13 +395,13 @@
 <div class="wizard-pane" id="step2">
     <div class="cam-fs-inner">
 
-        {{-- Video feed: object-fit cover fills the full screen --}}
+        @* Video feed: object-fit cover fills the full screen *@
         <video id="enrollVideo" class="cam-fs-video" autoplay playsinline muted></video>
 
-        {{-- Canvas: enrollment-tracker.js draws face detection boxes here --}}
+        @* Canvas: enrollment-tracker.js draws face detection boxes here *@
         <canvas id="enrollFaceCanvas" class="cam-fs-canvas"></canvas>
 
-        {{-- ── Top HUD ────────────────────────────────────────────────────── --}}
+        @* ── Top HUD *@
         <div class="cam-fs-top">
             <button type="button" class="cam-fs-back-btn" id="btnBackToDetails" aria-label="Back">
                 <i class="fa-solid fa-arrow-left" aria-hidden="true"></i>
@@ -413,19 +413,19 @@
             </div>
 
             <div class="cam-fs-counter">
-                <span id="captureCount">0</span><sub>/5</sub>
+                <span id="captureCount">0</span><sub>/10</sub>
             </div>
         </div>
 
-        {{-- ── Guide pill (center) ────────────────────────────────────────── --}}
+        @* ── Guide pill (center) *@
         <p class="cam-fs-guide-pill" id="enrollGuidePrompt">
             <i class="fa-solid fa-circle-dot"></i> Position your face in the frame
         </p>
 
-        {{-- ── Bottom HUD ─────────────────────────────────────────────────── --}}
+        @* ── Bottom HUD *@
         <div class="cam-fs-bottom">
 
-            {{-- Liveness bar --}}
+            @* Liveness bar *@
             <div class="cam-fs-liveness">
                 <span class="cam-fs-liveness-label">Liveness</span>
                 <div class="cam-fs-liveness-track">
@@ -434,19 +434,24 @@
                 <span class="cam-fs-liveness-pct" id="livenessText">0%</span>
             </div>
 
-            {{-- 5 capture-progress dots --}}
+            @* 10 capture-progress dots (matches MAX_FRAMES = 10 in mobile-enroll-page.js) *@
             <div class="cam-fs-dots">
                 <div class="cam-fs-dot" id="enDot0"></div>
                 <div class="cam-fs-dot" id="enDot1"></div>
                 <div class="cam-fs-dot" id="enDot2"></div>
                 <div class="cam-fs-dot" id="enDot3"></div>
                 <div class="cam-fs-dot" id="enDot4"></div>
+                <div class="cam-fs-dot" id="enDot5"></div>
+                <div class="cam-fs-dot" id="enDot6"></div>
+                <div class="cam-fs-dot" id="enDot7"></div>
+                <div class="cam-fs-dot" id="enDot8"></div>
+                <div class="cam-fs-dot" id="enDot9"></div>
             </div>
 
             <p class="cam-fs-hint">Hold still &amp; look directly at the camera</p>
         </div>
 
-        {{-- Hidden progress bar (kept for JS compatibility in enrollment-core.js) --}}
+        @* Hidden progress bar (kept for JS compatibility in enrollment-core.js) *@
         <div id="captureProgress" style="display:none"></div>
 
     </div>

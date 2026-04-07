@@ -471,6 +471,7 @@
     <Compile Include="Services\Recognition\PendingScanService.cs" />
     <Compile Include="Services\Recognition\VisitorScanService.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
+    <Compile Include="Services\Security\AdminPersistCookieService.cs" />
     <Compile Include="Services\Security\AdminPinService.cs" />
     <Compile Include="Services\Security\AdminSessionService.cs" />
     <Compile Include="Services\Security\AdminUnlockCookieService.cs" />

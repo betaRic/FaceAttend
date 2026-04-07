@@ -9,6 +9,7 @@ using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Recognition;
 using FaceAttend.Services.Security;
 using static FaceAttend.Services.OfficeLocationService;
+using System.Web;
 
 namespace FaceAttend.Controllers
 {
@@ -223,16 +224,71 @@ namespace FaceAttend.Controllers
 
             AdminAuthorizeAttribute.RotateSessionId(HttpContext);
             AdminAuthorizeAttribute.IssueUnlockCookie(HttpContext, ip);
+            // Issue long-lived bypass cookie so the admin can skip PIN for the rest of the workday
+            AdminPersistCookieService.IssuePersistCookie(new HttpContextWrapper(System.Web.HttpContext.Current));
 
             return Json(new { ok = true, returnUrl = safeReturn });
         }
 
+        /// <summary>
+        /// Returns admin to the kiosk WITHOUT clearing the session or persist cookie,
+        /// so the shortcut can bypass PIN on the next admin visit.
+        /// </summary>
         [HttpPost]
         [ValidateAntiForgeryToken]
         public ActionResult Lock()
         {
-            AdminAuthorizeAttribute.ClearAuthed(Session);
+            // Do NOT abandon session — admin can return via shortcut without re-entering PIN.
+            // Use FullLock() to explicitly sign out at end of day.
             return RedirectToAction("Index");
+        }
+
+        /// <summary>
+        /// Full sign-out: clears the admin session AND the workday bypass cookie.
+        /// Use this at end of day or when handing the kiosk to a different admin.
+        /// </summary>
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult FullLock()
+        {
+            AdminAuthorizeAttribute.ClearAuthed(Session);
+            AdminPersistCookieService.ExpirePersistCookie(new HttpContextWrapper(System.Web.HttpContext.Current));
+            return RedirectToAction("Index");
+        }
+
+        /// <summary>
+        /// Kiosk shortcut pre-check: returns whether the current session is already admin-authed.
+        /// No CSRF needed — read-only, no side effects.
+        /// </summary>
+        [HttpGet]
+        public ActionResult CheckAdminAuthed()
+        {
+            if (DeviceService.IsMobileDevice(Request))
+                return Json(new { authed = false }, JsonRequestBehavior.AllowGet);
+            return Json(new { authed = AdminSessionService.IsAuthed(Session) },
+                        JsonRequestBehavior.AllowGet);
+        }
+
+        /// <summary>
+        /// Kiosk shortcut bypass: if the workday persist cookie is valid, issues a new
+        /// unlock cookie so the admin can enter the panel without re-entering PIN.
+        /// </summary>
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult AutoAdmin(string returnUrl)
+        {
+            if (DeviceService.IsMobileDevice(Request))
+                return Json(new { ok = false, error = "UNLOCK_DISABLED_ON_MOBILE" });
+
+            var ctx = new HttpContextWrapper(System.Web.HttpContext.Current);
+            if (!AdminPersistCookieService.IsValid(ctx))
+                return Json(new { ok = false });
+
+            var safeReturn = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
+            AdminAuthorizeAttribute.RotateSessionId(HttpContext);
+            AdminAuthorizeAttribute.IssueUnlockCookie(HttpContext, Request.UserHostAddress);
+
+            return Json(new { ok = true, returnUrl = safeReturn });
         }
 
         [HttpGet]

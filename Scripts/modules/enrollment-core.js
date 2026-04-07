@@ -608,10 +608,11 @@ FaceAttend.Enrollment = (function () {
         if (this.enrolling) return;
         this.enrolling = true;
 
-        var frames = this.getGoodFrameBlobs();
+        var frames    = this.getGoodFrameBlobs();
+        var encodings = this.getEncodings();  // pre-computed from per-frame ScanFrame responses
         this.handleStatus('Saving enrollment (' + frames.length + ' frames)...', 'info');
 
-        this.postEnrollMany(frames)
+        this.postEnrollMany(frames, encodings)
             .then(function (result) {
                 self.enrolling = false;
                 if (result && result.ok === true) {
@@ -631,7 +632,7 @@ FaceAttend.Enrollment = (function () {
             });
     };
 
-    Enrollment.prototype.postEnrollMany = function (blobs) {
+    Enrollment.prototype.postEnrollMany = function (blobs, encodings) {
         var self = this;
         if (!blobs || !blobs.length) return Promise.resolve({ ok: false, error: 'NO_IMAGE' });
 
@@ -654,6 +655,9 @@ FaceAttend.Enrollment = (function () {
         fd.append('employeeId', this.config.empId);
         for (var i = 0; i < blobs.length; i++)
             fd.append('image', blobs[i], 'enroll_' + (i + 1) + '.jpg');
+        // Send pre-computed encodings so the server can skip blob re-processing (fast path)
+        if (encodings && encodings.length > 0)
+            fd.append('allEncodingsJson', JSON.stringify(encodings));
 
         return fetch(this.config.enrollUrl, { method: 'POST', body: fd })
             .then(function (res) { return res.json(); })

@@ -124,14 +124,20 @@ namespace FaceAttend.Services.Security
                 return false;
             }
 
-            var cookieIp = StringHelper.NormalizeIp(parts[1]);
-            var ip       = StringHelper.NormalizeIp(clientIp);
-            if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
+            // IP binding: protects against stolen cookies but breaks multi-office / NAT-unstable networks.
+            // Set Admin:BindUnlockCookieToIp = true only when all admins are on a single stable IP.
+            var bindToIp = ConfigurationService.GetBool("Admin:BindUnlockCookieToIp", false);
+            if (bindToIp)
             {
-                System.Diagnostics.Trace.TraceWarning(
-                    "[AdminUnlockCookie] IP mismatch. Cookie: " + cookieIp + ", Current: " + ip);
-                ExpireUnlockCookie(httpContext);
-                return false;
+                var cookieIp = StringHelper.NormalizeIp(parts[1]);
+                var ip       = StringHelper.NormalizeIp(clientIp);
+                if (!string.Equals(cookieIp, ip, StringComparison.OrdinalIgnoreCase))
+                {
+                    System.Diagnostics.Trace.TraceWarning(
+                        "[AdminUnlockCookie] IP mismatch. Cookie: " + cookieIp + ", Current: " + ip);
+                    ExpireUnlockCookie(httpContext);
+                    return false;
+                }
             }
 
             // Valid — consume and mark session authenticated.

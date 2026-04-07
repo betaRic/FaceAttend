@@ -533,9 +533,9 @@
                                 <div class="row g-3">
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.AttendanceTolerance, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.AttendanceTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.40", max = "0.90" })
+                                        @Html.TextBoxFor(m => m.AttendanceTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.40", max = "0.65" })
                                         @Html.ValidationMessageFor(m => m.AttendanceTolerance, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Face distance for attendance scans. Higher = more lenient (default 0.65).</div>
+                                        <div class="form-text">Face distance for attendance scans. Higher = more lenient (default 0.65). <strong>Maximum effective value is 0.65</strong> — values above are clamped by the recognition engine.</div>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollmentStrictTolerance, new { @class = "form-label" })
@@ -562,27 +562,27 @@
                                 <div class="row g-3">
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollCaptureTarget, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.EnrollCaptureTarget, new { @class = "form-control form-control-sm", type = "number", min = "3", max = "20" })
+                                        @Html.TextBoxFor(m => m.EnrollCaptureTarget, new { @class = "form-control form-control-sm", type = "number", min = "5", max = "25" })
                                         @Html.ValidationMessageFor(m => m.EnrollCaptureTarget, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Frames collected per enrollment session (default 8).</div>
+                                        <div class="form-text">Frames collected per enrollment session (default 25).</div>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollMaxStoredVectors, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.EnrollMaxStoredVectors, new { @class = "form-control form-control-sm", type = "number", min = "1", max = "10" })
+                                        @Html.TextBoxFor(m => m.EnrollMaxStoredVectors, new { @class = "form-control form-control-sm", type = "number", min = "1", max = "25" })
                                         @Html.ValidationMessageFor(m => m.EnrollMaxStoredVectors, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Face vectors stored per employee after diversity selection (default 5).</div>
+                                        <div class="form-text">Face vectors stored per employee after diversity selection (default 25). Higher = better angle coverage. Must not exceed capture target.</div>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollSharpnessThreshold, new { @class = "form-label" })
                                         @Html.TextBoxFor(m => m.EnrollSharpnessThreshold, new { @class = "form-control form-control-sm", type = "number", step = "1", min = "10", max = "500" })
                                         @Html.ValidationMessageFor(m => m.EnrollSharpnessThreshold, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Minimum image sharpness score (desktop webcam, default 80).</div>
+                                        <div class="form-text">Minimum image sharpness score (desktop webcam, default 35). High values reject too many frames — keep at 35–45.</div>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.EnrollSharpnessThresholdMobile, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.EnrollSharpnessThresholdMobile, new { @class = "form-control form-control-sm", type = "number", step = "1", min = "10", max = "500" })
+                                        @Html.TextBoxFor(m => m.EnrollSharpnessThresholdMobile, new { @class = "form-control form-control-sm", type = "number", step = "1", min = "10", max = "100" })
                                         @Html.ValidationMessageFor(m => m.EnrollSharpnessThresholdMobile, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Minimum image sharpness score (mobile camera, default 50).</div>
+                                        <div class="form-text">Minimum image sharpness score (mobile camera, default 28). Mobile cameras are sharper — keep at 25–35.</div>
                                     </div>
                                 </div>
                             </div>

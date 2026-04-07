@@ -20,6 +20,43 @@
 </head>
 <body class="admin-body">
 
+    <!-- Page loading overlay — visible until DOM ready, shown again on navigation -->
+    <div id="pageLoader" aria-hidden="true">
+        <div class="page-loader-spinner">
+            <svg viewBox="0 0 50 50" xmlns="http://www.w3.org/2000/svg">
+                <circle cx="25" cy="25" r="20" fill="none" stroke-width="4"
+                        stroke="currentColor" stroke-linecap="round"
+                        stroke-dasharray="80 40" />
+            </svg>
+            <span>Loading</span>
+        </div>
+    </div>
+    <style>
+        #pageLoader {
+            position: fixed; inset: 0; z-index: 99999;
+            display: flex; align-items: center; justify-content: center;
+            background: var(--fa-surface, #f8fafc);
+            transition: opacity .25s ease, visibility .25s ease;
+        }
+        #pageLoader.loader-hidden {
+            opacity: 0; visibility: hidden; pointer-events: none;
+        }
+        .page-loader-spinner {
+            display: flex; flex-direction: column; align-items: center; gap: .75rem;
+        }
+        .page-loader-spinner svg {
+            width: 44px; height: 44px;
+            color: var(--fa-primary, #3b82f6);
+            animation: loader-spin .9s linear infinite;
+        }
+        .page-loader-spinner span {
+            font-size: .82rem; font-weight: 500;
+            color: var(--fa-text-muted, #64748b);
+            letter-spacing: .03em;
+        }
+        @@keyframes loader-spin { to { transform: rotate(360deg); } }
+    </style>
+
     <!-- Topbar -->
     <header class="admin-topbar">
         <div class="container-fluid h-100">
@@ -203,6 +240,40 @@
     </script>
     
     @RenderSection("scripts", required: false)
+
+    <script>
+        (function () {
+            'use strict';
+            var loader = document.getElementById('pageLoader');
+            function hideLoader() {
+                if (loader) loader.classList.add('loader-hidden');
+            }
+            // Hide as soon as DOM is interactive
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', hideLoader);
+            } else {
+                hideLoader();
+            }
+            // Show again when navigating away (gives immediate feedback on slow pages)
+            window.addEventListener('beforeunload', function () {
+                if (loader) loader.classList.remove('loader-hidden');
+            });
+            // Also show on anchor navigation that changes the page
+            document.addEventListener('click', function (e) {
+                var a = e.target.closest('a[href]');
+                if (!a) return;
+                var href = a.getAttribute('href');
+                // Skip: anchors, javascript:, external links, new-tab, download
+                if (!href || href.charAt(0) === '#' || href.indexOf('javascript:') === 0) return;
+                if (a.target === '_blank' || a.hasAttribute('download')) return;
+                try {
+                    var url = new URL(href, window.location.href);
+                    if (url.origin !== window.location.origin) return;
+                } catch (ex) { return; }
+                if (loader) loader.classList.remove('loader-hidden');
+            });
+        })();
+    </script>
 
     <script>
         (function () {

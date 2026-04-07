@@ -13,6 +13,7 @@
     var uploadUrl = cfg ? cfg.dataset.uploadUrl  : '';
 
     var MIN_FRAMES = 5;
+    var MAX_FRAMES = 10;
 
     var capturedFrames = [];
     var selectedFiles  = [];
@@ -32,7 +33,7 @@
             enrollUrl:     enrollUrl,
             redirectUrl:   '',
             minGoodFrames: MIN_FRAMES,
-            maxKeepFrames: MIN_FRAMES,
+            maxKeepFrames: MAX_FRAMES,
             enablePreview: false
           })
         : null;
