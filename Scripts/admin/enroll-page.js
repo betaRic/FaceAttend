@@ -11,7 +11,7 @@
     var scanUrl  = cfg ? cfg.dataset.scanUrl    : '';
     var enrollUrl = cfg ? cfg.dataset.enrollUrl  : '';
 
-    var MIN_FRAMES = 5;
+    var MIN_FRAMES = 8;
     var MAX_FRAMES = 10;
 
     // ── State ────────────────────────────────────────────────────────────
