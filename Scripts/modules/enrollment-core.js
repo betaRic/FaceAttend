@@ -22,7 +22,7 @@ FaceAttend.Enrollment = (function () {
         FACE_AREA_WARNING_RATIO:     0.05, // Amber warning fires just below enrollment threshold
         MAX_FACE_AREA_RATIO:         0.90, // Face area ratio above which liveness CNN returns 0.00 (too close)
         MIN_BRIGHTNESS:              30,   // Mean gray 0-255; allow slightly dim environments
-        AUTO_CONFIRM_TIMEOUT_MS:     8000
+        AUTO_CONFIRM_TIMEOUT_MS:     5000
     };
 
     function getCsrfToken() {
@@ -183,15 +183,9 @@ FaceAttend.Enrollment = (function () {
     }
 
     function getSharpnessThreshold() {
-        var base = isMobileDevice() ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
-        var videoEl = document.getElementById('enrollVideo');
-        if (videoEl && videoEl.videoWidth) {
-            var longerEdge = Math.max(videoEl.videoWidth, videoEl.videoHeight);
-            if (longerEdge >= 720) return base;
-            var scale = Math.max(0.40, longerEdge / 720);
-            return base * scale;
-        }
-        return base;
+        return isMobileDevice()
+            ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE
+            : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
     }
 
     Enrollment.prototype.startCamera = function (videoElement) {
@@ -570,14 +564,15 @@ FaceAttend.Enrollment = (function () {
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
             var hasMaxFrames    = this.goodFrames.length >= this.config.maxKeepFrames;
 
-            if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling)
-                this._startConfirmTimer();
-
-            if (hasMaxFrames) {
+            if (hasMaxFrames || (hasEnoughFrames && p >= 0.85)) {
                 this.stopAutoEnrollment();
+                this._clearConfirmTimer();
                 this._fireReadyToConfirm();
                 return;
             }
+
+            if (hasEnoughFrames && !this.confirmTimer && !this.enrolled && !this.enrolling)
+                this._startConfirmTimer();
 
             var needFrames = Math.max(0, this.config.minGoodFrames - this.goodFrames.length);
             this.handleStatus(
