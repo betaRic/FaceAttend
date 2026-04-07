@@ -125,6 +125,9 @@ namespace FaceAttend.Controllers
         [RateLimit(Name = "KioskSubmitVisitor", MaxRequests = 30, WindowSeconds = 60, Burst = 10)]
         public ActionResult SubmitVisitor(string scanId, string name, string purpose)
         {
+            if (!ConfigurationService.GetBool("Kiosk:VisitorEnabled", false))
+                return Json(new { ok = false, error = "VISITOR_DISABLED", message = "Visitor registration is disabled." });
+
             scanId = (scanId ?? "").Trim();
             if (string.IsNullOrWhiteSpace(scanId))
                 return Json(new { ok = false, error = "SCAN_ID_REQUIRED", message = "Scan ID is required." });

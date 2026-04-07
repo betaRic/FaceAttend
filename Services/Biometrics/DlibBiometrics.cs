@@ -426,7 +426,8 @@ namespace FaceAttend.Services.Biometrics
             Bitmap       bitmap,
             out FaceBox  faceBox,
             out Location faceLocation,
-            out string   error)
+            out string   error,
+            bool         allowLargestFace = true)
         {
             faceBox      = null;
             faceLocation = default(Location);
@@ -473,10 +474,16 @@ namespace FaceAttend.Services.Biometrics
                         return false;
                     }
 
-                    // Pick largest face instead of hard-failing on multi-face —
-                    // matches allowLargestFace behaviour of TryDetectBestFaceFromFile.
+                    // Multiple faces detected
                     if (locs.Length > 1)
                     {
+                        if (!allowLargestFace)
+                        {
+                            // Enrollment strict mode: reject multi-face frames to prevent wrong embedding
+                            error = "MULTI_FACE";
+                            return false;
+                        }
+                        // Attendance lenient mode: pick largest face (kiosk may have bystanders)
                         locs = new[] {
                             locs.OrderByDescending(l =>
                                 Math.Max(0, l.Right - l.Left) *

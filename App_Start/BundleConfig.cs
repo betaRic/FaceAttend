@@ -111,13 +111,14 @@ namespace FaceAttend
 
             // Enrollment Bundle (Core + Enrollment logic)
             // Order matters: fa-helpers must be first (provides Utils for other modules)
-            // face-guide.js must be before enrollment-core and enrollment-tracker (both depend on it)
+            // face-guide.js → enrollment-overlay.js → enrollment-core.js → enrollment-tracker.js
             bundles.Add(new ScriptBundle("~/bundles/enrollment")
                 .Include("~/Scripts/core/fa-helpers.js")
                 .Include("~/Scripts/core/camera.js")
                 .Include("~/Scripts/core/api.js")
                 .Include("~/Scripts/core/notify.js")
                 .Include("~/Scripts/modules/face-guide.js")
+                .Include("~/Scripts/modules/enrollment-overlay.js")
                 .Include("~/Scripts/modules/enrollment-core.js")
                 .Include("~/Scripts/enrollment-tracker.js"));
 

@@ -19,7 +19,7 @@
         csrfToken: '',
         
         // Default timeout in milliseconds
-        timeout: 30000,
+        timeout: 300000,
         
         /**
          * Initialize API client

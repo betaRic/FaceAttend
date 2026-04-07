@@ -147,7 +147,7 @@
         if (typeof j.liveness === 'number') {
             var p  = Number(j.liveness);
             var th = (j.threshold != null) ? Number(j.threshold) : null;
-            var threshold = th !== null ? th : 0.75;
+            var threshold = th !== null ? th : 0.65;
             var cls;
             if (p >= threshold) cls = 'live-pass';
             else if (p >= threshold * 0.80) cls = 'live-near';

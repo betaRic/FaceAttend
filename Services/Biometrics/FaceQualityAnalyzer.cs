@@ -145,7 +145,7 @@ namespace FaceAttend.Services.Biometrics
                 ? "Biometrics:Enroll:SharpnessThreshold:Mobile"
                 : "Biometrics:Enroll:SharpnessThreshold";
 
-            return (float)ConfigurationService.GetDouble(key, isMobile ? 40.0 : 50.0);
+            return (float)ConfigurationService.GetDouble(key, isMobile ? 28.0 : 35.0);
         }
     }
 }

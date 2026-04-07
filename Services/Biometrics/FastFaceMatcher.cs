@@ -124,26 +124,31 @@ namespace FaceAttend.Services.Biometrics
                     var empId   = kvp.Key;
                     var vectors = kvp.Value;
 
-                    double empMin = double.MaxValue;
-                    int    empIdx = -1;
+                    // Mean-of-top-3: more robust than min-of-all per NIST FRVT guidance.
+                    // A single outlier enrolled vector cannot dominate and cause false positives.
+                    var allDists = new List<(double d, int idx)>(vectors.Count);
                     for (int i = 0; i < vectors.Count; i++)
-                    {
-                        var d = DlibBiometrics.Distance(faceVector, vectors[i]);
-                        if (d < empMin) { empMin = d; empIdx = i; }
-                    }
+                        allDists.Add((DlibBiometrics.Distance(faceVector, vectors[i]), i));
+                    allDists.Sort((a, b) => a.d.CompareTo(b.d));
 
-                    if (empMin < bestDist)
+                    int    empIdx   = allDists[0].idx; // closest vector index (for photo display)
+                    int    k        = Math.Min(3, allDists.Count);
+                    double empScore = 0;
+                    for (int i = 0; i < k; i++) empScore += allDists[i].d;
+                    empScore /= k; // Mean distance across top-3 closest vectors
+
+                    if (empScore < bestDist)
                     {
                         secondEmpId  = bestEmpId;
                         secondDist   = bestDist;
                         bestEmpId    = empId;
-                        bestDist     = empMin;
+                        bestDist     = empScore;
                         bestPhotoIdx = empIdx;
                     }
-                    else if (empMin < secondDist && empId != bestEmpId)
+                    else if (empScore < secondDist && empId != bestEmpId)
                     {
                         secondEmpId = empId;
-                        secondDist  = empMin;
+                        secondDist  = empScore;
                     }
                 }
             }
@@ -169,8 +174,11 @@ namespace FaceAttend.Services.Biometrics
                 return new MatchResult { IsMatch = false };
             }
 
+            // Relative-only threshold: second-best must be ≥25% worse than best.
+            // Removed absolute 0.08 floor — it incorrectly rejected confident matches
+            // (e.g. dist=0.28, gap=0.07 → NSD=25% is clearly unambiguous but was rejected).
             bool ambiguous = gap != double.PositiveInfinity
-                && (gap < (bestDist * 0.20) || gap < 0.08);
+                && gap < (bestDist * 0.25);
             if (ambiguous)
             {
                 System.Diagnostics.Trace.TraceInformation(
@@ -233,8 +241,12 @@ namespace FaceAttend.Services.Biometrics
 
         private static MatchTier ClassifyTier(double dist, double gap)
         {
-            if (dist <= HighDistThreshold && gap >= HighGapThreshold) return MatchTier.High;
-            if (dist <= MedDistThreshold  && gap >= MedGapThreshold)  return MatchTier.Medium;
+            // NSD (Normalized Score Difference): gap relative to best distance.
+            // Scales correctly with database size — absolute gap thresholds degrade
+            // as more employees with similar faces are enrolled.
+            double nsd = gap / Math.Max(dist, 0.01);
+            if (dist <= HighDistThreshold && nsd >= 0.30) return MatchTier.High;
+            if (dist <= MedDistThreshold  && nsd >= 0.15) return MatchTier.Medium;
             return MatchTier.Low;
         }
 

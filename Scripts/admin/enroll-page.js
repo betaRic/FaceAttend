@@ -12,6 +12,7 @@
     var enrollUrl = cfg ? cfg.dataset.enrollUrl  : '';
 
     var MIN_FRAMES = 5;
+    var MAX_FRAMES = 10;
 
     // ── State ────────────────────────────────────────────────────────────
     var selectedFiles  = [];
@@ -28,7 +29,7 @@
             scanUrl:       scanUrl,
             enrollUrl:     enrollUrl,
             minGoodFrames: MIN_FRAMES,
-            maxKeepFrames: MIN_FRAMES,
+            maxKeepFrames: MAX_FRAMES,
             enablePreview: false
           })
         : null;

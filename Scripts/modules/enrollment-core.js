@@ -7,22 +7,22 @@ FaceAttend.Enrollment = (function () {
         AUTO_INTERVAL_MS:  200,
         PASS_WINDOW:       3,
         PASS_REQUIRED:     1,
-        CAPTURE_TARGET:    25,
-        MIN_GOOD_FRAMES:   25,
-        MAX_KEEP_FRAMES:   30,
-        MAX_IMAGES:        30,
+        CAPTURE_TARGET:    10,
+        MIN_GOOD_FRAMES:   10,
+        MAX_KEEP_FRAMES:   12,
+        MAX_IMAGES:        12,
         CAPTURE_WIDTH:     640,
         CAPTURE_HEIGHT:    480,
         UPLOAD_QUALITY:    0.92,  // Raised from 0.75: JPEG artifacts degrade landmark accuracy on small faces
-        SHARPNESS_THRESHOLD_DESKTOP: 50,  // Matches Biometrics:Enroll:SharpnessThreshold (Web.config)
-        SHARPNESS_THRESHOLD_MOBILE:  40,  // Matches Biometrics:Enroll:SharpnessThreshold:Mobile (Web.config)
+        SHARPNESS_THRESHOLD_DESKTOP: 35,  // Matches Biometrics:Enroll:SharpnessThreshold (Web.config)
+        SHARPNESS_THRESHOLD_MOBILE:  28,  // Matches Biometrics:Enroll:SharpnessThreshold:Mobile (Web.config)
         SHARPNESS_SAMPLE_SIZE:       256,
-        MIN_FACE_AREA_RATIO_DESKTOP: 0.15, // Raised from 0.10: ~95x72px at 640x480 for reliable Dlib landmarks
-        MIN_FACE_AREA_RATIO_MOBILE:  0.12, // Raised from 0.055: ~76x57px minimum for reliable Dlib encoding
-        FACE_AREA_WARNING_RATIO:     0.09, // Amber guide warning fires just below enrollment threshold
+        MIN_FACE_AREA_RATIO_DESKTOP: 0.08, // Normal webcam distance ~60cm; research baseline: dlib needs only 0.27% area
+        MIN_FACE_AREA_RATIO_MOBILE:  0.06, // Arm-length phone distance
+        FACE_AREA_WARNING_RATIO:     0.05, // Amber warning fires just below enrollment threshold
         MAX_FACE_AREA_RATIO:         0.90, // Face area ratio above which liveness CNN returns 0.00 (too close)
-        MIN_BRIGHTNESS:              40,   // Mean gray 0-255; below this liveness CNN returns ≈ 0 (too dark)
-        AUTO_CONFIRM_TIMEOUT_MS:     15000
+        MIN_BRIGHTNESS:              30,   // Mean gray 0-255; allow slightly dim environments
+        AUTO_CONFIRM_TIMEOUT_MS:     8000
     };
 
     function getCsrfToken() {
@@ -94,8 +94,8 @@ FaceAttend.Enrollment = (function () {
             scanUrl: '/api/scan/frame',
             enrollUrl: '/api/enrollment/enroll',
             redirectUrl: '/Admin/Employees',
-            minGoodFrames: 25,
-            maxKeepFrames: 30,
+            minGoodFrames: 10,
+            maxKeepFrames: 12,
             enablePreview: true,
             debug: false
         }, config);
@@ -586,43 +586,18 @@ FaceAttend.Enrollment = (function () {
                 (needFrames > 0 ? ', need ' + needFrames + ' more.' : ', almost done!'),
                 'success');
         } else {
-            // Liveness failed — track consecutive near-zero frames
+            // Liveness failed — track consecutive near-zero frames for user guidance
             if (p < 0.02 && r.count > 0) {
                 this._zeroLivenessStreak++;
             } else {
                 this._zeroLivenessStreak = 0;
             }
 
-            // Adaptive fallback: after 20 consecutive frames where liveness is
-            // essentially zero but the server successfully detected a face and
-            // produced a valid encoding, accept frames based on encoding quality.
-            // This handles liveness models that struggle in dim/specific lighting
-            // while still requiring real face detection and sharpness.
-            var adaptiveReady = this._zeroLivenessStreak >= 20
-                && r.encoding
-                && r.count > 0
-                && (r.sharpnessOk === true || r.sharpnessOk === undefined);
-
-            if (adaptiveReady) {
-                var adaptSharpness = r.sharpness || r.clientSharpness || 0;
-                this.pushGoodFrame(r.lastBlob || null, 0, r.encoding, adaptSharpness);
-
-                var adaptNeed = Math.max(0, this.config.minGoodFrames - this.goodFrames.length);
+            if (this._zeroLivenessStreak >= 10) {
                 this.handleStatus(
-                    'Capturing... Frames: ' + this.goodFrames.length + '/' + this.config.minGoodFrames +
-                    (adaptNeed > 0 ? ', need ' + adaptNeed + ' more.' : ', almost done!'),
+                    'Liveness check failing. Ensure good lighting facing you, ' +
+                    'no strong backlight, and face clearly visible.',
                     'warning');
-
-                var adaptEnough = this.goodFrames.length >= this.config.minGoodFrames;
-                var adaptMax    = this.goodFrames.length >= this.config.maxKeepFrames;
-
-                if (adaptEnough && !this.confirmTimer && !this.enrolled && !this.enrolling)
-                    this._startConfirmTimer();
-                if (adaptMax) {
-                    this.stopAutoEnrollment();
-                    this._fireReadyToConfirm();
-                    return;
-                }
             } else {
                 this.handleStatus(
                     'Detected. Liveness: ' + p.toFixed(2) +

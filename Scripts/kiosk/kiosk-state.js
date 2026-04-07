@@ -52,7 +52,7 @@
         smoothedBox:     null,
 
         latestLiveness:    null,
-        livenessThreshold: 0.75,
+        livenessThreshold: 0.65,
 
         motionDiffNow:   null,
         frameDiffs:      [],

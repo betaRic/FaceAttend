@@ -89,7 +89,7 @@ namespace FaceAttend.Controllers.Api
                     FaceRecognitionDotNet.Location faceLoc;
                     string detectErr;
 
-                    if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLoc, out detectErr))
+                    if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLoc, out detectErr, allowLargestFace: false))
                         return;
 
                     if (imgW > 0 && imgH > 0)
@@ -173,11 +173,17 @@ namespace FaceAttend.Controllers.Api
 
             var selected = SelectDiverseByEmbedding(candidates.ToList(), maxStored);
 
+            // Check ALL selected vectors — not just selected[0] — to catch cases where
+            // one enrolled vector closely matches another employee's stored vectors.
             string duplicateId = null;
             using (var checkDb = new FaceAttendDBEntities())
             {
-                duplicateId = DuplicateCheckHelper.FindDuplicate(
-                    checkDb, selected[0].Vec, employeeId, strictTol);
+                foreach (var candidate in selected)
+                {
+                    duplicateId = DuplicateCheckHelper.FindDuplicate(
+                        checkDb, candidate.Vec, employeeId, strictTol);
+                    if (!string.IsNullOrEmpty(duplicateId)) break;
+                }
             }
             if (!string.IsNullOrEmpty(duplicateId))
                 return JsonResponseBuilder.Error("FACE_ALREADY_ENROLLED", details: new
@@ -220,6 +226,12 @@ namespace FaceAttend.Controllers.Api
             {
                 var emp = db.Employees.First(e => e.EmployeeId == employeeId);
 
+                // Guard: never re-activate an admin-deactivated employee via enrollment
+                var currentStatus = (emp.Status ?? "PENDING").Trim().ToUpperInvariant();
+                if (currentStatus == "INACTIVE")
+                    return JsonResponseBuilder.Error("EMPLOYEE_INACTIVE",
+                        "This employee account is inactive. Contact an administrator to re-enroll.");
+
                 emp.FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(
                     DlibBiometrics.EncodeToBytes(selected[0].Vec));
 
@@ -230,7 +242,9 @@ namespace FaceAttend.Controllers.Api
                                 .ToList()));
 
                 emp.EnrolledDate = emp.EnrolledDate ?? DateTime.UtcNow;
-                emp.Status       = "ACTIVE";
+                // Only promote PENDING → ACTIVE; ACTIVE employees keep their status unchanged
+                if (currentStatus == "PENDING")
+                    emp.Status = "ACTIVE";
 
                 db.SaveChanges();
 
@@ -247,7 +261,8 @@ namespace FaceAttend.Controllers.Api
 
         /// <summary>
         /// Returns enrollment quality thresholds so the JS client stays in sync with server config.
-        /// Values here mirror the server-side gates used during /api/enrollment/enroll processing.
+        /// Called by all enrollment pages (admin + mobile) after page load. Fallback defaults here
+        /// must match Web.config and enrollment-core.js CONSTANTS to prevent threshold drift.
         /// </summary>
         [HttpGet]
         [Route("config")]
@@ -256,10 +271,10 @@ namespace FaceAttend.Controllers.Api
             return Json(new
             {
                 livenessThreshold  = ConfigurationService.GetDouble("Biometrics:LivenessThreshold",               0.65),
-                sharpnessDesktop   = ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold",       50.0),
-                sharpnessMobile    = ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold:Mobile", 40.0),
-                minFaceAreaDesktop = ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio",          0.15),
-                minFaceAreaMobile  = ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio:Mobile",   0.12)
+                sharpnessDesktop   = ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold",       35.0),
+                sharpnessMobile    = ConfigurationService.GetDouble("Biometrics:Enroll:SharpnessThreshold:Mobile", 28.0),
+                minFaceAreaDesktop = ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio",          0.08),
+                minFaceAreaMobile  = ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio:Mobile",   0.06)
             }, JsonRequestBehavior.AllowGet);
         }
 

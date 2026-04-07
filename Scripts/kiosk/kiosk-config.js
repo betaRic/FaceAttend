@@ -99,7 +99,7 @@
             // 3 stable frames required (was 4)
             stableFramesRequired: 3,
             stableMaxMovePx:      35,   // Lowered from 120: only genuinely still faces trigger scan
-            minFaceAreaRatio:     0.10, // Raised from 0.03: ensures ~64x48px face at 640x480 for reliable Dlib encoding
+            minFaceAreaRatio:     0.05, // Natural kiosk standing distance; dlib reliable encoding needs only ~0.27% area
             safeEdgeMarginRatio:  0.02,
             centerMin:            0.12,
             centerMax:            0.88,

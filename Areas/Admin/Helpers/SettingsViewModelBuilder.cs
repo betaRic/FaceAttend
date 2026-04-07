@@ -31,10 +31,10 @@ namespace FaceAttend.Areas.Admin.Helpers
                 DlibPoolSize              = I(db, "Biometrics:DlibPoolSize", 4),
                 MaxConcurrentScans        = I(db, "Kiosk:MaxConcurrentScans", 4),
                 EnrollCaptureTarget       = I(db, "Biometrics:Enroll:CaptureTarget", 8),
-                EnrollMaxStoredVectors    = I(db, "Biometrics:Enroll:MaxStoredVectors", 5),
+                EnrollMaxStoredVectors    = I(db, "Biometrics:Enroll:MaxStoredVectors", 8),
                 VisitorDlibTolerance      = D(db, "Visitors:DlibTolerance", attendTol),
-                EnrollSharpnessThreshold       = D(db, "Biometrics:Enroll:SharpnessThreshold",        80.0),
-                EnrollSharpnessThresholdMobile = D(db, "Biometrics:Enroll:SharpnessThreshold:Mobile", 50.0),
+                EnrollSharpnessThreshold       = D(db, "Biometrics:Enroll:SharpnessThreshold",        35.0),
+                EnrollSharpnessThresholdMobile = D(db, "Biometrics:Enroll:SharpnessThreshold:Mobile", 28.0),
 
                 // Advanced liveness
                 LivenessDecision              = NormalizeOrDefault(S(db, "Biometrics:Liveness:Decision",       "max"),    "max"),
@@ -83,7 +83,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 NeedsReviewGpsMargin      = I(db, "NeedsReview:GPSAccuracyMargin", 10),
 
                 // Visitors
-                VisitorEnabled      = B(db, "Kiosk:VisitorEnabled",      true),
+                VisitorEnabled      = B(db, "Kiosk:VisitorEnabled",      false),
                 VisitorMaxRecords   = I(db, "Visitors:MaxRecords",     10000),
                 VisitorRetentionYears = I(db, "Visitors:RetentionYears", 2),
 
@@ -153,7 +153,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 LivenessCircuitFailStreak = ConfigurationService.GetInt("Biometrics:Liveness:CircuitFailStreak", 3),
                 LivenessCircuitDisableSeconds = ConfigurationService.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30),
 
-                VisitorEnabled = ConfigurationService.GetBool("Kiosk:VisitorEnabled", true),
+                VisitorEnabled = ConfigurationService.GetBool("Kiosk:VisitorEnabled", false),
                 VisitorMaxRecords = ConfigurationService.GetInt("Visitors:MaxRecords", 10000),
                 VisitorRetentionYears = ConfigurationService.GetInt("Visitors:RetentionYears", 2),
 

@@ -313,7 +313,7 @@ namespace FaceAttend.Services.Recognition
 
                         bool visitorEnabled = ConfigurationService.GetBool(
                             db, "Kiosk:VisitorEnabled",
-                            ConfigurationService.GetBool("Kiosk:VisitorEnabled", true));
+                            ConfigurationService.GetBool("Kiosk:VisitorEnabled", false));
 
                         if (!visitorEnabled)
                             return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);

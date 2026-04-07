@@ -114,6 +114,7 @@ namespace FaceAttend.Controllers.Mobile
                 {
                     liveness = scan.LivenessScore,
                     livenessOk = livenessOk,
+                    encoding = scan.Base64Encoding,
                     sharpness = scan.Sharpness,
                     sharpnessThreshold = scan.SharpnessThreshold,
                     count = 1,
@@ -224,9 +225,9 @@ namespace FaceAttend.Controllers.Mobile
                         Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim(),
                         OfficeId = vm.OfficeId,
 
-                        FaceEncodingBase64 = Convert.ToBase64String(faceTemplate),
+                        FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(faceTemplate),
                         FaceEncodingsJson = !string.IsNullOrWhiteSpace(vm.AllFaceEncodingsJson)
-                            ? vm.AllFaceEncodingsJson
+                            ? EncryptEncodingsJson(vm.AllFaceEncodingsJson)
                             : null,
 
                         Status = "PENDING",
@@ -295,6 +296,32 @@ namespace FaceAttend.Controllers.Mobile
                         message = ex.GetBaseException().Message
                     }),
                     "application/json");
+            }
+        }
+
+        /// <summary>
+        /// Converts a JSON array of raw base64 face-vector strings (as returned by ScanFrame)
+        /// into the encrypted format written by EnrollmentController.Enroll:
+        ///   ProtectString( JSON( [ ProtectBase64Bytes(bytes1), ProtectBase64Bytes(bytes2), … ] ) )
+        /// Returns null on any parse/encrypt failure so the caller can fall back gracefully.
+        /// </summary>
+        private static string EncryptEncodingsJson(string rawJson)
+        {
+            try
+            {
+                var rawList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<string>>(rawJson);
+                if (rawList == null || rawList.Count == 0) return null;
+
+                var protectedList = rawList
+                    .Select(b64 => BiometricCrypto.ProtectBase64Bytes(Convert.FromBase64String(b64)))
+                    .ToList();
+
+                return BiometricCrypto.ProtectString(
+                    Newtonsoft.Json.JsonConvert.SerializeObject(protectedList));
+            }
+            catch
+            {
+                return null;
             }
         }
 
