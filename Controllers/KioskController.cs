@@ -231,8 +231,10 @@ namespace FaceAttend.Controllers
             if (!AdminAuthorizeAttribute.VerifyPin(pin, ip))
                 return Json(new { ok = false, error = "INVALID_PIN" });
 
-            AdminAuthorizeAttribute.RotateSessionId(HttpContext);
-            AdminAuthorizeAttribute.IssueUnlockCookie(HttpContext, ip);
+            // Mark the current session directly — most reliable path.
+            // RotateSessionId + cookie bridge was causing silent failures because
+            // MachineKey.Unprotect on the unlock cookie failed after the session rotated.
+            AdminAuthorizeAttribute.MarkAuthed(Session);
             // Issue long-lived bypass cookie so the admin can skip PIN for the rest of the workday
             AdminPersistCookieService.IssuePersistCookie(new HttpContextWrapper(System.Web.HttpContext.Current));
 
@@ -294,8 +296,8 @@ namespace FaceAttend.Controllers
                 return Json(new { ok = false });
 
             var safeReturn = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
-            AdminAuthorizeAttribute.RotateSessionId(HttpContext);
-            AdminAuthorizeAttribute.IssueUnlockCookie(HttpContext, Request.UserHostAddress);
+            // Mark the session directly — same fix as UnlockPin.
+            AdminAuthorizeAttribute.MarkAuthed(Session);
 
             return Json(new { ok = true, returnUrl = safeReturn });
         }
