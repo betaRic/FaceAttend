@@ -37,8 +37,7 @@
             h = bb.height;
         }
 
-        // CENTER FACE: MediaPipe box includes too much neck, not enough forehead
-        // Shift up by 20% of height and expand height by 8% to capture full face
+        // CENTER FACE: shift up by 20% of height, expand height by 8%
         var shiftUp = h * 0.20;
         var expandH = h * 0.08;
         y = y - shiftUp;
@@ -70,31 +69,41 @@
     }
 
     // ── Stable tracking ────────────────────────────────────────────────────────
+    // FIX: With stableNeededMs=50, this fires almost immediately.
+    // The key change is removing the hard reset on movement — we just delay slightly.
+    // Server handles frame quality; client just needs to detect a face.
 
     function updateStableTracking(box, now) {
         if (!box) { _state.mpStableStart = 0; return; }
         var c = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
-        if (!_state.mpPrevCenter) { _state.mpPrevCenter = c; _state.mpStableStart = now; return; }
+
+        if (!_state.mpPrevCenter) {
+            _state.mpPrevCenter  = c;
+            _state.mpStableStart = now;
+            // FIX: Set ready immediately on first detection (no prior center means fresh detection)
+            _state.mpReadyToFire = true;
+            return;
+        }
+
         var move = Math.hypot(c.x - _state.mpPrevCenter.x, c.y - _state.mpPrevCenter.y);
         _state.mpPrevCenter = c;
 
-        // Walk-by mode: velocity-based decay instead of hard reset
-        if (move > _cfg.gating.stableMaxMovePx * 2) {
-            // Actually running/thrashing - hard reset
+        // Only hard-reset on extreme movement (actual walk-by, not normal standing micro-movement)
+        if (move > _cfg.gating.stableMaxMovePx * 2.5) {
             _state.mpStableStart = 0;
+            _state.mpReadyToFire = false;
             _safeSetPrompt('Hold still.', '');
             return;
-        }
-        if (move > _cfg.gating.stableMaxMovePx) {
-            // Walking pace - don't reset, let timer keep ticking
-            if (_state.mpStableStart === 0) _state.mpStableStart = now;
         }
 
         if (_state.mpStableStart === 0) _state.mpStableStart = now;
+
+        // FIX: With stableNeededMs=50, this check passes almost immediately
         if ((now - _state.mpStableStart) < _cfg.mp.stableNeededMs) {
-            _safeSetPrompt('Hold still.', '');
+            // Don't show "hold still" for such a short window — it flickers annoyingly
             return;
         }
+
         _state.mpReadyToFire = true;
     }
 
@@ -159,20 +168,16 @@
                 var result = this.detector.detectForVideo(_video, now);
                 var dets   = (result && result.detections) ? result.detections : [];
 
-                // Filter by confidence only (no size filtering)
                 var valid = dets.filter(function (d) {
                     return ((d.categories && d.categories[0] && d.categories[0].score) || 0) >= _cfg.mp.acceptMinScore;
                 });
 
-                // No faces detected
                 if (valid.length === 0) {
                     _state.faceStatus = 'none';
-                    // During a scan in-flight, do NOT null the box.
-                    // MediaPipe can momentarily lose the face during the ~300-600ms
-                    // server round-trip. Keep the last smoothed box frozen until the scan completes.
                     if (!_state.liveInFlight) {
                         _state.mpBoxCanvas = null;
-                        _state.smoothedBox = null;  // Reset EMA when face lost
+                        _state.smoothedBox = null;
+                        _state.mpReadyToFire = false;  // FIX: reset when face lost
                     }
                     return;
                 }
@@ -200,11 +205,11 @@
 
                 _state.faceStatus = (box && box.w > 20 && box.h > 20 && !isTooSmallFaceNorm(bb)) ? 'good' : 'low';
 
-                // EMA smoothing for bounding box (glides instead of jumps)
+                // EMA smoothing for bounding box
                 if (!_state.smoothedBox) {
                     _state.smoothedBox = { x: box.x, y: box.y, w: box.w, h: box.h };
                 } else {
-                    var a = 0.35; // Alpha: 0.35 gives smooth glide without noticeable lag
+                    var a = 0.35;
                     _state.smoothedBox = {
                         x: _state.smoothedBox.x + a * (box.x - _state.smoothedBox.x),
                         y: _state.smoothedBox.y + a * (box.y - _state.smoothedBox.y),
@@ -224,6 +229,7 @@
                     return;
                 }
 
+                // FIX: For 'good' status, run stability check with near-zero threshold
                 updateStableTracking(box, Date.now());
 
             } catch (e) {

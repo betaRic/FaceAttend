@@ -56,51 +56,48 @@
     var appBase = (document.body.getAttribute('data-app-base') || '/').replace(/\/?$/, '/');
     var nextGenEnabled = (document.body.getAttribute('data-nextgen') || 'false').toLowerCase() === 'true';
 
-    // All timings optimised vs original
     var CFG = {
         debug: true,
 
-        // 60ms loop (was 120) -- 2x faster face detection response
         loopMs: 60,
 
         mp: {
             detectMinConf:     0.30,
             acceptMinScore:    0.60,
-            stableFramesMin:   2,
-            // Raised from 20ms: requires person to genuinely hold still, prevents walk-by captures
-            stableNeededMs:    600,
+            stableFramesMin:   1,
+            // FIX: Near-zero wait — fire as soon as face detected, let SERVER decide quality.
+            // The old 600ms + strict 35px threshold was the main cause of frames never firing.
+            stableNeededMs:    50,
             multiMinAreaRatio: 0.015,
         },
 
         idle: {
-            // 200ms sense (was 250)
             senseMs:    200,
-            // 1800ms lost timeout (was 2000)
             faceLostMs: 1800,
             motionMin:  2.0,
         },
 
         server: {
-            // 900ms resolve interval (was 1200)
             resolveMs:         10000,
-            // 2500ms cooldown (was 3000) -- kiosk ready 500ms sooner
-            captureCooldownMs: 2500,
+            // FIX: Reduced from 2500ms so the system is ready sooner after a scan result
+            captureCooldownMs: 1500,
         },
 
         postScan: {
-            // 3500ms hold (was 5000) -- 1.5s faster return to ready
             holdMs:   3500,
             toastMs:  6500,
         },
 
         gating: {
-            // 3 stable frames required (was 4)
-            stableFramesRequired: 3,
-            stableMaxMovePx:      35,   // Lowered from 120: only genuinely still faces trigger scan
-            minFaceAreaRatio:     0.05, // Natural kiosk standing distance; dlib reliable encoding needs only ~0.27% area
+            stableFramesRequired: 1,
+            // FIX: Restored to 120 (original). The 35px value caused constant resets.
+            // Server-side liveness/encoding handles quality — client just needs to detect a face.
+            stableMaxMovePx:      120,
+            // FIX: Very permissive area ratio. Server will reject if face is too small.
+            minFaceAreaRatio:     0.03,
             safeEdgeMarginRatio:  0.02,
-            centerMin:            0.12,
-            centerMax:            0.88,
+            centerMin:            0.08,
+            centerMax:            0.92,
         },
 
         antiSpoof: {
@@ -116,7 +113,7 @@
         },
 
         fastPreview: {
-            enabled: false,             // WebSocket fast preview (set to true to enable)
+            enabled: false,
             wsUrl: 'ws://localhost:8080/preview',
             previewIntervalMs: 200,
             confidenceThreshold: 0.70,
@@ -141,7 +138,7 @@
             errors.push('CFG.server.captureCooldownMs is missing');
         if (!CFG.server || !CFG.server.resolveMs)
             errors.push('CFG.server.resolveMs is missing');
-        if (!CFG.mp || !CFG.mp.stableNeededMs)
+        if (!CFG.mp || !CFG.mp.stableNeededMs === undefined)
             errors.push('CFG.mp.stableNeededMs is missing');
 
         ['kioskVideo', 'overlayCanvas', 'kioskRoot', 'mainPrompt', 'subPrompt'].forEach(function (id) {

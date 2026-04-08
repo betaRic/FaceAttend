@@ -646,6 +646,7 @@
     <Content Include="Scripts\kiosk\kiosk-warmup.js" />
     <Content Include="Scripts\mobile\mobile-enroll-page.js" />
     <Content Include="Scripts\modules\enrollment-core.js" />
+    <Content Include="Scripts\modules\enrollment-gates.js" />
     <Content Include="Scripts\modules\enrollment-overlay.js" />
     <Content Include="Scripts\modules\face-guide.js" />
     <Content Include="Scripts\toastr.js" />

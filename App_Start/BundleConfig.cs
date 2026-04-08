@@ -120,7 +120,8 @@ namespace FaceAttend
                 .Include("~/Scripts/modules/face-guide.js")
                 .Include("~/Scripts/modules/enrollment-overlay.js")
                 .Include("~/Scripts/modules/enrollment-core.js")
-                .Include("~/Scripts/enrollment-tracker.js"));
+                .Include("~/Scripts/enrollment-tracker.js")
+                .Include("~/Scripts/modules/enrollment-gate.js"));
 
             // Admin Employee Enrollment page (loaded after enrollment bundle)
             bundles.Add(new ScriptBundle("~/bundles/enroll-page")
