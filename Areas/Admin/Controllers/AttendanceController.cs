@@ -362,11 +362,16 @@ namespace FaceAttend.Areas.Admin.Controllers
                         FullName   = x.EmployeeFullName,
                         Dept       = x.Department,
                         EventType  = x.EventType,
-                        Timestamp  = x.Timestamp
+                        Timestamp  = x.Timestamp,
+                        OfficeId   = x.OfficeId
                     })
                     .OrderBy(x => x.EmpId)
                     .ThenBy(x => x.Timestamp)
                     .ToList();
+
+                // Load office schedules once for isOffDay checks
+                var officeScheduleMap = db.Offices.AsNoTracking()
+                    .ToDictionary(o => o.Id, o => o);
 
                 // Build date list in LOCAL time (inclusive)
                 var dates = Enumerable.Range(0, (range.ToLocalDate - range.FromLocalDate).Days + 1)
@@ -375,18 +380,23 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 // Timestamps are now stored in local time - no conversion needed
                 vm.EmployeeSummary = raw
-                    .GroupBy(x => new { x.EmpId, x.FullName, x.Dept })
+                    .GroupBy(x => new { x.EmpId, x.FullName, x.Dept, x.OfficeId })
                     .Select(eg =>
                     {
                         var byDay = eg
                             .GroupBy(x => x.Timestamp.Date)
                             .ToDictionary(g => g.Key, g => g.ToList());
 
+                        Office empOffice;
+                        officeScheduleMap.TryGetValue(eg.Key.OfficeId, out empOffice);
+
                         var days = new List<DailyEmployeeRow>(dates.Count);
                         foreach (var dayLocal in dates)
                         {
                             byDay.TryGetValue(dayLocal, out var events);
-                            days.Add(AttendanceReportService.BuildDailyRow(dayLocal, events, policy));
+                            bool isOffDay = empOffice != null &&
+                                           !OfficeScheduleService.IsWorkDay(empOffice, dayLocal);
+                            days.Add(AttendanceReportService.BuildDailyRow(dayLocal, events, policy, isOffDay));
                         }
 
                         return new EmployeeSummaryRow

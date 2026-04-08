@@ -37,5 +37,16 @@ namespace FaceAttend.Models.ViewModels.Admin
         public string WiFiBSSID { get; set; }
 
         public bool IsActive { get; set; } = true;
+
+        // ── Schedule ──────────────────────────────────────────────────────────
+        /// <summary>Comma-separated ISO day numbers (1=Mon…7=Sun). NULL/empty = Mon–Fri default.</summary>
+        [StringLength(20)]
+        public string WorkDays { get; set; }
+
+        /// <summary>Comma-separated ISO day numbers for WFH days. Must be subset of WorkDays.</summary>
+        [StringLength(20)]
+        public string WfhDays { get; set; }
+
+        public bool WfhEnabled { get; set; }
     }
 }

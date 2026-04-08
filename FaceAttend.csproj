@@ -416,6 +416,7 @@
     <Compile Include="Models\ViewModels\Admin\AttendanceSummaryVm.cs" />
     <Compile Include="Models\ViewModels\Admin\DashboardViewModel.cs" />
     <Compile Include="Models\ViewModels\Admin\EmployeeEditVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\OfficeBulkScheduleVm.cs" />
     <Compile Include="Models\ViewModels\Admin\OfficeEditVm.cs" />
     <Compile Include="Models\ViewModels\Admin\SettingsVm.cs" />
     <Compile Include="Models\ViewModels\Admin\VisitorLogRowVm.cs" />
@@ -466,6 +467,7 @@
     <Compile Include="Services\JsonResponseBuilder.cs" />
     <Compile Include="Services\Mobile\EmployeePortalService.cs" />
     <Compile Include="Services\OfficeLocationService.cs" />
+    <Compile Include="Services\OfficeScheduleService.cs" />
     <Compile Include="Services\OperationResult.cs" />
     <Compile Include="Services\Recognition\AttendanceScanService.cs" />
     <Compile Include="Services\Recognition\PendingScanService.cs" />
@@ -708,6 +710,7 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include="libman.json" />
+    <Content Include="Areas\Admin\Views\Offices\BulkSchedule.cshtml" />
     <None Include="packages.config" />
     <Content Include="README.md" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />

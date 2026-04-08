@@ -31,6 +31,13 @@ namespace FaceAttend.Controllers
             ViewBag.ReturnUrl   = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
             ViewBag.UnlockHint  = (unlock ?? 0) == 1;
             ViewBag.AllowUnlock = !DeviceService.IsMobileDevice(Request);
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var today = TimeZoneHelper.NowLocal().Date;
+                ViewBag.WfhDay = OfficeScheduleService.IsWfhPossibleAnywhere(db, today);
+            }
+
             return View();
         }
 
@@ -82,7 +89,8 @@ namespace FaceAttend.Controllers
         public ActionResult Attend(double? lat, double? lon, double? accuracy,
             System.Web.HttpPostedFileBase image,
             int? faceX, int? faceY, int? faceW, int? faceH,
-            string deviceToken = null)
+            string deviceToken = null,
+            bool wfhMode = false)
         {
             var requestedAtUtc = TimeZoneHelper.NowLocal();
 
@@ -113,7 +121,8 @@ namespace FaceAttend.Controllers
                     lat, lon, accuracy, image, clientFaceBox, requestedAtUtc,
                     includePerfTimings: ConfigurationService.GetBool("Kiosk:EnablePerfTimings", false),
                     deviceToken: deviceToken,
-                    httpContext: HttpContext);
+                    httpContext: HttpContext,
+                    wfhMode: wfhMode);
             }
             finally
             {

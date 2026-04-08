@@ -1,0 +1,260 @@
+@model FaceAttend.Models.ViewModels.Admin.OfficeBulkScheduleVm
+@{
+    ViewBag.Title = "Office Schedules";
+    var dayLabels = new[] { "M", "T", "W", "T", "F", "S", "S" };
+    var dayNames  = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+
+    var grouped = Model.Offices
+        .GroupBy(o => string.IsNullOrWhiteSpace(o.ProvinceName) ? "(No Province)" : o.ProvinceName)
+        .OrderBy(g => g.Key)
+        .ToList();
+}
+
+<div class="ea-page">
+
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-calendar-days" aria-hidden="true"></i>
+                Office Schedules
+            </h1>
+            <div class="ea-page-subtitle">Set working days and WFH days per office.</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index")">
+                <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
+            </a>
+        </div>
+    </div>
+
+    @using (Html.BeginForm("BulkSchedule", "Offices", FormMethod.Post, new { id = "bulkScheduleForm" }))
+    {
+        @Html.AntiForgeryToken()
+
+        @* Quick-apply bar *@
+        <div class="ea-filter-card mb-3">
+            <div class="d-flex flex-wrap gap-2 align-items-center">
+                <span class="text-muted small me-2">Quick apply to ALL offices:</span>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnApplyMonFri">
+                    <i class="fa-solid fa-calendar-week me-1"></i>Mon–Fri
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="btnApplyMonThu">
+                    <i class="fa-solid fa-calendar-week me-1"></i>Mon–Thu
+                </button>
+                <button type="button" class="btn btn-outline-danger btn-sm ms-auto" id="btnClearWfh">
+                    <i class="fa-solid fa-eraser me-1"></i>Clear all WFH
+                </button>
+                <button type="submit" class="btn btn-primary btn-sm">
+                    <i class="fa-solid fa-floppy-disk me-1"></i>Save Changes
+                </button>
+            </div>
+        </div>
+
+        @{int rowIdx = 0;}
+
+        @foreach (var group in grouped)
+        {
+            <div class="ea-table-card mb-4">
+                <div class="ea-table-header">
+                    <div class="ea-table-title">
+                        <i class="fa-solid fa-location-dot text-primary me-1" aria-hidden="true"></i>
+                        @group.Key
+                        <span class="badge bg-secondary ms-2" style="font-size:.72rem;">@group.Count() offices</span>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm btn-province-monfri"
+                                data-province="@group.Key">
+                            <i class="fa-solid fa-calendar-week me-1"></i>Mon–Fri
+                        </button>
+                    </div>
+                </div>
+
+                <div class="table-responsive">
+                    <table class="ea-table table table-hover align-middle mb-0" style="font-size:.84rem;">
+                        <thead>
+                            <tr>
+                                <th style="min-width:160px;">Office</th>
+                                <th>Working Days</th>
+                                <th>WFH Days</th>
+                                <th style="width:110px;" class="text-center">WFH Enabled</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var office in group)
+                            {
+                                var wd = office.WorkDays ?? new bool[7];
+                                var wh = office.WfhDays  ?? new bool[7];
+                                <tr data-province="@group.Key" data-row="@rowIdx">
+                                    <td>
+                                        <div class="fw-semibold">@office.Name</div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-1" style="min-width:220px;">
+                                            @for (int d = 0; d < 7; d++)
+                                            {
+                                                <div class="form-check form-check-inline mb-0" style="min-width:42px;">
+                                                    <input class="form-check-input bulk-work-day"
+                                                           type="checkbox"
+                                                           name="Offices[@rowIdx].WorkDays[@d]"
+                                                           id="wd_@(rowIdx)_@d"
+                                                           value="true"
+                                                           data-row="@rowIdx"
+                                                           data-day="@d"
+                                                           @(wd.Length > d && wd[d] ? "checked" : "") />
+                                                    <label class="form-check-label" for="wd_@(rowIdx)_@d">@dayNames[d]</label>
+                                                </div>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex flex-wrap gap-1" style="min-width:220px;">
+                                            @for (int d = 0; d < 7; d++)
+                                            {
+                                                <div class="form-check form-check-inline mb-0" style="min-width:42px;">
+                                                    <input class="form-check-input bulk-wfh-day"
+                                                           type="checkbox"
+                                                           name="Offices[@rowIdx].WfhDays[@d]"
+                                                           id="wfhd_@(rowIdx)_@d"
+                                                           value="true"
+                                                           data-row="@rowIdx"
+                                                           data-day="@d"
+                                                           @(wh.Length > d && wh[d] ? "checked" : "") />
+                                                    <label class="form-check-label" for="wfhd_@(rowIdx)_@d">@dayNames[d]</label>
+                                                </div>
+                                            }
+                                        </div>
+                                    </td>
+                                    <td class="text-center">
+                                        <div class="form-check form-switch d-flex justify-content-center mb-0">
+                                            <input class="form-check-input bulk-wfh-toggle"
+                                                   type="checkbox"
+                                                   name="Offices[@rowIdx].WfhEnabled"
+                                                   id="wfh_en_@rowIdx"
+                                                   value="true"
+                                                   data-row="@rowIdx"
+                                                   role="switch"
+                                                   @(office.WfhEnabled ? "checked" : "") />
+                                        </div>
+                                    </td>
+
+                                    @* Hidden fields for Id, Name, ProvinceName so model binding works *@
+                                    <input type="hidden" name="Offices[@rowIdx].Id"           value="@office.Id" />
+                                    <input type="hidden" name="Offices[@rowIdx].Name"         value="@office.Name" />
+                                    <input type="hidden" name="Offices[@rowIdx].ProvinceName" value="@office.ProvinceName" />
+                                </tr>
+                                rowIdx++;
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+
+        <div class="d-flex justify-content-end mt-2 mb-4">
+            <button type="submit" class="btn btn-primary">
+                <i class="fa-solid fa-floppy-disk me-1"></i>Save Changes
+            </button>
+        </div>
+    }
+</div>
+
+@section scripts {
+<script>
+(function () {
+    'use strict';
+
+    // Enforce: WFH day must also be a work day
+    document.addEventListener('change', function (e) {
+        var el = e.target;
+
+        if (el.classList.contains('bulk-work-day')) {
+            var row  = el.getAttribute('data-row');
+            var day  = el.getAttribute('data-day');
+            var wfhCb = document.querySelector('.bulk-wfh-day[data-row="' + row + '"][data-day="' + day + '"]');
+            if (wfhCb && !el.checked) {
+                wfhCb.checked  = false;
+                wfhCb.disabled = true;
+            } else if (wfhCb) {
+                var toggle = document.querySelector('.bulk-wfh-toggle[data-row="' + row + '"]');
+                wfhCb.disabled = !(toggle && toggle.checked);
+            }
+        }
+
+        if (el.classList.contains('bulk-wfh-toggle')) {
+            var row2   = el.getAttribute('data-row');
+            var wfhCbs = document.querySelectorAll('.bulk-wfh-day[data-row="' + row2 + '"]');
+            wfhCbs.forEach(function (cb) {
+                var day2  = cb.getAttribute('data-day');
+                var wdCb  = document.querySelector('.bulk-work-day[data-row="' + row2 + '"][data-day="' + day2 + '"]');
+                cb.disabled = !el.checked || !(wdCb && wdCb.checked);
+                if (!el.checked) cb.checked = false;
+            });
+        }
+    });
+
+    // Quick-apply Mon–Fri to all
+    document.getElementById('btnApplyMonFri').addEventListener('click', function () {
+        applyWorkPattern([0,1,2,3,4], null); // indices 0-4 = Mon-Fri
+    });
+
+    document.getElementById('btnApplyMonThu').addEventListener('click', function () {
+        applyWorkPattern([0,1,2,3], null); // indices 0-3 = Mon-Thu
+    });
+
+    document.getElementById('btnClearWfh').addEventListener('click', function () {
+        document.querySelectorAll('.bulk-wfh-day').forEach(function (cb) { cb.checked = false; });
+        document.querySelectorAll('.bulk-wfh-toggle').forEach(function (cb) { cb.checked = false; });
+    });
+
+    // Province-level Mon–Fri
+    document.querySelectorAll('.btn-province-monfri').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var province = this.getAttribute('data-province');
+            var rows = document.querySelectorAll('[data-province="' + province + '"][data-row]');
+            rows.forEach(function (tr) {
+                var row = tr.getAttribute('data-row');
+                applyWorkPatternToRow(row, [0,1,2,3,4]);
+            });
+        });
+    });
+
+    function applyWorkPattern(dayIndices, rowSelector) {
+        var allRows = new Set();
+        document.querySelectorAll('.bulk-work-day').forEach(function (cb) {
+            allRows.add(cb.getAttribute('data-row'));
+        });
+        allRows.forEach(function (row) {
+            applyWorkPatternToRow(row, dayIndices);
+        });
+    }
+
+    function applyWorkPatternToRow(row, dayIndices) {
+        for (var d = 0; d < 7; d++) {
+            var cb = document.querySelector('.bulk-work-day[data-row="' + row + '"][data-day="' + d + '"]');
+            if (cb) cb.checked = dayIndices.indexOf(d) !== -1;
+        }
+        // Reset WFH days that are no longer valid
+        var toggle = document.querySelector('.bulk-wfh-toggle[data-row="' + row + '"]');
+        for (var d2 = 0; d2 < 7; d2++) {
+            var wfhCb = document.querySelector('.bulk-wfh-day[data-row="' + row + '"][data-day="' + d2 + '"]');
+            var wdCb  = document.querySelector('.bulk-work-day[data-row="' + row + '"][data-day="' + d2 + '"]');
+            if (wfhCb) {
+                wfhCb.disabled = !(toggle && toggle.checked) || !(wdCb && wdCb.checked);
+                if (!wdCb || !wdCb.checked) wfhCb.checked = false;
+            }
+        }
+    }
+
+    // Init disabled states
+    document.querySelectorAll('.bulk-wfh-toggle').forEach(function (toggle) {
+        var row  = toggle.getAttribute('data-row');
+        var cbs  = document.querySelectorAll('.bulk-wfh-day[data-row="' + row + '"]');
+        cbs.forEach(function (cb) {
+            var day  = cb.getAttribute('data-day');
+            var wdCb = document.querySelector('.bulk-work-day[data-row="' + row + '"][data-day="' + day + '"]');
+            cb.disabled = !toggle.checked || !(wdCb && wdCb.checked);
+        });
+    });
+})();
+</script>
+}

@@ -151,29 +151,12 @@
     }
 
     function showUnlockSuccess() {
-        if (!_ui.unlockSuccessBackdrop) return;
-        _state.adminModalOpen = true;
-        _ui.unlockSuccessBackdrop.classList.remove('hidden');
-        _ui.unlockSuccessBackdrop.setAttribute('aria-hidden', 'false');
-        if (_setPrompt) _setPrompt('Admin access granted.', 'Choose where to go.');
-    }
-
-    function closeUnlockSuccess() {
-        if (!_ui.unlockSuccessBackdrop) return;
-        _ui.unlockSuccessBackdrop.classList.add('hidden');
-        _ui.unlockSuccessBackdrop.setAttribute('aria-hidden', 'true');
-        _state.adminModalOpen = false;
-        _pendingReturnUrl = '';
-        if (_setPrompt) _setPrompt('Ready.', 'Look at the camera.');
-    }
-
-    function goToAdmin() {
         var targetUrl = _pendingReturnUrl || (_appBase + 'Admin/Index');
+        if (_ui.adminLoadingBackdrop) {
+            _ui.adminLoadingBackdrop.classList.remove('hidden');
+            _ui.adminLoadingBackdrop.setAttribute('aria-hidden', 'false');
+        }
         window.location.href = targetUrl;
-    }
-
-    function stayInKiosk() {
-        closeUnlockSuccess();
     }
 
     function wire() {
@@ -191,14 +174,6 @@
             if (e.key === 'Enter')  { e.preventDefault(); submitUnlock(); }
             if (e.key === 'Escape') { e.preventDefault(); close(); }
         });
-
-        if (_ui.unlockGoAdmin)         _ui.unlockGoAdmin.addEventListener('click', goToAdmin);
-        if (_ui.unlockStayKiosk)       _ui.unlockStayKiosk.addEventListener('click', stayInKiosk);
-        if (_ui.unlockSuccessBackdrop) {
-            _ui.unlockSuccessBackdrop.addEventListener('click', function (e) {
-                if (e.target === _ui.unlockSuccessBackdrop) stayInKiosk();
-            });
-        }
 
         document.addEventListener('keydown', function (e) {
             if (!isUnlockAvailable()) return;

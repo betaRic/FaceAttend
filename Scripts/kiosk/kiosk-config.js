@@ -22,9 +22,7 @@
         unlockCancel:          el('unlockCancel'),
         unlockSubmit:          el('unlockSubmit'),
         unlockClose:           el('unlockClose'),
-        unlockSuccessBackdrop: el('unlockSuccessBackdrop'),
-        unlockGoAdmin:         el('unlockGoAdmin'),
-        unlockStayKiosk:       el('unlockStayKiosk'),
+        adminLoadingBackdrop:  el('adminLoadingBackdrop'),
 
         visitorBackdrop:   el('visitorBackdrop'),
         visitorNameRow:    el('visitorNameRow'),

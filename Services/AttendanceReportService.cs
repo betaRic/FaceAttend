@@ -31,6 +31,7 @@ namespace FaceAttend.Services
             public string Dept { get; set; }
             public string EventType { get; set; }
             public DateTime Timestamp { get; set; }
+            public int OfficeId { get; set; }
         }
 
         public class ExportRow
@@ -72,8 +73,22 @@ namespace FaceAttend.Services
             };
         }
 
-        public static DailyEmployeeRow BuildDailyRow(DateTime dayLocal, List<RawLog> events, AttendancePolicy p)
+        public static DailyEmployeeRow BuildDailyRow(
+            DateTime dayLocal, List<RawLog> events, AttendancePolicy p, bool isOffDay = false)
         {
+            // Off-day with no attendance → mark as OFF (scheduled non-working day)
+            bool hasEvents = events != null && events.Count > 0;
+            if (isOffDay && !hasEvents)
+            {
+                return new DailyEmployeeRow
+                {
+                    DateLocal        = dayLocal,
+                    StatusCode       = "OFF",
+                    StatusLabel      = "Off",
+                    StatusBadgeClass = "bg-light text-muted border"
+                };
+            }
+
             DateTime? firstInUtc = null;
             DateTime? lastOutUtc = null;
 

@@ -115,6 +115,10 @@
             fd.append('faceH', faceBox.h);
         }
 
+        if (window.KioskLocation && window.KioskLocation.getWfhMode()) {
+            fd.append('wfhMode', 'true');
+        }
+
         return fetch(_EP.attend, { method: 'POST', body: fd, credentials: 'same-origin', signal: signal })
             .then(function (r) {
                 if (r.status === 429 || r.status === 503) {

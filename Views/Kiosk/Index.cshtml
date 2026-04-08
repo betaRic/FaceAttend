@@ -53,7 +53,7 @@
 
     @Html.AntiForgeryToken()
 
-    <div id="kioskRoot" data-location-state="pending" style="display: none;">
+    <div id="kioskRoot" data-location-state="pending" data-wfh-day="@(ViewBag.WfhDay == true ? "true" : "false")" style="display: none;">
 
         <!-- Video Background -->
         <video id="kioskVideo" playsinline autoplay muted></video>
@@ -192,26 +192,16 @@
             </div>
         </div>
 
-        <!-- Unlock Success Confirmation Modal -->
-        <div id="unlockSuccessBackdrop" class="kiosk-backdrop hidden" aria-hidden="true" style="z-index: 3000;">
-            <div id="unlockSuccessModal" class="modal-card" role="dialog" aria-modal="true" aria-labelledby="unlockSuccessTitle">
-                <div class="modal-title" style="text-align:center;margin-bottom:1rem;">
-                    <div style="font-size:3rem;color:var(--success-500);margin-bottom:0.5rem;">
-                        <i class="fa-solid fa-circle-check"></i>
-                    </div>
-                    <span id="unlockSuccessTitle" style="font-size:1.25rem;">Unlock Successful</span>
+        <!-- Admin Redirect Loading Screen -->
+        <div id="adminLoadingBackdrop" class="kiosk-backdrop hidden" aria-hidden="true" style="z-index: 3000;">
+            <div style="display:flex;flex-direction:column;align-items:center;gap:1.25rem;color:var(--text-primary);">
+                <div style="font-size:2.5rem;color:var(--success-500);">
+                    <i class="fa-solid fa-circle-check"></i>
                 </div>
-                <div style="color:var(--text-secondary);font-size:0.875rem;margin-bottom:1.5rem;text-align:center;">
-                    You have successfully unlocked admin access.<br>
-                    What would you like to do?
-                </div>
-                <div class="modal-actions" style="margin-top:1rem;flex-direction:column;gap:0.75rem;">
-                    <button id="unlockGoAdmin" type="button" class="modal-btn primary" style="width:100%;">
-                        <i class="fa-solid fa-arrow-right me-2"></i>Go to Admin Panel
-                    </button>
-                    <button id="unlockStayKiosk" type="button" class="modal-btn secondary" style="width:100%;">
-                        <i class="fa-solid fa-desktop me-2"></i>Stay in Kiosk
-                    </button>
+                <div style="font-size:1.125rem;font-weight:600;">Access granted</div>
+                <div style="display:flex;align-items:center;gap:0.75rem;color:var(--text-secondary);font-size:0.875rem;">
+                    <i class="fa-solid fa-spinner fa-spin"></i>
+                    Redirecting to admin panel&hellip;
                 </div>
             </div>
         </div>

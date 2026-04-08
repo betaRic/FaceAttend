@@ -482,6 +482,17 @@ html, body {
     color: var(--color-error);
 }
 
+/* WFH mode — teal/cyan to distinguish from green "allowed" */
+.status-badge.is-wfh,
+[data-location-state="wfh"] .status-badge {
+    background: rgba(6, 182, 212, 0.15);
+    color: #0891b2;
+}
+
+[data-location-state="wfh"] .status-pulse {
+    --pulse-color: rgba(6, 182, 212, 0.4);
+}
+
 .status-title {
     font-size: 1.125rem;
     font-weight: 600;

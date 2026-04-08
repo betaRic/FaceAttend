@@ -81,3 +81,177 @@
 </div>
 
 <div id="map" style="height: 360px; border-radius: 12px; overflow: hidden; border: 1px solid #e6e6e6;"></div>
+
+<hr class="my-3" />
+
+@* Hidden fields that collect the checkbox selections on submit *@
+@Html.HiddenFor(m => m.WorkDays, new { id = "hfWorkDays" })
+@Html.HiddenFor(m => m.WfhDays,  new { id = "hfWfhDays" })
+
+<div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+        <div class="fw-semibold">
+            <i class="fa-solid fa-calendar-days me-1 text-primary"></i>Schedule
+        </div>
+        <div class="text-muted small">Configure working days and WFH days for this office.</div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-12">
+        <label class="form-label mb-1">Working Days</label>
+        <div class="d-flex flex-wrap gap-2" id="workDayPicker">
+            @{
+                var dayLabels = new[] { "M", "T", "W", "T", "F", "S", "S" };
+                var dayNames  = new[] { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+            }
+            @for (int i = 1; i <= 7; i++)
+            {
+                <div class="form-check form-check-inline day-check-wrap" style="min-width:52px;">
+                    <input class="form-check-input day-check work-day-check"
+                           type="checkbox"
+                           id="wd_@i"
+                           value="@i"
+                           data-iso="@i" />
+                    <label class="form-check-label" for="wd_@i">
+                        @dayNames[i - 1]
+                    </label>
+                </div>
+            }
+        </div>
+        <div class="text-muted small mt-1">Leave all unchecked to use the default Mon–Fri schedule.</div>
+    </div>
+
+    <div class="col-12 col-md-auto d-flex align-items-center gap-3 mt-2">
+        <label class="form-label mb-0">WFH Enabled</label>
+        <div class="form-check form-switch mb-0">
+            @Html.CheckBoxFor(m => m.WfhEnabled, new { @class = "form-check-input", id = "wfhEnabledToggle", role = "switch" })
+            <label class="form-check-label" for="wfhEnabledToggle">Allow employees to scan without GPS on WFH days</label>
+        </div>
+    </div>
+
+    <div class="col-12" id="wfhDaysRow">
+        <label class="form-label mb-1">WFH Days <span class="text-muted small">(must be a working day)</span></label>
+        <div class="d-flex flex-wrap gap-2" id="wfhDayPicker">
+            @for (int i = 1; i <= 7; i++)
+            {
+                <div class="form-check form-check-inline day-check-wrap" style="min-width:52px;">
+                    <input class="form-check-input day-check wfh-day-check"
+                           type="checkbox"
+                           id="wfhd_@i"
+                           value="@i"
+                           data-iso="@i"
+                           disabled />
+                    <label class="form-check-label" for="wfhd_@i">
+                        @dayNames[i - 1]
+                    </label>
+                </div>
+            }
+        </div>
+        <div class="text-muted small mt-1">
+            <i class="fa-solid fa-circle-info me-1"></i>
+            WFH days: employees can scan without a GPS location requirement.
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var DEFAULT_WORK_DAYS = [1, 2, 3, 4, 5]; // Mon–Fri
+
+    var hfWork   = document.getElementById('hfWorkDays');
+    var hfWfh    = document.getElementById('hfWfhDays');
+    var toggle   = document.getElementById('wfhEnabledToggle');
+    var wfhRow   = document.getElementById('wfhDaysRow');
+    var workChecks = [].slice.call(document.querySelectorAll('.work-day-check'));
+    var wfhChecks  = [].slice.call(document.querySelectorAll('.wfh-day-check'));
+
+    function getCheckedIsos(checks) {
+        return checks
+            .filter(function (c) { return c.checked; })
+            .map(function (c) { return parseInt(c.value, 10); })
+            .sort(function (a, b) { return a - b; });
+    }
+
+    function syncHiddenFields() {
+        var workDays = getCheckedIsos(workChecks);
+        var wfhDays  = toggle && toggle.checked ? getCheckedIsos(wfhChecks) : [];
+
+        // Filter wfhDays to only include days that are also in workDays
+        var workSet = {};
+        workDays.forEach(function (d) { workSet[d] = true; });
+        wfhDays = wfhDays.filter(function (d) { return workSet[d]; });
+
+        if (hfWork) hfWork.value = workDays.join(',');
+        if (hfWfh)  hfWfh.value  = wfhDays.join(',');
+    }
+
+    function updateWfhDayStates() {
+        var enabled = toggle && toggle.checked;
+        var workSet = {};
+        workChecks.forEach(function (c) {
+            if (c.checked) workSet[parseInt(c.value, 10)] = true;
+        });
+
+        wfhChecks.forEach(function (c) {
+            var iso = parseInt(c.value, 10);
+            var isWorkDay = workSet[iso];
+            c.disabled = !enabled || !isWorkDay;
+            if (!enabled || !isWorkDay) c.checked = false;
+        });
+
+        if (wfhRow) {
+            wfhRow.style.opacity = enabled ? '1' : '0.45';
+        }
+    }
+
+    function initFromHidden() {
+        // Populate checkboxes from hidden field values (set by server on Edit)
+        var workVal = hfWork ? hfWork.value : '';
+        var wfhVal  = hfWfh  ? hfWfh.value  : '';
+
+        var workIsos = workVal ? workVal.split(',').map(Number) : [];
+        var wfhIsos  = wfhVal  ? wfhVal.split(',').map(Number)  : [];
+
+        // If empty, default to Mon–Fri
+        if (workIsos.length === 0) workIsos = DEFAULT_WORK_DAYS;
+
+        workChecks.forEach(function (c) {
+            c.checked = workIsos.indexOf(parseInt(c.value, 10)) !== -1;
+        });
+        wfhChecks.forEach(function (c) {
+            c.checked = wfhIsos.indexOf(parseInt(c.value, 10)) !== -1;
+        });
+    }
+
+    // Wire up events
+    workChecks.forEach(function (c) {
+        c.addEventListener('change', function () {
+            updateWfhDayStates();
+            syncHiddenFields();
+        });
+    });
+    wfhChecks.forEach(function (c) {
+        c.addEventListener('change', syncHiddenFields);
+    });
+    if (toggle) {
+        toggle.addEventListener('change', function () {
+            updateWfhDayStates();
+            syncHiddenFields();
+        });
+    }
+
+    // Sync hidden fields before form submit
+    var forms = document.querySelectorAll('form');
+    forms.forEach(function (f) {
+        f.addEventListener('submit', syncHiddenFields);
+    });
+
+    // Init
+    initFromHidden();
+    updateWfhDayStates();
+    syncHiddenFields();
+})();
+</script>

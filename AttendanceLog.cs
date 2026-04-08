@@ -49,6 +49,7 @@ namespace FaceAttend
         public Nullable<System.DateTime> AttendanceDateLocal { get; set; }
         public Nullable<int> ScanHour { get; set; }
         public Nullable<int> ScanMinute { get; set; }
+        public bool IsWfh { get; set; }
     
         public virtual Employee Employee { get; set; }
         public virtual Office Office { get; set; }

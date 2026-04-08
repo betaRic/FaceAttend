@@ -58,6 +58,7 @@
           <Property Name="AttendanceDateLocal" Type="date" StoreGeneratedPattern="Computed" />
           <Property Name="ScanHour" Type="int" StoreGeneratedPattern="Computed" />
           <Property Name="ScanMinute" Type="int" StoreGeneratedPattern="Computed" />
+          <Property Name="IsWfh" Type="bit" Nullable="false" />
         </EntityType>
         <EntityType Name="Devices">
           <Key>
@@ -115,6 +116,9 @@
           <Property Name="WiFiBSSID" Type="nvarchar" MaxLength="100" />
           <Property Name="IsActive" Type="bit" Nullable="false" />
           <Property Name="CreatedDate" Type="datetime2" Precision="7" Nullable="false" />
+          <Property Name="WorkDays" Type="nvarchar" MaxLength="20" />
+          <Property Name="WfhDays" Type="nvarchar" MaxLength="20" />
+          <Property Name="WfhEnabled" Type="bit" Nullable="false" />
         </EntityType>
         <EntityType Name="SystemConfigurations">
           <Key>
@@ -280,6 +284,11 @@
             <Parameter Name="ExcludeEmployeeId" Mode="In" Type="String" />
             <Parameter Name="Tolerance" Mode="In" Type="Double" />
           </FunctionImport>
+          <FunctionImport Name="sp_PurgeOldAttendanceLogs">
+            <Parameter Name="RetentionYears" Mode="In" Type="Int32" />
+            <Parameter Name="BatchSize" Mode="In" Type="Int32" />
+            <Parameter Name="DryRun" Mode="In" Type="Boolean" />
+          </FunctionImport>
           <EntitySet Name="AdminAuditLogs" EntityType="FaceAttendDBModel.AdminAuditLog" />
           <EntitySet Name="AttendanceLogs" EntityType="FaceAttendDBModel.AttendanceLog" />
           <EntitySet Name="Devices" EntityType="FaceAttendDBModel.Device" />
@@ -312,11 +321,6 @@
             <End Role="Visitor" EntitySet="Visitors" />
             <End Role="VisitorLog" EntitySet="VisitorLogs" />
           </AssociationSet>
-          <FunctionImport Name="sp_PurgeOldAttendanceLogs">
-            <Parameter Name="RetentionYears" Mode="In" Type="Int32" />
-            <Parameter Name="BatchSize" Mode="In" Type="Int32" />
-            <Parameter Name="DryRun" Mode="In" Type="Boolean" />
-          </FunctionImport>
           </EntityContainer>
         <ComplexType Name="sp_CheckDuplicateFace_Result">
           <Property Type="String" Name="EmployeeId" Nullable="false" MaxLength="20" />
@@ -376,6 +380,7 @@
           <Property Name="AttendanceDateLocal" Type="DateTime" annotation:StoreGeneratedPattern="Computed" Precision="0" />
           <Property Name="ScanHour" Type="Int32" annotation:StoreGeneratedPattern="Computed" />
           <Property Name="ScanMinute" Type="Int32" annotation:StoreGeneratedPattern="Computed" />
+          <Property Name="IsWfh" Type="Boolean" Nullable="false" />
           <NavigationProperty Name="Employee" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="AttendanceLog" ToRole="Employee" />
           <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="AttendanceLog" ToRole="Office" />
         </EntityType>
@@ -439,6 +444,9 @@
           <Property Name="WiFiBSSID" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="IsActive" Type="Boolean" Nullable="false" />
           <Property Name="CreatedDate" Type="DateTime" Nullable="false" Precision="7" />
+          <Property Name="WorkDays" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="WfhDays" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="WfhEnabled" Type="Boolean" Nullable="false" />
           <NavigationProperty Name="AttendanceLogs" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="Office" ToRole="AttendanceLog" />
           <NavigationProperty Name="Employees" Relationship="FaceAttendDBModel.FK_Employees_Offices" FromRole="Office" ToRole="Employee" />
           <NavigationProperty Name="VisitorLogs" Relationship="FaceAttendDBModel.FK_VisitorLogs_Offices" FromRole="Office" ToRole="VisitorLog" />
@@ -573,6 +581,7 @@
               </ComplexTypeMapping>
             </ResultMapping>
           </FunctionImportMapping>
+          <FunctionImportMapping FunctionImportName="sp_PurgeOldAttendanceLogs" FunctionName="FaceAttendDBModel.Store.sp_PurgeOldAttendanceLogs" />
           <EntitySetMapping Name="AdminAuditLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AdminAuditLog">
               <MappingFragment StoreEntitySet="AdminAuditLogs">
@@ -591,6 +600,7 @@
           <EntitySetMapping Name="AttendanceLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
               <MappingFragment StoreEntitySet="AttendanceLogs">
+                <ScalarProperty Name="IsWfh" ColumnName="IsWfh" />
                 <ScalarProperty Name="ScanMinute" ColumnName="ScanMinute" />
                 <ScalarProperty Name="ScanHour" ColumnName="ScanHour" />
                 <ScalarProperty Name="AttendanceDateLocal" ColumnName="AttendanceDateLocal" />
@@ -674,6 +684,9 @@
           <EntitySetMapping Name="Offices">
             <EntityTypeMapping TypeName="FaceAttendDBModel.Office">
               <MappingFragment StoreEntitySet="Offices">
+                <ScalarProperty Name="WfhEnabled" ColumnName="WfhEnabled" />
+                <ScalarProperty Name="WfhDays" ColumnName="WfhDays" />
+                <ScalarProperty Name="WorkDays" ColumnName="WorkDays" />
                 <ScalarProperty Name="CreatedDate" ColumnName="CreatedDate" />
                 <ScalarProperty Name="IsActive" ColumnName="IsActive" />
                 <ScalarProperty Name="WiFiBSSID" ColumnName="WiFiBSSID" />
@@ -730,7 +743,6 @@
               </MappingFragment>
             </EntityTypeMapping>
           </EntitySetMapping>
-          <FunctionImportMapping FunctionImportName="sp_PurgeOldAttendanceLogs" FunctionName="FaceAttendDBModel.Store.sp_PurgeOldAttendanceLogs" />
           </EntityContainerMapping>
       </Mapping>
     </edmx:Mappings>

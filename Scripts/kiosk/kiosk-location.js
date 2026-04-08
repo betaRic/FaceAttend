@@ -65,6 +65,14 @@
             };
         }
         if (c === 'GPS_REQUIRED') {
+            // When WFH mode is active but server rejected — employee's office has no WFH today
+            if (_state && _state.wfhMode) {
+                return {
+                    title:  'Location required',
+                    sub:    'Your office does not have work-from-home today. Enable GPS to continue.',
+                    banner: 'Location required'
+                };
+            }
             return {
                 title:  'Location is required',
                 sub:    'Enable location services so the kiosk can verify the assigned office.',
@@ -182,14 +190,16 @@
         }
 
         if (_ui.idleStatusBadge) {
-            _ui.idleStatusBadge.classList.remove('is-pending', 'is-ready', 'is-blocked');
+            _ui.idleStatusBadge.classList.remove('is-pending', 'is-ready', 'is-blocked', 'is-wfh');
             _ui.idleStatusBadge.classList.add(
                 kind === 'allowed' ? 'is-ready'   :
+                kind === 'wfh'     ? 'is-wfh'     :
                 kind === 'blocked' ? 'is-blocked'  :
                 'is-pending'
             );
             _ui.idleStatusBadge.textContent =
                 kind === 'allowed' ? 'Location verified' :
+                kind === 'wfh'     ? 'Work From Home'    :
                 kind === 'blocked' ? 'Location blocked'  :
                 'Checking location';
         }
@@ -347,7 +357,19 @@
 
         if (_state.gps.lat == null || _state.gps.lon == null || _state.gps.accuracy == null) {
             if (!_isMobile) return resolveOfficeDesktopOnce();
-            if (_state.locationState === 'pending') {
+
+            // Auto-enter WFH mode when today is a WFH day and GPS is unavailable
+            var wfhDayActive = (document.getElementById('kioskRoot') || document.body)
+                .getAttribute('data-wfh-day') === 'true';
+            if (wfhDayActive && _state.locationState !== 'wfh') {
+                _state.wfhMode = true;
+                setLocationState(
+                    'wfh',
+                    'Work From Home',
+                    'Location not required today. Look at the camera to scan.',
+                    'WFH mode'
+                );
+            } else if (!wfhDayActive && _state.locationState === 'pending') {
                 setLocationState(
                     'pending',
                     'Checking location',
@@ -616,6 +638,7 @@
         setLocationState:        setLocationState,
         gpsDistanceMeters:       gpsDistanceMeters,
         fetchOfficesOnce:        fetchOfficesOnce,
-        getOfficesCache:         function () { return _officesCache; }
+        getOfficesCache:         function () { return _officesCache; },
+        getWfhMode:              function () { return _state ? _state.wfhMode === true : false; }
     };
 })();

@@ -8,14 +8,14 @@
         <EntityTypeShape EntityType="FaceAttendDBModel.PendingEmployee" Width="1.5" PointX="8.25" PointY="16.625" />
         <AssociationConnector Association="FaceAttendDBModel.FK_PendingEmployees_ApprovedEmployee" />
         <AssociationConnector Association="FaceAttendDBModel.FK_PendingEmployees_Offices" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.AdminAuditLog" Width="1.5" PointX="0.75" PointY="0.75" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.AttendanceLog" Width="1.5" PointX="5.25" PointY="11.875" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.Device" Width="1.5" PointX="5.25" PointY="21.25" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.Employee" Width="1.5" PointX="3" PointY="20.875" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.Office" Width="1.5" PointX="0.75" PointY="8.5" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.SystemConfiguration" Width="1.5" PointX="2.75" PointY="0.75" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.VisitorLog" Width="1.5" PointX="3" PointY="8.875" />
-        <EntityTypeShape EntityType="FaceAttendDBModel.Visitor" Width="1.5" PointX="0.75" PointY="5.125" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.AdminAuditLog" Width="1.5" PointX="2.75" PointY="0.75" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.AttendanceLog" Width="1.5" PointX="8.25" PointY="8.375" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.Device" Width="1.5" PointX="5.25" PointY="12.5" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.Employee" Width="1.5" PointX="3" PointY="12.125" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.Office" Width="1.5" PointX="0.75" PointY="8.25" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.SystemConfiguration" Width="1.5" PointX="4.75" PointY="0.75" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.VisitorLog" Width="1.5" PointX="3" PointY="8" />
+        <EntityTypeShape EntityType="FaceAttendDBModel.Visitor" Width="1.5" PointX="0.75" PointY="4.25" />
         <AssociationConnector Association="FaceAttendDBModel.FK_AttendanceLogs_Employees" />
         <AssociationConnector Association="FaceAttendDBModel.FK_AttendanceLogs_Offices" />
         <AssociationConnector Association="FaceAttendDBModel.FK_Devices_Employees" />

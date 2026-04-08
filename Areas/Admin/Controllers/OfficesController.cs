@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
@@ -32,7 +33,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                 RadiusMeters = 100,
                 IsActive = true,
                 Latitude = 6.116386,   // Philippines center-ish fallback
-                Longitude = 125.171617
+                Longitude = 125.171617,
+                WorkDays = "1,2,3,4,5" // default Mon–Fri
             };
             return View(vm);
         }
@@ -64,6 +66,11 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             using (var db = new FaceAttendDBEntities())
             {
+                var normWork = OfficeScheduleService.NormalizeDayMask(
+                    (vm.WorkDays ?? "").Split(',').Select(s => { int n; return int.TryParse(s.Trim(), out n) ? n : 0; }).Where(n => n > 0));
+                var normWfh = OfficeScheduleService.NormalizeDayMask(
+                    (vm.WfhDays ?? "").Split(',').Select(s => { int n; return int.TryParse(s.Trim(), out n) ? n : 0; }).Where(n => n > 0));
+
                 var o = new Office
                 {
                     Code = string.IsNullOrWhiteSpace(vm.Code) ? null : vm.Code,
@@ -76,6 +83,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                     RadiusMeters = vm.RadiusMeters,
                     WiFiBSSID = string.IsNullOrWhiteSpace(vm.WiFiBSSID) ? null : vm.WiFiBSSID,
                     IsActive = vm.IsActive,
+                    WorkDays = string.IsNullOrEmpty(normWork) ? null : normWork,
+                    WfhDays = string.IsNullOrEmpty(normWfh) ? null : normWfh,
+                    WfhEnabled = vm.WfhEnabled,
                     CreatedDate = DateTime.UtcNow
                 };
 
@@ -101,7 +111,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                         o.Longitude,
                         o.RadiusMeters,
                         o.WiFiBSSID,
-                        o.IsActive
+                        o.IsActive,
+                        o.WorkDays,
+                        o.WfhDays,
+                        o.WfhEnabled
                     });
 
                 return RedirectToAction("Index");
@@ -129,7 +142,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                     Longitude = o.Longitude,
                     RadiusMeters = o.RadiusMeters > 0 ? o.RadiusMeters : 100,
                     WiFiBSSID = o.WiFiBSSID,
-                    IsActive = o.IsActive
+                    IsActive = o.IsActive,
+                    WorkDays = string.IsNullOrWhiteSpace(o.WorkDays) ? "1,2,3,4,5" : o.WorkDays,
+                    WfhDays = o.WfhDays,
+                    WfhEnabled = o.WfhEnabled
                 };
 
                 return View(vm);
@@ -177,8 +193,16 @@ namespace FaceAttend.Areas.Admin.Controllers
                     o.Longitude,
                     o.RadiusMeters,
                     o.WiFiBSSID,
-                    o.IsActive
+                    o.IsActive,
+                    o.WorkDays,
+                    o.WfhDays,
+                    o.WfhEnabled
                 };
+
+                var editNormWork = OfficeScheduleService.NormalizeDayMask(
+                    (vm.WorkDays ?? "").Split(',').Select(s => { int n; return int.TryParse(s.Trim(), out n) ? n : 0; }).Where(n => n > 0));
+                var editNormWfh = OfficeScheduleService.NormalizeDayMask(
+                    (vm.WfhDays ?? "").Split(',').Select(s => { int n; return int.TryParse(s.Trim(), out n) ? n : 0; }).Where(n => n > 0));
 
                 o.Code = string.IsNullOrWhiteSpace(vm.Code) ? null : vm.Code;
                 o.Name = vm.Name;
@@ -190,6 +214,9 @@ namespace FaceAttend.Areas.Admin.Controllers
                 o.RadiusMeters = vm.RadiusMeters;
                 o.WiFiBSSID = string.IsNullOrWhiteSpace(vm.WiFiBSSID) ? null : vm.WiFiBSSID;
                 o.IsActive = vm.IsActive;
+                o.WorkDays = string.IsNullOrEmpty(editNormWork) ? null : editNormWork;
+                o.WfhDays = string.IsNullOrEmpty(editNormWfh) ? null : editNormWfh;
+                o.WfhEnabled = vm.WfhEnabled;
 
                 db.SaveChanges();
 
@@ -212,11 +239,130 @@ namespace FaceAttend.Areas.Admin.Controllers
                         o.Longitude,
                         o.RadiusMeters,
                         o.WiFiBSSID,
-                        o.IsActive
+                        o.IsActive,
+                        o.WorkDays,
+                        o.WfhDays,
+                        o.WfhEnabled
                     });
 
                 return RedirectToAction("Index");
             }
+        }
+
+        // ── BulkSchedule ──────────────────────────────────────────────────────
+
+        [HttpGet]
+        public ActionResult BulkSchedule()
+        {
+            ViewBag.Title = "Office Schedules";
+            using (var db = new FaceAttendDBEntities())
+            {
+                var offices = db.Offices.OrderBy(o => o.ProvinceName).ThenBy(o => o.Name).ToList();
+                var vm = new OfficeBulkScheduleVm
+                {
+                    Offices = offices.Select(o => new OfficeBulkScheduleRowVm
+                    {
+                        Id           = o.Id,
+                        Name         = o.Name,
+                        ProvinceName = o.ProvinceName ?? o.HUCCity ?? "",
+                        WfhEnabled   = o.WfhEnabled,
+                        WorkDays     = MaskToBoolArray(o.WorkDays, isWork: true),
+                        WfhDays      = MaskToBoolArray(o.WfhDays,  isWork: false)
+                    }).ToList()
+                };
+                return View(vm);
+            }
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult BulkSchedule(OfficeBulkScheduleVm vm)
+        {
+            if (vm == null || vm.Offices == null)
+                return RedirectToAction("BulkSchedule");
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var officeMap = db.Offices.ToDictionary(o => o.Id);
+                var changes   = new List<object>();
+
+                foreach (var row in vm.Offices)
+                {
+                    if (!officeMap.ContainsKey(row.Id)) continue;
+                    var o = officeMap[row.Id];
+
+                    var newWork = OfficeScheduleService.NormalizeDayMask(
+                        BoolArrayToIsoList(row.WorkDays));
+                    var newWfh = OfficeScheduleService.NormalizeDayMask(
+                        BoolArrayToIsoList(row.WfhDays));
+
+                    if (o.WorkDays != (string.IsNullOrEmpty(newWork) ? null : newWork)
+                        || o.WfhDays != (string.IsNullOrEmpty(newWfh) ? null : newWfh)
+                        || o.WfhEnabled != row.WfhEnabled)
+                    {
+                        changes.Add(new
+                        {
+                            row.Id,
+                            o.Name,
+                            OldWork = o.WorkDays,
+                            NewWork = newWork,
+                            OldWfh  = o.WfhDays,
+                            NewWfh  = newWfh,
+                            OldWfhEnabled = o.WfhEnabled,
+                            NewWfhEnabled = row.WfhEnabled
+                        });
+                        o.WorkDays   = string.IsNullOrEmpty(newWork) ? null : newWork;
+                        o.WfhDays    = string.IsNullOrEmpty(newWfh)  ? null : newWfh;
+                        o.WfhEnabled = row.WfhEnabled;
+                    }
+                }
+
+                db.SaveChanges();
+
+                if (changes.Count > 0)
+                {
+                    AuditHelper.Log(
+                        db, Request,
+                        AuditHelper.ActionOfficeBulkSchedule,
+                        "Office", 0,
+                        "Bulk schedule update for " + changes.Count + " office(s).",
+                        null,
+                        changes);
+                }
+
+                TempData["msg"]     = "Schedules saved for " + changes.Count + " office(s).";
+                TempData["msgKind"] = "success";
+                return RedirectToAction("BulkSchedule");
+            }
+        }
+
+        // ── Private helpers ───────────────────────────────────────────────────
+
+        /// <summary>Converts a day mask string to a 7-element bool array [0]=Mon…[6]=Sun.</summary>
+        private static bool[] MaskToBoolArray(string mask, bool isWork)
+        {
+            var result = new bool[7];
+            if (string.IsNullOrWhiteSpace(mask))
+            {
+                // Default: if isWork, check Mon–Fri; WFH days default to none
+                if (isWork) { result[0]=result[1]=result[2]=result[3]=result[4]=true; }
+                return result;
+            }
+            foreach (var part in mask.Split(','))
+            {
+                int iso;
+                if (int.TryParse(part.Trim(), out iso) && iso >= 1 && iso <= 7)
+                    result[iso - 1] = true;
+            }
+            return result;
+        }
+
+        /// <summary>Converts a 7-element bool array [0]=Mon…[6]=Sun to ISO day numbers.</summary>
+        private static IEnumerable<int> BoolArrayToIsoList(bool[] arr)
+        {
+            if (arr == null) yield break;
+            for (int i = 0; i < Math.Min(arr.Length, 7); i++)
+                if (arr[i]) yield return i + 1;
         }
     }
 }

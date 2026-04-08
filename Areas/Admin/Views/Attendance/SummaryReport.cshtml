@@ -30,7 +30,8 @@
             Idx       = i,
             Present   = emp.Days.Count(d => d.FirstInUtc.HasValue),
             Total     = emp.Days.Count,
-            Absent    = emp.Days.Count(d => !d.FirstInUtc.HasValue),
+            Absent    = emp.Days.Count(d => !d.FirstInUtc.HasValue && d.StatusCode != "OFF"),
+            Off       = emp.Days.Count(d => d.StatusCode == "OFF"),
             LateDays  = emp.Days.Count(d => d.LateMinutes.GetValueOrDefault() > 0),
             UtDays    = emp.Days.Count(d => d.UndertimeMinutes.GetValueOrDefault() > 0),
             NetH      = emp.Days
@@ -201,6 +202,7 @@
                     <span class="badge bg-secondary">Undertime</span>
                     <span class="badge bg-danger">Absent</span>
                     <span class="badge bg-light text-dark border">Open shift</span>
+                    <span class="badge bg-light text-muted border">Off</span>
                 </div>
             </div>
 
@@ -218,6 +220,7 @@
                             </th>
                             <th class="text-center" style="width:90px;" data-sort="present" style="cursor:pointer; user-select:none;">Present</th>
                             <th class="text-center" style="width:80px;" data-sort="absent"  style="cursor:pointer; user-select:none;">Absent</th>
+                            <th class="text-center" style="width:70px;" data-sort="off"     style="cursor:pointer; user-select:none;">Off</th>
                             <th class="text-center" style="width:75px;" data-sort="late"    style="cursor:pointer; user-select:none;">Late</th>
                             <th class="text-center" style="width:90px;" data-sort="ut"      style="cursor:pointer; user-select:none;">Undertime</th>
                             <th class="text-center" style="width:90px;" data-sort="hours"   style="cursor:pointer; user-select:none;">Net Hours</th>
@@ -239,6 +242,7 @@
                                 data-dept="@((agg.Emp.Department ?? "").ToLowerInvariant())"
                                 data-present="@agg.Present"
                                 data-absent="@agg.Absent"
+                                data-off="@agg.Off"
                                 data-late="@agg.LateDays"
                                 data-ut="@agg.UtDays"
                                 data-hours="@agg.NetH.ToString("F1", System.Globalization.CultureInfo.InvariantCulture)"
@@ -269,6 +273,16 @@
                                     else
                                     {
                                         <span class="text-muted small">0</span>
+                                    }
+                                </td>
+                                <td class="text-center">
+                                    @if (agg.Off > 0)
+                                    {
+                                        <span class="badge bg-light text-muted border">@agg.Off</span>
+                                    }
+                                    else
+                                    {
+                                        <span class="text-muted small">-</span>
                                     }
                                 </td>
                                 <td class="text-center">

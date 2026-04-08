@@ -17,8 +17,10 @@ namespace FaceAttend.Services
         public const string ActionEmployeeCreate     = "EMPLOYEE_CREATE";
         public const string ActionEmployeeEdit       = "EMPLOYEE_EDIT";
         public const string ActionEmployeeDeactivate = "EMPLOYEE_DEACTIVATE";
-        public const string ActionOfficeCreate       = "OFFICE_CREATE";
-        public const string ActionOfficeEdit         = "OFFICE_EDIT";
+        public const string ActionOfficeCreate        = "OFFICE_CREATE";
+        public const string ActionOfficeEdit          = "OFFICE_EDIT";
+        public const string ActionOfficeScheduleEdit  = "OFFICE_SCHEDULE_EDIT";
+        public const string ActionOfficeBulkSchedule  = "OFFICE_BULK_SCHEDULE";
         public const string ActionSettingChange      = "SETTING_CHANGE";
         public const string ActionFaceEnroll         = "FACE_ENROLL";
 

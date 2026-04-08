@@ -78,7 +78,8 @@ namespace FaceAttend.Services.Recognition
             DateTime requestedAtUtc,
             bool includePerfTimings,
             string deviceToken,
-            HttpContextBase httpContext)
+            HttpContextBase httpContext,
+            bool wfhMode = false)
         {
             var request  = httpContext.Request;
             var response = httpContext.Response;
@@ -122,7 +123,9 @@ namespace FaceAttend.Services.Recognition
                     }
                     else if (gpsRequired)
                     {
-                        return JsonResponseBuilder.ErrorWithTimings("GPS_REQUIRED", timings, includePerfTimings);
+                        if (!wfhMode)
+                            return JsonResponseBuilder.ErrorWithTimings("GPS_REQUIRED", timings, includePerfTimings);
+                        // wfhMode=true: defer office resolution until after face match
                     }
                     else
                     {
@@ -130,7 +133,7 @@ namespace FaceAttend.Services.Recognition
                         locationVerified = false;
                     }
 
-                    if (office == null)
+                    if (office == null && !wfhMode)
                         return NoOfficesResult(includePerfTimings, timings);
 
                     // ── Image save + preprocess ───────────────────────────────────────
@@ -409,6 +412,17 @@ namespace FaceAttend.Services.Recognition
                     if (emp == null)
                         return JsonResponseBuilder.ErrorWithTimings("EMPLOYEE_NOT_FOUND", timings, includePerfTimings);
 
+                    // ── WFH office resolution (deferred from pre-match) ───────────────
+                    if (wfhMode && office == null)
+                    {
+                        var todayLocal = requestedAtUtc.Date;
+                        var empOffice  = db.Offices.FirstOrDefault(o => o.Id == emp.OfficeId && o.IsActive);
+                        if (empOffice == null || !OfficeScheduleService.IsWfhEnabledToday(empOffice, todayLocal))
+                            return JsonResponseBuilder.ErrorWithTimings("GPS_REQUIRED", timings, includePerfTimings);
+                        office           = empOffice;
+                        locationVerified = false;  // WFH scan — location not verified
+                    }
+
                     // ── Device check (mobile only) ────────────────────────────────────
                     var deviceFingerprint = DeviceService.GenerateFingerprint(request);
                     var deviceIsMobile    = DeviceService.IsMobileDevice(request);
@@ -534,6 +548,12 @@ namespace FaceAttend.Services.Recognition
                     if (reviewNotes.Length > 0) reviewNotes.Insert(0, tierNote + ". ");
                     else reviewNotes.Append(tierNote);
 
+                    bool isWfhScan = wfhMode && !locationVerified;
+                    if (isWfhScan && reviewNotes.Length > 0)
+                        reviewNotes.Append(" WFH");
+                    else if (isWfhScan)
+                        reviewNotes.Append("WFH");
+
                     var log = new AttendanceLog
                     {
                         EmployeeId       = emp.Id,
@@ -555,7 +575,8 @@ namespace FaceAttend.Services.Recognition
                         UserAgent        = StringHelper.Truncate(request.UserAgent ?? "", 1000),
                         WiFiBSSID        = StringHelper.Truncate(office.WiFiBSSID, 200),
                         NeedsReview      = needsReviewFlag,
-                        Notes            = reviewNotes.ToString()
+                        Notes            = reviewNotes.ToString(),
+                        IsWfh            = isWfhScan
                     };
 
                     if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);

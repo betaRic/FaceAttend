@@ -34,6 +34,9 @@ namespace FaceAttend
         public string WiFiBSSID { get; set; }
         public bool IsActive { get; set; }
         public System.DateTime CreatedDate { get; set; }
+        public string WorkDays { get; set; }
+        public string WfhDays { get; set; }
+        public bool WfhEnabled { get; set; }
     
         [System.Diagnostics.CodeAnalysis.SuppressMessage("Microsoft.Usage", "CA2227:CollectionPropertiesShouldBeReadOnly")]
         public virtual ICollection<AttendanceLog> AttendanceLogs { get; set; }
