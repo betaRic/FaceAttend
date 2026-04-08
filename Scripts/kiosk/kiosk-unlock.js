@@ -19,9 +19,7 @@
         return !!(_ui.unlockBackdrop && _ui.unlockPin && _ui.unlockSubmit && _ui.unlockCancel && _ui.unlockErr);
     }
 
-    function open() {
-        if (!isUnlockAvailable()) return;
-        if (_state.visitorOpen && window.KioskVisitor) window.KioskVisitor.close();
+    function openPinModal() {
         _state.unlockOpen = true;
         _ui.unlockErr.textContent = '';
         _ui.unlockPin.value = '';
@@ -29,6 +27,45 @@
         _ui.unlockBackdrop.setAttribute('aria-hidden', 'false');
         if (_ui.kioskRoot) _ui.kioskRoot.classList.add('unlockOpen');
         setTimeout(function () { if (_ui.unlockPin) _ui.unlockPin.focus(); }, 50);
+    }
+
+    function tryAutoBypass(onFail) {
+        // 1. Check if session is already authenticated (e.g., admin was just in the panel)
+        fetch(_EP.checkAdminAuthed, { method: 'GET', credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (data && data.authed) {
+                    // Already authenticated — issue a fresh unlock cookie via AutoAdmin
+                    return tryAutoAdmin();
+                }
+                // Session not authed — try persist cookie bypass
+                return tryAutoAdmin();
+            })
+            .catch(function () { onFail(); });
+    }
+
+    function tryAutoAdmin() {
+        var fd = new FormData();
+        fd.append('__RequestVerificationToken', _token);
+        fd.append('returnUrl', (document.body && document.body.dataset && document.body.dataset.returnUrl) || '');
+
+        return fetch(_EP.autoAdmin, { method: 'POST', credentials: 'same-origin', body: fd })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (j && j.ok) {
+                    _pendingReturnUrl = (j.returnUrl || '').trim();
+                    showUnlockSuccess();
+                } else {
+                    openPinModal();
+                }
+            })
+            .catch(function () { openPinModal(); });
+    }
+
+    function open() {
+        if (!isUnlockAvailable()) return;
+        if (_state.visitorOpen && window.KioskVisitor) window.KioskVisitor.close();
+        tryAutoBypass(openPinModal);
     }
 
     function close() {

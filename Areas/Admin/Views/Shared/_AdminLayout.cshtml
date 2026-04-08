@@ -119,11 +119,24 @@
                                 {
                                     @Html.AntiForgeryToken()
                                     <button type="submit"
+                                            class="dropdown-item text-warning"
+                                            data-confirm="Return to kiosk?"
+                                            data-confirm-text="You will be taken to the kiosk. You can return to admin without re-entering your PIN for the rest of the workday."
+                                            data-confirm-icon="info">
+                                        <i class="fa-solid fa-desktop fa-fw me-2"></i>Go to Kiosk
+                                    </button>
+                                }
+                            </li>
+                            <li>
+                                @using (Html.BeginForm("FullLock", "Kiosk", new { area = "" }, FormMethod.Post, new { @class = "d-block" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <button type="submit"
                                             class="dropdown-item text-danger"
-                                            data-confirm="Lock kiosk now?"
-                                            data-confirm-text="This will lock the kiosk screen until it is unlocked using the PIN."
+                                            data-confirm="Sign out completely?"
+                                            data-confirm-text="This will end your admin session. You will need to re-enter your PIN to access admin again."
                                             data-confirm-icon="warning">
-                                        <i class="fa-solid fa-lock fa-fw me-2"></i>Lock Kiosk
+                                        <i class="fa-solid fa-right-from-bracket fa-fw me-2"></i>Sign Out
                                     </button>
                                 }
                             </li>

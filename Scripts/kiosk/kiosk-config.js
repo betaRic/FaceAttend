@@ -126,11 +126,13 @@
     };
 
     var EP = {
-        unlockPin:     appBase + 'Kiosk/UnlockPin',
-        resolveOffice: appBase + 'Kiosk/ResolveOffice',
-        attend:        appBase + 'Kiosk/Attend',
-        submitVisitor: appBase + 'Kiosk/SubmitVisitor',
-        deviceState:   appBase + 'Kiosk/GetCurrentMobileDeviceState'
+        unlockPin:         appBase + 'Kiosk/UnlockPin',
+        autoAdmin:         appBase + 'Kiosk/AutoAdmin',
+        checkAdminAuthed:  appBase + 'Kiosk/CheckAdminAuthed',
+        resolveOffice:     appBase + 'Kiosk/ResolveOffice',
+        attend:            appBase + 'Kiosk/Attend',
+        submitVisitor:     appBase + 'Kiosk/SubmitVisitor',
+        deviceState:       appBase + 'Kiosk/GetCurrentMobileDeviceState'
     };
 
     function validateConfig() {
