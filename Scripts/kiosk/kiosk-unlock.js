@@ -92,7 +92,7 @@
         _ui.unlockCancel.disabled = true;
         _ui.unlockErr.textContent = '';
 
-        fetch(_EP.unlockPin, { method: 'POST', body: fd })
+        fetch(_EP.unlockPin, { method: 'POST', credentials: 'same-origin', body: fd })
             .then(function (r) {
                 if (r.status === 403) {
                     close();
