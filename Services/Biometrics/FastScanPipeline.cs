@@ -96,7 +96,10 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        public static ScanResult ScanInMemory(HttpPostedFileBase image, bool includeTimings = false)
+        public static ScanResult ScanInMemory(
+            HttpPostedFileBase image,
+            DlibBiometrics.FaceBox clientFaceBox = null,
+            bool includeTimings = false)
         {
             var sw = Stopwatch.StartNew();
             var timings = includeTimings ? new Dictionary<string, long>() : null;
@@ -109,7 +112,7 @@ namespace FaceAttend.Services.Biometrics
 
             using (bitmap)
             {
-                var core = RunCore(bitmap, imageWidth, imageHeight, null, needLandmarks: false, isMobile: false);
+                var core = RunCore(bitmap, imageWidth, imageHeight, clientFaceBox, needLandmarks: false, isMobile: false);
                 if (timings != null) timings["scan"] = sw.ElapsedMilliseconds;
 
                 if (!core.Ok)

@@ -401,6 +401,7 @@
                 }
             }, 2500);
         } else if (err === 'LIVENESS_FAIL') {
+            _setPrompt('Liveness check failed.', 'Look directly at the camera in good lighting.');
             armPostScanHold(1500);
         } else if (err === 'NOT_RECOGNIZED') {
             _toastError('Face not recognized. Try moving closer or adjusting angle.');

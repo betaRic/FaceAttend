@@ -188,10 +188,14 @@ namespace FaceAttend.Services.Recognition
 
                     FastScanPipeline.ScanResult fastResult = null;
 
-                    if (!usedClientBox && ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
+                    if (ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
                     {
                         image.InputStream.Position = 0;
-                        fastResult = FastScanPipeline.ScanInMemory(image, includePerfTimings);
+                        // Pass client face box when available — RunCore uses it instead of running HOG detection,
+                        // saving 200-500ms. Previously this path was skipped when usedClientBox=true (mobile always
+                        // sent a box from MediaPipe), forcing mobile into the slow sequential disk path every scan.
+                        var scanFaceBox = usedClientBox ? clientFaceBox : null;
+                        fastResult = FastScanPipeline.ScanInMemory(image, scanFaceBox, includePerfTimings);
 
                         if (fastResult.Timings != null)
                             foreach (var t in fastResult.Timings)

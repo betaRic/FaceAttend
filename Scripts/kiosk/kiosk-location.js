@@ -547,7 +547,30 @@
                 var rawLon = pos.coords.longitude;
                 var acc    = pos.coords.accuracy;
 
-                var alpha = 0.25;
+                // Ignore readings that are too inaccurate to be useful.
+                // GPS chips output wildly inaccurate positions (100-500m) before they lock.
+                // Google Maps appears stable because it waits for the fix; we do the same.
+                var MAX_USABLE_ACCURACY = 100; // metres
+                if (acc == null || acc > MAX_USABLE_ACCURACY) {
+                    // Still store the raw accuracy so the UI can show "Low accuracy" status,
+                    // but don't let the bad coordinate pollute the smoothed position.
+                    _state.gps.accuracy = acc;
+                    if (_state.locationState === 'pending' || _state.locationState === 'blocked') {
+                        setLocationState(
+                            'pending',
+                            'Waiting for GPS fix',
+                            'Accuracy: ' + (acc ? Math.round(acc) + 'm' : 'unknown') + '. Move to an open area.',
+                            'Low accuracy'
+                        );
+                    }
+                    return;
+                }
+
+                // Accuracy-weighted EMA: good signal (acc < 10m) gets alpha=0.6 (snappy);
+                // marginal signal (acc ~100m) gets alpha=0.10 (heavily smoothed).
+                // Formula: alpha = 0.10 + 0.50 * max(0, (100 - acc) / 100)
+                var alpha = 0.10 + 0.50 * Math.max(0, (MAX_USABLE_ACCURACY - acc) / MAX_USABLE_ACCURACY);
+
                 if (_gpsSmoothed.lat === null) {
                     _gpsSmoothed.lat = rawLat;
                     _gpsSmoothed.lon = rawLon;
@@ -560,6 +583,7 @@
                 _state.gps.lon      = _gpsSmoothed.lon;
                 _state.gps.accuracy = acc;
 
+                // Sanity-check: must be within the Philippines bounding box
                 var phLat = _gpsSmoothed.lat, phLon = _gpsSmoothed.lon;
                 if (phLat < 4.5 || phLat > 21.0 || phLon < 116.0 || phLon > 127.0) {
                     _gpsSmoothed.lat = null;
@@ -567,11 +591,13 @@
                     return;
                 }
 
+                // Only re-resolve the office when the smoothed position has moved meaningfully.
+                // 30m threshold: reduces thrashing from GPS noise while catching real movement.
                 var movedM = gpsDistanceMeters(
                     _lastProcessedGps.lat, _lastProcessedGps.lon,
                     _gpsSmoothed.lat, _gpsSmoothed.lon
                 );
-                if (_lastProcessedGps.lat !== null && movedM < 25) return;
+                if (_lastProcessedGps.lat !== null && movedM < 30) return;
 
                 _lastProcessedGps.lat = _gpsSmoothed.lat;
                 _lastProcessedGps.lon = _gpsSmoothed.lon;
@@ -613,7 +639,7 @@
 
                 setLocationState('blocked', title, sub, banner);
             },
-            { enableHighAccuracy: true, maximumAge: 15000, timeout: 20000 }
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 }
         );
     }
 
