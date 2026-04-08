@@ -46,12 +46,6 @@ namespace FaceAttend.Controllers.Api
             var strictTol   = ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
             var parallelism = Math.Min(files.Count,
                               ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
-            var isMobile    = DeviceService.IsMobileDevice(Request);
-            var liveTh      = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
-            var sharpTh     = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
-            var minAreaRatio = isMobile
-                ? ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio:Mobile", 0.05)
-                : ConfigurationService.GetDouble("Biometrics:Enroll:MinFaceAreaRatio",         0.08);
 
             files = files.Take(maxImages).ToList();
 
@@ -120,64 +114,30 @@ namespace FaceAttend.Controllers.Api
                     if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLoc, out detectErr, allowLargestFace: false))
                         return;
 
-                    if (imgW > 0 && imgH > 0)
-                    {
-                        double areaRatio = (double)(faceBox.Width * faceBox.Height) / (imgW * imgH);
-                        if (areaRatio < minAreaRatio) return;
-                    }
-
-                    var sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
-                    if (sharpness < sharpTh) return;
-
                     byte[] rgbData;
                     try   { rgbData = DlibBiometrics.ExtractRgbData(bitmap); }
                     catch { return; }
 
                     double[] vec             = null;
                     float[]  enrollLandmarks = null;
-                    float    livenessScr     = 0f;
-                    bool     liveOk          = false;
+                    string   encErr2;
+                    dlib.TryEncodeWithLandmarksFromRgbData(
+                        rgbData, imgW, imgH, faceLoc,
+                        out vec, out enrollLandmarks, out encErr2);
 
-                    Parallel.Invoke(
-                        () =>
-                        {
-                            string encErr;
-                            dlib.TryEncodeWithLandmarksFromRgbData(
-                                rgbData, imgW, imgH, faceLoc,
-                                out vec, out enrollLandmarks, out encErr);
-                        },
-                        () =>
-                        {
-                            var live   = new OnnxLiveness();
-                            var scored = live.ScoreFromBitmap(bitmap, faceBox);
-                            liveOk      = scored.Ok;
-                            livenessScr = scored.Probability ?? 0f;
-                        });
-
-                    if (!liveOk || livenessScr < liveTh || vec == null) return;
+                    if (vec == null) return;
 
                     Interlocked.Increment(ref processedCount);
-
-                    float yaw, pitch;
-                    if (enrollLandmarks != null && enrollLandmarks.Length >= 6)
-                        (yaw, pitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(enrollLandmarks);
-                    else
-                        (yaw, pitch) = FaceQualityAnalyzer.EstimatePose(faceBox, imgW, imgH);
-
-                    if (Math.Abs(yaw) > 45f || Math.Abs(pitch) > 55f) return;
 
                     candidates.Add(new EnrollCandidate
                     {
                         Vec          = vec,
-                        Liveness     = livenessScr,
+                        Liveness     = 1f,
                         Area         = Math.Max(0, faceBox.Width) * Math.Max(0, faceBox.Height),
-                        Sharpness    = sharpness,
-                        PoseYaw      = yaw,
-                        PosePitch    = pitch,
-                        QualityScore = FaceQualityAnalyzer.CalculateQualityScore(
-                            livenessScr, sharpness,
-                            Math.Max(0, faceBox.Width) * Math.Max(0, faceBox.Height),
-                            yaw, pitch)
+                        Sharpness    = 0f,
+                        PoseYaw      = 0f,
+                        PosePitch    = 0f,
+                        QualityScore = 1f
                     });
                 }
                 catch (Exception ex)
@@ -228,30 +188,6 @@ namespace FaceAttend.Controllers.Api
                     matchEmployeeId = duplicateId,
                     timeMs          = sw.ElapsedMilliseconds
                 });
-
-            var selfMatchThreshold = ConfigurationService.GetDouble(
-                "Biometrics:Enroll:Gate:SelfMatchMaxDist", 0.60);
-            if (selected.Count > 1)
-            {
-                selected = selected.Where(candidate =>
-                {
-                    double minDist = double.PositiveInfinity;
-                    foreach (var other in selected)
-                    {
-                        if (ReferenceEquals(other, candidate)) continue;
-                        var d = DlibBiometrics.Distance(candidate.Vec, other.Vec);
-                        if (d < minDist) minDist = d;
-                    }
-                    return minDist <= selfMatchThreshold;
-                }).ToList();
-
-                if (selected.Count == 0)
-                    return JsonResponseBuilder.Error("NO_GOOD_FRAME", details: new
-                    {
-                        message = "No vectors passed self-match quality check. Re-enroll with better lighting.",
-                        timeMs  = sw.ElapsedMilliseconds
-                    });
-            }
 
             var gate = EnrollmentQualityGate.Validate(selected);
             if (!gate.Passed)

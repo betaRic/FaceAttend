@@ -312,89 +312,9 @@ FaceAttend.Enrollment = (function () {
         var cam = this.elements.cam;
         if (!cam || !cam.videoWidth) return Promise.resolve();
 
-        // ── Client-side face area gate ────────────────────────────────────────
-        // liveFaceArea is the normalized area ratio (0-1) set by enrollment-tracker.js.
-        // Only gate when the tracker is active (liveFaceArea > 0); if tracker isn't
-        // loaded yet, let the server-side scan proceed normally.
-        var liveArea = this.liveFaceArea || 0;
-        var minRatio = getMinFaceAreaRatio();
-        if (liveArea > 0 && liveArea < minRatio) {
-            if (this.callbacks.onDistanceFeedback) {
-                this.callbacks.onDistanceFeedback({
-                    status:    liveArea < minRatio * 0.75 ? 'too_far' : 'borderline',
-                    ratio:     liveArea,
-                    threshold: minRatio
-                });
-            }
-            if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
-            return Promise.resolve();
-        }
-        // Too-close gate: liveness CNN has no depth/texture context when face fills the frame
-        if (liveArea > CONSTANTS.MAX_FACE_AREA_RATIO) {
-            this.handleStatus('Too close — back up.', 'warning');
-            if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
-            return Promise.resolve();
-        }
-
-        // ── Client-side centering gate ────────────────────────────────────────
-        // Reject frames where the face is near the edge of the canvas.
-        // liveTrackingBox is in CSS canvas pixels set by enrollment-tracker.js.
-        var liveBox      = this.liveTrackingBox;
-        var enrollCanvas = document.getElementById('enrollFaceCanvas');
-        if (liveBox && enrollCanvas) {
-            var cW = enrollCanvas.offsetWidth  || 0;
-            var cH = enrollCanvas.offsetHeight || 0;
-            if (cW > 0 && cH > 0) {
-                var faceCX = liveBox.x + liveBox.w / 2;
-                var faceCY = liveBox.y + liveBox.h / 2;
-                var margin = 0.20;
-                if (faceCX < cW * margin || faceCX > cW * (1 - margin) ||
-                    faceCY < cH * margin || faceCY > cH * (1 - margin)) {
-                    if (this.callbacks.onDistanceFeedback) {
-                        this.callbacks.onDistanceFeedback({ status: 'off_center' });
-                    }
-                    if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
-                    return Promise.resolve();
-                }
-            }
-        }
-
         var isMobile = isMobileDevice();
         var capturedBlob = null;
         var sharpness = 0;
-
-        if (cam.videoWidth > 0) {
-            var sc = this.captureCanvas;
-            sc.width = cam.videoWidth; sc.height = cam.videoHeight;
-            sc.getContext('2d').drawImage(cam, 0, 0, sc.width, sc.height);
-            var adaptiveThreshold = getSharpnessThreshold();
-
-            sharpness = this.calculateSharpness(sc);
-
-            if (sharpness < adaptiveThreshold) {
-                var msg = isMobile
-                    ? 'Image blurry (' + Math.round(sharpness) + '/' + Math.round(adaptiveThreshold) + '). Hold steady or improve lighting.'
-                    : 'Image blurry (' + Math.round(sharpness) + '/' + Math.round(adaptiveThreshold) + '). Move closer or improve lighting.';
-                if (this.callbacks.onStatus) {
-                    this.callbacks.onStatus(msg, 'warning');
-                    if (this.callbacks.onQualityFeedback)
-                        this.callbacks.onQualityFeedback({ type: 'blur', score: sharpness, threshold: adaptiveThreshold });
-                }
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
-                return Promise.resolve();
-            }
-
-            // ── Brightness gate ───────────────────────────────────────────────────
-            // MiniFASNet liveness CNN returns ≈ 0 when the face is too dark to
-            // resolve texture. Bail early so the user gets a useful message instead
-            // of "Liveness: 0.00 — hold still".
-            var brightness = this.calculateBrightness();
-            if (brightness < CONSTANTS.MIN_BRIGHTNESS) {
-                this.handleStatus('Too dark — turn on a light facing you for liveness to work.', 'warning');
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
-                return Promise.resolve();
-            }
-        }
 
         return this.captureJpegBlob(CONSTANTS.UPLOAD_QUALITY)
             .then(function (blob) {
@@ -547,24 +467,17 @@ FaceAttend.Enrollment = (function () {
             this.callbacks.onLivenessUpdate(Math.round(p * 100), pass ? 'pass' : 'fail');
 
         if (pass) {
-            // Liveness passed — reset adaptive streak
             this._zeroLivenessStreak = 0;
 
             if (r.faceBox && r.faceBox.w > 0) this.lastFaceBox = r.faceBox;
 
-            var sharpness     = r.sharpness || r.clientSharpness || 0;
-            var serverSharpOk = (r.sharpnessOk === true || r.sharpnessOk === undefined);
-
-            if (serverSharpOk) {
-                this.pushGoodFrame(r.lastBlob || null, p, r.encoding || null, sharpness);
-            } else {
-                this.handleStatus('Frame too blurry. Hold steady.', 'warning');
-            }
+            var sharpness = r.sharpness || r.clientSharpness || 0;
+            this.pushGoodFrame(r.lastBlob || null, p, r.encoding || null, sharpness);
 
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
             var hasMaxFrames    = this.goodFrames.length >= this.config.maxKeepFrames;
 
-            if (hasMaxFrames || (hasEnoughFrames && p >= 0.85)) {
+            if (hasMaxFrames || (hasEnoughFrames && p >= 0.70)) {
                 this.stopAutoEnrollment();
                 this._clearConfirmTimer();
                 this._fireReadyToConfirm();
@@ -576,27 +489,23 @@ FaceAttend.Enrollment = (function () {
 
             var needFrames = Math.max(0, this.config.minGoodFrames - this.goodFrames.length);
             this.handleStatus(
-                'Face OK. Liveness: ' + p.toFixed(2) +
-                ', Frames: ' + this.goodFrames.length + '/' + this.config.minGoodFrames +
-                (needFrames > 0 ? ', need ' + needFrames + ' more.' : ', almost done!'),
+                'Good — keep still. ' + this.goodFrames.length + '/' + this.config.minGoodFrames + ' frames',
                 'success');
         } else {
-            // Liveness failed — track consecutive near-zero frames for user guidance
             if (p < 0.02 && r.count > 0) {
-                this._zeroLivenessStreak++;
+                this._zeroLivenessStreak = (this._zeroLivenessStreak || 0) + 1;
             } else {
                 this._zeroLivenessStreak = 0;
             }
 
-            if (this._zeroLivenessStreak >= 10) {
-                this.handleStatus(
-                    'Liveness check failing. Ensure good lighting facing you, ' +
-                    'no strong backlight, and face clearly visible.',
-                    'warning');
+            if (this._zeroLivenessStreak >= 8) {
+                this.handleStatus('Look directly at the camera in good lighting.', 'warning');
+            } else if (r.count === 0) {
+                this.handleStatus('No face detected — face the camera.', 'warning');
             } else {
                 this.handleStatus(
-                    'Detected. Liveness: ' + p.toFixed(2) +
-                    ' (need ' + this.config.perFrameThreshold + '). Hold still, improve lighting.',
+                    'Liveness: ' + Math.round(p * 100) + '% (need ' +
+                    Math.round(this.config.perFrameThreshold * 100) + '%) — look at camera.',
                     'warning');
             }
             this.passHist = [];

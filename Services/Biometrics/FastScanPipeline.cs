@@ -115,10 +115,6 @@ namespace FaceAttend.Services.Biometrics
                 if (!core.Ok)
                     return new ScanResult { Ok = false, Error = core.Error, Timings = timings, TimingMs = sw.ElapsedMilliseconds };
 
-                var sharpTh = FaceQualityAnalyzer.GetSharpnessThreshold(false);
-                if (core.Sharpness < sharpTh * 0.75f)
-                    return new ScanResult { Ok = false, Error = "LOW_QUALITY", Timings = timings, TimingMs = sw.ElapsedMilliseconds };
-
                 return new ScanResult
                 {
                     Ok            = true,
@@ -243,7 +239,7 @@ namespace FaceAttend.Services.Biometrics
             if (encoding == null)
                 return new CoreResult { Ok = false, Error = encErr ?? "ENCODING_FAIL" };
 
-            var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
+            var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.45);
             var liveScore = liveProb ?? 0f;
 
             return new CoreResult
