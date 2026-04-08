@@ -188,6 +188,13 @@
 
         var brandEl = document.querySelector('#topLeft .brand');
         if (brandEl) brandEl.addEventListener('dblclick', open);
+
+        // Auto-open when the server redirected here with ?unlock=1
+        // (e.g. navigating directly to /Admin triggers HandleUnauthorizedRequest)
+        var unlockHint = (document.body.getAttribute('data-unlock-hint') || '').toLowerCase();
+        if (unlockHint === 'true') {
+            setTimeout(open, 300);
+        }
     }
 
     function init(ui, state, EP, token, appBase, allowUnlock, setPrompt) {
