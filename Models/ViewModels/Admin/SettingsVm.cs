@@ -220,5 +220,10 @@ namespace FaceAttend.Models.ViewModels.Admin
         public string FaceCacheStats { get; set; }
         public string LivenessModelPath { get; set; }
         public bool   LivenessModelExists { get; set; }
+
+        // ─── TOTP 2FA (read-only, not saved via this form) ─────────────────────────
+
+        public bool TotpEnabled { get; set; }
+        public bool TotpConfigured { get; set; }
     }
 }

@@ -24,7 +24,9 @@ namespace FaceAttend.Services.Security
         {
             pin = (pin ?? "").Trim();
             ip  = StringHelper.NormalizeIp(ip);
-            if (pin.Length == 0) return false;
+            
+            // SECURITY: Require minimum 6 characters (was 4-digit PIN - too weak)
+            if (pin.Length < 6) return false;
 
             var maxAttempts    = ConfigurationService.GetInt("Admin:PinMaxAttempts",    5);
             var lockoutSeconds = ConfigurationService.GetInt("Admin:PinLockoutSeconds", 300);
@@ -55,10 +57,19 @@ namespace FaceAttend.Services.Security
                 if (verified)
                     _lockouts.TryRemove(ip, out _);
                 else
+                {
+                    // IMPROVED: Exponential backoff - each failed attempt increases lockout time
+                    // 1st failure: 5 min, 2nd: 10 min, 3rd: 20 min, 4th: 40 min, etc.
+                    var existingLockout = _lockouts.TryGetValue(ip, out var existing) ? existing : null;
+                    var attemptCount = existingLockout?.Attempts ?? 0;
+                    var scaledLockout = (int)(lockoutSeconds * Math.Pow(2, attemptCount));
+                    scaledLockout = Math.Min(scaledLockout, 3600); // Cap at 1 hour max
+                    
                     _lockouts.AddOrUpdate(
                         ip,
-                        _ => new LockoutEntry(1, maxAttempts, lockoutSeconds),
-                        (_, existing) => existing.Increment(maxAttempts, lockoutSeconds));
+                        _ => new LockoutEntry(1, maxAttempts, scaledLockout),
+                        (_, existing) => existing.Increment(maxAttempts, scaledLockout));
+                }
             }
 
             return verified;

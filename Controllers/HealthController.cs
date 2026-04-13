@@ -5,6 +5,7 @@ using System.Web.Hosting;
 using System.Web.Mvc;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Security;
 
 namespace FaceAttend.Controllers
 {
@@ -97,6 +98,9 @@ namespace FaceAttend.Controllers
             bool ready = snap.Ready && diskOk;
             Response.StatusCode = ready ? 200 : 503;
 
+            // Get face matcher stats
+            var faceStats = FastFaceMatcher.GetStats();
+
             return Json(new
             {
                 ok                   = ready,
@@ -116,6 +120,17 @@ namespace FaceAttend.Controllers
                     tmpMb      = tmpFolderBytes >= 0 ? (long?)(tmpFolderBytes / (1024 * 1024)) : null,
                     warnThresholdGb  = DiskFreeWarningGb,
                     warnTmpThreshMb  = TmpFolderWarnBytes / (1024 * 1024)
+                },
+                faceIndex = new
+                {
+                    loaded     = faceStats?.IsInitialized ?? false,
+                    employees = faceStats?.EmployeeCount ?? 0,
+                    vectors   = faceStats?.TotalFaceVectors ?? 0,
+                    memoryMb  = faceStats?.MemoryEstimateMB ?? 0
+                },
+                security = new
+                {
+                    totpEnabled = AdminSessionService.IsTotpEnabled()
                 },
                 timestampUtc         = snap.TimestampUtc,
                 error                = snap.Database ? null : snap.DatabaseError

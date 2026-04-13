@@ -6,6 +6,7 @@ using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Security;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -28,6 +29,11 @@ namespace FaceAttend.Areas.Admin.Controllers
                     vm.LivenessModelPath = System.Web.Hosting.HostingEnvironment.MapPath(
                         ConfigurationService.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx"));
                     vm.LivenessModelExists = System.IO.File.Exists(vm.LivenessModelPath);
+                    
+                    // Add TOTP status to view model
+                    vm.TotpEnabled = AdminSessionService.IsTotpEnabled();
+                    vm.TotpConfigured = TotpService.IsConfigured(AdminSessionService.GetTotpSecret());
+                    
                     return View(vm);
                 }
             }
@@ -54,6 +60,141 @@ namespace FaceAttend.Areas.Admin.Controllers
                     ? AdminAuthorizeAttribute.GetRemainingSessionSeconds(Session)
                     : 0
             });
+        }
+
+        // GET: /Admin/Settings/SetupTotp - Show TOTP setup page
+        [HttpGet]
+        public ActionResult SetupTotp()
+        {
+            var secret = TotpService.GenerateSecret();
+            var label = "FaceAttend Admin";
+            var qrUrl = TotpService.GenerateSetupUrl(label, secret);
+            
+            ViewBag.Secret = secret;
+            ViewBag.QrUrl = qrUrl;
+            ViewBag.TotpEnabled = AdminSessionService.IsTotpEnabled();
+            
+            return View();
+        }
+
+        // POST: /Admin/Settings/EnableTotp - Enable TOTP with verification code
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult EnableTotp(string secret, string code)
+        {
+            if (string.IsNullOrWhiteSpace(secret) || string.IsNullOrWhiteSpace(code))
+            {
+                TempData["msg"] = "Secret and verification code are required.";
+                return RedirectToAction("SetupTotp");
+            }
+
+            // Verify the code works
+            if (!TotpService.ValidateCode(secret, code))
+            {
+                TempData["msg"] = "Invalid verification code. Please ensure your device is synced and try again.";
+                return RedirectToAction("SetupTotp");
+            }
+
+            // Generate and store recovery codes
+            var recoveryCodes = TotpService.GenerateRecoveryCodes();
+            var codesHash = string.Join("|", recoveryCodes.Select(TotpService.HashRecoveryCode));
+            
+            // Store the codes for one-time display (encrypted)
+            var codesDisplay = string.Join("\n", recoveryCodes);
+            var encryptedCodes = BiometricCrypto.ProtectString(codesDisplay);
+
+            // Save to configuration
+            ConfigurationService.Set("Admin:TotpSecret", secret, "string");
+            ConfigurationService.Set("Admin:TotpEnabled", "true", "bool");
+            ConfigurationService.Set("Admin:TotpRecoveryCodes", codesHash, "string");
+            ConfigurationService.Set("Admin:TotpRecoveryCodesStored", encryptedCodes, "string");
+            
+            // Mark current session as TOTP validated
+            AdminAuthorizeAttribute.MarkTotpValidated(Session);
+
+            TempData["msg"] = "TOTP 2FA enabled successfully! Save your recovery codes: " + codesDisplay.Replace("\n", ", ");
+            return RedirectToAction("Index");
+        }
+
+        // POST: /Admin/Settings/DisableTotp - Disable TOTP (requires PIN)
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult DisableTotp(string pin)
+        {
+            var clientIp = Request?.UserHostAddress ?? "";
+            if (!AdminAuthorizeAttribute.VerifyPin(pin, clientIp))
+            {
+                TempData["msg"] = "Invalid PIN. TOTP was NOT disabled.";
+                return RedirectToAction("Index");
+            }
+
+            ConfigurationService.Set("Admin:TotpEnabled", "false", "bool");
+            // Note: We keep the secret so admin can re-enable without new setup
+            
+            AdminAuthorizeAttribute.ClearTotpValidation(Session);
+            
+            TempData["msg"] = "TOTP 2FA has been disabled.";
+            return RedirectToAction("Index");
+        }
+
+        // GET: /Admin/Settings/EnterTotp - Enter TOTP code (when required)
+        [HttpGet]
+        public ActionResult EnterTotp(string returnUrl)
+        {
+            if (!AdminSessionService.IsTotpEnabled())
+                return RedirectToAction("Index");
+                
+            if (AdminSessionService.IsTotpValidated(Session))
+                return Redirect(string.IsNullOrEmpty(returnUrl) ? "/Admin" : returnUrl);
+                
+            ViewBag.ReturnUrl = returnUrl ?? "/Admin";
+            ViewBag.SecondsRemaining = TotpService.GetSecondsRemaining();
+            
+            return View();
+        }
+
+        // POST: /Admin/Settings/ValidateTotp - Validate TOTP code
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult ValidateTotp(string code, string returnUrl)
+        {
+            if (string.IsNullOrWhiteSpace(code))
+            {
+                ViewBag.Error = "Please enter a code.";
+                ViewBag.ReturnUrl = returnUrl ?? "/Admin";
+                ViewBag.SecondsRemaining = TotpService.GetSecondsRemaining();
+                return View("EnterTotp");
+            }
+
+            // Try TOTP code first
+            if (AdminAuthorizeAttribute.ValidateTotpCode(code))
+            {
+                AdminAuthorizeAttribute.MarkTotpValidated(Session);
+                return Redirect(string.IsNullOrEmpty(returnUrl) ? "/Admin" : returnUrl);
+            }
+
+            // Try recovery code
+            if (AdminAuthorizeAttribute.ValidateRecoveryCode(code))
+            {
+                // Recovery code used - invalidate it
+                var currentHash = AdminSessionService.GetRecoveryCodesHash();
+                var codes = currentHash.Split('|').ToList();
+                var codeIndex = codes.IndexOf(TotpService.HashRecoveryCode(code.ToUpperInvariant()));
+                if (codeIndex >= 0)
+                {
+                    codes[codeIndex] = "USED"; // Mark as used
+                    AdminSessionService.SetRecoveryCodesHash(string.Join("|", codes));
+                }
+                
+                AdminAuthorizeAttribute.MarkTotpValidated(Session);
+                TempData["msg"] = "Recovery code used successfully. That code is now invalid.";
+                return Redirect(string.IsNullOrEmpty(returnUrl) ? "/Admin" : returnUrl);
+            }
+
+            ViewBag.Error = "Invalid code. Please try again.";
+            ViewBag.ReturnUrl = returnUrl ?? "/Admin";
+            ViewBag.SecondsRemaining = TotpService.GetSecondsRemaining();
+            return View("EnterTotp");
         }
 
         // POST: /Admin/Settings/MigrateBiometricEncryption

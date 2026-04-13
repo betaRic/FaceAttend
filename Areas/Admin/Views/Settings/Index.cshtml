@@ -708,6 +708,69 @@
             </div>
         </div>
         <div class="ea-form-body">
+            @* ── TOTP 2FA Section ── *@
+            <div class="mb-4">
+                <h6 class="mb-3">
+                    <i class="fa-solid fa-mobile-screen me-2"></i>Two-Factor Authentication (TOTP)
+                </h6>
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <h6 class="card-title">Current Status</h6>
+                                <dl class="row mb-0" style="font-size: 0.85rem;">
+                                    <dt class="col-6">Status:</dt>
+                                    <dd class="col-6">
+                                        @if (Model.TotpEnabled)
+                                        {
+                                            <span class="badge bg-success">Enabled</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-secondary">Disabled</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-6">Configured:</dt>
+                                    <dd class="col-6">
+                                        @if (Model.TotpConfigured)
+                                        {
+                                            <span class="text-success"><i class="fa-solid fa-check"></i> Yes</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted"><i class="fa-solid fa-minus"></i> Not setup</span>
+                                        }
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        @if (Model.TotpEnabled)
+                        {
+                            <div class="d-grid gap-2">
+                                <a href="@Url.Action("SetupTotp", "Settings")" class="btn btn-outline-primary">
+                                    <i class="fa-solid fa-rotate me-1"></i>Re-setup 2FA
+                                </a>
+                                <button type="button" class="btn btn-outline-danger" data-bs-toggle="modal" data-bs-target="#disableTotpModal">
+                                    <i class="fa-solid fa-ban me-1"></i>Disable 2FA
+                                </button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="d-grid">
+                                <a href="@Url.Action("SetupTotp", "Settings")" class="btn btn-primary">
+                                    <i class="fa-solid fa-shield-halved me-1"></i>Enable 2FA
+                                </a>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4" />
+
             <div class="small text-muted mb-3">
                 One-time migration ito para i-encrypt ang mga lumang face encodings na naka-plain pa sa database.
                 Safe ito sa mixed data. Lalaktawan nito ang rows na encrypted na.
@@ -723,6 +786,46 @@
             }
         </div>
     </div>
+
+    @* Disable TOTP Modal *@
+    @if (Model.TotpEnabled)
+    {
+        <div class="modal fade" id="disableTotpModal" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Disable Two-Factor Authentication</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <p>Are you sure you want to disable 2FA? This will make your admin account less secure.</p>
+                        <div class="mb-3">
+                            <label class="form-label">Enter your PIN to confirm</label>
+                            <input type="password" name="pin" class="form-control" required minlength="6" />
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        @using (Html.BeginForm("DisableTotp", "Settings", new { area = "Admin" }, FormMethod.Post))
+                        {
+                            @Html.AntiForgeryToken()
+                            <input type="hidden" name="pin" id="modalPinInput" />
+                            <button type="submit" class="btn btn-danger">Disable 2FA</button>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <script>
+            document.getElementById('disableTotpModal').addEventListener('submit', function(e) {
+                var form = e.target;
+                var pinInput = form.querySelector('input[name="pin"]');
+                var modalPinInput = document.getElementById('modalPinInput');
+                modalPinInput.value = pinInput.value;
+            });
+        </script>
+    }
 
     @* Liveness Detection Diagnostics *@
     <div class="ea-form-card mt-4">

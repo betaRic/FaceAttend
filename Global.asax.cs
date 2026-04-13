@@ -173,32 +173,23 @@ namespace FaceAttend
         {
             try
             {
+                // CONSOLIDATED: FastFaceMatcher now has BallTree built-in
+                // No need to separately rebuild EmployeeFaceIndex
+                // This was redundant - both loaded the same data at startup
                 using (var db = new FaceAttendDBEntities())
                 {
-                    EmployeeFaceIndex.Rebuild(db);
+                    FastFaceMatcher.ReloadFromDatabase();
                 }
 
                 System.Diagnostics.Trace.TraceInformation(
-                    "[Application_Start] Employee face index preloaded successfully.");
+                    "[Application_Start] Employee face index preloaded successfully. " +
+                    FastFaceMatcher.GetStats()?.ToString());
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceWarning(
                     "[Application_Start] Employee face index preload failed: " +
                     ex.Message + " | Fallback: rebuild on first employee scan.");
-            }
-
-            try
-            {
-                FaceAttend.Services.Biometrics.FastFaceMatcher.Initialize();
-                System.Diagnostics.Trace.TraceInformation(
-                    "[Application_Start] FastFaceMatcher loaded. " +
-                    FaceAttend.Services.Biometrics.FastFaceMatcher.GetStats()?.ToString());
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceWarning(
-                    "[Application_Start] Fast face matcher failed: " + ex.Message);
             }
         }
 

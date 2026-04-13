@@ -13,6 +13,7 @@ namespace FaceAttend.Services.Security
     {
         private const string KeyAuthedUtc = "AdminAuthedUtc";
         private const string KeyAdminId   = "AdminId";
+        private const string KeyTotpValidated = "AdminTotpValidatedUtc";
 
         public static void MarkAuthed(HttpSessionStateBase session)
         {
@@ -25,6 +26,94 @@ namespace FaceAttend.Services.Security
             if (session == null) return;
             session[KeyAuthedUtc] = DateTime.UtcNow;
             session[KeyAdminId]   = adminId;
+        }
+
+        /// <summary>
+        /// Marks that the current session has passed TOTP validation.
+        /// Called after successful TOTP code entry.
+        /// </summary>
+        public static void MarkTotpValidated(HttpSessionStateBase session)
+        {
+            if (session == null) return;
+            session[KeyTotpValidated] = DateTime.UtcNow;
+        }
+
+        /// <summary>
+        /// Clears the TOTP validation state (requires re-verification).
+        /// </summary>
+        public static void ClearTotpValidation(HttpSessionStateBase session)
+        {
+            if (session == null) return;
+            session.Remove(KeyTotpValidated);
+        }
+
+        /// <summary>
+        /// Returns true if TOTP has been validated in current session.
+        /// </summary>
+        public static bool IsTotpValidated(HttpSessionStateBase session)
+        {
+            if (session == null) return false;
+            if (!(session[KeyTotpValidated] is DateTime validatedUtc)) return false;
+            // TOTP validation valid for same duration as session (default 30 min)
+            var minutes = ConfigurationService.GetInt("Admin:SessionMinutes", 30);
+            return (DateTime.UtcNow - validatedUtc) <= TimeSpan.FromMinutes(minutes);
+        }
+
+        /// <summary>
+        /// Returns true if TOTP is required but not yet validated.
+        /// </summary>
+        public static bool RequiresTotpValidation(HttpSessionStateBase session)
+        {
+            if (!IsTotpEnabled()) return false;
+            return !IsTotpValidated(session);
+        }
+
+        /// <summary>
+        /// Checks if TOTP 2FA is enabled via configuration.
+        /// </summary>
+        public static bool IsTotpEnabled()
+        {
+            return ConfigurationService.GetBool("Admin:TotpEnabled", false);
+        }
+
+        /// <summary>
+        /// Gets the TOTP secret from configuration (for QR generation).
+        /// </summary>
+        public static string GetTotpSecret()
+        {
+            return ConfigurationService.GetString("Admin:TotpSecret", "");
+        }
+
+        /// <summary>
+        /// Gets the recovery codes hash from configuration.
+        /// </summary>
+        public static string GetRecoveryCodesHash()
+        {
+            return ConfigurationService.GetString("Admin:TotpRecoveryCodes", "");
+        }
+
+        /// <summary>
+        /// Saves the TOTP recovery codes hash to configuration.
+        /// </summary>
+        public static void SetRecoveryCodesHash(string hash)
+        {
+            ConfigurationService.Set("Admin:TotpRecoveryCodes", hash, "string");
+        }
+
+        /// <summary>
+        /// Gets the stored recovery codes (encrypted) for display.
+        /// </summary>
+        public static string GetStoredRecoveryCodes()
+        {
+            return ConfigurationService.GetString("Admin:TotpRecoveryCodesStored", "");
+        }
+
+        /// <summary>
+        /// Saves the encrypted recovery codes for display once.
+        /// </summary>
+        public static void SetStoredRecoveryCodes(string encryptedCodes)
+        {
+            ConfigurationService.Set("Admin:TotpRecoveryCodesStored", encryptedCodes, "string");
         }
 
         public static int GetAdminId(HttpSessionStateBase session)

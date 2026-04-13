@@ -30,13 +30,14 @@ namespace FaceAttend.Services.Biometrics
                 return null;
 
             var employees = db.Employees
-                .Where(e => e.Status == "ACTIVE"
+                .Where(e => (e.Status == "ACTIVE" || e.Status == "PENDING")
                          && e.EmployeeId != excludeEmployeeId
                          && (e.FaceEncodingBase64 != null || e.FaceEncodingsJson != null))
                 .Select(e => new {
                     e.EmployeeId,
                     e.FaceEncodingBase64,
-                    e.FaceEncodingsJson
+                    e.FaceEncodingsJson,
+                    e.Status
                 })
                 .ToList();
 

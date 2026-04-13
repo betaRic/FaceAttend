@@ -229,7 +229,20 @@ namespace FaceAttend.Controllers
             var ip         = Request.UserHostAddress;
 
             if (!AdminAuthorizeAttribute.VerifyPin(pin, ip))
+            {
+                // Audit failed login attempt
+                using (var db = new FaceAttendDBEntities())
+                {
+                    AuditHelper.LogLogin(db, ip, false, "PIN verification failed");
+                }
                 return Json(new { ok = false, error = "INVALID_PIN" });
+            }
+
+            // Audit successful login
+            using (var db = new FaceAttendDBEntities())
+            {
+                AuditHelper.LogLogin(db, ip, true);
+            }
 
             // Mark the current session directly — most reliable path.
             // RotateSessionId + cookie bridge was causing silent failures because
@@ -262,6 +275,13 @@ namespace FaceAttend.Controllers
         [ValidateAntiForgeryToken]
         public ActionResult FullLock()
         {
+            // Audit logout before clearing
+            var ip = Request.UserHostAddress;
+            using (var db = new FaceAttendDBEntities())
+            {
+                AuditHelper.LogLogout(db, ip);
+            }
+
             AdminAuthorizeAttribute.ClearAuthed(Session);
             AdminPersistCookieService.ExpirePersistCookie(new HttpContextWrapper(System.Web.HttpContext.Current));
             return RedirectToAction("Index");

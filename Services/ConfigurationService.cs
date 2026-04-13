@@ -15,6 +15,8 @@ namespace FaceAttend.Services
     ///   2. Database SystemConfiguration table (with caching)
     ///   3. Web.config appSettings
     ///   4. Default value
+    /// 
+    /// For connection strings: Use IIS to set them, or use aspnet_regiis to encrypt the section.
     /// </summary>
     public static class ConfigurationService
     {

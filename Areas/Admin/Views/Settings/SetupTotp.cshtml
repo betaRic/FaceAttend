@@ -1,0 +1,111 @@
+@{
+    ViewBag.Title = "Setup TOTP 2FA";
+    Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
+}
+
+<div class="ea-page">
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title">
+                <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                Setup Two-Factor Authentication
+            </h1>
+            <div class="ea-page-subtitle">Add an extra layer of security to your admin account</div>
+        </div>
+    </div>
+
+    <div class="alert alert-info">
+        <i class="fa-solid fa-circle-info me-2"></i>
+        <strong>What is 2FA?</strong> Two-Factor Authentication adds an extra security layer. 
+        After entering your PIN, you'll also need to enter a code from your phone (Google Authenticator or similar app).
+    </div>
+
+    @if (ViewBag.TotpEnabled == true)
+    {
+        <div class="alert alert-warning">
+            <i class="fa-solid fa-triangle-exclamation me-2"></i>
+            <strong>TOTP 2FA is already enabled!</strong> 
+            You can re-setup to generate new codes, but this will invalidate your current codes.
+        </div>
+    }
+
+    <div class="row">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa-solid fa-mobile-screen me-2"></i>Step 1: Install Authenticator App</h5>
+                </div>
+                <div class="card-body">
+                    <p>Install a TOTP authenticator app on your phone:</p>
+                    <ul>
+                        <li><strong>Google Authenticator</strong> - iOS / Android</li>
+                        <li><strong>Microsoft Authenticator</strong> - iOS / Android</li>
+                        <li><strong>Authy</strong> - iOS / Android / Desktop</li>
+                    </ul>
+                    <p class="text-muted small">These apps generate 6-digit codes that change every 30 seconds.</p>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fa-solid fa-qrcode me-2"></i>Step 2: Scan QR Code</h5>
+                </div>
+                <div class="card-body text-center">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=@Uri.EscapeDataString(ViewBag.QrUrl)" 
+                         alt="QR Code" class="img-fluid mb-3" style="max-width: 200px;" />
+                    
+                    <p class="small text-muted">Or enter this secret manually:</p>
+                    <code class="d-block p-2 bg-light rounded mb-3">@ViewBag.Secret</code>
+                    
+                    <p class="small text-muted">Scan the QR code with your authenticator app, then enter the 6-digit code below.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header">
+            <h5 class="mb-0"><i class="fa-solid fa-check-circle me-2"></i>Step 3: Verify & Enable</h5>
+        </div>
+        <div class="card-body">
+            @using (Html.BeginForm("EnableTotp", "Settings", FormMethod.Post))
+            {
+                @Html.AntiForgeryToken()
+                
+                <input type="hidden" name="secret" value="@ViewBag.Secret" />
+                
+                <div class="row">
+                    <div class="col-md-6">
+                        <div class="mb-3">
+                            <label class="form-label">Enter 6-digit code from your app</label>
+                            <input type="text" name="code" class="form-control" 
+                                   placeholder="000000" maxlength="6" pattern="[0-9]{6}" 
+                                   required autocomplete="off" />
+                        </div>
+                    </div>
+                    <div class="col-md-6 d-flex align-items-end">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fa-solid fa-check me-2"></i>Enable 2FA
+                        </button>
+                    </div>
+                </div>
+                
+                <hr />
+                
+                <div class="alert alert-secondary">
+                    <i class="fa-solid fa-key me-2"></i>
+                    <strong>Important:</strong> After enabling, you'll receive 10 one-time recovery codes. 
+                    Save these in a safe place - you can use them if you lose access to your authenticator app.
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="mt-4">
+        <a href="@Url.Action("Index", "Settings")" class="btn btn-outline-secondary">
+            <i class="fa-solid fa-arrow-left me-2"></i>Back to Settings
+        </a>
+    </div>
+</div>

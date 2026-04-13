@@ -44,14 +44,14 @@ namespace FaceAttend.Services
                 ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
 
             // --- Transaction: prevents concurrent duplicate scans ---
-            // RepeatableRead prevents phantom reads within the transaction window.
-            // Two concurrent scans for the same employee can both read lastToday before
-            // either writes — ReadCommitted allowed that. RepeatableRead holds a shared
-            // read lock on the rows read until commit, so the second scan will wait until
-            // the first commits, then re-read and see the new record correctly.
-            // This is lighter than Serializable (no range locks) and sufficient here
-            // because we only query by EmployeeId within a date range.
-            using (var tx = _db.Database.BeginTransaction(IsolationLevel.Serializable))
+            // Changed from SERIALIZABLE to REPEATABLE READ for better concurrency.
+            // SERIALIZABLE holds range locks which can cause lock contention under load.
+            // REPEATABLE READ holds shared locks on read rows until commit, which prevents
+            // the other transaction from modifying/deleting those rows. This is sufficient
+            // because we only query by EmployeeId within a date range - no range locks needed.
+            // The unique index (UX_AttendanceLogs) on EmployeeId + EventType + Date still
+            // catches any concurrent duplicate that slips through.
+            using (var tx = _db.Database.BeginTransaction(IsolationLevel.RepeatableRead))
             {
                 try
                 {

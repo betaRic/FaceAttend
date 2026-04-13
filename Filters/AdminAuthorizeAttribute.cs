@@ -7,7 +7,7 @@ using FaceAttend.Services.Security;
 namespace FaceAttend.Filters
 {
     /// <summary>
-    /// Session-based admin authorization filter.
+    /// Session-based admin authorization filter with optional TOTP 2FA support.
     /// All logic is delegated to AdminSessionService, AdminPinService, and AdminUnlockCookieService.
     /// </summary>
     public class AdminAuthorizeAttribute : AuthorizeAttribute
@@ -29,6 +29,13 @@ namespace FaceAttend.Filters
                     return false;
                 }
 
+                // Check if TOTP is required
+                if (AdminSessionService.RequiresTotpValidation(httpContext.Session))
+                {
+                    System.Diagnostics.Trace.TraceInformation("[AdminAuth] TOTP validation required but not completed");
+                    return false;
+                }
+
                 if (AdminSessionService.IsAuthed(httpContext.Session))
                     return true;
 
@@ -47,6 +54,16 @@ namespace FaceAttend.Filters
         {
             var rawUrl  = filterContext.HttpContext.Request.RawUrl ?? "/Admin";
             var safeUrl = SanitizeReturnUrl(rawUrl);
+            
+            // Check if TOTP is required - redirect to TOTP entry page
+            if (AdminSessionService.IsTotpEnabled() && 
+                AdminSessionService.IsAuthed(filterContext.HttpContext.Session) &&
+                !AdminSessionService.IsTotpValidated(filterContext.HttpContext.Session))
+            {
+                filterContext.Result = new RedirectResult("/Admin/Settings/EnterTotp?returnUrl=" + HttpUtility.UrlEncode(safeUrl));
+                return;
+            }
+            
             filterContext.Result = new RedirectResult("/Kiosk?unlock=1&returnUrl=" + HttpUtility.UrlEncode(safeUrl));
         }
 
@@ -84,6 +101,33 @@ namespace FaceAttend.Filters
 
         public static string HashPin(string pin)
             => AdminPinService.HashPin(pin);
+
+        // TOTP-related methods
+        public static void MarkTotpValidated(HttpSessionStateBase session)
+            => AdminSessionService.MarkTotpValidated(session);
+
+        public static void ClearTotpValidation(HttpSessionStateBase session)
+            => AdminSessionService.ClearTotpValidation(session);
+
+        public static bool IsTotpValidated(HttpSessionStateBase session)
+            => AdminSessionService.IsTotpValidated(session);
+
+        public static bool IsTotpEnabled()
+            => AdminSessionService.IsTotpEnabled();
+
+        public static bool ValidateTotpCode(string code)
+        {
+            var secret = AdminSessionService.GetTotpSecret();
+            if (string.IsNullOrWhiteSpace(secret)) return false;
+            return TotpService.ValidateCode(secret, code);
+        }
+
+        public static bool ValidateRecoveryCode(string code)
+        {
+            var hash = AdminSessionService.GetRecoveryCodesHash();
+            if (string.IsNullOrWhiteSpace(hash)) return false;
+            return TotpService.ValidateRecoveryCode(hash, code);
+        }
 
         public static string SanitizeReturnUrl(string url)
         {

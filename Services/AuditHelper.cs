@@ -14,15 +14,43 @@ namespace FaceAttend.Services
     /// </summary>
     public static class AuditHelper
     {
+        // Employee actions
         public const string ActionEmployeeCreate     = "EMPLOYEE_CREATE";
         public const string ActionEmployeeEdit       = "EMPLOYEE_EDIT";
         public const string ActionEmployeeDeactivate = "EMPLOYEE_DEACTIVATE";
+        public const string ActionEmployeeApprove    = "EMPLOYEE_APPROVE";
+        public const string ActionEmployeeReject    = "EMPLOYEE_REJECT";
+        
+        // Office actions
         public const string ActionOfficeCreate        = "OFFICE_CREATE";
         public const string ActionOfficeEdit          = "OFFICE_EDIT";
+        public const string ActionOfficeDelete        = "OFFICE_DELETE";
         public const string ActionOfficeScheduleEdit  = "OFFICE_SCHEDULE_EDIT";
         public const string ActionOfficeBulkSchedule  = "OFFICE_BULK_SCHEDULE";
+        
+        // Security actions
         public const string ActionSettingChange      = "SETTING_CHANGE";
         public const string ActionFaceEnroll         = "FACE_ENROLL";
+        public const string ActionLogin              = "LOGIN";
+        public const string ActionLoginFailed        = "LOGIN_FAILED";
+        public const string ActionLogout             = "LOGOUT";
+        public const string ActionTotpEnable         = "TOTP_ENABLE";
+        public const string ActionTotpDisable        = "TOTP_DISABLE";
+        public const string ActionFaceCacheReload    = "FACE_CACHE_RELOAD";
+        
+        // Device actions
+        public const string ActionDeviceApprove      = "DEVICE_APPROVE";
+        public const string ActionDeviceReject       = "DEVICE_REJECT";
+        public const string ActionDeviceDisable      = "DEVICE_DISABLE";
+        
+        // Attendance actions
+        public const string ActionAttendanceExport   = "ATTENDANCE_EXPORT";
+        public const string ActionAttendanceReview   = "ATTENDANCE_REVIEW";
+        
+        // Visitor actions
+        public const string ActionVisitorCreate      = "VISITOR_CREATE";
+        public const string ActionVisitorDelete      = "VISITOR_DELETE";
+        public const string ActionVisitorLogCreate   = "VISITOR_LOG";
 
         public static string GetActorIp(HttpRequestBase request)
         {
@@ -90,6 +118,60 @@ namespace FaceAttend.Services
             {
                 Trace.TraceWarning("[AuditHelper] JSON serialize failed: " + ex.Message);
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// Logs admin login success.
+        /// </summary>
+        public static void LogLogin(FaceAttendDBEntities db, string adminIp, bool success, string reason = null)
+        {
+            if (db == null) return;
+            try
+            {
+                var row = new AdminAuditLog
+                {
+                    Timestamp   = DateTime.UtcNow,
+                    AdminIp     = StringHelper.Truncate(adminIp, 100),
+                    Action      = success ? ActionLogin : ActionLoginFailed,
+                    EntityType  = "Admin",
+                    EntityId    = "SESSION",
+                    Description = success 
+                        ? "Admin logged in successfully" 
+                        : ("Login failed: " + (reason ?? "unknown reason"))
+                };
+                db.AdminAuditLogs.Add(row);
+                db.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[AuditHelper] Login audit write failed: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Logs admin logout.
+        /// </summary>
+        public static void LogLogout(FaceAttendDBEntities db, string adminIp)
+        {
+            if (db == null) return;
+            try
+            {
+                var row = new AdminAuditLog
+                {
+                    Timestamp   = DateTime.UtcNow,
+                    AdminIp     = StringHelper.Truncate(adminIp, 100),
+                    Action      = ActionLogout,
+                    EntityType  = "Admin",
+                    EntityId    = "SESSION",
+                    Description = "Admin logged out"
+                };
+                db.AdminAuditLogs.Add(row);
+                db.SaveChanges();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[AuditHelper] Logout audit write failed: " + ex.Message);
             }
         }
 

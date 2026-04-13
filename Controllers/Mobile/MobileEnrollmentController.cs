@@ -62,12 +62,8 @@ namespace FaceAttend.Controllers.Mobile
                 var enrollStrictTolerance =
                     ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
 
-                string duplicateEmployeeId = null;
-                using (var checkDb = new FaceAttendDBEntities())
-                {
-                    duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(
-                        checkDb, scan.FaceEncoding, null, enrollStrictTolerance);
-                }
+                // NOTE: Duplicate check moved to SubmitEnrollment to avoid DB query on every frame
+                // This improves response time during capture phase
 
                 float poseYaw, posePitch;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
@@ -118,8 +114,9 @@ namespace FaceAttend.Controllers.Mobile
                     sharpness = scan.Sharpness,
                     sharpnessThreshold = scan.SharpnessThreshold,
                     count = 1,
-                    isMatch = !string.IsNullOrEmpty(duplicateEmployeeId),
-                    matchEmployee = duplicateEmployeeId,
+                    // NOTE: Duplicate check is done at SubmitEnrollment, not per-frame
+                    isMatch = false,
+                    matchEmployee = (string)null,
                     sharpnessOk = scan.Sharpness >= scan.SharpnessThreshold,
                     poseYaw = poseYaw,
                     posePitch = posePitch,

@@ -1,0 +1,134 @@
+@{
+    ViewBag.Title = "Enter Verification Code";
+    Layout = null;
+}
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Two-Factor Authentication - FaceAttend</title>
+    <link href="~/Content/bootstrap.min.css" rel="stylesheet" />
+    <link href="~/Content/admin.css" rel="stylesheet" />
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+    <style>
+        body {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .totp-card {
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            max-width: 400px;
+            width: 100%;
+            padding: 2rem;
+        }
+        .totp-icon {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1.5rem;
+            color: #fff;
+            font-size: 1.5rem;
+        }
+        .code-input {
+            font-size: 1.5rem;
+            letter-spacing: 0.5rem;
+            text-align: center;
+            padding: 0.75rem;
+        }
+        .timer {
+            font-size: 0.875rem;
+            color: #6c757d;
+            text-align: center;
+            margin-top: 1rem;
+        }
+        .timer.warning {
+            color: #dc3545;
+            font-weight: 600;
+        }
+    </style>
+</head>
+<body>
+    <div class="totp-card">
+        <div class="totp-icon">
+            <i class="fa-solid fa-shield-halved"></i>
+        </div>
+        
+        <h4 class="text-center mb-2">Two-Factor Authentication</h4>
+        <p class="text-muted text-center mb-4">Enter the 6-digit code from your authenticator app</p>
+        
+        @if (!string.IsNullOrEmpty(ViewBag.Error))
+        {
+            <div class="alert alert-danger">
+                <i class="fa-solid fa-triangle-exclamation me-2"></i>@ViewBag.Error
+            </div>
+        }
+        
+        @using (Html.BeginForm("ValidateTotp", "Settings", FormMethod.Post))
+        {
+            @Html.AntiForgeryToken()
+            <input type="hidden" name="returnUrl" value="@ViewBag.ReturnUrl" />
+            
+            <div class="mb-3">
+                <input type="text" name="code" class="form-control code-input" 
+                       placeholder="000000" maxlength="6" pattern="[0-9]{6}" 
+                       required autocomplete="off" autofocus />
+            </div>
+            
+            <button type="submit" class="btn btn-primary w-100 py-2">
+                <i class="fa-solid fa-check me-2"></i>Verify
+            </button>
+        }
+        
+        <div class="timer" id="timer">
+            Next code in <span id="seconds">@ViewBag.SecondsRemaining</span> seconds
+        </div>
+        
+        <hr class="my-4" />
+        
+        <div class="text-center">
+            <p class="text-muted small mb-2">Can't access your app?</p>
+            <a href="@Url.Action("Index", "Settings")" class="text-decoration-none">
+                <i class="fa-solid fa-key me-1"></i>Use a recovery code
+            </a>
+        </div>
+    </div>
+
+    <script>
+        (function() {
+            var secondsEl = document.getElementById('seconds');
+            var timerEl = document.getElementById('timer');
+            
+            setInterval(function() {
+                var current = parseInt(secondsEl.textContent);
+                if (current <= 1) {
+                    // Refresh - get new time from server
+                    location.reload();
+                } else {
+                    current--;
+                    secondsEl.textContent = current;
+                    if (current <= 5) {
+                        timerEl.classList.add('warning');
+                    } else {
+                        timerEl.classList.remove('warning');
+                    }
+                }
+            }, 1000);
+            
+            // Auto-format input
+            document.querySelector('input[name="code"]').addEventListener('input', function(e) {
+                this.value = this.value.replace(/\D/g, '').substring(0, 6);
+            });
+        })();
+    </script>
+</body>
+</html>
