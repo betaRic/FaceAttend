@@ -33,11 +33,9 @@ namespace FaceAttend.Services.Biometrics
 
         public static EnrollmentScanResult EnrollmentScanInMemory(
             HttpPostedFileBase image,
-            OpenVinoBiometrics.FaceBox clientFaceBox = null,
-            bool isMobile = false,
-            float? antiSpoofThreshold = null)
+            bool isMobile = false)
         {
-            var result = Analyze(image, BiometricScanMode.Enrollment, null, includeTimings: false, isMobile: isMobile);
+            var result = Analyze(image, BiometricScanMode.Enrollment, includeTimings: false, isMobile: isMobile);
             return new EnrollmentScanResult
             {
                 Ok = result.Ok,
@@ -60,15 +58,12 @@ namespace FaceAttend.Services.Biometrics
 
         public static ScanResult ScanInMemory(
             HttpPostedFileBase image,
-            OpenVinoBiometrics.FaceBox clientFaceBox = null,
             bool includeTimings = false,
-            float? antiSpoofThreshold = null,
             bool isMobile = false)
         {
             return Analyze(
                 image,
                 isMobile ? BiometricScanMode.PublicScan : BiometricScanMode.Kiosk,
-                isMobile ? null : clientFaceBox,
                 includeTimings,
                 isMobile);
         }
@@ -76,7 +71,6 @@ namespace FaceAttend.Services.Biometrics
         private static ScanResult Analyze(
             HttpPostedFileBase image,
             BiometricScanMode mode,
-            OpenVinoBiometrics.FaceBox faceBoxHint,
             bool includeTimings,
             bool isMobile)
         {
@@ -92,7 +86,7 @@ namespace FaceAttend.Services.Biometrics
 
             var biometric = new OpenVinoBiometrics();
             string workerError;
-            var response = biometric.AnalyzeBytes(imageBytes, mode, faceBoxHint, out workerError);
+            var response = biometric.AnalyzeBytes(imageBytes, mode, out workerError);
             if (timings != null) timings["openvino_analyze_ms"] = sw.ElapsedMilliseconds;
 
             if (response == null || !response.Ok)
@@ -186,17 +180,17 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        private static OpenVinoBiometrics.FaceBox ToFaceBox(FaceBoxHint hint)
+        private static OpenVinoBiometrics.FaceBox ToFaceBox(WorkerFaceBox faceBox)
         {
-            if (hint == null)
+            if (faceBox == null)
                 return null;
 
             return new OpenVinoBiometrics.FaceBox
             {
-                Left = hint.X,
-                Top = hint.Y,
-                Width = hint.Width,
-                Height = hint.Height
+                Left = faceBox.X,
+                Top = faceBox.Y,
+                Width = faceBox.Width,
+                Height = faceBox.Height
             };
         }
 

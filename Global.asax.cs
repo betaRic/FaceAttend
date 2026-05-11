@@ -103,7 +103,7 @@ namespace FaceAttend
         private static void RunWarmUpPipeline()
         {
             WarmUpBiometricWorker();
-            WarmUpEmployeeFaceIndex();
+            WarmUpEmployeeMatcher();
             WarmUpVisitorFaceIndex();
 
             _warmUpState = WarmUpStateComplete;
@@ -151,26 +151,23 @@ namespace FaceAttend
             }
         }
 
-        private static void WarmUpEmployeeFaceIndex()
+        private static void WarmUpEmployeeMatcher()
         {
             try
             {
-                // CONSOLIDATED: FastFaceMatcher now has BallTree built-in
-                // No need to separately rebuild EmployeeFaceIndex
-                // This was redundant - both loaded the same data at startup
                 using (var db = new FaceAttendDBEntities())
                 {
                     FastFaceMatcher.ReloadFromDatabase();
                 }
 
                 System.Diagnostics.Trace.TraceInformation(
-                    "[Application_Start] Employee face index preloaded successfully. " +
+                    "[Application_Start] Employee face matcher preloaded successfully. " +
                     FastFaceMatcher.GetStats()?.ToString());
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceWarning(
-                    "[Application_Start] Employee face index preload failed: " +
+                    "[Application_Start] Employee face matcher preload failed: " +
                     ex.Message + " | Fallback: rebuild on first employee scan.");
             }
         }
@@ -301,15 +298,6 @@ namespace FaceAttend
             try
             {
                 TempFileCleanupTask.StopSingleton(false);
-            }
-            catch
-            {
-                // Best effort cleanup only.
-            }
-
-            try
-            {
-                OpenVinoBiometrics.DisposeWorker();
             }
             catch
             {

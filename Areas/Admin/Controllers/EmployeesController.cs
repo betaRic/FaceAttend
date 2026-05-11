@@ -298,7 +298,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                     });
 
                 // Reload face matcher so changes take effect immediately.
-                EmployeeFaceIndex.Invalidate();
                 FastFaceMatcher.ReloadFromDatabase();
                 if (!FastFaceMatcher.IsInitialized)
                     FastFaceMatcher.Initialize();
@@ -326,7 +325,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 if (result.Success)
                 {
                     // Reload face matcher so the approved employee can be recognized.
-                    EmployeeFaceIndex.Invalidate();
                     FastFaceMatcher.ReloadFromDatabase();
                     // Also ensure matcher is initialized
                     if (!FastFaceMatcher.IsInitialized)
@@ -367,7 +365,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                     new { Status = oldStatus },
                     new { Status = "INACTIVE" });
 
-                EmployeeFaceIndex.Invalidate();
                 FastFaceMatcher.ReloadFromDatabase();
 
                 return RedirectToAction("Index", new { status = "ALL" });

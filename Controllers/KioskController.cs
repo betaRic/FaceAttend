@@ -88,7 +88,6 @@ namespace FaceAttend.Controllers
         [RateLimit(Name = "KioskAttend", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
         public ActionResult Attend(double? lat, double? lon, double? accuracy,
             System.Web.HttpPostedFileBase image,
-            int? faceX, int? faceY, int? faceW, int? faceH,
             bool wfhMode = false)
         {
             var requestedAtLocal = TimeZoneHelper.NowLocal();
@@ -107,21 +106,8 @@ namespace FaceAttend.Controllers
                     return busy;
                 }
 
-                OpenVinoBiometrics.FaceBox clientFaceBox = null;
-                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
-                    && faceW.Value > 0 && faceH.Value > 0)
-                {
-                    clientFaceBox = new OpenVinoBiometrics.FaceBox
-                    {
-                        Left   = faceX.Value,
-                        Top    = faceY.Value,
-                        Width  = faceW.Value,
-                        Height = faceH.Value
-                    };
-                }
-
                 var result = new AttendanceScanService().Scan(
-                    lat, lon, accuracy, image, clientFaceBox, requestedAtLocal,
+                    lat, lon, accuracy, image, requestedAtLocal,
                     includePerfTimings: ConfigurationService.GetBool("Kiosk:EnablePerfTimings", false),
                     httpContext: HttpContext,
                     wfhMode: wfhMode);

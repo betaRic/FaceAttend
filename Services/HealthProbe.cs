@@ -96,6 +96,9 @@ namespace FaceAttend.Services
             snap.WorkerStatus = worker.Status;
             snap.WorkerDurationMs = worker.DurationMs;
             snap.BiometricWorkerReady = worker.Enabled && worker.Healthy;
+            snap.WorkerSecretRequired = ConfigurationService.GetBool("Biometrics:Worker:RequireSecret", true);
+            snap.WorkerSecretConfigured = !string.IsNullOrWhiteSpace(
+                ConfigurationService.GetString("Biometrics:Worker:SharedSecret", ""));
             snap.AntiSpoofModelPresent = snap.BiometricWorkerReady;
             snap.AntiSpoofCircuitOpen = worker.Enabled && !worker.Healthy;
             snap.AntiSpoofCircuitStuck = false;
@@ -105,6 +108,7 @@ namespace FaceAttend.Services
                 snap.Database &&
                 snap.WriteReady &&
                 snap.BiometricWorkerReady &&
+                (!snap.WorkerSecretRequired || snap.WorkerSecretConfigured) &&
                 snap.ModelIntegrityOk &&
                 (!snap.DatabaseMigrationsRequired || snap.DatabaseMigrationsOk) &&
                 snap.WarmUpState == 1;
@@ -144,6 +148,8 @@ namespace FaceAttend.Services
             public int? FaceMatcherCacheAgeSeconds { get; set; }
             public bool WorkerEnabled { get; set; }
             public bool WorkerHealthy { get; set; }
+            public bool WorkerSecretRequired { get; set; }
+            public bool WorkerSecretConfigured { get; set; }
             public string WorkerStatus { get; set; }
             public long WorkerDurationMs { get; set; }
         }

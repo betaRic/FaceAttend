@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Web.Mvc;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Services
 {
@@ -40,9 +40,9 @@ namespace FaceAttend.Services
             var json = result as JsonResult;
             if (json?.Data != null)
             {
-                ok = GetBool(json.Data, "ok");
-                outcome = GetString(json.Data, "error")
-                    ?? GetString(json.Data, "action")
+                ok = ObjectValueReader.GetBool(json.Data, "ok");
+                outcome = ObjectValueReader.GetString(json.Data, "error")
+                    ?? ObjectValueReader.GetString(json.Data, "action")
                     ?? (ok ? "OK" : "UNKNOWN");
             }
 
@@ -72,8 +72,8 @@ namespace FaceAttend.Services
                     FailureCount = rows.Count(x => !x.Ok),
                     BusyCount = rows.Count(x => x.Outcome == "SYSTEM_BUSY"),
                     AverageMs = durations.Count == 0 ? 0 : durations.Average(),
-                    P50Ms = Percentile(durations, 0.50),
-                    P95Ms = Percentile(durations, 0.95),
+                    P50Ms = StatsHelper.Percentile(durations, 0.50),
+                    P95Ms = StatsHelper.Percentile(durations, 0.95),
                     RecentFailures = rows
                         .Where(x => !x.Ok)
                         .OrderByDescending(x => x.TimestampLocal)
@@ -100,33 +100,5 @@ namespace FaceAttend.Services
             }
         }
 
-        private static long Percentile(IList<long> values, double percentile)
-        {
-            if (values == null || values.Count == 0) return 0;
-            var index = (int)Math.Ceiling(values.Count * percentile) - 1;
-            if (index < 0) index = 0;
-            if (index >= values.Count) index = values.Count - 1;
-            return values[index];
-        }
-
-        private static bool GetBool(object source, string name)
-        {
-            var prop = GetProperty(source, name);
-            if (prop == null) return false;
-            var value = prop.GetValue(source, null);
-            return value is bool b && b;
-        }
-
-        private static string GetString(object source, string name)
-        {
-            var prop = GetProperty(source, name);
-            var value = prop?.GetValue(source, null);
-            return value == null ? null : Convert.ToString(value);
-        }
-
-        private static PropertyInfo GetProperty(object source, string name)
-        {
-            return source.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
-        }
     }
 }

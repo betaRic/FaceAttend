@@ -150,6 +150,8 @@ namespace FaceAttend.Controllers
                 {
                     enabled = snap.WorkerEnabled,
                     healthy = snap.WorkerHealthy,
+                    secretRequired = snap.WorkerSecretRequired,
+                    secretConfigured = snap.WorkerSecretConfigured,
                     status = snap.WorkerStatus,
                     durationMs = snap.WorkerDurationMs
                 },

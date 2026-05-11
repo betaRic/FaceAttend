@@ -98,7 +98,7 @@ namespace FaceAttend.Services.Security
                 if (hash.Equals("USED", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (hash.Equals(inputHash, StringComparison.OrdinalIgnoreCase))
+                if (SecureCompare.FixedEquals(hash, inputHash))
                     return true;
             }
 

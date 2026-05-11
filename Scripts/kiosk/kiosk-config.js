@@ -64,10 +64,8 @@
         mp: {
             detectMinConf:     0.30,
             acceptMinScore:    0.60,
-            stableFramesMin:   1,
-            // FIX: Near-zero wait — fire as soon as face detected, let SERVER decide quality.
-            // The old 600ms + strict 35px threshold was the main cause of frames never firing.
-            stableNeededMs:    50,
+            stableFramesMin:   3,
+            stableNeededMs:    350,
             multiMinAreaRatio: 0.015,
         },
 
@@ -89,12 +87,9 @@
         },
 
         gating: {
-            stableFramesRequired: 1,
-            // FIX: Restored to 120 (original). The 35px value caused constant resets.
-            // Server-side antiSpoof/encoding handles quality — client just needs to detect a face.
-            stableMaxMovePx:      120,
-            // FIX: Very permissive area ratio. Server will reject if face is too small.
-            minFaceAreaRatio:     0.03,
+            stableFramesRequired: 3,
+            stableMaxMovePx:      80,
+            minFaceAreaRatio:     0.05,
             safeEdgeMarginRatio:  0.02,
             centerMin:            0.08,
             centerMax:            0.92,

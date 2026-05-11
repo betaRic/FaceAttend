@@ -126,13 +126,13 @@ namespace FaceAttend.Services.Security
                 }
 
                 var bindIp = ConfigurationService.GetBool("AttendanceAccess:BindIp", true);
-                if (bindIp && !FixedEquals(payload.IpHash, Hash(GetClientIp(request))))
+                if (bindIp && !SecureCompare.FixedEquals(payload.IpHash, Hash(GetClientIp(request))))
                 {
                     error = "RECEIPT_IP_MISMATCH";
                     return false;
                 }
 
-                if (!FixedEquals(payload.UserAgentHash, Hash(request.UserAgent ?? string.Empty)))
+                if (!SecureCompare.FixedEquals(payload.UserAgentHash, Hash(request.UserAgent ?? string.Empty)))
                 {
                     error = "RECEIPT_UA_MISMATCH";
                     return false;
@@ -173,19 +173,5 @@ namespace FaceAttend.Services.Security
             }
         }
 
-        private static bool FixedEquals(string left, string right)
-        {
-            var a = Encoding.UTF8.GetBytes(left ?? string.Empty);
-            var b = Encoding.UTF8.GetBytes(right ?? string.Empty);
-            return a.Length == b.Length && CryptographicOperationsEquals(a, b);
-        }
-
-        private static bool CryptographicOperationsEquals(byte[] a, byte[] b)
-        {
-            var diff = 0;
-            for (var i = 0; i < a.Length; i++)
-                diff |= a[i] ^ b[i];
-            return diff == 0;
-        }
     }
 }

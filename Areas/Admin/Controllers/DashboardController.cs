@@ -143,8 +143,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         {
             try
             {
-                // Clear the in-memory face caches
-                EmployeeFaceIndex.Invalidate();
+                // Clear the in-memory face caches.
                 VisitorFaceIndex.Invalidate();
                 FastFaceMatcher.ReloadFromDatabase();
                 

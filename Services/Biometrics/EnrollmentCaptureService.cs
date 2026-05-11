@@ -56,7 +56,6 @@ namespace FaceAttend.Services.Biometrics
             var candidates = new ConcurrentBag<EnrollCandidate>();
             int processedCount = 0;
             var policy = BiometricPolicy.Current;
-            var antiSpoofThreshold = policy.AntiSpoofClearThresholdFor(isMobile);
             var allowedExtensions = new[] { ".jpg", ".jpeg", ".png" };
 
             Parallel.ForEach(
@@ -74,9 +73,7 @@ namespace FaceAttend.Services.Biometrics
 
                         var scan = FastScanPipeline.EnrollmentScanInMemory(
                             file,
-                            null,
-                            isMobile,
-                            antiSpoofThreshold);
+                            isMobile);
 
                         if (!scan.Ok || scan.FaceEncoding == null || scan.FaceBox == null)
                             return;

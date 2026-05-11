@@ -6,22 +6,13 @@ FaceAttend.Enrollment = (function () {
     var CONSTANTS = {
         AUTO_INTERVAL_MS:  1000,
         PASS_WINDOW:       3,
-        PASS_REQUIRED:     1,
-        CAPTURE_TARGET:    10,
         MIN_GOOD_FRAMES:   10,
         MAX_KEEP_FRAMES:   12,
         MAX_IMAGES:        12,
+        MAX_SERVER_SCAN_ATTEMPTS: 30,
         CAPTURE_WIDTH:     640,
         CAPTURE_HEIGHT:    480,
         UPLOAD_QUALITY:    0.92,
-        SHARPNESS_THRESHOLD_DESKTOP: 35,
-        SHARPNESS_THRESHOLD_MOBILE:  28,
-        SHARPNESS_SAMPLE_SIZE:       256,
-        MIN_FACE_AREA_RATIO_DESKTOP: 0.08,
-        MIN_FACE_AREA_RATIO_MOBILE:  0.06,
-        FACE_AREA_WARNING_RATIO:     0.05,
-        MAX_FACE_AREA_RATIO:         0.90,
-        MIN_BRIGHTNESS:              30,
         AUTO_CONFIRM_TIMEOUT_MS:     5000
     };
 
@@ -109,6 +100,7 @@ FaceAttend.Enrollment = (function () {
             redirectUrl: '/Admin/Employees',
             minGoodFrames: 10,
             maxKeepFrames: 12,
+            maxServerScanAttempts: CONSTANTS.MAX_SERVER_SCAN_ATTEMPTS,
             enablePreview: true,
             debug: false
         }, config);
@@ -119,13 +111,13 @@ FaceAttend.Enrollment = (function () {
         this.multiFaceWarned = false;
         this.passHist        = [];
         this.goodFrames      = [];
-        this.lastFaceBox     = null;
         this.confirmTimer    = null;
 
         this._tickRunning          = false;
         this._tickEnabled          = false;
         this._scanController       = null;
         this._zeroAntiSpoofStreak   = 0;
+        this._serverScanAttempts    = 0;
 
         this.elements  = {};
         this.callbacks = {
@@ -139,65 +131,7 @@ FaceAttend.Enrollment = (function () {
             onDistanceFeedback:   null
         };
 
-        this.captureCanvas   = document.createElement('canvas');
-        this.sharpnessCanvas = document.createElement('canvas');
-    }
-
-    Enrollment.prototype.calculateSharpness = function (canvas) {
-        var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE, H = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
-
-        var tmp  = this.sharpnessCanvas;
-        tmp.width = W; tmp.height = H;
-        var tCtx = tmp.getContext('2d');
-        var sx = canvas.width  * 0.25;
-        var sy = canvas.height * 0.05;
-        var sw = canvas.width  * 0.50;
-        var sh = canvas.height * 0.90;
-
-        sx = Math.max(0, Math.min(sx, canvas.width  - 1));
-        sy = Math.max(0, Math.min(sy, canvas.height - 1));
-        sw = Math.min(sw, canvas.width  - sx);
-        sh = Math.min(sh, canvas.height - sy);
-        if (sw <= 0 || sh <= 0) return 0;
-
-        tCtx.drawImage(canvas, sx, sy, sw, sh, 0, 0, W, H);
-        var imgData = tCtx.getImageData(0, 0, W, H).data;
-        var gray = new Float32Array(W * H);
-        for (var i = 0; i < imgData.length; i += 4)
-            gray[i >> 2] = 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
-
-        var sum = 0, sumSq = 0, count = 0;
-        for (var y = 1; y < H - 1; y++) {
-            for (var x = 1; x < W - 1; x++) {
-                var idx = y * W + x;
-                var lap = gray[idx - W] + gray[idx - 1] - 4 * gray[idx] + gray[idx + 1] + gray[idx + W];
-                sum += lap; sumSq += lap * lap; count++;
-            }
-        }
-        if (count === 0) return 0;
-        var mean = sum / count;
-        return (sumSq / count) - (mean * mean);
-    };
-
-    Enrollment.prototype.calculateBrightness = function () {
-        var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE, H = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
-        var tmp = this.sharpnessCanvas;
-        if (!tmp || !tmp.width) return 128;
-        var imgData = tmp.getContext('2d').getImageData(0, 0, W, H).data;
-        var sum = 0;
-        for (var i = 0; i < imgData.length; i += 4)
-            sum += 0.299 * imgData[i] + 0.587 * imgData[i + 1] + 0.114 * imgData[i + 2];
-        return sum / (imgData.length >> 2);
-    };
-
-    function getMinFaceAreaRatio() {
-        return isMobileDevice() ? CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE : CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP;
-    }
-
-    function getSharpnessThreshold() {
-        return isMobileDevice()
-            ? CONSTANTS.SHARPNESS_THRESHOLD_MOBILE
-            : CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP;
+        this.captureCanvas = document.createElement('canvas');
     }
 
     Enrollment.prototype.startCamera = function (videoElement) {
@@ -241,7 +175,7 @@ FaceAttend.Enrollment = (function () {
         else if (this.stream) { try { this.stream.getTracks().forEach(function (t) { t.stop(); }); } catch (e) {} }
         this.stream = null;
         this.enrolled = false; this.enrolling = false;
-        this.passHist = []; this.goodFrames = []; this.lastFaceBox = null;
+        this.passHist = []; this.goodFrames = [];
         if (this.elements.cam) this.elements.cam.srcObject = null;
     };
 
@@ -283,13 +217,6 @@ FaceAttend.Enrollment = (function () {
         var fd = new FormData();
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('image', blob, 'frame.jpg');
-        if (this.lastFaceBox) {
-            fd.append('faceX', this.lastFaceBox.x);
-            fd.append('faceY', this.lastFaceBox.y);
-            fd.append('faceW', this.lastFaceBox.w);
-            fd.append('faceH', this.lastFaceBox.h);
-        }
-
         return fetch(this.config.scanUrl || '/api/scan/frame', {
             method: 'POST',
             body: fd,
@@ -330,10 +257,16 @@ FaceAttend.Enrollment = (function () {
         var cam = this.elements.cam;
         if (!cam || !cam.videoWidth) return Promise.resolve();
 
+        if (this._serverScanAttempts >= this.config.maxServerScanAttempts) {
+            this.stopAutoEnrollment();
+            this.handleStatus('Could not collect enough clear frames. Improve lighting and try again.', 'warning');
+            return Promise.resolve();
+        }
+
         var isMobile = isMobileDevice();
         var capturedBlob = null;
-        var sharpness = 0;
 
+        this._serverScanAttempts++;
         return this.captureJpegBlob(CONSTANTS.UPLOAD_QUALITY)
             .then(function (blob) {
                 capturedBlob = blob;
@@ -342,7 +275,6 @@ FaceAttend.Enrollment = (function () {
             .then(function (result) {
                 if (!result) return;
                 result.lastBlob = capturedBlob;
-                result.clientSharpness = sharpness;
                 self.processScanResult(result);
             })
             .catch(function (e) {
@@ -360,8 +292,7 @@ FaceAttend.Enrollment = (function () {
         this.passHist = [];
         this.goodFrames = [];
         this._zeroAntiSpoofStreak = 0;
-        this.lastFaceBox = null;
-
+        this._serverScanAttempts = 0;
         this._tickEnabled = true;
         this._scheduleTick();
     };
@@ -464,8 +395,6 @@ FaceAttend.Enrollment = (function () {
             return;
         }
 
-        if (r.faceBox) this.lastFaceBox = r.faceBox;
-
         if (r.count > 1) {
             if (!this.multiFaceWarned) { this.multiFaceWarned = true; if (this.callbacks.onMultiFaceWarning) this.callbacks.onMultiFaceWarning(r.count); }
         } else if (this.multiFaceWarned) { this.multiFaceWarned = false; if (this.callbacks.onMultiFaceWarning) this.callbacks.onMultiFaceWarning(1); }
@@ -482,9 +411,7 @@ FaceAttend.Enrollment = (function () {
         if (pass) {
             this._zeroAntiSpoofStreak = 0;
 
-            if (r.faceBox && r.faceBox.w > 0) this.lastFaceBox = r.faceBox;
-
-            var sharpness = r.sharpness || r.clientSharpness || 0;
+            var sharpness = r.sharpness || 0;
             this.pushGoodFrame(r.lastBlob || null, p, sharpness);
 
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
@@ -693,10 +620,6 @@ FaceAttend.Enrollment = (function () {
             .then(function (cfg) {
                 if (!cfg || typeof cfg !== 'object') return;
                 if (typeof cfg.antiSpoofThreshold  === 'number') self.config.perFrameThreshold       = cfg.antiSpoofThreshold;
-                if (typeof cfg.sharpnessDesktop   === 'number') CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP = cfg.sharpnessDesktop;
-                if (typeof cfg.sharpnessMobile    === 'number') CONSTANTS.SHARPNESS_THRESHOLD_MOBILE  = cfg.sharpnessMobile;
-                if (typeof cfg.minFaceAreaDesktop === 'number') CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP  = cfg.minFaceAreaDesktop;
-                if (typeof cfg.minFaceAreaMobile  === 'number') CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE   = cfg.minFaceAreaMobile;
             })
             .catch(function () {});
     };

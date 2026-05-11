@@ -79,10 +79,7 @@ namespace FaceAttend.Services.Recognition
             };
         }
 
-        public static WorkerAnalyzeFaceResponse AnalyzeFace(
-            byte[] imageBytes,
-            BiometricScanMode mode,
-            OpenVinoBiometrics.FaceBox faceBoxHint = null)
+        public static WorkerAnalyzeFaceResponse AnalyzeFace(byte[] imageBytes, BiometricScanMode mode)
         {
             var enabled = ConfigurationService.GetBool("Biometrics:Worker:Enabled", false);
             if (!enabled)
@@ -100,14 +97,7 @@ namespace FaceAttend.Services.Recognition
             var requestBody = new WorkerAnalyzeFaceRequest
             {
                 ImageBase64 = Convert.ToBase64String(imageBytes ?? Array.Empty<byte>()),
-                Mode = mode.ToString().ToUpperInvariant(),
-                FaceBoxHint = faceBoxHint == null ? null : new FaceBoxHint
-                {
-                    X = faceBoxHint.Left,
-                    Y = faceBoxHint.Top,
-                    Width = faceBoxHint.Width,
-                    Height = faceBoxHint.Height
-                }
+                Mode = mode.ToString().ToUpperInvariant()
             };
 
             var json = JsonConvert.SerializeObject(requestBody);

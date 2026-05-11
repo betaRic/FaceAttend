@@ -64,7 +64,6 @@ namespace FaceAttend.Areas.Admin.Controllers
         [RateLimit(Name = "AdminOperationsMutate", MaxRequests = 20, WindowSeconds = 60, Burst = 5)]
         public ActionResult ReloadFaceCache()
         {
-            EmployeeFaceIndex.Invalidate();
             VisitorFaceIndex.Invalidate();
             FastFaceMatcher.ReloadFromDatabase();
 

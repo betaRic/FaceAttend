@@ -26,10 +26,6 @@ namespace FaceAttend.Services.Biometrics
                 throw new InvalidOperationException("OpenVINO worker is not healthy: " + health.Status);
         }
 
-        public static void DisposeWorker()
-        {
-        }
-
         public static object GetWorkerStatus()
         {
             var health = BiometricWorkerClient.CheckHealth();
@@ -46,7 +42,6 @@ namespace FaceAttend.Services.Biometrics
         public WorkerAnalyzeFaceResponse AnalyzeFile(
             string imagePath,
             BiometricScanMode mode,
-            FaceBox faceBoxHint,
             out string error)
         {
             error = null;
@@ -58,7 +53,7 @@ namespace FaceAttend.Services.Biometrics
 
             try
             {
-                return BiometricWorkerClient.AnalyzeFace(File.ReadAllBytes(imagePath), mode, faceBoxHint);
+                return BiometricWorkerClient.AnalyzeFace(File.ReadAllBytes(imagePath), mode);
             }
             catch (Exception ex)
             {
@@ -70,7 +65,6 @@ namespace FaceAttend.Services.Biometrics
         public WorkerAnalyzeFaceResponse AnalyzeBytes(
             byte[] imageBytes,
             BiometricScanMode mode,
-            FaceBox faceBoxHint,
             out string error)
         {
             error = null;
@@ -82,7 +76,7 @@ namespace FaceAttend.Services.Biometrics
 
             try
             {
-                return BiometricWorkerClient.AnalyzeFace(imageBytes, mode, faceBoxHint);
+                return BiometricWorkerClient.AnalyzeFace(imageBytes, mode);
             }
             catch (Exception ex)
             {

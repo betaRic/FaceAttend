@@ -49,8 +49,8 @@ namespace FaceAttend.Services.Security
                 return false;
 
             bool verified = TryVerifyPbkdf2(stored, pin)
-                         || ConstantTimeEquals(stored, Sha256Base64(pin))
-                         || ConstantTimeEquals(stored, Sha256Hex(pin));
+                         || SecureCompare.FixedEquals(stored, Sha256Base64(pin))
+                         || SecureCompare.FixedEquals(stored, Sha256Hex(pin));
 
             if (!string.IsNullOrEmpty(ip))
             {
@@ -120,23 +120,7 @@ namespace FaceAttend.Services.Security
             }
             catch { return false; }
 
-            return ConstantTimeEquals(actualHash, expectedHash);
-        }
-
-        private static bool ConstantTimeEquals(byte[] a, byte[] b)
-        {
-            if (a == null || b == null || a.Length != b.Length) return false;
-            int diff = 0;
-            for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-            return diff == 0;
-        }
-
-        private static bool ConstantTimeEquals(string a, string b)
-        {
-            if (a == null || b == null || a.Length != b.Length) return false;
-            int diff = 0;
-            for (int i = 0; i < a.Length; i++) diff |= a[i] ^ b[i];
-            return diff == 0;
+            return SecureCompare.FixedEquals(actualHash, expectedHash);
         }
 
         private static string Sha256Base64(string input)

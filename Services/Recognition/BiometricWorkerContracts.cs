@@ -6,7 +6,6 @@ namespace FaceAttend.Services.Recognition
     {
         public string ImageBase64 { get; set; }
         public string Mode { get; set; }
-        public FaceBoxHint FaceBoxHint { get; set; }
     }
 
     public sealed class WorkerAnalyzeFaceResponse
@@ -19,7 +18,7 @@ namespace FaceAttend.Services.Recognition
         public string RecognizerVersion { get; set; }
         public string AntiSpoofVersion { get; set; }
         public int FaceCount { get; set; }
-        public FaceBoxHint SelectedFaceBox { get; set; }
+        public WorkerFaceBox SelectedFaceBox { get; set; }
         public IEnumerable<WorkerLandmarkPoint> Landmarks { get; set; }
         public double[] Embedding { get; set; }
         public IEnumerable<WorkerRecognitionCandidate> RecognitionCandidates { get; set; }
@@ -61,7 +60,7 @@ namespace FaceAttend.Services.Recognition
         public double Score { get; set; }
     }
 
-    public sealed class FaceBoxHint
+    public sealed class WorkerFaceBox
     {
         public int X { get; set; }
         public int Y { get; set; }

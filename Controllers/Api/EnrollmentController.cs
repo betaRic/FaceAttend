@@ -118,7 +118,6 @@ namespace FaceAttend.Controllers.Api
                     string.Equals(emp.Status, "ACTIVE", StringComparison.OrdinalIgnoreCase));
 
                 FastFaceMatcher.UpdateEmployee(employeeId, db);
-                EmployeeFaceIndex.Invalidate();
             }
 
             return JsonResponseBuilder.Success(new
@@ -166,7 +165,7 @@ namespace FaceAttend.Controllers.Api
 
                 var biometric = new OpenVinoBiometrics();
                 string analyzeErr;
-                var analysis = biometric.AnalyzeFile(processedPath, BiometricScanMode.Enrollment, null, out analyzeErr);
+                var analysis = biometric.AnalyzeFile(processedPath, BiometricScanMode.Enrollment, out analyzeErr);
 
                 if (analysis == null || !analysis.Ok || analysis.SelectedFaceBox == null)
                     return JsonResponseBuilder.Success(new { isDuplicate = false, faceDetected = false });

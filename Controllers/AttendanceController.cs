@@ -6,7 +6,6 @@ using System.Web;
 using System.Web.Mvc;
 using FaceAttend.Filters;
 using FaceAttend.Services;
-using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Mobile;
 using FaceAttend.Services.Recognition;
 using FaceAttend.Services.Security;
@@ -27,10 +26,6 @@ namespace FaceAttend.Controllers
             double? lon,
             double? accuracy,
             HttpPostedFileBase image,
-            int? faceX,
-            int? faceY,
-            int? faceW,
-            int? faceH,
             bool wfhMode = false)
         {
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
@@ -48,24 +43,11 @@ namespace FaceAttend.Controllers
 
             try
             {
-                OpenVinoBiometrics.FaceBox clientFaceBox = null;
-                if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue)
-                {
-                    clientFaceBox = new OpenVinoBiometrics.FaceBox
-                    {
-                        Left = faceX.Value,
-                        Top = faceY.Value,
-                        Width = faceW.Value,
-                        Height = faceH.Value
-                    };
-                }
-
                 var result = new AttendanceScanService().Scan(
                     lat,
                     lon,
                     accuracy,
                     image,
-                    clientFaceBox,
                     TimeZoneHelper.NowLocal(),
                     includePerfTimings: ConfigurationService.GetBool("Kiosk:EnablePerfTimings", false),
                     httpContext: HttpContext,

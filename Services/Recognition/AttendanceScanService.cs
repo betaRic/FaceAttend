@@ -13,17 +13,8 @@ using static FaceAttend.Services.OfficeLocationService;
 
 namespace FaceAttend.Services.Recognition
 {
-    /// <summary>
-    /// Encapsulates the full attendance scan pipeline:
-    /// image validation → office resolution → face detection → anti-spoof →
-    /// matching -> tier voting -> attendance recording.
-    ///
-    /// KioskController.Attend() is a thin HTTP entry point that calls this service.
-    /// </summary>
     public class AttendanceScanService
     {
-        // ── Timeout helpers ───────────────────────────────────────────────────
-
         private static int GetRequestTimeoutMs()
         {
             var v = ConfigurationService.GetInt("Kiosk:RequestTimeoutMs", 28000);
@@ -43,12 +34,9 @@ namespace FaceAttend.Services.Recognition
         private static ActionResult NoOfficesResult(bool perf, IDictionary<string, long> timings)
             => JsonResponseBuilder.NoOffices(timings, perf);
 
-        // ── Main pipeline ─────────────────────────────────────────────────────
-
         public ActionResult Scan(
             double? lat, double? lon, double? accuracy,
             HttpPostedFileBase image,
-            OpenVinoBiometrics.FaceBox clientFaceBox,
             DateTime requestedAtLocal,
             bool includePerfTimings,
             HttpContextBase httpContext,
@@ -75,7 +63,6 @@ namespace FaceAttend.Services.Recognition
             {
                 using (var db = new FaceAttendDBEntities())
                 {
-                    // ── Office resolution ─────────────────────────────────────────────
                     Office office           = null;
                     bool   gpsRequired      = DeviceService.IsMobileDevice(request);
                     bool   locationVerified = false;
@@ -95,7 +82,6 @@ namespace FaceAttend.Services.Recognition
                     {
                         if (!wfhMode)
                             return JsonResponseBuilder.ErrorWithTimings("GPS_REQUIRED", timings, includePerfTimings);
-                        // wfhMode=true: defer office resolution until after face match
                     }
                     else
                     {
@@ -112,19 +98,15 @@ namespace FaceAttend.Services.Recognition
 
                     double[] vec               = null;
                     float    p                 = 0f;
-                    bool     antiSpoofConfirmed = false;
                     AntiSpoofPolicyResult antiSpoofResult = null;
                     int      actualImageWidth  = 1280;
                     int      actualImageHeight = 0;
                     float    sharpness         = 0f;
                     float    sharpnessThreshold = FaceQualityAnalyzer.GetSharpnessThreshold(isMobileAttend);
 
-                    var scanFaceBox = isMobileAttend ? null : clientFaceBox;
                     var fastResult = FastScanPipeline.ScanInMemory(
                         image,
-                        scanFaceBox,
                         includePerfTimings,
-                        antiSpoofThreshold: antiSpoofThreshold,
                         isMobile: isMobileAttend);
 
                     if (fastResult.Timings != null)
@@ -155,7 +137,6 @@ namespace FaceAttend.Services.Recognition
                     actualImageHeight  = fastResult.ImageHeight;
                     sharpness          = fastResult.Sharpness;
                     sharpnessThreshold = fastResult.SharpnessThreshold;
-                    antiSpoofConfirmed  = antiSpoofResult.Decision == AntiSpoofDecision.Pass;
                     mark("openvino_pipeline_ms");
 
                     if (vec == null)
@@ -165,7 +146,6 @@ namespace FaceAttend.Services.Recognition
 
                     var attendanceTol = biometricPolicy.AttendanceToleranceFor(isMobileAttend);
 
-                    // ── Matching ──────────────────────────────────────────────────────
                     if (!FastFaceMatcher.IsInitialized)
                         FastFaceMatcher.Initialize();
 
@@ -174,7 +154,6 @@ namespace FaceAttend.Services.Recognition
 
                     mark("match_ms");
 
-                    // ── Unknown / visitor path ────────────────────────────────────────
                     if (!matchResult.IsMatch)
                     {
                         if (matchResult.WasAmbiguous)
@@ -212,7 +191,10 @@ namespace FaceAttend.Services.Recognition
                                 }
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Trace.TraceWarning("[AttendanceScan] Visitor index lookup failed: " + ex.Message);
+                        }
 
                         bool isKnownVisitor = bestVisitorId.HasValue && bestVisitorDist <= vTol;
 
@@ -221,6 +203,9 @@ namespace FaceAttend.Services.Recognition
                             ConfigurationService.GetBool("Kiosk:VisitorEnabled", false));
 
                         if (!visitorEnabled)
+                            return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
+
+                        if (office == null)
                             return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
 
                         var scanId = VisitorScanService.Store(
@@ -259,7 +244,7 @@ namespace FaceAttend.Services.Recognition
                             });
 
                             Trace.TraceInformation(
-                                "[SCAN] MEDIUM_PENDING | emp={0} d={1:F3} gap={2:F3} — awaiting confirm",
+                                "[SCAN] MEDIUM_PENDING | emp={0} d={1:F3} gap={2:F3} - awaiting confirm",
                                 bestEmpId, bestDist, matchResult.AmbiguityGap);
 
                             return new JsonResult
@@ -268,20 +253,19 @@ namespace FaceAttend.Services.Recognition
                                 {
                                     ok        = false,
                                     error     = "SCAN_CONFIRM_NEEDED",
-                                    message   = "Almost there — please look at the camera one more time.",
+                                    message   = "Almost there - please look at the camera one more time.",
                                     antiSpoofScore = p,
                                     threshold = antiSpoofThreshold
                                 }
                             };
                         }
 
-                        // Second frame — verify same employee
                         PendingScanService.Remove(deviceKeyMed);
 
                         if (!string.Equals(existing.EmployeeId, bestEmpId, StringComparison.OrdinalIgnoreCase))
                         {
                             Trace.TraceInformation(
-                                "[SCAN] MEDIUM_MISMATCH | frame1={0} frame2={1} — both rejected",
+                                "[SCAN] MEDIUM_MISMATCH | frame1={0} frame2={1} - both rejected",
                                 existing.EmployeeId, bestEmpId);
                             return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
                         }
@@ -306,12 +290,10 @@ namespace FaceAttend.Services.Recognition
 
                     if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
 
-                    // ── Employee lookup ───────────────────────────────────────────────
                     var emp = db.Employees.FirstOrDefault(x => x.EmployeeId == bestEmpId && x.Status == "ACTIVE");
                     if (emp == null)
                         return JsonResponseBuilder.ErrorWithTimings("EMPLOYEE_NOT_FOUND", timings, includePerfTimings);
 
-                    // ── WFH office resolution (deferred from pre-match) ───────────────
                     if (wfhMode && office == null)
                     {
                         var todayLocal = requestedAtLocal.Date;
@@ -319,7 +301,7 @@ namespace FaceAttend.Services.Recognition
                         if (empOffice == null || !OfficeScheduleService.IsWfhEnabledToday(empOffice, todayLocal))
                             return JsonResponseBuilder.ErrorWithTimings("GPS_REQUIRED", timings, includePerfTimings);
                         office           = empOffice;
-                        locationVerified = false;  // WFH scan — location not verified
+                        locationVerified = false;
                     }
 
                     var displayName = emp.LastName + ", " + emp.FirstName +
@@ -393,7 +375,7 @@ namespace FaceAttend.Services.Recognition
                     if (lat.HasValue && lon.HasValue)
                     {
                         var spoofCheck = LocationAntiSpoof.CheckLocation(
-                            emp.Id, lat.Value, lon.Value, DateTime.UtcNow, deviceFp);
+                            lat.Value, lon.Value, DateTime.UtcNow, deviceFp);
 
                         if (spoofCheck.Action == "BLOCK")
                             return JsonResponseBuilder.SuspiciousLocation(
@@ -441,9 +423,7 @@ namespace FaceAttend.Services.Recognition
                         FaceSimilarity   = similarity,
                         MatchThreshold   = attendanceTol,
                         AntiSpoofScore    = p,
-                        AntiSpoofResult   = antiSpoofResult == null
-                            ? (antiSpoofConfirmed ? "PASS" : "UNKNOWN")
-                            : antiSpoofResult.Decision.ToString().ToUpperInvariant(),
+                        AntiSpoofResult   = antiSpoofResult.Decision.ToString().ToUpperInvariant(),
                         ClientIP         = StringHelper.Truncate(request.UserHostAddress ?? "", 100),
                         UserAgent        = StringHelper.Truncate(request.UserAgent ?? "", 1000),
                         WiFiBSSID        = StringHelper.Truncate(office.WiFiBSSID, 200),
@@ -472,7 +452,6 @@ namespace FaceAttend.Services.Recognition
                         return JsonResponseBuilder.ErrorWithTimings(rec.Code, timings, includePerfTimings, rec.Message);
                     }
 
-                    // Distance log — grep "[MATCH]" to build threshold tuning dataset.
                     Trace.TraceInformation(
                         "[MATCH] emp={0} event={1} tier={2} dist={3:F3} gap={4} antiSpoof={5:F3} tol={6:F3} ms={7}",
                         emp.EmployeeId,
@@ -525,9 +504,6 @@ namespace FaceAttend.Services.Recognition
                 var debug  = ConfigurationService.GetBool("Biometrics:Debug", false);
                 var baseEx = ex.GetBaseException();
                 return JsonResponseBuilder.ScanError(ex.Message, baseEx?.Message, timings, includePerfTimings, debug);
-            }
-            finally
-            {
             }
         }
     }

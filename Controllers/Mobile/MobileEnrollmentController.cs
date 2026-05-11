@@ -37,7 +37,7 @@ namespace FaceAttend.Controllers.Mobile
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Route("ScanFrame")]
-        [RateLimit(Name = "MobileEnrollFrame", MaxRequests = 90, WindowSeconds = 60, Burst = 30)]
+        [RateLimit(Name = "MobileEnrollFrame", MaxRequests = 45, WindowSeconds = 60, Burst = 8)]
         public ActionResult ScanFrame()
         {
             try
@@ -51,9 +51,7 @@ namespace FaceAttend.Controllers.Mobile
                 var antiSpoofThreshold = policy.AntiSpoofClearThresholdFor(isMobile);
                 var scan = FastScanPipeline.EnrollmentScanInMemory(
                     image,
-                    null,
-                    isMobile,
-                    antiSpoofThreshold);
+                    isMobile);
 
                 if (!scan.Ok)
                     return JsonResponseBuilder.Error(scan.Error ?? "SCAN_FAIL", scan.Error);
@@ -298,8 +296,6 @@ namespace FaceAttend.Controllers.Mobile
                         employee.Id,
                         selected.Count,
                         isMobile);
-
-                    Services.Biometrics.EmployeeFaceIndex.Invalidate();
 
                     try
                     {

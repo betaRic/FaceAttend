@@ -1,5 +1,4 @@
 using System;
-using System.Reflection;
 using System.Web;
 using System.Web.Mvc;
 using FaceAttend.Services.Biometrics;
@@ -16,10 +15,11 @@ namespace FaceAttend.Services.Security
 
             var json = result as JsonResult;
             var data = json?.Data;
-            var ok = GetBool(data, "ok");
-            var employeeId = GetString(data, "employeeId");
-            var eventType = GetString(data, "eventType");
-            var error = GetString(data, "error") ?? GetString(data, "action");
+            var ok = ObjectValueReader.GetBool(data, "ok");
+            var employeeId = ObjectValueReader.GetString(data, "employeeId", 100);
+            var eventType = ObjectValueReader.GetString(data, "eventType", 100);
+            var error = ObjectValueReader.GetString(data, "error", 100)
+                ?? ObjectValueReader.GetString(data, "action", 100);
 
             Log(
                 request,
@@ -110,28 +110,5 @@ namespace FaceAttend.Services.Security
             }
         }
 
-        private static bool GetBool(object source, string name)
-        {
-            var value = GetValue(source, name);
-            return value is bool && (bool)value;
-        }
-
-        private static string GetString(object source, string name)
-        {
-            var value = GetValue(source, name);
-            var text = value == null ? null : Convert.ToString(value);
-            return StringHelper.Truncate(string.IsNullOrWhiteSpace(text) ? null : text, 100);
-        }
-
-        private static object GetValue(object source, string name)
-        {
-            if (source == null || string.IsNullOrWhiteSpace(name))
-                return null;
-
-            var prop = source.GetType().GetProperty(
-                name,
-                BindingFlags.Instance | BindingFlags.Public | BindingFlags.IgnoreCase);
-            return prop == null ? null : prop.GetValue(source, null);
-        }
     }
 }

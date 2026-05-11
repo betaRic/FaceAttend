@@ -242,7 +242,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     db.SaveChanges();
 
                     if (employeePrimary > 0 || employeeJson > 0)
-                        EmployeeFaceIndex.Invalidate();
+                        FastFaceMatcher.ReloadFromDatabase();
 
                     if (visitorPrimary > 0)
                         VisitorFaceIndex.Invalidate();

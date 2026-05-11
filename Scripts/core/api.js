@@ -213,10 +213,6 @@
          * 
          * @param {Blob} imageBlob - Image data
          * @param {Object} options - Additional options
-         * @param {number} options.faceX - Face bounding box X
-         * @param {number} options.faceY - Face bounding box Y
-         * @param {number} options.faceW - Face bounding box width
-         * @param {number} options.faceH - Face bounding box height
          * @param {function} onSuccess - Success callback
          * @param {function} onError - Error callback
          */
@@ -228,13 +224,6 @@
             }
             
             var data = { image: imageBlob };
-            
-            if (options) {
-                if (options.faceX !== undefined) data.faceX = options.faceX;
-                if (options.faceY !== undefined) data.faceY = options.faceY;
-                if (options.faceW !== undefined) data.faceW = options.faceW;
-                if (options.faceH !== undefined) data.faceH = options.faceH;
-            }
             
             this.post('api/scan/frame', data, onSuccess, onError);
         },

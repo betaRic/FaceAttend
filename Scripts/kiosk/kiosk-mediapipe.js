@@ -69,10 +69,6 @@
     }
 
     // ── Stable tracking ────────────────────────────────────────────────────────
-    // FIX: With stableNeededMs=50, this fires almost immediately.
-    // The key change is removing the hard reset on movement — we just delay slightly.
-    // Server handles frame quality; client just needs to detect a face.
-
     function updateStableTracking(box, now) {
         if (!box) { _state.mpStableStart = 0; return; }
         var c = { x: box.x + box.w / 2, y: box.y + box.h / 2 };
@@ -80,15 +76,13 @@
         if (!_state.mpPrevCenter) {
             _state.mpPrevCenter  = c;
             _state.mpStableStart = now;
-            // FIX: Set ready immediately on first detection (no prior center means fresh detection)
-            _state.mpReadyToFire = true;
+            _state.mpReadyToFire = false;
             return;
         }
 
         var move = Math.hypot(c.x - _state.mpPrevCenter.x, c.y - _state.mpPrevCenter.y);
         _state.mpPrevCenter = c;
 
-        // Only hard-reset on extreme movement (actual walk-by, not normal standing micro-movement)
         if (move > _cfg.gating.stableMaxMovePx * 2.5) {
             _state.mpStableStart = 0;
             _state.mpReadyToFire = false;
@@ -98,9 +92,7 @@
 
         if (_state.mpStableStart === 0) _state.mpStableStart = now;
 
-        // FIX: With stableNeededMs=50, this check passes almost immediately
         if ((now - _state.mpStableStart) < _cfg.mp.stableNeededMs) {
-            // Don't show "hold still" for such a short window — it flickers annoyingly
             return;
         }
 

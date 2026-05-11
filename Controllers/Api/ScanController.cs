@@ -15,8 +15,7 @@ namespace FaceAttend.Controllers.Api
         [Route("frame")]
         [ValidateAntiForgeryToken]
         [RateLimit(Name = "ApiScanFrame", MaxRequests = 60, WindowSeconds = 60, Burst = 10)]
-        public ActionResult Frame(HttpPostedFileBase image,
-            int? faceX = null, int? faceY = null, int? faceW = null, int? faceH = null)
+        public ActionResult Frame(HttpPostedFileBase image)
         {
             if (image == null || image.ContentLength <= 0)
             {
@@ -34,19 +33,6 @@ namespace FaceAttend.Controllers.Api
                 return JsonResponseBuilder.Error("INVALID_FORMAT", "Invalid image format");
             }
 
-            OpenVinoBiometrics.FaceBox clientFaceBox = null;
-            if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
-                && faceW.Value > 0 && faceH.Value > 0)
-            {
-                clientFaceBox = new OpenVinoBiometrics.FaceBox
-                {
-                    Left   = faceX.Value,
-                    Top    = faceY.Value,
-                    Width  = faceW.Value,
-                    Height = faceH.Value
-                };
-            }
-
             try
             {
                 var isMobile = DeviceService.IsMobileDevice(Request);
@@ -54,9 +40,7 @@ namespace FaceAttend.Controllers.Api
                 var antiSpoofThreshold = policy.AntiSpoofClearThresholdFor(isMobile);
                 var scan = FastScanPipeline.EnrollmentScanInMemory(
                     image,
-                    clientFaceBox,
-                    isMobile,
-                    antiSpoofThreshold);
+                    isMobile);
 
                 if (!scan.Ok)
                 {
@@ -156,7 +140,7 @@ namespace FaceAttend.Controllers.Api
 
                 var biometric = new OpenVinoBiometrics();
                 string analyzeError;
-                var analysis = biometric.AnalyzeFile(tempPath, BiometricScanMode.Enrollment, null, out analyzeError);
+                var analysis = biometric.AnalyzeFile(tempPath, BiometricScanMode.Enrollment, out analyzeError);
 
                 if (analysis == null || !analysis.Ok || analysis.SelectedFaceBox == null)
                 {

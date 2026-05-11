@@ -429,17 +429,14 @@
     <Compile Include="Services\AttendanceService.cs" />
     <Compile Include="Services\AuditHelper.cs" />
     <Compile Include="Services\Background\TempFileCleanupTask.cs" />
-    <Compile Include="Services\Biometrics\BallTreeIndex.cs" />
     <Compile Include="Services\Biometrics\BiometricPolicy.cs" />
     <Compile Include="Services\Biometrics\BiometricCrypto.cs" />
     <Compile Include="Services\Biometrics\BiometricTemplateMetadataService.cs" />
     <Compile Include="Services\Biometrics\DuplicateCheckHelper.cs" />
-    <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
     <Compile Include="Services\Biometrics\EnrollmentCaptureService.cs" />
     <Compile Include="Services\Biometrics\EnrollmentQualityGate.cs" />
     <Compile Include="Services\Biometrics\FaceEncodingHelper.cs" />
     <Compile Include="Services\Biometrics\FaceVectorCodec.cs" />
-    <Compile Include="Services\Biometrics\FaceIndexBase.cs" />
     <Compile Include="Services\Biometrics\FaceQualityAnalyzer.cs" />
     <Compile Include="Services\Biometrics\FastFaceMatcher.cs" />
     <Compile Include="Services\Biometrics\FastScanPipeline.cs" />
@@ -458,9 +455,9 @@
     <Compile Include="Services\HealthProbe.cs" />
     <Compile Include="Services\Helpers\CsvHelper.cs" />
     <Compile Include="Services\Helpers\FileSystemHelper.cs" />
+    <Compile Include="Services\Helpers\ServiceUtilities.cs" />
     <Compile Include="Services\Helpers\StringHelper.cs" />
     <Compile Include="Services\Helpers\TimeHelper.cs" />
-    <Compile Include="Services\Helpers\ValidationHelper.cs" />
     <Compile Include="Services\JsonResponseBuilder.cs" />
     <Compile Include="Services\Mobile\EmployeePortalService.cs" />
     <Compile Include="Services\OfficeLocationService.cs" />
@@ -481,6 +478,7 @@
     <Compile Include="Services\Security\AdminUnlockCookieService.cs" />
     <Compile Include="Services\Security\AttendanceAccessReceiptService.cs" />
     <Compile Include="Services\Security\PublicAuditService.cs" />
+    <Compile Include="Services\Security\SecureCompare.cs" />
     <Compile Include="Services\Security\TotpService.cs" />
     <Compile Include="Services\Security\FileSecurityService.cs" />
     <Compile Include="Services\Security\LocationAntiSpoof.cs" />
@@ -501,6 +499,14 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include=".tools\nuget.exe" />
+    <Content Include="App_Data\models\openvino\anti-spoof-mn3.bin" />
+    <Content Include="App_Data\models\openvino\anti-spoof-mn3.xml" />
+    <Content Include="App_Data\models\openvino\face-detection-retail-0004.bin" />
+    <Content Include="App_Data\models\openvino\face-detection-retail-0004.xml" />
+    <Content Include="App_Data\models\openvino\face-reidentification-retail-0095.bin" />
+    <Content Include="App_Data\models\openvino\face-reidentification-retail-0095.xml" />
+    <Content Include="App_Data\models\openvino\landmarks-regression-retail-0009.bin" />
+    <Content Include="App_Data\models\openvino\landmarks-regression-retail-0009.xml" />
     <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
@@ -647,7 +653,6 @@
     <Content Include="Scripts\kiosk\kiosk-warmup.js" />
     <Content Include="Scripts\mobile\mobile-enroll-page.js" />
     <Content Include="Scripts\modules\enrollment-core.js" />
-    <Content Include="Scripts\modules\enrollment-gates.js" />
     <Content Include="Scripts\modules\enrollment-overlay.js" />
     <Content Include="Scripts\modules\face-guide.js" />
     <Content Include="Scripts\toastr.js" />

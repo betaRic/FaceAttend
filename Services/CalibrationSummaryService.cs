@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Data.Entity;
 using System.Globalization;
 using System.Linq;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Services
 {
@@ -66,7 +67,7 @@ namespace FaceAttend.Services
                 .ToList();
 
             var gaps = rows
-                .Select(x => ExtractGap(x.Notes))
+                .Select(x => RecognitionNotesParser.ExtractAmbiguityGap(x.Notes))
                 .Where(x => x.HasValue)
                 .Select(x => x.Value)
                 .OrderBy(x => x)
@@ -89,8 +90,8 @@ namespace FaceAttend.Services
                 MobileCount = rows.Count(x => string.Equals(x.Source, "MOBILE", StringComparison.OrdinalIgnoreCase)),
                 KioskCount = rows.Count(x => string.Equals(x.Source, "KIOSK", StringComparison.OrdinalIgnoreCase)),
                 UnknownSourceCount = rows.Count(x => string.IsNullOrWhiteSpace(x.Source)),
-                MedianDistance = Percentile(distances, 0.50),
-                P95Distance = Percentile(distances, 0.95),
+                MedianDistance = StatsHelper.Percentile(distances, 0.50),
+                P95Distance = StatsHelper.Percentile(distances, 0.95),
                 MaxDistance = distances.Count == 0 ? 0 : distances[distances.Count - 1],
                 AverageAntiSpoof = rows.Where(x => x.AntiSpoofScore.HasValue)
                     .Select(x => x.AntiSpoofScore.Value)
@@ -105,37 +106,5 @@ namespace FaceAttend.Services
             };
         }
 
-        private static double Percentile(IList<double> values, double percentile)
-        {
-            if (values == null || values.Count == 0) return 0;
-            var index = (int)Math.Ceiling(values.Count * percentile) - 1;
-            if (index < 0) index = 0;
-            if (index >= values.Count) index = values.Count - 1;
-            return values[index];
-        }
-
-        private static double? ExtractGap(string notes)
-        {
-            if (string.IsNullOrWhiteSpace(notes))
-                return null;
-
-            var marker = "gap=";
-            var idx = notes.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0)
-                return null;
-
-            var start = idx + marker.Length;
-            var end = notes.IndexOfAny(new[] { ' ', '.', ';', ',' }, start);
-            if (end < 0) end = notes.Length;
-
-            var raw = notes.Substring(start, end - start).Trim();
-            if (string.Equals(raw, "inf", StringComparison.OrdinalIgnoreCase))
-                return null;
-
-            double value;
-            return double.TryParse(raw, NumberStyles.Float, CultureInfo.InvariantCulture, out value)
-                ? (double?)value
-                : null;
-        }
     }
 }

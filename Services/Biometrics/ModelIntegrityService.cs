@@ -50,7 +50,14 @@ namespace FaceAttend.Services.Biometrics
                     ConfigurationService.GetString("Biometrics:ModelHashes", ""));
                 snapshot.ExpectedHashesConfigured = expected.Count > 0;
 
-                foreach (var path in ResolveConfiguredModelPaths())
+                var paths = ResolveConfiguredModelPaths(expected.Keys).ToList();
+                if (paths.Count == 0 && ConfigurationService.GetBool("Biometrics:Worker:Enabled", false))
+                {
+                    snapshot.Ok = false;
+                    snapshot.Error = "No OpenVINO/ONNX model files found in Biometrics:OpenVinoModelsDir.";
+                }
+
+                foreach (var path in paths)
                 {
                     var file = new ModelFileHash
                     {
@@ -102,6 +109,11 @@ namespace FaceAttend.Services.Biometrics
 
         public static IEnumerable<string> ResolveConfiguredModelPaths()
         {
+            return ResolveConfiguredModelPaths(Enumerable.Empty<string>());
+        }
+
+        private static IEnumerable<string> ResolveConfiguredModelPaths(IEnumerable<string> expectedFileNames)
+        {
             var paths = new List<string>();
 
             var openVinoDir = MapPath(ConfigurationService.GetString(
@@ -112,6 +124,12 @@ namespace FaceAttend.Services.Biometrics
                 paths.AddRange(Directory.GetFiles(openVinoDir, "*.xml").OrderBy(x => x));
                 paths.AddRange(Directory.GetFiles(openVinoDir, "*.bin").OrderBy(x => x));
                 paths.AddRange(Directory.GetFiles(openVinoDir, "*.onnx").OrderBy(x => x));
+
+                foreach (var fileName in expectedFileNames ?? Enumerable.Empty<string>())
+                {
+                    if (!string.IsNullOrWhiteSpace(fileName))
+                        paths.Add(System.IO.Path.Combine(openVinoDir, fileName.Trim()));
+                }
             }
 
             return paths.Distinct(StringComparer.OrdinalIgnoreCase);

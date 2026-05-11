@@ -142,7 +142,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             foreach (var img in files.Take(maxStored))
             {
-                var scan = FaceAttend.Services.Biometrics.FastScanPipeline.EnrollmentScanInMemory(img, null, isMobile);
+                var scan = FaceAttend.Services.Biometrics.FastScanPipeline.EnrollmentScanInMemory(img, isMobile);
                 if (scan.Ok && scan.FaceEncoding != null) vecs.Add(scan.FaceEncoding);
             }
 

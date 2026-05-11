@@ -1,54 +1,10 @@
 using System;
-using System.Drawing;
 using FaceAttend.Services;
 
 namespace FaceAttend.Services.Biometrics
 {
     public static class FaceQualityAnalyzer
     {
-        public static float CalculateSharpnessFromBitmap(Bitmap bitmap, OpenVinoBiometrics.FaceBox faceBox)
-        {
-            if (bitmap == null || faceBox == null) return 0f;
-
-            try
-            {
-                int x = Math.Max(0, faceBox.Left);
-                int y = Math.Max(0, faceBox.Top);
-                int w = Math.Min(faceBox.Width,  bitmap.Width  - x);
-                int h = Math.Min(faceBox.Height, bitmap.Height - y);
-
-                if (w <= 0 || h <= 0) return 0f;
-
-                using (var roi   = bitmap.Clone(new Rectangle(x, y, w, h), bitmap.PixelFormat))
-                using (var small = new Bitmap(roi, 160, 160))
-                {
-                    var gray = new float[160 * 160];
-                    for (int py = 0; py < 160; py++)
-                    for (int px = 0; px < 160; px++)
-                    {
-                        var c = small.GetPixel(px, py);
-                        gray[py * 160 + px] = 0.299f * c.R + 0.587f * c.G + 0.114f * c.B;
-                    }
-
-                    float sum = 0f, sumSq = 0f;
-                    int count = 0;
-                    for (int py = 1; py < 159; py++)
-                    for (int px = 1; px < 159; px++)
-                    {
-                        int i  = py * 160 + px;
-                        float lap = -4f * gray[i]
-                            + gray[i - 1] + gray[i + 1]
-                            + gray[i - 160] + gray[i + 160];
-                        sum += lap; sumSq += lap * lap; count++;
-                    }
-                    if (count == 0) return 0f;
-                    float mean = sum / count;
-                    return (sumSq / count) - (mean * mean);
-                }
-            }
-            catch { return 0f; }
-        }
-
         public static (float yaw, float pitch) EstimatePoseFromLandmarks(float[] landmarks)
         {
             if (landmarks == null || landmarks.Length < 6)

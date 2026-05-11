@@ -219,7 +219,6 @@ namespace FaceAttend.Services
 
             SetEmployeeStatus(db, employee.Id, "ACTIVE", adminId.ToString());
 
-            Services.Biometrics.EmployeeFaceIndex.Invalidate();
             global::FaceAttend.Services.Biometrics.FastFaceMatcher.ReloadFromDatabase();
 
             AuditHelper.Log(db, (string)null, "EMPLOYEE_ENROLLMENT_APPROVED", "Employee",

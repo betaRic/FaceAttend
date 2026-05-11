@@ -56,26 +56,6 @@
         });
     }
 
-    // Get current face bbox relative to capture canvas (for server-side optimization)
-    function getFaceBoxForServer() {
-        if (!_state.mpBoxCanvas || !_canvas.width || !_canvas.height) return null;
-
-        // CRITICAL FIX: Face box must be scaled to CAPTURE resolution (1280x720)
-        // NOT to video dimensions, because captureFrameBlob() always captures at CAPTURE_W x CAPTURE_H.
-        var displayW = _canvas.width  || _video.clientWidth  || 1;
-        var displayH = _canvas.height || _video.clientHeight || 1;
-        var sx = CAPTURE_W / displayW;
-        var sy = CAPTURE_H / displayH;
-
-        var box = _state.mpBoxCanvas;
-        return {
-            x: Math.round((displayW - box.x - box.w) * sx),
-            y: Math.round(box.y * sy),
-            w: Math.round(box.w * sx),
-            h: Math.round(box.h * sy)
-        };
-    }
-
     // ── Submit ─────────────────────────────────────────────────────────────────
 
     function submitAttendance(blob) {
@@ -100,14 +80,6 @@
         if (_state.gps.lat      != null) fd.append('lat',      _state.gps.lat);
         if (_state.gps.lon      != null) fd.append('lon',      _state.gps.lon);
         if (_state.gps.accuracy != null) fd.append('accuracy', _state.gps.accuracy);
-
-        var faceBox = getFaceBoxForServer();
-        if (faceBox) {
-            fd.append('faceX', faceBox.x);
-            fd.append('faceY', faceBox.y);
-            fd.append('faceW', faceBox.w);
-            fd.append('faceH', faceBox.h);
-        }
 
         if (window.KioskLocation && window.KioskLocation.getWfhMode()) {
             fd.append('wfhMode', 'true');
@@ -402,7 +374,6 @@
         init:             init,
         armPostScanHold:  armPostScanHold,
         captureFrameBlob: captureFrameBlob,
-        submit:           submitAttendance,
-        getFaceBox:       getFaceBoxForServer
+        submit:           submitAttendance
     };
 })();

@@ -93,7 +93,7 @@ namespace FaceAttend.Services
                     log.EventType,
                     Format(log.FaceDistance),
                     "",
-                    ExtractGap(log.Notes),
+                    RecognitionNotesParser.ExtractAmbiguityGapText(log.Notes),
                     Format(log.MatchThreshold),
                     Format(log.FaceSimilarity),
                     Format(log.AntiSpoofScore),
@@ -113,20 +113,5 @@ namespace FaceAttend.Services
                 : "";
         }
 
-        private static string ExtractGap(string notes)
-        {
-            if (string.IsNullOrWhiteSpace(notes))
-                return "";
-
-            var marker = "gap=";
-            var idx = notes.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
-            if (idx < 0)
-                return "";
-
-            var start = idx + marker.Length;
-            var end = notes.IndexOfAny(new[] { ' ', '.', ';', ',' }, start);
-            if (end < 0) end = notes.Length;
-            return notes.Substring(start, end - start).Trim();
-        }
     }
 }

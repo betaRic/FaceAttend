@@ -250,7 +250,7 @@
         }
     }
 
-    // captureFrameBlob, getFaceBoxForServer -> KioskAttendance module
+    // captureFrameBlob -> KioskAttendance module
     // mp object, updateStableTracking, isTooSmallFaceNorm -> KioskMediapipe module
     // submitAttendance, handleAttendanceResponse -> KioskAttendance module
 

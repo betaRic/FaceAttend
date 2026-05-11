@@ -170,19 +170,41 @@ namespace FaceAttend.Services.Mobile
             var csv     = new StringBuilder();
 
             csv.AppendLine("Employee ID,Full Name,Position,Department");
-            csv.AppendLine($"\"{employee.EmployeeId}\",\"{employee.FirstName} {employee.LastName}\",\"{employee.Position}\",\"{employee.Department}\"");
+            csv.AppendLine(CsvHelper.JoinCsv(new[]
+            {
+                CsvHelper.SafeCell(employee.EmployeeId),
+                CsvHelper.SafeCell((employee.FirstName + " " + employee.LastName).Trim()),
+                CsvHelper.SafeCell(employee.Position),
+                CsvHelper.SafeCell(employee.Department)
+            }));
             csv.AppendLine();
-            csv.AppendLine($"Attendance Report for {targetMonth.ToString("MMMM yyyy")}");
+            csv.AppendLine(CsvHelper.JoinCsv(new[] { "Attendance Report for " + targetMonth.ToString("MMMM yyyy") }));
             csv.AppendLine();
             csv.AppendLine("Date,Time,Event Type,Office,Duration (minutes)");
 
             foreach (var log in logList)
-                csv.AppendLine($"\"{log.Timestamp:yyyy-MM-dd}\",\"{log.Timestamp:HH:mm:ss}\",\"{log.EventType}\",\"{log.Office?.Name}\",\"-\"");
+            {
+                csv.AppendLine(CsvHelper.JoinCsv(new[]
+                {
+                    log.Timestamp.ToString("yyyy-MM-dd"),
+                    log.Timestamp.ToString("HH:mm:ss"),
+                    CsvHelper.SafeCell(log.EventType),
+                    CsvHelper.SafeCell(log.Office?.Name),
+                    "-"
+                }));
+            }
 
             csv.AppendLine();
-            csv.AppendLine($"Total Entries: {logList.Count}");
-            csv.AppendLine($"Total Days Present: {logList.Where(l => l.EventType == "IN").Select(l => l.Timestamp.Date).Distinct().Count()}");
-            csv.AppendLine($"Generated: {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            csv.AppendLine(CsvHelper.JoinCsv(new[] { "Total Entries: " + logList.Count }));
+            csv.AppendLine(CsvHelper.JoinCsv(new[]
+            {
+                "Total Days Present: " + logList
+                    .Where(l => l.EventType == "IN")
+                    .Select(l => l.Timestamp.Date)
+                    .Distinct()
+                    .Count()
+            }));
+            csv.AppendLine(CsvHelper.JoinCsv(new[] { "Generated: " + DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss") + " UTC" }));
 
             return Encoding.UTF8.GetBytes(csv.ToString());
         }

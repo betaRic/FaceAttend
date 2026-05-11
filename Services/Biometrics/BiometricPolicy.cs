@@ -112,29 +112,37 @@ namespace FaceAttend.Services.Biometrics
 
         public AntiSpoofPolicyResult EvaluateAntiSpoof(bool modelOk, float? score, bool isMobile)
         {
-            var clear = AntiSpoofClearThresholdFor(isMobile);
+            var clear = Clamp01(AntiSpoofClearThresholdFor(isMobile), 0.45f);
+            var review = Math.Min(clear, Clamp01(AntiSpoofReviewThreshold, 0.30f));
+            var block = Math.Min(review, Clamp01(AntiSpoofBlockThreshold, 0.15f));
             var s = score ?? 0f;
+            var scoreOk = score.HasValue &&
+                          !float.IsNaN(score.Value) &&
+                          !float.IsInfinity(score.Value) &&
+                          score.Value >= 0f &&
+                          score.Value <= 1f;
             var result = new AntiSpoofPolicyResult
             {
                 Policy = AntiSpoofMode,
                 Score = s,
                 ClearThreshold = clear,
-                ReviewThreshold = AntiSpoofReviewThreshold,
-                BlockThreshold = AntiSpoofBlockThreshold,
+                ReviewThreshold = review,
+                BlockThreshold = block,
                 ModelOk = modelOk
             };
 
-            if (!modelOk)
+            if (!modelOk || !scoreOk)
             {
+                result.ModelOk = false;
                 result.Decision = FailureActionToDecision();
                 return result;
             }
 
             if (s >= clear)
                 result.Decision = AntiSpoofDecision.Pass;
-            else if (s <= AntiSpoofBlockThreshold)
+            else if (s <= block)
                 result.Decision = AntiSpoofDecision.Block;
-            else if (s >= AntiSpoofReviewThreshold)
+            else if (s >= review)
                 result.Decision = AntiSpoofDecision.Review;
             else
                 result.Decision = AntiSpoofDecision.Retry;
@@ -163,6 +171,15 @@ namespace FaceAttend.Services.Biometrics
         private static string Normalize(string value)
         {
             return string.IsNullOrWhiteSpace(value) ? "" : value.Trim().ToUpperInvariant();
+        }
+
+        private static float Clamp01(float value, float fallback)
+        {
+            if (float.IsNaN(value) || float.IsInfinity(value))
+                return fallback;
+            if (value < 0f) return 0f;
+            if (value > 1f) return 1f;
+            return value;
         }
     }
 }
