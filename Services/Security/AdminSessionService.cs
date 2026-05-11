@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Web;
 using System.Web.SessionState;
 using FaceAttend.Services;
@@ -177,9 +178,9 @@ namespace FaceAttend.Services.Security
                 var newId = manager.CreateSessionID(httpContext.ApplicationInstance.Context);
                 manager.SaveSessionID(httpContext.ApplicationInstance.Context, newId, out redirected, out cookieAdded);
             }
-            catch
+            catch (Exception ex)
             {
-                // Best effort.
+                Trace.TraceWarning("[AdminSession] Session ID rotation failed: " + ex.Message);
             }
         }
     }

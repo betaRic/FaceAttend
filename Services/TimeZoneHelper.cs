@@ -49,7 +49,8 @@ namespace FaceAttend.Services
             id = NormalizeId(id);
 
             try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
-            catch { }
+            catch (TimeZoneNotFoundException) { }
+            catch (InvalidTimeZoneException) { }
 
             var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -63,7 +64,8 @@ namespace FaceAttend.Services
             if (map.TryGetValue(id, out winId))
             {
                 try { return TimeZoneInfo.FindSystemTimeZoneById(winId); }
-                catch { }
+                catch (TimeZoneNotFoundException) { }
+                catch (InvalidTimeZoneException) { }
             }
 
             return TimeZoneInfo.Local;
@@ -74,20 +76,6 @@ namespace FaceAttend.Services
 
         public static DateTime TodayLocalDate()
             => NowLocal().Date;
-
-        public static DateTime UtcToLocal(DateTime utc)
-        {
-            if (utc.Kind != DateTimeKind.Utc)
-                utc = DateTime.SpecifyKind(utc, DateTimeKind.Utc);
-
-            return TimeZoneInfo.ConvertTimeFromUtc(utc, Ensure());
-        }
-
-        public static DateTime LocalToUtc(DateTime local)
-        {
-            local = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
-            return TimeZoneInfo.ConvertTimeToUtc(local, Ensure());
-        }
 
         public static (DateTime fromLocalInclusive, DateTime toLocalExclusive) LocalDateRange(DateTime localDate)
         {

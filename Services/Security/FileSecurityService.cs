@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Web;
@@ -6,28 +7,11 @@ using System.Web.Hosting;
 
 namespace FaceAttend.Services.Security
 {
-    /// <summary>
-    /// Unified file security service - handles upload security AND validation
-    /// MERGED FROM: SecureFileUpload + FileValidationService
-    /// </summary>
     public static class FileSecurityService
     {
-        // ============================================================================
-        // Magic Numbers - SINGLE SOURCE OF TRUTH
-        // ============================================================================
         private static readonly byte[] JpegMagic = { 0xFF, 0xD8, 0xFF };
         private static readonly byte[] PngMagic = { 0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A };
-        private static readonly byte[] GifMagic87a = { 0x47, 0x49, 0x46, 0x38, 0x37, 0x61 };
-        private static readonly byte[] GifMagic89a = { 0x47, 0x49, 0x46, 0x38, 0x39, 0x61 };
-        private static readonly byte[] BmpMagic = { 0x42, 0x4D };
 
-        // ============================================================================
-        // FILE UPLOAD (from SecureFileUpload)
-        // ============================================================================
-
-        /// <summary>
-        /// Saves uploaded image securely with validation
-        /// </summary>
         public static string SaveTemp(HttpPostedFileBase image, string prefix, int maxBytes)
         {
             ValidateInputs(image, prefix, maxBytes);
@@ -41,7 +25,6 @@ namespace FaceAttend.Services.Security
 
             image.SaveAs(fullPath);
 
-            // Defense-in-depth: verify the file size on disk
             var actualSize = new FileInfo(fullPath).Length;
             if (actualSize > maxBytes)
             {
@@ -59,7 +42,10 @@ namespace FaceAttend.Services.Security
                 if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
                     File.Delete(path);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[FileSecurity] Temp delete failed: " + ex.Message);
+            }
         }
 
         private static void ValidateInputs(HttpPostedFileBase image, string prefix, int maxBytes)
@@ -114,13 +100,6 @@ namespace FaceAttend.Services.Security
                 throw new InvalidOperationException("PATH_TRAVERSAL_DETECTED");
         }
 
-        // ============================================================================
-        // FILE VALIDATION (from FileValidationService)
-        // ============================================================================
-
-        /// <summary>
-        /// Validates that the uploaded file is a valid image by checking magic bytes
-        /// </summary>
         public static bool IsValidImage(Stream stream, string[] permittedExtensions = null)
         {
             if (stream == null || stream.Length == 0)
@@ -136,20 +115,12 @@ namespace FaceAttend.Services.Security
                 if (bytesRead < 3)
                     return false;
 
-                // Check magic bytes
                 if (buffer.Take(3).SequenceEqual(JpegMagic))
                     return IsExtensionPermitted(".jpg", ".jpeg", permittedExtensions);
 
                 if (buffer.Take(8).SequenceEqual(PngMagic))
                     return IsExtensionPermitted(".png", permittedExtensions);
 
-                if (buffer.Take(6).SequenceEqual(GifMagic87a) ||
-                    buffer.Take(6).SequenceEqual(GifMagic89a))
-                    return IsExtensionPermitted(".gif", permittedExtensions);
-
-                if (buffer.Take(2).SequenceEqual(BmpMagic))
-                    return IsExtensionPermitted(".bmp", permittedExtensions);
-
                 return false;
             }
             catch
@@ -157,91 +128,6 @@ namespace FaceAttend.Services.Security
                 return false;
             }
         }
-
-        /// <summary>
-        /// Validates image dimensions are within acceptable bounds
-        /// </summary>
-        public static bool ValidateImageDimensions(Stream stream, int minWidth, int minHeight, int maxWidth, int maxHeight)
-        {
-            try
-            {
-                using (var image = System.Drawing.Image.FromStream(stream))
-                {
-                    return image.Width >= minWidth && image.Width <= maxWidth &&
-                           image.Height >= minHeight && image.Height <= maxHeight;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// Gets the image format from magic bytes
-        /// </summary>
-        public static string GetImageFormat(Stream stream)
-        {
-            if (stream == null || stream.Length == 0)
-                return "unknown";
-
-            try
-            {
-                byte[] buffer = new byte[8];
-                stream.Position = 0;
-                int bytesRead = stream.Read(buffer, 0, 8);
-                stream.Position = 0;
-
-                if (bytesRead < 3)
-                    return "unknown";
-
-                if (buffer.Take(3).SequenceEqual(JpegMagic))
-                    return "jpeg";
-                if (buffer.Take(8).SequenceEqual(PngMagic))
-                    return "png";
-                if (buffer.Take(6).SequenceEqual(GifMagic87a) ||
-                    buffer.Take(6).SequenceEqual(GifMagic89a))
-                    return "gif";
-                if (buffer.Take(2).SequenceEqual(BmpMagic))
-                    return "bmp";
-
-                return "unknown";
-            }
-            catch
-            {
-                return "unknown";
-            }
-        }
-
-        /// <summary>
-        /// Validates content type matches actual file content
-        /// </summary>
-        public static bool IsValidImageFile(HttpPostedFileBase file, string[] permittedExtensions = null)
-        {
-            if (file == null || file.ContentLength == 0)
-                return false;
-
-            // Check by magic bytes
-            if (!IsValidImage(file.InputStream, permittedExtensions))
-                return false;
-
-            // Additional check: try to load as image
-            try
-            {
-                using (var img = System.Drawing.Image.FromStream(file.InputStream))
-                {
-                    return true;
-                }
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        // ============================================================================
-        // Helper Methods
-        // ============================================================================
 
         private static byte[] ReadHeader(HttpPostedFileBase image, int count)
         {

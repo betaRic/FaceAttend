@@ -1,14 +1,11 @@
 ﻿using System;
 using System.Data;
+using System.Data.Entity;
+using System.Diagnostics;
 using System.Linq;
 
 namespace FaceAttend.Services
 {
-    /// <summary>
-    /// Records attendance events (Time In / Time Out) with min-gap anti-double-tap
-    /// protection and directional gap enforcement (IN→OUT vs OUT→IN).
-    /// Uses SERIALIZABLE transaction to prevent duplicate entries from concurrent scans.
-    /// </summary>
     public class AttendanceService
     {
         private readonly FaceAttendDBEntities _db;
@@ -55,9 +52,6 @@ namespace FaceAttend.Services
                         .OrderByDescending(x => x.Timestamp)
                         .FirstOrDefault();
 
-                    // ── Tukuyin muna ang susunod na event BAGO mag-gap check ──────────────────
-                    // Kailangan munang malaman kung IN->OUT o OUT->IN ang transition para
-                    // magamit ang tamang directional gap limit.
                     string next;
                     if (lastToday == null)
                         next = "IN";
@@ -66,11 +60,6 @@ namespace FaceAttend.Services
                     else
                         next = "IN";
 
-                    // ── Directional MinGap check ─────────────────────────────────────────────
-                    // IN->OUT : minimum 30 minuto (1800s) — hindi pwedeng mag-time-out agad
-                    //           pagkatapos ng time-in (madalas na aksidente o abuse ito).
-                    // OUT->IN : minimum 5 minuto  (300s)  — short break / pagbalik mula errand.
-                    // Ang base minGapSeconds (180s) ay palaging enforced bilang anti-doubletap floor.
                     if (lastToday != null)
                     {
                         var gap = (nowLocal - lastToday.Timestamp).TotalSeconds;
@@ -80,7 +69,6 @@ namespace FaceAttend.Services
 
                         if (string.Equals(lastToday.EventType, "IN", StringComparison.OrdinalIgnoreCase))
                         {
-                            // IN -> OUT transition: mag-apply ng InToOut minimum gap
                             applicableGap = ConfigurationService.GetInt(
                                 _db, "Attendance:MinGap:InToOutSeconds",
                                 ConfigurationService.GetInt("Attendance:MinGap:InToOutSeconds", 1800));
@@ -90,7 +78,6 @@ namespace FaceAttend.Services
                         }
                         else
                         {
-                            // OUT -> IN transition: mag-apply ng OutToIn minimum gap
                             applicableGap = ConfigurationService.GetInt(
                                 _db, "Attendance:MinGap:OutToInSeconds",
                                 ConfigurationService.GetInt("Attendance:MinGap:OutToInSeconds", 300));
@@ -99,9 +86,6 @@ namespace FaceAttend.Services
                                 + minsNeeded + " minute(s) before timing in again.";
                         }
 
-                        // I-enforce ang base minGapSeconds bilang absolute floor (anti-doubletap).
-                        // Sa normal config: 180s < 1800s at 300s — Math.Max ay walang epekto.
-                        // Pero kung binago ng admin ang values, protektado pa rin tayo.
                         applicableGap = Math.Max(applicableGap, minGapSeconds);
 
                         if (gap >= 0 && gap < applicableGap)
@@ -135,9 +119,7 @@ namespace FaceAttend.Services
                     }
                     catch (System.Data.Entity.Infrastructure.DbUpdateException dbEx)
                     {
-                        // Unique index violation -- a concurrent scan for the same employee
-                        // + event type + day already committed. Treat as TOO_SOON.
-                        try { tx.Rollback(); } catch { }
+                        RollbackQuietly(tx);
 
                         var inner = dbEx.InnerException?.InnerException?.Message
                                  ?? dbEx.InnerException?.Message ?? dbEx.Message;
@@ -171,9 +153,21 @@ namespace FaceAttend.Services
                 }
                 catch
                 {
-                    try { tx.Rollback(); } catch { /* best effort */ }
+                    RollbackQuietly(tx);
                     throw;
                 }
+            }
+        }
+
+        private static void RollbackQuietly(DbContextTransaction tx)
+        {
+            try
+            {
+                tx.Rollback();
+            }
+            catch (Exception ex)
+            {
+                Trace.TraceWarning("[AttendanceService] Rollback failed: " + ex.Message);
             }
         }
     }
