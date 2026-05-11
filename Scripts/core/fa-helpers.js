@@ -223,6 +223,42 @@
             return theme === 'kiosk' || theme === 'dark' || document.body.classList.contains('mobile-app');
         },
 
+        getClientDeviceHeaders: function () {
+            var screenObj = window.screen || {};
+            var ua = navigator.userAgent || '';
+            var isTouch = 'ontouchstart' in window || (navigator.maxTouchPoints || 0) > 0;
+            var mobileUa = /iphone|android|windows phone|iemobile|blackberry|ipad|ipod/i.test(ua);
+
+            return {
+                'X-Client-Screen-Width': String(screenObj.width || 0),
+                'X-Client-Screen-Height': String(screenObj.height || 0),
+                'X-Client-Pixel-Ratio': String(window.devicePixelRatio || 1),
+                'X-Client-Touch-Supported': isTouch ? 'true' : 'false',
+                'X-Client-Mobile-UA': mobileUa ? 'true' : 'false'
+            };
+        },
+
+        mergeRequestHeaders: function (headers) {
+            var merged = {};
+            var deviceHeaders = this.getClientDeviceHeaders();
+            var key;
+
+            for (key in deviceHeaders) {
+                if (deviceHeaders.hasOwnProperty(key)) {
+                    merged[key] = deviceHeaders[key];
+                }
+            }
+
+            headers = headers || {};
+            for (key in headers) {
+                if (headers.hasOwnProperty(key)) {
+                    merged[key] = headers[key];
+                }
+            }
+
+            return merged;
+        },
+
         /**
          * Fetch JSON with CSRF token
          * @param {string} url - URL to fetch
@@ -231,7 +267,7 @@
          */
         fetchJson: function (url, options) {
             options = options || {};
-            options.headers = options.headers || {};
+            options.headers = this.mergeRequestHeaders(options.headers);
             options.headers['X-Requested-With'] = 'XMLHttpRequest';
 
             // Add CSRF token for non-GET requests

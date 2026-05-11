@@ -7,8 +7,7 @@ namespace FaceAttend.Models.ViewModels.Admin
     /// <summary>
     /// ViewModel para sa Admin Dashboard page.
     ///
-    /// PHASE 2 FIX (P-03, WC-07): Dinagdagan ang circuit breaker status fields
-    /// para makita ng admin sa dashboard kung naka-open ang liveness circuit.
+    /// Admin dashboard data.
     /// </summary>
     public class DashboardViewModel
     {
@@ -24,16 +23,8 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         // ── System health ────────────────────────────────────────────────────
         public bool DatabaseHealthy    { get; set; }
-        public bool LivenessModelLoaded { get; set; }
-        public bool DlibModelsLoaded   { get; set; }
+        public bool BiometricWorkerReady   { get; set; }
         public bool OfflineAssetsOk    { get; set; } = true;
-
-        // PHASE 2 FIX (WC-07): Circuit breaker status
-        // Kung true ang LivenessCircuitOpen, ang liveness check ay hindi tumatakbo
-        // at lahat ng scan attempts ay magfa-fail. Kailangan ng admin action para
-        // i-reset (tingnan ang Dashboard > Reset Circuit button).
-        public bool LivenessCircuitOpen  { get; set; }
-        public bool LivenessCircuitStuck { get; set; }
 
         // ── Display helpers ──────────────────────────────────────────────────
         public string TodayDateDisplay => TimeZoneHelper.NowLocal().ToString("dddd, MMM dd, yyyy");
@@ -46,10 +37,9 @@ namespace FaceAttend.Models.ViewModels.Admin
     public class RecentAttendanceRow
     {
         public long     Id               { get; set; }
-        public DateTime TimestampUtc     { get; set; }
-        // Timestamps are now stored in local time - no conversion needed
+        public DateTime TimestampLocal   { get; set; }
         public string   TimestampLocalDisplay =>
-            TimestampUtc.ToString("HH:mm");
+            TimestampLocal.ToString("HH:mm");
 
         public string EmployeeId       { get; set; }
         public string EmployeeFullName { get; set; }

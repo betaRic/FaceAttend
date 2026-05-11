@@ -34,13 +34,13 @@ namespace FaceAttend.Models.ViewModels.Admin
     public class AttendanceRowVm
     {
         public long     Id               { get; set; }
-        public DateTime TimestampUtc     { get; set; }
+        public DateTime TimestampLocal   { get; set; }
         public string   EmployeeId       { get; set; }
         public string   EmployeeFullName { get; set; }
         public string   Department       { get; set; }
         public string   OfficeName       { get; set; }
         public string   EventType        { get; set; }
-        public double?  LivenessScore    { get; set; }
+        public double?  AntiSpoofScore    { get; set; }
         public double?  FaceDistance     { get; set; }
         public bool     LocationVerified { get; set; }
         public bool     NeedsReview      { get; set; }

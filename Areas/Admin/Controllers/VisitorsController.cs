@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Data.Entity;
 using System.Globalization;
@@ -77,14 +77,14 @@ namespace FaceAttend.Areas.Admin.Controllers
 
             using (var db = new FaceAttendDBEntities())
             {
-                var now = DateTime.UtcNow;
+                var nowLocal = TimeZoneHelper.NowLocal();
                 var v = new Visitor
                 {
                     Name = name,
                     FaceEncodingBase64 = null,
                     VisitCount = 0,
-                    FirstVisitDate = now,
-                    LastVisitDate = now,
+                    FirstVisitDate = nowLocal,
+                    LastVisitDate = nowLocal,
                     IsActive = true
                 };
 
@@ -106,7 +106,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var v = db.Visitors.FirstOrDefault(x => x.Id == id);
                 if (v == null) return HttpNotFound();
 
-                var perFrame = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
+                var perFrame = BiometricPolicy.Current.AntiSpoofClearThreshold;
                 ViewBag.PerFrame = perFrame.ToString("0.00####", CultureInfo.InvariantCulture);
 
                 return View(v);
@@ -154,7 +154,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var visitor = db.Visitors.FirstOrDefault(v => v.Id == visitorId);
                 if (visitor == null) return JsonResponseBuilder.NotFound("Visitor");
 
-                var bestBytes = FaceAttend.Services.Biometrics.DlibBiometrics.EncodeToBytes(vecs[0]);
+                var bestBytes = FaceAttend.Services.Biometrics.FaceVectorCodec.EncodeToBytes(vecs[0]);
                 visitor.FaceEncodingBase64 = FaceAttend.Services.Biometrics.BiometricCrypto.ProtectBase64Bytes(bestBytes);
                 visitor.IsActive = true;
                 db.SaveChanges();
@@ -247,8 +247,8 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 var logs = db.VisitorLogs.AsNoTracking().AsQueryable();
 
-                if (range.FromUtc.HasValue) logs = logs.Where(x => x.Timestamp >= range.FromUtc.Value);
-                if (range.ToUtcExclusive.HasValue) logs = logs.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
+                if (range.FromLocalInclusive.HasValue) logs = logs.Where(x => x.Timestamp >= range.FromLocalInclusive.Value);
+                if (range.ToLocalExclusive.HasValue) logs = logs.Where(x => x.Timestamp < range.ToLocalExclusive.Value);
 
                 if (officeId.HasValue && officeId.Value > 0)
                     logs = logs.Where(x => x.OfficeId == officeId.Value);
@@ -265,7 +265,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                     .Take(5000)
                     .Select(x => new VisitorLogRowVm
                     {
-                        TimestampUtc = x.Timestamp,
+                        TimestampLocal = x.Timestamp,
                         VisitorId = x.VisitorId,
                         VisitorName = x.VisitorName,
                         Purpose = x.Purpose,
@@ -294,8 +294,8 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 var logs = db.VisitorLogs.AsNoTracking().AsQueryable();
 
-                if (range.FromUtc.HasValue) logs = logs.Where(x => x.Timestamp >= range.FromUtc.Value);
-                if (range.ToUtcExclusive.HasValue) logs = logs.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
+                if (range.FromLocalInclusive.HasValue) logs = logs.Where(x => x.Timestamp >= range.FromLocalInclusive.Value);
+                if (range.ToLocalExclusive.HasValue) logs = logs.Where(x => x.Timestamp < range.ToLocalExclusive.Value);
 
                 if (officeId.HasValue && officeId.Value > 0)
                     logs = logs.Where(x => x.OfficeId == officeId.Value);
@@ -328,7 +328,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 {
                     sb.AppendLine(CsvHelper.JoinCsv(new[]
                     {
-                        TimeZoneHelper.UtcToLocal(r.Timestamp).ToString("yyyy-MM-dd HH:mm:ss"),
+                        r.Timestamp.ToString("yyyy-MM-dd HH:mm:ss"),
                         CsvHelper.SanitizeAndEscape(r.VisitorName ?? ""),
                         r.VisitorId.HasValue ? "YES" : "NO",
                         CsvHelper.SanitizeAndEscape(r.OfficeName ?? ""),

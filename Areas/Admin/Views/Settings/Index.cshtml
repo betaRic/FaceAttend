@@ -3,6 +3,17 @@
     ViewBag.Title = "Settings";
 }
 
+<style>
+    .settings-tabs { position: sticky; top: 0; z-index: 5; display: flex; gap: .5rem; overflow-x: auto; padding: .5rem; margin-bottom: .75rem; background: var(--ea-page-bg, #f8fafc); border: 1px solid rgba(15,23,42,.08); border-radius: 14px; }
+    .settings-tab { white-space: nowrap; border: 0; border-radius: 999px; padding: .45rem .9rem; background: #e5e7eb; color: #334155; font-weight: 700; font-size: .85rem; }
+    .settings-tab.active { background: #0f172a; color: #fff; }
+    .settings-form-shell .ea-form-body { max-height: calc(100vh - 330px); overflow: auto; }
+    .settings-form-shell .ea-form-footer { position: sticky; bottom: 0; z-index: 6; background: rgba(255,255,255,.96); backdrop-filter: blur(10px); border-top: 1px solid rgba(15,23,42,.08); box-shadow: 0 -10px 30px rgba(15,23,42,.08); }
+    .settings-dirty { display: none; color: #b45309; font-weight: 700; margin-right: auto; }
+    .settings-dirty.active { display: inline-flex; align-items: center; }
+    .ea-settings-section[hidden], .settings-security-card[hidden] { display: none !important; }
+</style>
+
 <div class="ea-page">
 
     <div class="ea-page-header">
@@ -42,7 +53,18 @@
     {
         @Html.AntiForgeryToken()
 
-        <div class="ea-form-card">
+        <div class="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button class="settings-tab" type="button" data-settings-tab="attendance">Attendance</button>
+            <button class="settings-tab" type="button" data-settings-tab="recognition">Recognition</button>
+            <button class="settings-tab" type="button" data-settings-tab="antiSpoof">Anti-spoof</button>
+            <button class="settings-tab" type="button" data-settings-tab="location">Location &amp; Devices</button>
+            <button class="settings-tab" type="button" data-settings-tab="visitors">Visitors</button>
+            <button class="settings-tab" type="button" data-settings-tab="security">Security/Ops</button>
+        </div>
+
+        <input type="hidden" id="settingsActiveTab" name="activeTab" value="" />
+
+        <div class="ea-form-card settings-form-shell">
             <div class="ea-form-header">
                 <div class="ea-form-title">
                     <i class="fa-solid fa-sliders" aria-hidden="true"></i>
@@ -67,8 +89,8 @@
                             <div class="ea-settings-section-body">
                                 <div class="row g-3">
                                     <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.DlibTolerance, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.DlibTolerance, new
+                                        @Html.LabelFor(m => m.RecognitionTolerance, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.RecognitionTolerance, new
                                         {
                                             @class = "form-control form-control-sm",
                                             type = "number",
@@ -76,13 +98,13 @@
                                             min = "0.20",
                                             max = "1.00"
                                         })
-                                        @Html.ValidationMessageFor(m => m.DlibTolerance, "", new { @class = "text-danger small" })
+                                        @Html.ValidationMessageFor(m => m.RecognitionTolerance, "", new { @class = "text-danger small" })
                                         <div class="form-text">Lower is stricter. Typical range: 0.55 to 0.65.</div>
                                     </div>
 
                                     <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessThreshold, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessThreshold, new
+                                        @Html.LabelFor(m => m.AntiSpoofThreshold, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.AntiSpoofThreshold, new
                                         {
                                             @class = "form-control form-control-sm",
                                             type = "number",
@@ -90,167 +112,10 @@
                                             min = "0",
                                             max = "1"
                                         })
-                                        @Html.ValidationMessageFor(m => m.LivenessThreshold, "", new { @class = "text-danger small" })
+                                        @Html.ValidationMessageFor(m => m.AntiSpoofThreshold, "", new { @class = "text-danger small" })
                                         <div class="form-text">Higher is stricter for anti-spoof.</div>
                                     </div>
 
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="ea-settings-section">
-                            <div class="ea-settings-section-head">
-                                <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                                Advanced Liveness
-                            </div>
-                            <div class="ea-settings-section-body">
-                                <div class="row g-3">
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessDecision, new { @class = "form-label" })
-                                        @Html.DropDownListFor(m => m.LivenessDecision,
-                                            new[]
-                                            {
-                                                new SelectListItem { Text = "max", Value = "max" },
-                                                new SelectListItem { Text = "avg", Value = "avg" }
-                                            },
-                                            new { @class = "form-select form-select-sm" })
-                                        @Html.ValidationMessageFor(m => m.LivenessDecision, "", new { @class = "text-danger small" })
-                                        <div class="form-text">How to combine multi-crop scores.</div>
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessMultiCropScales, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessMultiCropScales, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            placeholder = "2.3,2.7,3.1"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessMultiCropScales, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Comma-separated crop scales.</div>
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessInputSize, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessInputSize, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "64",
-                                            max = "512"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessInputSize, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessCropScale, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessCropScale, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            step = "0.1",
-                                            min = "1.0",
-                                            max = "5.0"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessCropScale, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessRealIndex, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessRealIndex, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "0",
-                                            max = "10"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessRealIndex, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessOutputType, new { @class = "form-label" })
-                                        @Html.DropDownListFor(m => m.LivenessOutputType,
-                                            new[]
-                                            {
-                                                new SelectListItem { Text = "logits", Value = "logits" },
-                                                new SelectListItem { Text = "probs", Value = "probs" }
-                                            },
-                                            new { @class = "form-select form-select-sm" })
-                                        @Html.ValidationMessageFor(m => m.LivenessOutputType, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessNormalize, new { @class = "form-label" })
-                                        @Html.DropDownListFor(m => m.LivenessNormalize,
-                                            new[]
-                                            {
-                                                new SelectListItem { Text = "0_1", Value = "0_1" },
-                                                new SelectListItem { Text = "minus1_1", Value = "minus1_1" },
-                                                new SelectListItem { Text = "imagenet", Value = "imagenet" },
-                                                new SelectListItem { Text = "none", Value = "none" }
-                                            },
-                                            new { @class = "form-select form-select-sm" })
-                                        @Html.ValidationMessageFor(m => m.LivenessNormalize, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessChannelOrder, new { @class = "form-label" })
-                                        @Html.DropDownListFor(m => m.LivenessChannelOrder,
-                                            new[]
-                                            {
-                                                new SelectListItem { Text = "RGB", Value = "RGB" },
-                                                new SelectListItem { Text = "BGR", Value = "BGR" }
-                                            },
-                                            new { @class = "form-select form-select-sm" })
-                                        @Html.ValidationMessageFor(m => m.LivenessChannelOrder, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessRunTimeoutMs, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessRunTimeoutMs, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "200",
-                                            max = "10000"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessRunTimeoutMs, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessSlowMs, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessSlowMs, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "100",
-                                            max = "10000"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessSlowMs, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessCircuitFailStreak, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessCircuitFailStreak, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "1",
-                                            max = "10"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessCircuitFailStreak, "", new { @class = "text-danger small" })
-                                    </div>
-
-                                    <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.LivenessCircuitDisableSeconds, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.LivenessCircuitDisableSeconds, new
-                                        {
-                                            @class = "form-control form-control-sm",
-                                            type = "number",
-                                            min = "0",
-                                            max = "300"
-                                        })
-                                        @Html.ValidationMessageFor(m => m.LivenessCircuitDisableSeconds, "", new { @class = "text-danger small" })
-                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -495,8 +360,8 @@
                                     </div>
 
                                     <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.NeedsReviewLivenessMargin, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.NeedsReviewLivenessMargin, new
+                                        @Html.LabelFor(m => m.NeedsReviewAntiSpoofMargin, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.NeedsReviewAntiSpoofMargin, new
                                         {
                                             @class = "form-control form-control-sm",
                                             type = "number",
@@ -504,8 +369,8 @@
                                             min = "0",
                                             max = "0.20"
                                         })
-                                        @Html.ValidationMessageFor(m => m.NeedsReviewLivenessMargin, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Near liveness threshold.</div>
+                                        @Html.ValidationMessageFor(m => m.NeedsReviewAntiSpoofMargin, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Near anti-spoof threshold.</div>
                                     </div>
 
                                     <div class="col-12 col-md-6">
@@ -544,9 +409,9 @@
                                         <div class="form-text">Duplicate face detection during enrollment. Lower = stricter (default 0.45).</div>
                                     </div>
                                     <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.VisitorDlibTolerance, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.VisitorDlibTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.40", max = "0.90" })
-                                        @Html.ValidationMessageFor(m => m.VisitorDlibTolerance, "", new { @class = "text-danger small" })
+                                        @Html.LabelFor(m => m.VisitorRecognitionTolerance, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.VisitorRecognitionTolerance, new { @class = "form-control form-control-sm", type = "number", step = "0.01", min = "0.40", max = "0.90" })
+                                        @Html.ValidationMessageFor(m => m.VisitorRecognitionTolerance, "", new { @class = "text-danger small" })
                                         <div class="form-text">Face distance for visitor recognition at kiosk (default 0.65).</div>
                                     </div>
                                 </div>
@@ -596,14 +461,14 @@
                             <div class="ea-settings-section-body">
                                 <div class="alert alert-warning small py-2 mb-3">
                                     <i class="fa-solid fa-triangle-exclamation me-1"></i>
-                                    <strong>Dlib Pool Size</strong> requires an application restart to take effect. All other capacity settings apply immediately.
+                                    Worker timeout controls how long MVC waits for OpenVINO face analysis before failing closed.
                                 </div>
                                 <div class="row g-3">
                                     <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.DlibPoolSize, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.DlibPoolSize, new { @class = "form-control form-control-sm", type = "number", min = "1", max = "16" })
-                                        @Html.ValidationMessageFor(m => m.DlibPoolSize, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Dlib recognition instances loaded at startup. Each uses ~50MB RAM. Default 4.</div>
+                                        @Html.LabelFor(m => m.WorkerAnalyzeTimeoutMs, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.WorkerAnalyzeTimeoutMs, new { @class = "form-control form-control-sm", type = "number", min = "500", max = "30000", step = "100" })
+                                        @Html.ValidationMessageFor(m => m.WorkerAnalyzeTimeoutMs, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Maximum wait for a single OpenVINO analysis call. Default 5000 ms.</div>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.MaxConcurrentScans, new { @class = "form-label" })
@@ -685,6 +550,7 @@
             </div>
 
             <div class="ea-form-footer">
+                <span class="settings-dirty" id="settingsDirty">Unsaved changes</span>
                 <button type="submit" class="btn btn-primary">
                     <i class="fa-solid fa-floppy-disk me-1" aria-hidden="true"></i>Save Settings
                 </button>
@@ -700,7 +566,7 @@
         </div>
     }
 
-    <div class="ea-form-card mt-3">
+    <div class="ea-form-card mt-3 settings-security-card">
         <div class="ea-form-header">
             <div class="ea-form-title">
                 <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
@@ -827,18 +693,18 @@
         </script>
     }
 
-    @* Liveness Detection Diagnostics *@
-    <div class="ea-form-card mt-4">
+    @* Anti-spoof diagnostics *@
+    <div class="ea-form-card mt-4 settings-antiSpoof-card">
         <div class="ea-form-header">
             <div class="ea-form-title">
                 <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
-                Liveness Detection (Anti-Spoofing)
+                Anti-spoof Detection
             </div>
         </div>
         <div class="ea-form-body">
             <div class="small text-muted mb-3">
-                Liveness detection prevents photo spoofing. If you're getting "Liveness Fail" errors frequently,
-                you may need to adjust the threshold or check the model.
+                Anti-spoof detection helps catch photo and screen spoofing. If scans are failing frequently,
+                check OpenVINO worker health before changing thresholds.
             </div>
             
             <div class="row g-3">
@@ -848,20 +714,9 @@
                             <h6 class="card-title">Current Settings</h6>
                             <dl class="row mb-0" style="font-size: 0.85rem;">
                                 <dt class="col-6">Threshold:</dt>
-                                <dd class="col-6">@Model.LivenessThreshold</dd>
-                                <dt class="col-6">Model Path:</dt>
-                                <dd class="col-6 text-truncate" title="@Model.LivenessModelPath">@Model.LivenessModelPath</dd>
-                                <dt class="col-6">Model Exists:</dt>
-                                <dd class="col-6">
-                                    @if (Model.LivenessModelExists)
-                                    {
-                                        <span class="text-success"><i class="fa-solid fa-check"></i> Yes</span>
-                                    }
-                                    else
-                                    {
-                                        <span class="text-danger"><i class="fa-solid fa-xmark"></i> No</span>
-                                    }
-                                </dd>
+                                <dd class="col-6">@Model.AntiSpoofThreshold</dd>
+                                <dt class="col-6">Inference owner:</dt>
+                                <dd class="col-6">OpenVINO worker</dd>
                             </dl>
                         </div>
                     </div>
@@ -879,11 +734,11 @@
             </div>
             
             <div class="mt-3 d-flex gap-2">
-                <a href="@Url.Action("ResetLivenessCircuit", "Settings", new { area = "Admin" })" class="btn btn-outline-warning btn-sm">
-                    <i class="fa-solid fa-rotate-right me-1"></i>Reset Circuit Breaker
+                <a href="@Url.Action("Index", "Operations", new { area = "Admin" })" class="btn btn-outline-warning btn-sm">
+                    <i class="fa-solid fa-rotate-right me-1"></i>Open Operations
                 </a>
                 <span class="text-muted" style="font-size: 0.75rem; align-self: center;">
-                    (Use if liveness is stuck failing)
+                    (Use if anti-spoof is stuck failing)
                 </span>
             </div>
         </div>
@@ -896,4 +751,64 @@
 
 @section scripts {
     @Scripts.Render("~/bundles/jqueryval")
+    <script>
+        (function () {
+            var storageKey = 'FaceAttend.Settings.ActiveTab';
+            var tabs = Array.prototype.slice.call(document.querySelectorAll('.settings-tab'));
+            var sections = Array.prototype.slice.call(document.querySelectorAll('.ea-settings-section'));
+            var securityCards = Array.prototype.slice.call(document.querySelectorAll('.settings-security-card'));
+            var antiSpoofCards = Array.prototype.slice.call(document.querySelectorAll('.settings-antiSpoof-card'));
+            var hidden = document.getElementById('settingsActiveTab');
+            var dirty = document.getElementById('settingsDirty');
+
+            var map = [
+                { match: 'Attendance Policy', tab: 'attendance' },
+                { match: 'Review Queue', tab: 'attendance' },
+                { match: 'Biometrics', tab: 'recognition' },
+                { match: 'Recognition Tolerances', tab: 'recognition' },
+                { match: 'Enrollment', tab: 'recognition' },
+                { match: 'Advanced Anti-spoof', tab: 'antiSpoof' },
+                { match: 'Location', tab: 'location' },
+                { match: 'Server Capacity', tab: 'security' },
+                { match: 'Performance', tab: 'security' },
+                { match: 'Visitor', tab: 'visitors' }
+            ];
+
+            sections.forEach(function (section) {
+                var text = (section.querySelector('.ea-settings-section-head') || section).textContent || '';
+                var found = map.find(function (item) { return text.indexOf(item.match) >= 0; });
+                section.setAttribute('data-settings-tab-panel', found ? found.tab : 'attendance');
+            });
+
+            function activate(tab) {
+                tab = tab || 'attendance';
+                tabs.forEach(function (btn) {
+                    btn.classList.toggle('active', btn.getAttribute('data-settings-tab') === tab);
+                });
+                sections.forEach(function (section) {
+                    section.hidden = section.getAttribute('data-settings-tab-panel') !== tab;
+                });
+                securityCards.forEach(function (card) { card.hidden = tab !== 'security'; });
+                antiSpoofCards.forEach(function (card) { card.hidden = tab !== 'antiSpoof'; });
+                if (hidden) hidden.value = tab;
+                try { localStorage.setItem(storageKey, tab); } catch (e) {}
+            }
+
+            tabs.forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    activate(btn.getAttribute('data-settings-tab'));
+                });
+            });
+
+            document.querySelectorAll('.settings-form-shell input, .settings-form-shell select').forEach(function (el) {
+                el.addEventListener('change', function () {
+                    if (dirty) dirty.classList.add('active');
+                });
+            });
+
+            var initial = 'attendance';
+            try { initial = localStorage.getItem(storageKey) || initial; } catch (e) {}
+            activate(initial);
+        })();
+    </script>
 }

@@ -25,7 +25,7 @@ namespace FaceAttend.Services.Biometrics
             protected override List<Entry> LoadEntriesFromDatabase(FaceAttendDBEntities db)
             {
                 var list = new List<Entry>();
-                var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxImages", 5);
+                var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 25);
 
                 foreach (var emp in FaceEncodingHelper.LoadAllEmployeeFaces(db, maxPerEmployee))
                     foreach (var vec in emp.FaceVectors)

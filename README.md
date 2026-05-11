@@ -12,8 +12,8 @@
   <img src="https://img.shields.io/badge/.NET%20Framework-4.8-blue" alt=".NET 4.8" />
   <img src="https://img.shields.io/badge/ASP.NET%20MVC-5.3-blue" alt="ASP.NET MVC 5" />
   <img src="https://img.shields.io/badge/SQL%20Server-Express-lightgrey" alt="SQL Server Express" />
-  <img src="https://img.shields.io/badge/dlib-face%20recognition-orange" alt="dlib" />
-  <img src="https://img.shields.io/badge/ONNX-liveness-green" alt="ONNX Runtime" />
+  <img src="https://img.shields.io/badge/OpenVINO-face%20recognition-orange" alt="OpenVINO" />
+  <img src="https://img.shields.io/badge/worker-anti--spoof-green" alt="Anti-spoof worker" />
   <img src="https://img.shields.io/badge/platform-Windows%20%2F%20IIS-informational" alt="Windows IIS" />
 </p>
 
@@ -60,13 +60,13 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 
 ### Biometrics
 - Real-time face detection via **MediaPipe** (client-side, zero-latency)
-- Face recognition using **dlib** (`FaceRecognitionDotNet`) with 128-dimensional face encodings
-- **Liveness detection** via `MiniFASNet` ONNX model — blocks photo spoofing
+- Face recognition using a localhost **OpenVINO worker** with policy-configured embeddings (`Biometrics:EmbeddingDim`, default 256)
+- **Anti-spoof scoring** via the worker (`anti-spoof-mn3` by default); treated as a calibrated risk signal, not proof of real presence
 - **BallTree face index** for O(log n) matching when employee count exceeds configured threshold
 - **Angle-aware tolerance** — relaxes face match threshold when the face is off-center
 - **Sharpness scoring** (Laplacian variance) during enrollment to reject blurry frames
 - **Multi-vector enrollment** — up to 5 face vectors stored per employee for pose diversity
-- **Parallel inference** — liveness and face encoding run simultaneously (~130ms saved per scan)
+- **Worker-owned inference** — MVC sends one JPEG to `/analyze-face`; detection, landmarks, recognition, and anti-spoof stay out of the web app
 - **In-memory scan pipeline** — single JPEG decode reused across all operations (no temp files)
 
 ### Kiosk
@@ -76,7 +76,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 - GPS drift detection — re-verifies location if device moves >60m mid-session
 - Anti-spoof GPS validation — blocks null-island coordinates and exact repeat coordinates
 - Admin PIN unlock from kiosk via `Ctrl+Shift+Space` or double-click brand logo
-- Server warm-up gate — displays "System starting..." while dlib models load on cold start
+- Server warm-up gate — displays "System starting..." while OpenVINO models load on cold start
 - Idle overlay with live clock, office map, and location status
 
 ### Mobile Self-Service
@@ -97,7 +97,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 - Visitor log with known/unknown tracking and CSV export
 - Office management: GPS coordinates, radius, WiFi SSID, type (REGION / PROVINCE / HUC)
 - Device management: approve, reject, block registered mobile devices
-- Settings panel: all biometric, attendance, location, liveness, and performance parameters configurable at runtime
+- Settings panel: all biometric, attendance, location, anti-spoof, and performance parameters configurable at runtime
 - Full audit log: every admin action written with IP, timestamp, old/new values as JSON
 
 ### Security
@@ -141,15 +141,15 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 │  │                                                         │ │
 │  │  FastScanPipeline  │  DeviceService  │  AttendanceService│ │
 │  │  FastFaceMatcher   │  ConfigService  │  AuditHelper      │ │
-│  │  OnnxLiveness      │  OfficeLocation │  TimeZoneHelper   │ │
-│  │  DlibBiometrics    │  LocationAntiSpoof                  │ │
+│  │  OpenVinoBiometrics │ BiometricWorker │ TimeZoneHelper    │ │
+│  │  BiometricPolicy    │  LocationAntiSpoof                    │ │
 │  └──────────────────────────────────────────────────────── ┘ │
 │                                                              │
 │  ┌─────────────────────────────────────────────────────────┐ │
 │  │              In-Memory Cache (RAM)                      │ │
 │  │  FastFaceMatcher: employee face vectors loaded at start │ │
 │  │  BallTree index: O(log n) search for 50+ employees      │ │
-│  │  DlibBiometrics pool: N reusable recognition instances  │ │
+│  │  Worker client: localhost OpenVINO inference boundary       │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────┬───────────────────────────┘
                                   │ Entity Framework 6
@@ -171,9 +171,9 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 | Language | C# (server), JavaScript ES5+ (client) |
 | Database | SQL Server Express (Entity Framework 6.4) |
 | Face Detection (client) | MediaPipe Face Detection (WASM) |
-| Face Recognition (server) | dlib via `FaceRecognitionDotNet` 1.3.0.7 |
-| Liveness Detection | `MiniFASNet` via `Microsoft.ML.OnnxRuntime` 1.23.2 |
-| Face Encoding (server) | `DlibDotNet` 19.21 |
+| Face Recognition (server) | OpenVINO via localhost `OpenVINO worker` |
+| Anti-spoof (server) | Worker-owned model, default `anti-spoof-mn3` |
+| Face Encoding (server) | Worker-owned embedding model, default `face-reidentification-retail-0095` |
 | UI | Bootstrap 5.3, SweetAlert2, Font Awesome 6 |
 | Web Server | IIS (Windows Server / Windows 10+) |
 | Build | Visual Studio 2022, MSBuild, TypeScript 5.9 |
@@ -186,13 +186,10 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 FaceAttend/
 ├── App_Data/
 │   ├── models/
-│   │   ├── dlib/                          # dlib .dat model files
-│   │   │   ├── dlib_face_recognition_resnet_model_v1.dat
-│   │   │   ├── mmod_human_face_detector.dat
-│   │   │   ├── shape_predictor_5_face_landmarks.dat
-│   │   │   └── shape_predictor_68_face_landmarks.dat
-│   │   └── liveness/
-│   │       └── minifasnet.onnx            # Liveness detection model
+│   │   └── openvino/                          # Optional deployed worker model files/hashes
+│   │       ├── *.xml
+│   │       ├── *.bin
+│   │       └── *.onnx
 │   └── tmp/                               # Temporary file processing
 ├── Areas/
 │   └── Admin/
@@ -208,7 +205,6 @@ FaceAttend/
 │       └── Views/                         # Admin Razor views
 ├── Controllers/
 │   ├── KioskController.cs                 # Walk-by attendance scanning
-│   ├── KioskController.Device.cs          # Device registration partial
 │   ├── MobileRegistrationController.cs    # Mobile enrollment & employee portal
 │   ├── HealthController.cs                # /Health, /Health/live, /Health/diagnostics
 │   └── ErrorController.cs
@@ -220,13 +216,13 @@ FaceAttend/
 │   └── ViewModels/                        # Strongly-typed view models
 ├── Services/
 │   ├── Biometrics/
-│   │   ├── DlibBiometrics.cs              # dlib pool (thread-safe, pooled instances)
+│   │   ├── OpenVinoBiometrics.cs          # MVC-facing worker abstraction
 │   │   ├── FastFaceMatcher.cs             # RAM-cache matching (~5–20ms)
-│   │   ├── FastScanPipeline.cs            # In-memory parallel scan pipeline
+│   │   ├── FastScanPipeline.cs            # In-memory worker-backed scan pipeline
 │   │   ├── BallTreeIndex.cs               # O(log n) nearest-neighbor search
 │   │   ├── EmployeeFaceIndex.cs           # Employee face cache with BallTree
-│   │   ├── OnnxLiveness.cs               # MiniFASNet liveness with circuit breaker
-│   │   └── FaceEncodingHelper.cs          # Shared vector loading/decoding
+│   │   ├── BiometricPolicy.cs             # Canonical thresholds/model policy
+│   │   └── FaceVectorCodec.cs             # Shared vector loading/decoding
 │   ├── Security/
 │   │   └── LocationAntiSpoof.cs           # GPS mock detection, repeat-coordinate check
 │   ├── AttendanceService.cs               # SERIALIZABLE transaction attendance recording
@@ -239,7 +235,7 @@ FaceAttend/
 ├── Scripts/
 │   ├── kiosk.js                           # Main kiosk engine (MediaPipe + scan loop)
 │   ├── modules/
-│   │   └── enrollment-core.js             # Enrollment pipeline (sharpness, pose, liveness)
+│   │   └── enrollment-core.js             # Enrollment pipeline (sharpness, pose, anti-spoof guidance)
 │   ├── enrollment-ui.js                   # Enrollment wizard UI controller
 │   └── core/
 │       └── api.js                         # Fetch wrapper with timeout + abort
@@ -271,7 +267,7 @@ FaceAttend/
 | SQL Server | Express 2019 | Express 2022 or Standard |
 | Visual C++ Runtime | 2015–2022 x64 | 2015–2022 x64 |
 
-> **Important:** dlib requires the Visual C++ 2015–2022 x64 Redistributable. Install from [Microsoft's download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) before deploying.
+> **Important:** OpenVINO requires the Visual C++ 2015–2022 x64 Redistributable. Install from [Microsoft's download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) before deploying.
 
 ### Development Requirements
 
@@ -290,24 +286,9 @@ git clone https://github.com/your-org/FaceAttend.git
 cd FaceAttend
 ```
 
-### 2. Download ML Models
+### 2. Prepare Worker Models
 
-The model files are not stored in Git (too large). Download and place them at the exact paths below:
-
-**dlib models** → `App_Data/models/dlib/`
-
-| File | Size | Source |
-|---|---|---|
-| `dlib_face_recognition_resnet_model_v1.dat` | ~21 MB | [dlib.net](http://dlib.net/files/dlib_face_recognition_resnet_model_v1.dat.bz2) |
-| `mmod_human_face_detector.dat` | ~713 KB | [dlib.net](http://dlib.net/files/mmod_human_face_detector.dat.bz2) |
-| `shape_predictor_5_face_landmarks.dat` | ~8.9 MB | [dlib.net](http://dlib.net/files/shape_predictor_5_face_landmarks.dat.bz2) |
-| `shape_predictor_68_face_landmarks.dat` | ~97 MB | [dlib.net](http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2) |
-
-**Liveness model** → `App_Data/models/liveness/`
-
-| File | Size | Source |
-|---|---|---|
-| `minifasnet.onnx` | ~612 KB | [MiniFASNet](https://github.com/minivision-ai/Silent-Face-Anti-Spoofing) |
+The MVC app does not load local recognition or anti-spoof models. Model files belong to the OpenVINO worker deployment and are referenced by `Biometrics:OpenVinoModelsDir` only for health/integrity reporting. Pin `Biometrics:ModelHashes` after final model selection.
 
 ### 3. Configure the Database
 
@@ -335,7 +316,7 @@ nuget restore FaceAttend.sln
 
 ### 5. Build the Solution
 
-Build in Visual Studio (`Ctrl+Shift+B`) targeting **x64**. The project requires x64 because dlib's native binaries are x64 only.
+Build in Visual Studio (`Ctrl+Shift+B`) targeting **x64**. The project requires x64 because OpenVINO's native binaries are x64 only.
 
 ### 6. Configure IIS
 
@@ -406,7 +387,7 @@ Write-Host "`nEnvironment variable set successfully."
 
 Navigate to `https://your-server/` — the kiosk page loads. Navigate to `https://your-server/Admin` to access the admin panel and enter the PIN you configured.
 
-> **Cold start note:** On first load after server restart, the system takes 15–20 seconds to load the dlib models into RAM. The kiosk displays "System starting... Models loading, please wait." during this window and begins scanning automatically once ready.
+> **Cold start note:** On first load after server restart, the system takes 15–20 seconds to load the OpenVINO models into RAM. The kiosk displays "System starting... Models loading, please wait." during this window and begins scanning automatically once ready.
 
 ---
 
@@ -418,11 +399,13 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 
 | Key | Default | Description |
 |---|---|---|
-| `Biometrics:DlibTolerance` | `0.60` | Face match tolerance for enrollment duplicate check. Lower = stricter. |
-| `Biometrics:AttendanceTolerance` | `0.65` | Face match tolerance for attendance scanning (clamped 0.55–0.75). |
-| `Biometrics:LivenessThreshold` | `0.65` | MiniFASNet liveness probability threshold. |
+| `Biometrics:Worker:BaseUrl` | `http://127.0.0.1:5077` | Local OpenVINO worker URL. |
+| `Biometrics:Worker:AnalyzeTimeoutMs` | `5000` | Maximum worker analysis time per submitted frame. |
+| `Biometrics:AttendanceTolerance` | `0.60` | Face match tolerance for attendance scanning. |
+| `Biometrics:AntiSpoof:ClearThreshold` | `0.45` | Anti-spoof clear-pass threshold returned by the worker. |
+| `Biometrics:AntiSpoof:ReviewThreshold` | `0.30` | Gray-zone threshold; retry or mark `NeedsReview`. |
+| `Biometrics:AntiSpoof:BlockThreshold` | `0.15` | Critical spoof threshold. |
 | `Biometrics:EnrollmentStrictTolerance` | `0.45` | Duplicate check tolerance during new employee enrollment. |
-| `Biometrics:DlibPoolSize` | `4` | Number of dlib `FaceRecognition` instances in the pool. Reduce to 2 to cut cold-start time. |
 | `Biometrics:BallTreeThreshold` | `50` | Employee count above which BallTree index is used instead of linear scan. |
 | `Biometrics:BallTreeLeafSize` | `16` | BallTree leaf size (4–64). |
 | `Biometrics:MaxImageDimension` | `1280` | Images larger than this are resized before processing. |
@@ -447,13 +430,13 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 | `Location:GPSRadiusDefault` | `100` | Default office radius in meters (overridden per office). |
 | `Location:GPSAccuracyRequired` | `50` | Maximum GPS accuracy error in meters. Higher = more permissive. |
 
-### Liveness Circuit Breaker
+### Worker Anti-spoof Policy
 
 | Key | Default | Description |
 |---|---|---|
-| `Biometrics:Liveness:CircuitFailStreak` | `5` | Consecutive ONNX failures before circuit opens. |
-| `Biometrics:Liveness:CircuitDisableSeconds` | `60` | Seconds liveness check is disabled after circuit opens. |
-| `Biometrics:Liveness:RunTimeoutMs` | `3000` | ONNX inference timeout in milliseconds. |
+| `Biometrics:AntiSpoof:ClearThreshold` | `0.45` | Score at or above this value is treated as a clear anti-spoof pass. |
+| `Biometrics:AntiSpoof:ReviewThreshold` | `0.35` | Gray-zone score that records but flags `NeedsReview`. |
+| `Biometrics:Worker:AnalyzeTimeoutMs` | `5000` | Timeout for worker `/analyze-face` calls. |
 
 ### Admin Security
 
@@ -497,9 +480,9 @@ Leave blank to disable IP restriction (not recommended for production).
 
 ## ML Models
 
-### Face Recognition — dlib ResNet
+### Face Recognition — OpenVINO Worker
 
-FaceAttend uses dlib's `face_recognition_resnet_model_v1` to compute 128-dimensional face embeddings. Two faces are considered a match when their Euclidean distance is below the configured tolerance.
+FaceAttend sends one still JPEG to the localhost OpenVINO worker. The worker performs authoritative face detection, landmark extraction, embedding generation, recognition candidate scoring, and anti-spoof scoring. Embedding length is controlled by `Biometrics:EmbeddingDim` and defaults to 256.
 
 - Enrollment uses a **strict** tolerance (0.45) to prevent near-duplicate enrollments.
 - Attendance uses a **lenient** tolerance (0.65, clamped 0.55–0.75) with automatic relaxation for off-angle faces.
@@ -510,20 +493,17 @@ Face vectors for all active employees are loaded into RAM at startup via `FastFa
 
 Matching time: ~5–20ms (RAM), compared to ~100–200ms for a database query.
 
-### Liveness Detection — MiniFASNet
+### Anti-spoof
 
-Each scan runs the captured frame through `MiniFASNet` (a lightweight ONNX model) to determine whether the face belongs to a live person or a photo/screen. The liveness probability must exceed `Biometrics:LivenessThreshold` (default 0.65) for the scan to proceed.
-
-A **circuit breaker** monitors ONNX inference failures. After `CircuitFailStreak` consecutive failures, liveness checking is temporarily disabled for `CircuitDisableSeconds` seconds to prevent total system lockout during model errors.
+Each scan sends a still JPEG to the OpenVINO worker. The worker returns an anti-spoof score plus model/version metadata. MVC applies the canonical `BiometricPolicy`: clear pass records normally, gray zone retries or flags review, and critical spoof blocks. Do not treat this as proof of life until local pilot calibration supports it.
 
 ### Warm-up Pipeline
 
 On application start, `Global.asax` runs these steps in a background thread:
 
-1. **Dlib pool** — loads `FaceRecognition.Create()` × `DlibPoolSize` times. This is the most time-consuming step (~4–5 seconds per instance due to the 97MB landmark model).
-2. **ONNX liveness** — loads `minifasnet.onnx` into an `InferenceSession`.
-3. **Employee face index** — reads all active employee face vectors from the database into RAM.
-4. **Visitor face index** — same for known visitors.
+1. **OpenVINO worker health** — verifies the localhost worker is enabled and healthy.
+2. **Employee face index** — reads all active employee face vectors from the database into RAM.
+3. **Visitor face index** — same for known visitors.
 
 Total cold-start time: **15–20 seconds** with pool size 4, **8–10 seconds** with pool size 2.
 
@@ -564,7 +544,7 @@ The kiosk polls `/Health` every 2 seconds and gates all scans until `warmUpState
 #### Daily Attendance (Mobile)
 
 1. Open the kiosk URL on the registered phone.
-2. Look at the camera — the system identifies, runs liveness, verifies GPS, and records attendance.
+2. Look at the camera — the system identifies, checks anti-spoof risk, verifies GPS, and records attendance.
 3. After a successful scan, the employee is redirected to `/MobileRegistration/Employee` — their personal attendance portal.
 
 ---
@@ -581,14 +561,14 @@ Access the admin panel at `/Admin`. Enter the configured PIN to unlock.
 | **Visitors** | Visitor log with known/unknown tracking. Export CSV. |
 | **Offices** | Manage office GPS coordinates, radius, WiFi SSID, type. |
 | **Devices** | Approve, reject, or block mobile device registrations. |
-| **Settings** | All biometric, attendance, location, liveness, and performance settings. |
+| **Settings** | All biometric, attendance, location, anti-spoof, and performance settings. |
 | **Audit Log** | Every admin action with IP, timestamp, and change details. |
 
 ### Attendance NeedsReview
 
 Records are automatically flagged for review (`NeedsReview = true`) when:
 - GPS repeat coordinates are detected (possible GPS spoofing)
-- Low liveness score (near threshold)
+- Low anti-spoof score (near threshold)
 - Other suspicious patterns detected by `LocationAntiSpoof`
 
 Review flagged records in Attendance → filter by "Needs Review". Mark as reviewed with a timestamp and optional note.
@@ -618,11 +598,11 @@ Mobile device opens /Kiosk
                                 │
                          POST /Kiosk/Attend (JPEG frame + face box + GPS)
                                 │
-                    Server: DlibBiometrics → FastFaceMatcher
+                    Server: OpenVINOBiometrics → FastFaceMatcher
                                 │
                     ┌───────────┴──────────┐
                     │ Parallel inference    │
-                    │ liveness + encoding  │
+                    │ anti-spoof + encoding│
                     └───────────┬──────────┘
                                 │
                     Match found? ─── No ──► Visitor modal
@@ -656,10 +636,10 @@ Returns system readiness. The kiosk polls this on startup to gate scanning until
   "ok": true,
   "app": true,
   "database": true,
-  "dlibModelsPresent": true,
-  "livenessModelPresent": true,
-  "livenessCircuitOpen": false,
-  "livenessCircuitStuck": false,
+  "biometricWorkerReady": true,
+  "antiSpoofModelPresent": true,
+  "antiSpoofCircuitOpen": false,
+  "antiSpoofCircuitStuck": false,
   "warmUpState": 1,
   "warmUpMessage": "COMPLETE",
   "disk": { "ok": true, "status": "ok (863.4 GB free)" }
@@ -672,13 +652,13 @@ Returns system readiness. The kiosk polls this on startup to gate scanning until
 GET /Health/live
 ```
 
-Lightweight liveness probe (no DB or model check). Returns `{ "ok": true }`. Used by upstream proxies and monitoring tools.
+Lightweight health probe (no DB or model check). Returns `{ "ok": true }`. Used by upstream proxies and monitoring tools.
 
 ```
 GET /Health/diagnostics
 ```
 
-Detailed diagnostics including Dlib pool status, individual model file presence, DB connection test, and per-step warm-up results. Useful for troubleshooting deployment issues.
+Detailed diagnostics including OpenVINO pool status, individual model file presence, DB connection test, and per-step warm-up results. Useful for troubleshooting deployment issues.
 
 ### Kiosk Endpoints
 
@@ -697,7 +677,7 @@ Detailed diagnostics including Dlib pool status, individual model file presence,
 |---|---|---|
 | `GET /MobileRegistration` | GET | Entry point (new vs existing employee) |
 | `GET /MobileRegistration/Enroll` | GET | New employee enrollment wizard |
-| `POST /MobileRegistration/ScanFrame` | POST | Per-frame liveness check during enrollment |
+| `POST /MobileRegistration/ScanFrame` | POST | Per-frame anti-spoof/quality check during enrollment |
 | `POST /MobileRegistration/Submit` | POST | Submit completed enrollment |
 | `GET /MobileRegistration/Identify` | GET | Existing employee face identification |
 | `POST /MobileRegistration/IdentifyFace` | POST | Submit face for identification |
@@ -747,7 +727,7 @@ Detailed diagnostics including Dlib pool status, individual model file presence,
 | `OfficeId` | int FK | Office at time of scan |
 | `EventType` | nvarchar(10) | `IN` or `OUT` |
 | `Timestamp` | datetime2 | UTC timestamp |
-| `LivenessScore` | float | MiniFASNet probability (0.0–1.0) |
+| `AntiSpoofScore` | float | Current anti-spoof score column (0.0–1.0) |
 | `FaceDistance` | float | Euclidean distance to matched vector |
 | `LocationVerified` | bit | GPS within office radius |
 | `GPSLatitude`, `GPSLongitude` | float | Truncated to 4 decimal places |
@@ -774,9 +754,7 @@ Detailed diagnostics including Dlib pool status, individual model file presence,
 
 ### Cold-Start Time
 
-The 97MB `shape_predictor_68_face_landmarks.dat` is loaded once per pool instance. Default pool size is 4, resulting in 15–20s warm-up time.
-
-**To reduce cold-start time to ~8–10s:** In Admin → Settings → Biometrics, set `Dlib Pool Size` to `2`. Two instances handle concurrent scans well — additional requests are queued by semaphore.
+MVC cold start should be dominated by database readiness and face-index cache loading. Model cold start belongs to the OpenVINO worker; if scans are slow immediately after restart, profile the worker process and its model-load time instead of adding inference code back into MVC.
 
 ### Face Matching Speed
 
@@ -817,10 +795,10 @@ The server warm-up is complete but the kiosk is not detecting it. Check:
 ### Warm-up fails or times out
 
 Navigate to `/Health/diagnostics` for detailed step-by-step status. Common causes:
-- Missing `.dat` files in `App_Data/models/dlib/` — check `dlibModelsPresent` in the diagnostics response.
-- Missing `minifasnet.onnx` — check `livenessModelPresent`.
+- OpenVINO worker offline — check `biometricWorker` and `workerHealthy` in the diagnostics response.
+- Missing worker model files — check the worker `/models` endpoint and `Biometrics:OpenVinoModelsDir` hash/integrity output.
 - Database not reachable — check `database` and `error` fields.
-- Visual C++ Redistributable not installed — dlib will fail to load.
+- Visual C++ Redistributable not installed — OpenVINO will fail to load.
 
 ### Face not recognized
 
@@ -829,11 +807,11 @@ Navigate to `/Health/diagnostics` for detailed step-by-step status. Common cause
 3. Increase `Biometrics:AttendanceTolerance` slightly (max 0.75) in Settings.
 4. Verify `Biometrics:Enroll:MaxStoredVectors` is at least 5 and the employee was enrolled with enough frames.
 
-### Liveness always failing
+### Anti-spoof always failing
 
-1. Check `LivenessScore` in the attendance log.
-2. Decrease `Biometrics:LivenessThreshold` to 0.65 in Settings (minimum safe value).
-3. If the ONNX model is crashing, check `/Health` for `livenessCircuitOpen: true`. The circuit breaker may have tripped — it will auto-recover after `CircuitDisableSeconds`.
+1. Check `AntiSpoofScore`/anti-spoof score in the attendance log.
+2. Check worker health and model version from `/Health/diagnostics`.
+3. Adjust `Biometrics:AntiSpoof:*Threshold` only after reviewing real failed samples; lowering thresholds blindly is how spoofing sneaks into production.
 
 ### GPS location never resolves on mobile
 
@@ -862,7 +840,7 @@ This project is developed for internal use by DILG Region XII. If you are contri
 
 - All C# follows standard .NET naming conventions.
 - Service classes are stateless where possible; stateful services use thread-safe patterns.
-- Biometric operations must use the `DlibBiometrics` pool — never instantiate `FaceRecognition` directly outside the pool.
+- Biometric operations must use the `OpenVINOBiometrics` pool — never instantiate `FaceRecognition` directly outside the pool.
 - All admin actions must call `AuditHelper.Log()`.
 - Security-sensitive operations (PIN verify, device approval, IP check) must not add logging that reveals sensitive values.
 

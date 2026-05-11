@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Web.Mvc;
 
@@ -10,11 +10,11 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         [Range(0.20, 1.00)]
         [Display(Name = "Face match tolerance")]
-        public double DlibTolerance { get; set; }
+        public double RecognitionTolerance { get; set; }
 
         [Range(0.00, 1.00)]
-        [Display(Name = "Liveness threshold")]
-        public double LivenessThreshold { get; set; }
+        [Display(Name = "Anti-spoof clear threshold")]
+        public double AntiSpoofThreshold { get; set; }
 
         [Range(0.20, 1.00)]
         [Display(Name = "Attendance match tolerance")]
@@ -24,9 +24,9 @@ namespace FaceAttend.Models.ViewModels.Admin
         [Display(Name = "Enrollment duplicate check tolerance")]
         public double EnrollmentStrictTolerance { get; set; }
 
-        [Range(1, 16)]
-        [Display(Name = "Dlib pool size (requires restart)")]
-        public int DlibPoolSize { get; set; }
+        [Range(500, 30000)]
+        [Display(Name = "Worker analyze timeout (ms)")]
+        public int WorkerAnalyzeTimeoutMs { get; set; }
 
         [Range(1, 32)]
         [Display(Name = "Max concurrent scans")]
@@ -42,7 +42,7 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         [Range(0.0, 1.00)]
         [Display(Name = "Visitor match tolerance")]
-        public double VisitorDlibTolerance { get; set; }
+        public double VisitorRecognitionTolerance { get; set; }
 
         [Range(10, 150)]
         [Display(Name = "Enrollment sharpness threshold (desktop)")]
@@ -51,51 +51,6 @@ namespace FaceAttend.Models.ViewModels.Admin
         [Range(10, 100)]
         [Display(Name = "Enrollment sharpness threshold (mobile)")]
         public double EnrollSharpnessThresholdMobile { get; set; }
-
-        // ─── Advanced liveness ─────────────────────────────────────────────────────
-
-        [Display(Name = "Liveness decision")]
-        public string LivenessDecision { get; set; }
-
-        [Display(Name = "Multi-crop scales")]
-        public string LivenessMultiCropScales { get; set; }
-
-        [Range(64, 512)]
-        [Display(Name = "Liveness input size")]
-        public int LivenessInputSize { get; set; }
-
-        [Range(1.0, 5.0)]
-        [Display(Name = "Crop scale")]
-        public double LivenessCropScale { get; set; }
-
-        [Range(0, 10)]
-        [Display(Name = "Real class index")]
-        public int LivenessRealIndex { get; set; }
-
-        [Display(Name = "Output type")]
-        public string LivenessOutputType { get; set; }
-
-        [Display(Name = "Normalize")]
-        public string LivenessNormalize { get; set; }
-
-        [Display(Name = "Channel order")]
-        public string LivenessChannelOrder { get; set; }
-
-        [Range(200, 10000)]
-        [Display(Name = "Run timeout (ms)")]
-        public int LivenessRunTimeoutMs { get; set; }
-
-        [Range(100, 10000)]
-        [Display(Name = "Slow warning (ms)")]
-        public int LivenessSlowMs { get; set; }
-
-        [Range(1, 10)]
-        [Display(Name = "Circuit fail streak")]
-        public int LivenessCircuitFailStreak { get; set; }
-
-        [Range(0, 300)]
-        [Display(Name = "Circuit disable seconds")]
-        public int LivenessCircuitDisableSeconds { get; set; }
 
         // ─── Performance ───────────────────────────────────────────────────────────
 
@@ -188,8 +143,8 @@ namespace FaceAttend.Models.ViewModels.Admin
         public double NeedsReviewNearMatchRatio { get; set; }
 
         [Range(0.00, 0.20)]
-        [Display(Name = "Needs review liveness margin")]
-        public double NeedsReviewLivenessMargin { get; set; }
+        [Display(Name = "Needs review anti-spoof margin")]
+        public double NeedsReviewAntiSpoofMargin { get; set; }
 
         [Range(0, 200)]
         [Display(Name = "Needs review GPS margin (meters)")]
@@ -218,8 +173,6 @@ namespace FaceAttend.Models.ViewModels.Admin
         // ─── Diagnostics (read-only, not saved) ───────────────────────────────────
 
         public string FaceCacheStats { get; set; }
-        public string LivenessModelPath { get; set; }
-        public bool   LivenessModelExists { get; set; }
 
         // ─── TOTP 2FA (read-only, not saved via this form) ─────────────────────────
 

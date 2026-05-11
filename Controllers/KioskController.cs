@@ -89,26 +89,29 @@ namespace FaceAttend.Controllers
         public ActionResult Attend(double? lat, double? lon, double? accuracy,
             System.Web.HttpPostedFileBase image,
             int? faceX, int? faceY, int? faceW, int? faceH,
-            string deviceToken = null,
             bool wfhMode = false)
         {
-            var requestedAtUtc = TimeZoneHelper.NowLocal();
+            var requestedAtLocal = TimeZoneHelper.NowLocal();
+            var scanSw = System.Diagnostics.Stopwatch.StartNew();
 
             var activeScans = Interlocked.Increment(ref _activeScanCount);
             try
             {
                 if (activeScans > GetMaxConcurrentScans())
                 {
+                    OperationalMetricsService.RecordBusy();
                     Response.StatusCode = 503;
                     Response.AddHeader("Retry-After", "2");
-                    return JsonResponseBuilder.SystemBusy(2);
+                    var busy = JsonResponseBuilder.SystemBusy(2);
+                    PublicAuditService.RecordScan(Request, busy, "KIOSK", scanSw.ElapsedMilliseconds);
+                    return busy;
                 }
 
-                DlibBiometrics.FaceBox clientFaceBox = null;
+                OpenVinoBiometrics.FaceBox clientFaceBox = null;
                 if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
                     && faceW.Value > 0 && faceH.Value > 0)
                 {
-                    clientFaceBox = new DlibBiometrics.FaceBox
+                    clientFaceBox = new OpenVinoBiometrics.FaceBox
                     {
                         Left   = faceX.Value,
                         Top    = faceY.Value,
@@ -117,12 +120,14 @@ namespace FaceAttend.Controllers
                     };
                 }
 
-                return new AttendanceScanService().Scan(
-                    lat, lon, accuracy, image, clientFaceBox, requestedAtUtc,
+                var result = new AttendanceScanService().Scan(
+                    lat, lon, accuracy, image, clientFaceBox, requestedAtLocal,
                     includePerfTimings: ConfigurationService.GetBool("Kiosk:EnablePerfTimings", false),
-                    deviceToken: deviceToken,
                     httpContext: HttpContext,
                     wfhMode: wfhMode);
+                OperationalMetricsService.RecordScan(scanSw.ElapsedMilliseconds, result);
+                PublicAuditService.RecordScan(Request, result, "KIOSK", scanSw.ElapsedMilliseconds);
+                return result;
             }
             finally
             {
@@ -144,7 +149,7 @@ namespace FaceAttend.Controllers
 
             var item = VisitorScanService.Get(scanId);
 
-            if (item == null || item.Vec == null || item.Vec.Length != 128)
+            if (item == null || !FaceVectorCodec.IsValidVector(item.Vec))
                 return Json(new { ok = false, error = "SCAN_EXPIRED", message = "Scan expired. Please scan again." });
 
             if (!string.Equals(item.SessionBinding ?? "", DeviceService.GetVisitorSessionBinding(HttpContext), StringComparison.Ordinal))
@@ -169,8 +174,8 @@ namespace FaceAttend.Controllers
                         if (string.IsNullOrWhiteSpace(name))
                             return Json(new { ok = false, error = "NAME_REQUIRED", message = "Name is required." });
 
-                        var now   = DateTime.UtcNow;
-                        var bytes = DlibBiometrics.EncodeToBytes(item.Vec);
+                        var nowLocal = TimeZoneHelper.NowLocal();
+                        var bytes = FaceVectorCodec.EncodeToBytes(item.Vec);
                         var b64   = BiometricCrypto.ProtectBase64Bytes(bytes);
 
                         if (string.IsNullOrWhiteSpace(b64))
@@ -181,8 +186,8 @@ namespace FaceAttend.Controllers
                             Name               = name,
                             FaceEncodingBase64 = b64,
                             VisitCount         = 0,
-                            FirstVisitDate     = now,
-                            LastVisitDate      = now,
+                            FirstVisitDate     = nowLocal,
+                            LastVisitDate      = nowLocal,
                             IsActive           = true
                         };
 

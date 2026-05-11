@@ -20,7 +20,8 @@ namespace FaceAttend.Services.Security
         private static readonly DateTime UnixEpoch = new DateTime(1970, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         /// <summary>
-        /// Generates a new TOTP secret (160-bit, 20 bytes = 32 base64 chars).
+        /// Generates a new TOTP secret as a Base32 string.
+        /// Authenticator apps expect RFC 4648 Base32, not Base64.
         /// </summary>
         public static string GenerateSecret()
         {
@@ -29,7 +30,7 @@ namespace FaceAttend.Services.Security
             {
                 rng.GetBytes(bytes);
             }
-            return Convert.ToBase64String(bytes);
+            return Base32Encode(bytes);
         }
 
         /// <summary>
@@ -88,8 +89,20 @@ namespace FaceAttend.Services.Security
             if (string.IsNullOrWhiteSpace(storedHash) || string.IsNullOrWhiteSpace(inputCode))
                 return false;
 
-            var inputHash = HashCode(inputCode.ToUpperInvariant());
-            return storedHash.Equals(inputHash, StringComparison.OrdinalIgnoreCase);
+            var normalizedCode = inputCode.Trim().ToUpperInvariant();
+            var inputHash = HashCode(normalizedCode);
+            var storedHashes = storedHash.Split(new[] { '|' }, StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var hash in storedHashes)
+            {
+                if (hash.Equals("USED", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                if (hash.Equals(inputHash, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            return false;
         }
 
         /// <summary>
@@ -134,7 +147,8 @@ namespace FaceAttend.Services.Security
         {
             var currentStep = GetCurrentTimeStep();
             var periodEnd = (currentStep + 1) * PeriodSeconds;
-            return periodEnd - (int)(DateTime.UtcNow - UnixEpoch).TotalSeconds;
+            var nowSeconds = (long)(DateTime.UtcNow - UnixEpoch).TotalSeconds;
+            return (int)(periodEnd - nowSeconds);
         }
 
         /// <summary>
@@ -181,6 +195,34 @@ namespace FaceAttend.Services.Security
                     (hash[offset + 3] & 0xFF);
                 return binary % (int)Math.Pow(10, CodeLength);
             }
+        }
+
+        private static string Base32Encode(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+                return string.Empty;
+
+            const string alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+            var output = new StringBuilder((bytes.Length * 8 + 4) / 5);
+            var buffer = 0;
+            var bitsLeft = 0;
+
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                buffer = (buffer << 8) | bytes[i];
+                bitsLeft += 8;
+
+                while (bitsLeft >= 5)
+                {
+                    bitsLeft -= 5;
+                    output.Append(alphabet[(buffer >> bitsLeft) & 31]);
+                }
+            }
+
+            if (bitsLeft > 0)
+                output.Append(alphabet[(buffer << (5 - bitsLeft)) & 31]);
+
+            return output.ToString();
         }
 
         private static byte[] Base32Decode(string base32)

@@ -2,10 +2,7 @@
 <Project ToolsVersion="15.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <Import Project="packages\EntityFramework.6.4.4\build\EntityFramework.props" Condition="Exists('packages\EntityFramework.6.4.4\build\EntityFramework.props')" />
   <Import Project="packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.props" Condition="Exists('packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.props')" />
-  <Import Project="packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.props" Condition="Exists('packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.props')" />
   <Import Project="packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props" Condition="Exists('packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props')" />
-  <Import Project="packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props" Condition="Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props')" />
-  <Import Project="packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.props" Condition="Exists('packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.props')" />
   <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
   <PropertyGroup>
     <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
@@ -54,20 +51,11 @@
     <Reference Include="Antlr3.Runtime, Version=3.5.0.2, Culture=neutral, PublicKeyToken=eb42632606e9261f, processorArchitecture=MSIL">
       <HintPath>packages\Antlr.3.5.0.2\lib\Antlr3.Runtime.dll</HintPath>
     </Reference>
-    <Reference Include="DlibDotNet, Version=19.21.0.0, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\DlibDotNet.19.21.0.20220724\lib\netstandard2.0\DlibDotNet.dll</HintPath>
-    </Reference>
     <Reference Include="EntityFramework, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
       <HintPath>packages\EntityFramework.6.4.4\lib\net45\EntityFramework.dll</HintPath>
     </Reference>
     <Reference Include="EntityFramework.SqlServer, Version=6.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089, processorArchitecture=MSIL">
       <HintPath>packages\EntityFramework.6.4.4\lib\net45\EntityFramework.SqlServer.dll</HintPath>
-    </Reference>
-    <Reference Include="FaceONNX, Version=4.1.1.3, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\FaceONNX.4.1.1.3\lib\netstandard2.0\FaceONNX.dll</HintPath>
-    </Reference>
-    <Reference Include="FaceRecognitionDotNet, Version=1.3.0.7, Culture=neutral, processorArchitecture=MSIL">
-      <HintPath>packages\FaceRecognitionDotNet.1.3.0.7\lib\net461\FaceRecognitionDotNet.dll</HintPath>
     </Reference>
     <Reference Include="Microsoft.AspNetCore.Antiforgery, Version=2.3.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60, processorArchitecture=MSIL">
       <HintPath>packages\Microsoft.AspNetCore.Antiforgery.2.3.0\lib\netstandard2.0\Microsoft.AspNetCore.Antiforgery.dll</HintPath>
@@ -220,10 +208,6 @@
       <HintPath>packages\Microsoft.JSInterop.3.1.0\lib\netstandard2.0\Microsoft.JSInterop.dll</HintPath>
       <Private>True</Private>
     </Reference>
-    <Reference Include="Microsoft.ML.OnnxRuntime, Version=1.23.2.0, Culture=neutral, PublicKeyToken=f27f157f0a5b7bb6, processorArchitecture=MSIL">
-      <HintPath>packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\lib\netstandard2.0\Microsoft.ML.OnnxRuntime.dll</HintPath>
-      <Private>True</Private>
-    </Reference>
     <Reference Include="Microsoft.Net.Http.Headers, Version=2.3.0.0, Culture=neutral, PublicKeyToken=adb9793829ddae60, processorArchitecture=MSIL">
       <HintPath>packages\Microsoft.Net.Http.Headers.2.3.0\lib\netstandard2.0\Microsoft.Net.Http.Headers.dll</HintPath>
     </Reference>
@@ -279,8 +263,8 @@
     <Reference Include="System.Security.AccessControl, Version=4.1.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Security.AccessControl.4.5.0\lib\net461\System.Security.AccessControl.dll</HintPath>
     </Reference>
-    <Reference Include="System.Security.Cryptography.Xml, Version=8.0.0.2, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
-      <HintPath>packages\System.Security.Cryptography.Xml.8.0.2\lib\net462\System.Security.Cryptography.Xml.dll</HintPath>
+    <Reference Include="System.Security.Cryptography.Xml, Version=8.0.0.3, Culture=neutral, PublicKeyToken=cc7b13ffcd2ddd51, processorArchitecture=MSIL">
+      <HintPath>packages\System.Security.Cryptography.Xml.8.0.3\lib\net462\System.Security.Cryptography.Xml.dll</HintPath>
     </Reference>
     <Reference Include="System.Security.Principal.Windows, Version=5.0.0.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\System.Security.Principal.Windows.5.0.0\lib\net461\System.Security.Principal.Windows.dll</HintPath>
@@ -361,6 +345,8 @@
     <Compile Include="Areas\Admin\Controllers\EmployeesController.cs" />
     <Compile Include="Areas\Admin\Controllers\ErrorController.cs" />
     <Compile Include="Areas\Admin\Controllers\OfficesController.cs" />
+    <Compile Include="Areas\Admin\Controllers\OperationsController.cs" />
+    <Compile Include="Areas\Admin\Controllers\ReviewController.cs" />
     <Compile Include="Areas\Admin\Controllers\SettingsController.cs" />
     <Compile Include="Areas\Admin\Controllers\VisitorsController.cs" />
     <Compile Include="Areas\Admin\Filters\HandleAdminErrorAttribute.cs" />
@@ -374,10 +360,10 @@
     </Compile>
     <Compile Include="Controllers\Api\EnrollmentController.cs" />
     <Compile Include="Controllers\Api\ScanController.cs" />
+    <Compile Include="Controllers\AttendanceController.cs" />
     <Compile Include="Controllers\ErrorController.cs" />
     <Compile Include="Controllers\HealthController.cs" />
     <Compile Include="Controllers\KioskController.cs" />
-    <Compile Include="Controllers\KioskController.Device.cs" />
     <Compile Include="Controllers\Mobile\MobileEnrollmentController.cs" />
     <Compile Include="Controllers\Mobile\MobilePortalController.cs" />
     <Compile Include="Device.cs">
@@ -403,6 +389,7 @@
     </Compile>
     <Compile Include="Filters\AdminAuthorizeAttribute.cs" />
     <Compile Include="Filters\RateLimitAttribute.cs" />
+    <Compile Include="Filters\RequestSigningFilter.cs" />
     <Compile Include="Filters\SecurityHeadersAttribute.cs" />
     <Compile Include="Global.asax.cs">
       <DependentUpon>Global.asax</DependentUpon>
@@ -418,11 +405,12 @@
     <Compile Include="Models\ViewModels\Admin\EmployeeEditVm.cs" />
     <Compile Include="Models\ViewModels\Admin\OfficeBulkScheduleVm.cs" />
     <Compile Include="Models\ViewModels\Admin\OfficeEditVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\OperationsVm.cs" />
+    <Compile Include="Models\ViewModels\Admin\ReviewQueueVm.cs" />
     <Compile Include="Models\ViewModels\Admin\SettingsVm.cs" />
     <Compile Include="Models\ViewModels\Admin\VisitorLogRowVm.cs" />
     <Compile Include="Models\ViewModels\Admin\WizardViewModel.cs" />
     <Compile Include="Models\ViewModels\Mobile\MobileEnrollmentFormViewModels.cs" />
-    <Compile Include="Models\ViewModels\Mobile\MobileEnrollmentViewModel.cs" />
     <Compile Include="Models\ViewModels\Mobile\MobilePortalViewModels.cs" />
     <Compile Include="Models\ViewModels\Shared\CameraViewModel.cs" />
     <Compile Include="Models\ViewModels\Shared\FaceProgressViewModel.cs" />
@@ -442,21 +430,30 @@
     <Compile Include="Services\AuditHelper.cs" />
     <Compile Include="Services\Background\TempFileCleanupTask.cs" />
     <Compile Include="Services\Biometrics\BallTreeIndex.cs" />
+    <Compile Include="Services\Biometrics\BiometricPolicy.cs" />
     <Compile Include="Services\Biometrics\BiometricCrypto.cs" />
-    <Compile Include="Services\Biometrics\DlibBiometrics.cs" />
+    <Compile Include="Services\Biometrics\BiometricTemplateMetadataService.cs" />
     <Compile Include="Services\Biometrics\DuplicateCheckHelper.cs" />
     <Compile Include="Services\Biometrics\EmployeeFaceIndex.cs" />
+    <Compile Include="Services\Biometrics\EnrollmentCaptureService.cs" />
     <Compile Include="Services\Biometrics\EnrollmentQualityGate.cs" />
     <Compile Include="Services\Biometrics\FaceEncodingHelper.cs" />
+    <Compile Include="Services\Biometrics\FaceVectorCodec.cs" />
     <Compile Include="Services\Biometrics\FaceIndexBase.cs" />
     <Compile Include="Services\Biometrics\FaceQualityAnalyzer.cs" />
     <Compile Include="Services\Biometrics\FastFaceMatcher.cs" />
     <Compile Include="Services\Biometrics\FastScanPipeline.cs" />
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
     <Compile Include="Services\Biometrics\MatcherStats.cs" />
-    <Compile Include="Services\Biometrics\OnnxLiveness.cs" />
-    <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
-    <Compile Include="Services\ConfigurationService.cs" />
+    <Compile Include="Services\Biometrics\ModelIntegrityService.cs" />
+    <Compile Include="Services\Biometrics\OpenVinoBiometrics.cs" />
+      <Compile Include="Services\Biometrics\RiskyPairAuditService.cs" />
+      <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
+      <Compile Include="Services\CalibrationExportService.cs" />
+      <Compile Include="Services\CalibrationSummaryService.cs" />
+      <Compile Include="Services\ConfigurationService.cs" />
+      <Compile Include="Services\DatabaseMigrationStatusService.cs" />
+      <Compile Include="Services\Data\FaceAttendConnectionFactory.cs" />
     <Compile Include="Services\DeviceService.cs" />
     <Compile Include="Services\HealthProbe.cs" />
     <Compile Include="Services\Helpers\CsvHelper.cs" />
@@ -469,14 +466,22 @@
     <Compile Include="Services\OfficeLocationService.cs" />
     <Compile Include="Services\OfficeScheduleService.cs" />
     <Compile Include="Services\OperationResult.cs" />
+    <Compile Include="Services\OperationalMetricsService.cs" />
     <Compile Include="Services\Recognition\AttendanceScanService.cs" />
-    <Compile Include="Services\Recognition\PendingScanService.cs" />
+    <Compile Include="Services\Recognition\BiometricWorkerClient.cs" />
+      <Compile Include="Services\Recognition\BiometricWorkerContracts.cs" />
+      <Compile Include="Services\Recognition\PendingScanService.cs" />
+      <Compile Include="Services\Recognition\RecognitionDecisionFactory.cs" />
+      <Compile Include="Services\Recognition\RecognitionDecisionDto.cs" />
     <Compile Include="Services\Recognition\VisitorScanService.cs" />
     <Compile Include="Services\Security\AdminAccessControl.cs" />
     <Compile Include="Services\Security\AdminPersistCookieService.cs" />
     <Compile Include="Services\Security\AdminPinService.cs" />
     <Compile Include="Services\Security\AdminSessionService.cs" />
     <Compile Include="Services\Security\AdminUnlockCookieService.cs" />
+    <Compile Include="Services\Security\AttendanceAccessReceiptService.cs" />
+    <Compile Include="Services\Security\PublicAuditService.cs" />
+    <Compile Include="Services\Security\TotpService.cs" />
     <Compile Include="Services\Security\FileSecurityService.cs" />
     <Compile Include="Services\Security\LocationAntiSpoof.cs" />
     <Compile Include="Services\TimeZoneHelper.cs" />
@@ -496,26 +501,22 @@
   </ItemGroup>
   <ItemGroup>
     <Content Include=".tools\nuget.exe" />
-    <Content Include="App_Data\models\dlib\dlib_face_recognition_resnet_model_v1.dat" />
-    <Content Include="App_Data\models\dlib\mmod_human_face_detector.dat" />
-    <Content Include="App_Data\models\dlib\shape_predictor_5_face_landmarks.dat" />
-    <Content Include="App_Data\models\dlib\shape_predictor_68_face_landmarks.dat" />
-    <Content Include="App_Data\models\liveness\minifasnet.onnx" />
     <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
     <Content Include="Areas\Admin\Views\Dashboard\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Create.cshtml" />
-    <Content Include="Areas\Admin\Views\Employees\Devices.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Edit.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Enroll.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\Index.cshtml" />
-    <Content Include="Areas\Admin\Views\Employees\PendingDevices.cshtml" />
     <Content Include="Areas\Admin\Views\Employees\_EmployeeForm.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\Create.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\Edit.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Offices\_OfficeForm.cshtml" />
+    <Content Include="Areas\Admin\Views\Operations\Index.cshtml" />
+    <Content Include="Areas\Admin\Views\Operations\RiskyPairs.cshtml" />
+    <Content Include="Areas\Admin\Views\Review\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Settings\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\ErrorPage.cshtml" />
     <Content Include="Areas\Admin\Views\Shared\_AdminLayout.cshtml" />
@@ -575,6 +576,7 @@
     <Content Include="Content\_unified\components\uploader.css" />
     <Content Include="Content\_unified\components\wizard.css" />
     <Content Include="FaceAttendDB.sql" />
+    <Content Include="Docs\Database\20260425_hardening_migration.sql" />
     <Content Include="FaceAttendDBEntities.Context.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
@@ -635,7 +637,6 @@
     <Content Include="Scripts\kiosk\kiosk-canvas.js" />
     <Content Include="Scripts\kiosk\kiosk-clock.js" />
     <Content Include="Scripts\kiosk\kiosk-config.js" />
-    <Content Include="Scripts\kiosk\kiosk-device.js" />
     <Content Include="Scripts\kiosk\kiosk-fullscreen.js" />
     <Content Include="Scripts\kiosk\kiosk-location.js" />
     <Content Include="Scripts\kiosk\kiosk-map.js" />
@@ -679,8 +680,6 @@
     <Content Include="Scripts\vendor\toastify\toastify.min.js" />
     <Content Include="Views\Error\ErrorPage.cshtml" />
     <Content Include="Views\Kiosk\Index.cshtml" />
-    <Content Include="Views\MobileRegistration\Device.cshtml" />
-    <Content Include="Views\MobileRegistration\DeviceNotRecognized.cshtml" />
     <Content Include="Views\MobileRegistration\Employee.cshtml" />
     <Content Include="Views\MobileRegistration\Identify.cshtml" />
     <Content Include="Views\MobileRegistration\Index.cshtml" />
@@ -710,7 +709,6 @@
     <Folder Include="Vendor\" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="libman.json" />
     <Content Include="Areas\Admin\Views\Offices\BulkSchedule.cshtml" />
     <None Include="packages.config" />
     <Content Include="README.md" />
@@ -725,6 +723,12 @@
   <PropertyGroup>
     <VisualStudioVersion Condition="'$(VisualStudioVersion)' == ''">10.0</VisualStudioVersion>
     <VSToolsPath Condition="'$(VSToolsPath)' == ''">$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)</VSToolsPath>
+    <VsWebApplicationTargetsPath Condition="Exists('$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets')">$(VSToolsPath)</VsWebApplicationTargetsPath>
+    <VsWebApplicationTargetsPath Condition="'$(VsWebApplicationTargetsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)\WebApplications\Microsoft.WebApplication.targets')">$(ProgramFiles)\Microsoft Visual Studio\18\Community\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VsWebApplicationTargetsPath>
+    <VsWebApplicationTargetsPath Condition="'$(VsWebApplicationTargetsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\18\Professional\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)\WebApplications\Microsoft.WebApplication.targets')">$(ProgramFiles)\Microsoft Visual Studio\18\Professional\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VsWebApplicationTargetsPath>
+    <VsWebApplicationTargetsPath Condition="'$(VsWebApplicationTargetsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\18\Enterprise\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)\WebApplications\Microsoft.WebApplication.targets')">$(ProgramFiles)\Microsoft Visual Studio\18\Enterprise\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VsWebApplicationTargetsPath>
+    <VsWebApplicationTargetsPath Condition="'$(VsWebApplicationTargetsPath)' == '' and Exists('$(ProgramFiles)\Microsoft Visual Studio\18\Preview\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)\WebApplications\Microsoft.WebApplication.targets')">$(ProgramFiles)\Microsoft Visual Studio\18\Preview\MSBuild\Microsoft\VisualStudio\v$(VisualStudioVersion)</VsWebApplicationTargetsPath>
+    <VSToolsPath Condition="'$(VsWebApplicationTargetsPath)' != '' and !Exists('$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets')">$(VsWebApplicationTargetsPath)</VSToolsPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|x64'">
     <PlatformTarget>x64</PlatformTarget>
@@ -770,26 +774,13 @@
       <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.4.1.0\build\net472\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.4.1.0\build\net472\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.targets'))" />
-    <Error Condition="!Exists('packages\DlibDotNet.19.21.0.20220724\build\net45\DlibDotNet.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\DlibDotNet.19.21.0.20220724\build\net45\DlibDotNet.targets'))" />
-    <Error Condition="!Exists('packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.props'))" />
-    <Error Condition="!Exists('packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.targets'))" />
-    <Error Condition="!Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.props'))" />
-    <Error Condition="!Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets'))" />
     <Error Condition="!Exists('packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.AspNetCore.Components.Analyzers.3.1.0\build\netstandard2.0\Microsoft.AspNetCore.Components.Analyzers.props'))" />
-    <Error Condition="!Exists('packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.Managed.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.Managed.targets'))" />
-    <Error Condition="!Exists('packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.props'))" />
-    <Error Condition="!Exists('packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.targets'))" />
     <Error Condition="!Exists('packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.props'))" />
     <Error Condition="!Exists('packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.targets'))" />
     <Error Condition="!Exists('packages\EntityFramework.6.4.4\build\EntityFramework.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\EntityFramework.6.4.4\build\EntityFramework.props'))" />
     <Error Condition="!Exists('packages\EntityFramework.6.4.4\build\EntityFramework.targets')" Text="$([System.String]::Format('$(ErrorText)', 'packages\EntityFramework.6.4.4\build\EntityFramework.targets'))" />
   </Target>
   <Import Project="packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.4.1.0\build\net472\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.targets" Condition="Exists('packages\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.4.1.0\build\net472\Microsoft.CodeDom.Providers.DotNetCompilerPlatform.targets')" />
-  <Import Project="packages\DlibDotNet.19.21.0.20220724\build\net45\DlibDotNet.targets" Condition="Exists('packages\DlibDotNet.19.21.0.20220724\build\net45\DlibDotNet.targets')" />
-  <Import Project="packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.targets" Condition="Exists('packages\FaceRecognitionDotNet.1.3.0.7\build\FaceRecognitionDotNet.targets')" />
-  <Import Project="packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets" Condition="Exists('packages\Microsoft.Web.LibraryManager.Build.3.0.71\build\Microsoft.Web.LibraryManager.Build.targets')" />
-  <Import Project="packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.Managed.targets" Condition="Exists('packages\Microsoft.ML.OnnxRuntime.Managed.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.Managed.targets')" />
-  <Import Project="packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.targets" Condition="Exists('packages\Microsoft.ML.OnnxRuntime.1.23.2\build\netstandard2.0\Microsoft.ML.OnnxRuntime.targets')" />
   <Import Project="packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.targets" Condition="Exists('packages\Microsoft.TypeScript.MSBuild.5.9.3\build\Microsoft.TypeScript.MSBuild.targets')" />
   <Import Project="packages\EntityFramework.6.4.4\build\EntityFramework.targets" Condition="Exists('packages\EntityFramework.6.4.4\build\EntityFramework.targets')" />
 </Project>

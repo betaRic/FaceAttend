@@ -1,0 +1,155 @@
+@model FaceAttend.Models.ViewModels.Admin.ReviewQueueVm
+@{
+    ViewBag.Title = "Review Queue";
+    var reasonOptions = new[]
+    {
+        new { Value = "ALL", Text = "All reasons" },
+        new { Value = "NEAR_MATCH", Text = "Near match" },
+        new { Value = "NEAR_ANTI_SPOOF", Text = "Near anti-spoof" },
+        new { Value = "GPS_ACCURACY", Text = "GPS accuracy" },
+        new { Value = "GPS_REPEAT", Text = "GPS repeat" }
+    };
+    var statusOptions = new[]
+    {
+        new { Value = "PENDING", Text = "Pending" },
+        new { Value = "APPROVED", Text = "Approved" },
+        new { Value = "VOIDED", Text = "Voided" },
+        new { Value = "ALL", Text = "All" }
+    };
+}
+
+<div class="ea-page ea-review-page">
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title"><i class="fa-solid fa-triangle-exclamation"></i> Review Queue</h1>
+            <div class="ea-page-subtitle">@Model.PendingTotal pending records need human review.</div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-primary btn-sm" href="@Url.Action("Export", new { from = Model.From, to = Model.To, officeId = Model.OfficeId, employee = Model.Employee, reason = Model.Reason })">
+                <i class="fa-solid fa-file-export me-1"></i>Export Pending
+            </a>
+        </div>
+    </div>
+
+    @if (TempData["msg"] != null)
+    {
+        <div class="alert alert-@(TempData["msgKind"] ?? "info") py-2">@TempData["msg"]</div>
+    }
+
+    <div class="ea-form-card mb-3">
+        <div class="ea-form-body">
+            @using (Html.BeginForm("Index", "Review", new { area = "Admin" }, FormMethod.Get, new { @class = "row g-2 align-items-end" }))
+            {
+                <div class="col-6 col-lg-2">
+                    <label class="form-label small">From</label>
+                    <input class="form-control form-control-sm" type="date" name="from" value="@Model.From" />
+                </div>
+                <div class="col-6 col-lg-2">
+                    <label class="form-label small">To</label>
+                    <input class="form-control form-control-sm" type="date" name="to" value="@Model.To" />
+                </div>
+                <div class="col-12 col-lg-2">
+                    <label class="form-label small">Office</label>
+                    @Html.DropDownList("officeId", Model.OfficeOptions, "All offices", new { @class = "form-select form-select-sm" })
+                </div>
+                <div class="col-12 col-lg-2">
+                    <label class="form-label small">Employee</label>
+                    <input class="form-control form-control-sm" name="employee" value="@Model.Employee" placeholder="ID or name" />
+                </div>
+                <div class="col-6 col-lg-2">
+                    <label class="form-label small">Reason</label>
+                    <select class="form-select form-select-sm" name="reason">
+                        @foreach (var opt in reasonOptions)
+                        {
+                            <option value="@opt.Value" @(Model.Reason == opt.Value ? "selected" : "")>@opt.Text</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-6 col-lg-1">
+                    <label class="form-label small">Status</label>
+                    <select class="form-select form-select-sm" name="status">
+                        @foreach (var opt in statusOptions)
+                        {
+                            <option value="@opt.Value" @(Model.Status == opt.Value ? "selected" : "")>@opt.Text</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 col-lg-1 d-grid">
+                    <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+                </div>
+            }
+        </div>
+    </div>
+
+    <div class="ea-form-card">
+        <div class="table-responsive ea-tight-table">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Time Local</th>
+                        <th>Employee</th>
+                        <th>Office</th>
+                        <th>Type</th>
+                        <th>Signals</th>
+                        <th>Reasons</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @if (!Model.Rows.Any())
+                    {
+                        <tr><td colspan="7" class="text-center text-muted py-4">No review records found.</td></tr>
+                    }
+                    @foreach (var row in Model.Rows)
+                    {
+                        var reasons = (row.ReviewReasonCodes ?? "").Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                        <tr>
+                            <td class="text-nowrap">@row.TimestampLocal.ToString("MMM d, HH:mm")</td>
+                            <td>
+                                <div class="fw-semibold">@row.EmployeeFullName</div>
+                                <div class="text-muted small">@row.EmployeeId · @row.Department</div>
+                            </td>
+                            <td>@row.OfficeName</td>
+                            <td><span class="badge @(row.EventType == "IN" ? "bg-success" : "bg-primary")">@row.EventType</span></td>
+                            <td class="small text-muted">
+                                d=@(row.FaceDistance.HasValue ? row.FaceDistance.Value.ToString("0.000") : "-")
+                                antiSpoof=@(row.AntiSpoofScore.HasValue ? row.AntiSpoofScore.Value.ToString("0.000") : "-")
+                                gps=@(row.GPSAccuracy.HasValue ? row.GPSAccuracy.Value.ToString("0.0") + "m" : "-")
+                            </td>
+                            <td>
+                                @foreach (var reason in reasons)
+                                {
+                                    <span class="badge bg-warning text-dark me-1">@reason.Replace("_", " ")</span>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Details", "Attendance", new { area = "Admin", id = row.Id })">Details</a>
+                                @if (row.ReviewStatus == "PENDING")
+                                {
+                                    using (Html.BeginForm("Approve", "Review", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
+                                    {
+                                        @Html.AntiForgeryToken()
+                                        <input type="hidden" name="id" value="@row.Id" />
+                                        <button class="btn btn-success btn-sm" type="submit">Approve</button>
+                                    }
+                                    <button class="btn btn-outline-danger btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#void-@row.Id">Void</button>
+                                }
+                            </td>
+                        </tr>
+                        <tr class="collapse" id="void-@row.Id">
+                            <td colspan="7">
+                                @using (Html.BeginForm("Void", "Review", new { area = "Admin" }, FormMethod.Post, new { @class = "d-flex gap-2" }))
+                                {
+                                    @Html.AntiForgeryToken()
+                                    <input type="hidden" name="id" value="@row.Id" />
+                                    <input class="form-control form-control-sm" name="reason" placeholder="Required reason for voiding this attendance record" />
+                                    <button class="btn btn-danger btn-sm" type="submit">Confirm Void</button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

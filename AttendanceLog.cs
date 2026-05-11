@@ -33,9 +33,9 @@ namespace FaceAttend
         public Nullable<double> FaceDistance { get; set; }
         public Nullable<double> FaceSimilarity { get; set; }
         public Nullable<double> MatchThreshold { get; set; }
-        public Nullable<double> LivenessScore { get; set; }
-        public string LivenessResult { get; set; }
-        public string LivenessError { get; set; }
+        public Nullable<double> AntiSpoofScore { get; set; }
+        public string AntiSpoofResult { get; set; }
+        public string AntiSpoofError { get; set; }
         public string ClientIP { get; set; }
         public string UserAgent { get; set; }
         public bool NeedsReview { get; set; }
@@ -45,11 +45,19 @@ namespace FaceAttend
         public string HUCName { get; set; }
         public bool IsAutoRecorded { get; set; }
         public Nullable<System.DateTime> AttendanceDate { get; set; }
-        public Nullable<System.DateTime> AttemptedAtUtc { get; set; }
-        public Nullable<System.DateTime> AttendanceDateLocal { get; set; }
+        public Nullable<System.DateTime> AttemptedAtLocal { get; set; }
         public Nullable<int> ScanHour { get; set; }
         public Nullable<int> ScanMinute { get; set; }
         public bool IsWfh { get; set; }
+        public string ReviewStatus { get; set; }
+        public string ReviewReasonCodes { get; set; }
+        public Nullable<System.DateTime> ReviewedAt { get; set; }
+        public string ReviewedBy { get; set; }
+        public string ReviewNote { get; set; }
+        public bool IsVoided { get; set; }
+        public Nullable<System.DateTime> VoidedAt { get; set; }
+        public string VoidedBy { get; set; }
+        public string VoidReason { get; set; }
     
         public virtual Employee Employee { get; set; }
         public virtual Office Office { get; set; }

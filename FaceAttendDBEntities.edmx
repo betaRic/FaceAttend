@@ -42,9 +42,9 @@
           <Property Name="FaceDistance" Type="float" />
           <Property Name="FaceSimilarity" Type="float" />
           <Property Name="MatchThreshold" Type="float" />
-          <Property Name="LivenessScore" Type="float" />
-          <Property Name="LivenessResult" Type="nvarchar" MaxLength="20" />
-          <Property Name="LivenessError" Type="nvarchar" MaxLength="200" />
+          <Property Name="AntiSpoofScore" Type="float" />
+          <Property Name="AntiSpoofResult" Type="nvarchar" MaxLength="20" />
+          <Property Name="AntiSpoofError" Type="nvarchar" MaxLength="200" />
           <Property Name="ClientIP" Type="nvarchar" MaxLength="50" />
           <Property Name="UserAgent" Type="nvarchar" MaxLength="500" />
           <Property Name="NeedsReview" Type="bit" Nullable="false" />
@@ -54,11 +54,19 @@
           <Property Name="HUCName" Type="nvarchar" MaxLength="100" />
           <Property Name="IsAutoRecorded" Type="bit" Nullable="false" />
           <Property Name="AttendanceDate" Type="date" StoreGeneratedPattern="Computed" />
-          <Property Name="AttemptedAtUtc" Type="datetime2" Precision="7" />
-          <Property Name="AttendanceDateLocal" Type="date" StoreGeneratedPattern="Computed" />
+          <Property Name="AttemptedAtLocal" Type="datetime2" Precision="7" />
           <Property Name="ScanHour" Type="int" StoreGeneratedPattern="Computed" />
           <Property Name="ScanMinute" Type="int" StoreGeneratedPattern="Computed" />
           <Property Name="IsWfh" Type="bit" Nullable="false" />
+          <Property Name="ReviewStatus" Type="nvarchar" MaxLength="20" Nullable="false" />
+          <Property Name="ReviewReasonCodes" Type="nvarchar" MaxLength="200" />
+          <Property Name="ReviewedAt" Type="datetime2" Precision="7" />
+          <Property Name="ReviewedBy" Type="nvarchar" MaxLength="100" />
+          <Property Name="ReviewNote" Type="nvarchar(max)" />
+          <Property Name="IsVoided" Type="bit" Nullable="false" />
+          <Property Name="VoidedAt" Type="datetime2" Precision="7" />
+          <Property Name="VoidedBy" Type="nvarchar" MaxLength="100" />
+          <Property Name="VoidReason" Type="nvarchar" MaxLength="500" />
         </EntityType>
         <EntityType Name="Devices">
           <Key>
@@ -364,9 +372,9 @@
           <Property Name="FaceDistance" Type="Double" />
           <Property Name="FaceSimilarity" Type="Double" />
           <Property Name="MatchThreshold" Type="Double" />
-          <Property Name="LivenessScore" Type="Double" />
-          <Property Name="LivenessResult" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
-          <Property Name="LivenessError" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="AntiSpoofScore" Type="Double" />
+          <Property Name="AntiSpoofResult" Type="String" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="AntiSpoofError" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
           <Property Name="ClientIP" Type="String" MaxLength="50" FixedLength="false" Unicode="true" />
           <Property Name="UserAgent" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
           <Property Name="NeedsReview" Type="Boolean" Nullable="false" />
@@ -376,11 +384,19 @@
           <Property Name="HUCName" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
           <Property Name="IsAutoRecorded" Type="Boolean" Nullable="false" />
           <Property Name="AttendanceDate" Type="DateTime" annotation:StoreGeneratedPattern="Computed" Precision="0" />
-          <Property Name="AttemptedAtUtc" Type="DateTime" Precision="7" />
-          <Property Name="AttendanceDateLocal" Type="DateTime" annotation:StoreGeneratedPattern="Computed" Precision="0" />
+          <Property Name="AttemptedAtLocal" Type="DateTime" Precision="7" />
           <Property Name="ScanHour" Type="Int32" annotation:StoreGeneratedPattern="Computed" />
           <Property Name="ScanMinute" Type="Int32" annotation:StoreGeneratedPattern="Computed" />
           <Property Name="IsWfh" Type="Boolean" Nullable="false" />
+          <Property Name="ReviewStatus" Type="String" Nullable="false" MaxLength="20" FixedLength="false" Unicode="true" />
+          <Property Name="ReviewReasonCodes" Type="String" MaxLength="200" FixedLength="false" Unicode="true" />
+          <Property Name="ReviewedAt" Type="DateTime" Precision="7" />
+          <Property Name="ReviewedBy" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="ReviewNote" Type="String" MaxLength="Max" FixedLength="false" Unicode="true" />
+          <Property Name="IsVoided" Type="Boolean" Nullable="false" />
+          <Property Name="VoidedAt" Type="DateTime" Precision="7" />
+          <Property Name="VoidedBy" Type="String" MaxLength="100" FixedLength="false" Unicode="true" />
+          <Property Name="VoidReason" Type="String" MaxLength="500" FixedLength="false" Unicode="true" />
           <NavigationProperty Name="Employee" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Employees" FromRole="AttendanceLog" ToRole="Employee" />
           <NavigationProperty Name="Office" Relationship="FaceAttendDBModel.FK_AttendanceLogs_Offices" FromRole="AttendanceLog" ToRole="Office" />
         </EntityType>
@@ -600,11 +616,19 @@
           <EntitySetMapping Name="AttendanceLogs">
             <EntityTypeMapping TypeName="FaceAttendDBModel.AttendanceLog">
               <MappingFragment StoreEntitySet="AttendanceLogs">
+                <ScalarProperty Name="VoidReason" ColumnName="VoidReason" />
+                <ScalarProperty Name="VoidedBy" ColumnName="VoidedBy" />
+                <ScalarProperty Name="VoidedAt" ColumnName="VoidedAt" />
+                <ScalarProperty Name="IsVoided" ColumnName="IsVoided" />
+                <ScalarProperty Name="ReviewNote" ColumnName="ReviewNote" />
+                <ScalarProperty Name="ReviewedBy" ColumnName="ReviewedBy" />
+                <ScalarProperty Name="ReviewedAt" ColumnName="ReviewedAt" />
+                <ScalarProperty Name="ReviewReasonCodes" ColumnName="ReviewReasonCodes" />
+                <ScalarProperty Name="ReviewStatus" ColumnName="ReviewStatus" />
                 <ScalarProperty Name="IsWfh" ColumnName="IsWfh" />
                 <ScalarProperty Name="ScanMinute" ColumnName="ScanMinute" />
                 <ScalarProperty Name="ScanHour" ColumnName="ScanHour" />
-                <ScalarProperty Name="AttendanceDateLocal" ColumnName="AttendanceDateLocal" />
-                <ScalarProperty Name="AttemptedAtUtc" ColumnName="AttemptedAtUtc" />
+                <ScalarProperty Name="AttemptedAtLocal" ColumnName="AttemptedAtLocal" />
                 <ScalarProperty Name="AttendanceDate" ColumnName="AttendanceDate" />
                 <ScalarProperty Name="IsAutoRecorded" ColumnName="IsAutoRecorded" />
                 <ScalarProperty Name="HUCName" ColumnName="HUCName" />
@@ -614,9 +638,9 @@
                 <ScalarProperty Name="NeedsReview" ColumnName="NeedsReview" />
                 <ScalarProperty Name="UserAgent" ColumnName="UserAgent" />
                 <ScalarProperty Name="ClientIP" ColumnName="ClientIP" />
-                <ScalarProperty Name="LivenessError" ColumnName="LivenessError" />
-                <ScalarProperty Name="LivenessResult" ColumnName="LivenessResult" />
-                <ScalarProperty Name="LivenessScore" ColumnName="LivenessScore" />
+                <ScalarProperty Name="AntiSpoofError" ColumnName="AntiSpoofError" />
+                <ScalarProperty Name="AntiSpoofResult" ColumnName="AntiSpoofResult" />
+                <ScalarProperty Name="AntiSpoofScore" ColumnName="AntiSpoofScore" />
                 <ScalarProperty Name="MatchThreshold" ColumnName="MatchThreshold" />
                 <ScalarProperty Name="FaceSimilarity" ColumnName="FaceSimilarity" />
                 <ScalarProperty Name="FaceDistance" ColumnName="FaceDistance" />

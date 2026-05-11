@@ -11,7 +11,7 @@
  *   5. Too-close gate (MAX_FACE_AREA_RATIO = 0.90) — fine as-is, keep it
  *
  * Fix: Lower all thresholds and let the SERVER decide frame quality via ScanFrame.
- * The server runs dlib + ONNX liveness and returns meaningful errors.
+ * The server/worker path owns authoritative quality and anti-spoof decisions.
  */
 (function () {
     'use strict';
@@ -32,7 +32,7 @@
         // ── 1. Lower thresholds so server decides quality ──────────────────────
 
         // Face area: was 0.08 desktop / 0.06 mobile → now very permissive
-        // Server rejects if face is too small via dlib detection failure
+        // Server rejects if face is too small via authoritative detection failure
         C.MIN_FACE_AREA_RATIO_DESKTOP = 0.02;
         C.MIN_FACE_AREA_RATIO_MOBILE  = 0.02;
 
@@ -42,7 +42,7 @@
         C.SHARPNESS_THRESHOLD_MOBILE  = 5;
 
         // Brightness: was 30 → 0 (disabled)
-        // MiniFASNet handles dark images more gracefully than a pixel mean check
+        // Server-side worker quality checks handle this more reliably than a pixel mean gate.
         C.MIN_BRIGHTNESS = 0;
 
         // Distance warning: keep it as informational, not blocking
@@ -92,14 +92,14 @@
                         threshold: minRatio
                     });
                 }
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
+                if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(0, 'fail');
                 return Promise.resolve();
             }
 
-            // Too-close gate — keep this one (server liveness also fails when face fills frame)
+            // Too-close gate — keep this one (server antiSpoof also fails when face fills frame)
             if (liveArea > C.MAX_FACE_AREA_RATIO) {
                 this.handleStatus('Too close — back up.', 'warning');
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
+                if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(0, 'fail');
                 return Promise.resolve();
             }
 
@@ -137,7 +137,7 @@
 
                 // ── BRIGHTNESS GATE REMOVED ──
                 // Original code blocked if mean brightness < 30.
-                // Server liveness handles dim lighting better than a pixel average check.
+                // Server antiSpoof handles dim lighting better than a pixel average check.
             }
 
             return this.captureJpegBlob(C.UPLOAD_QUALITY)

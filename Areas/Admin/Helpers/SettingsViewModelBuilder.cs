@@ -24,31 +24,17 @@ namespace FaceAttend.Areas.Admin.Helpers
             var vm = new SettingsVm
             {
                 // Biometrics
-                DlibTolerance             = GetDlibToleranceWithLegacyFallback(db),
-                LivenessThreshold         = D(db, "Biometrics:LivenessThreshold", 0.65),
+                RecognitionTolerance             = GetRecognitionToleranceWithLegacyFallback(db),
+                AntiSpoofThreshold         = D(db, "Biometrics:AntiSpoof:ClearThreshold", 0.45),
                 AttendanceTolerance       = attendTol,
                 EnrollmentStrictTolerance = D(db, "Biometrics:EnrollmentStrictTolerance", 0.45),
-                DlibPoolSize              = I(db, "Biometrics:DlibPoolSize", 4),
+                WorkerAnalyzeTimeoutMs              = I(db, "Biometrics:Worker:AnalyzeTimeoutMs", 5000),
                 MaxConcurrentScans        = I(db, "Kiosk:MaxConcurrentScans", 4),
                 EnrollCaptureTarget       = I(db, "Biometrics:Enroll:CaptureTarget", 8),
                 EnrollMaxStoredVectors    = I(db, "Biometrics:Enroll:MaxStoredVectors", 8),
-                VisitorDlibTolerance      = D(db, "Visitors:DlibTolerance", attendTol),
+                VisitorRecognitionTolerance      = D(db, "Visitors:RecognitionTolerance", attendTol),
                 EnrollSharpnessThreshold       = D(db, "Biometrics:Enroll:SharpnessThreshold",        35.0),
                 EnrollSharpnessThresholdMobile = D(db, "Biometrics:Enroll:SharpnessThreshold:Mobile", 28.0),
-
-                // Advanced liveness
-                LivenessDecision              = NormalizeOrDefault(S(db, "Biometrics:Liveness:Decision",       "max"),    "max"),
-                LivenessMultiCropScales       = (S(db, "Biometrics:Liveness:MultiCropScales", "") ?? "").Trim(),
-                LivenessInputSize             = I(db, "Biometrics:LivenessInputSize", 128),
-                LivenessCropScale             = D(db, "Biometrics:Liveness:CropScale", 2.7),
-                LivenessRealIndex             = I(db, "Biometrics:Liveness:RealIndex", 1),
-                LivenessOutputType            = NormalizeOrDefault(S(db, "Biometrics:Liveness:OutputType",  "logits"), "logits"),
-                LivenessNormalize             = NormalizeOrDefault(S(db, "Biometrics:Liveness:Normalize",   "minus1_1"), "minus1_1"),
-                LivenessChannelOrder          = NormalizeOrDefault(S(db, "Biometrics:Liveness:ChannelOrder","BGR"),     "BGR"),
-                LivenessRunTimeoutMs          = I(db, "Biometrics:Liveness:RunTimeoutMs",        1500),
-                LivenessSlowMs                = I(db, "Biometrics:Liveness:SlowMs",              1200),
-                LivenessCircuitFailStreak     = I(db, "Biometrics:Liveness:CircuitFailStreak",   3),
-                LivenessCircuitDisableSeconds = I(db, "Biometrics:Liveness:CircuitDisableSeconds", 30),
 
                 // Performance
                 BallTreeThreshold     = I(db, "Biometrics:BallTreeThreshold",      50),
@@ -79,7 +65,7 @@ namespace FaceAttend.Areas.Admin.Helpers
 
                 // Review queue
                 NeedsReviewNearMatchRatio = D(db, "NeedsReview:NearMatchRatio",    0.90),
-                NeedsReviewLivenessMargin = D(db, "NeedsReview:LivenessMargin",    0.03),
+                NeedsReviewAntiSpoofMargin = D(db, "NeedsReview:AntiSpoofMargin", 0.03),
                 NeedsReviewGpsMargin      = I(db, "NeedsReview:GPSAccuracyMargin", 10),
 
                 // Visitors
@@ -105,8 +91,9 @@ namespace FaceAttend.Areas.Admin.Helpers
                     "Could not load settings from the database: " + errorMessage +
                     " — Defaults are shown below. Save to persist them.",
 
-                DlibTolerance = ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60),
-                LivenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65),
+                RecognitionTolerance = ConfigurationService.GetDouble("Biometrics:RecognitionTolerance", 0.60),
+                WorkerAnalyzeTimeoutMs = ConfigurationService.GetInt("Biometrics:Worker:AnalyzeTimeoutMs", 5000),
+                AntiSpoofThreshold = ConfigurationService.GetDouble("Biometrics:AntiSpoof:ClearThreshold", 0.45),
 
                 GPSAccuracyRequired = ConfigurationService.GetInt("Location:GPSAccuracyRequired", 50),
                 GPSRadiusDefault = ConfigurationService.GetInt("Location:GPSRadiusDefault", 100),
@@ -132,27 +119,6 @@ namespace FaceAttend.Areas.Admin.Helpers
                 MaxImageDimension = ConfigurationService.GetInt("Biometrics:MaxImageDimension", 1280),
                 PreprocessJpegQuality = ConfigurationService.GetInt("Biometrics:PreprocessJpegQuality", 85),
 
-                LivenessDecision = NormalizeOrDefault(
-                    ConfigurationService.GetString("Biometrics:Liveness:Decision", "max"),
-                    "max"),
-                LivenessMultiCropScales = ConfigurationService.GetString("Biometrics:Liveness:MultiCropScales", ""),
-                LivenessOutputType = NormalizeOrDefault(
-                    ConfigurationService.GetString("Biometrics:Liveness:OutputType", "logits"),
-                    "logits"),
-                LivenessNormalize = NormalizeOrDefault(
-                    ConfigurationService.GetString("Biometrics:Liveness:Normalize", "minus1_1"),
-                    "minus1_1"),
-                LivenessChannelOrder = NormalizeOrDefault(
-                    ConfigurationService.GetString("Biometrics:Liveness:ChannelOrder", "BGR"),
-                    "BGR"),
-                LivenessInputSize = ConfigurationService.GetInt("Biometrics:LivenessInputSize", 128),
-                LivenessCropScale = ConfigurationService.GetDouble("Biometrics:Liveness:CropScale", 2.7),
-                LivenessRealIndex = ConfigurationService.GetInt("Biometrics:Liveness:RealIndex", 1),
-                LivenessRunTimeoutMs = ConfigurationService.GetInt("Biometrics:Liveness:RunTimeoutMs", 1500),
-                LivenessSlowMs = ConfigurationService.GetInt("Biometrics:Liveness:SlowMs", 1200),
-                LivenessCircuitFailStreak = ConfigurationService.GetInt("Biometrics:Liveness:CircuitFailStreak", 3),
-                LivenessCircuitDisableSeconds = ConfigurationService.GetInt("Biometrics:Liveness:CircuitDisableSeconds", 30),
-
                 VisitorEnabled = ConfigurationService.GetBool("Kiosk:VisitorEnabled", false),
                 VisitorMaxRecords = ConfigurationService.GetInt("Visitors:MaxRecords", 10000),
                 VisitorRetentionYears = ConfigurationService.GetInt("Visitors:RetentionYears", 2),
@@ -176,16 +142,16 @@ namespace FaceAttend.Areas.Admin.Helpers
         {
             var messages = new System.Collections.Generic.List<string>();
 
-            if (ConfigurationService.HasKey(db, "DlibTolerance") &&
-                !ConfigurationService.HasKey(db, "Biometrics:DlibTolerance"))
+            if (ConfigurationService.HasKey(db, "RecognitionTolerance") &&
+                !ConfigurationService.HasKey(db, "Biometrics:RecognitionTolerance"))
             {
-                messages.Add("Legacy key DlibTolerance exists in SystemConfiguration. " +
-                    "New key Biometrics:DlibTolerance is preferred. Save settings once to migrate.");
+                messages.Add("Legacy key RecognitionTolerance exists in SystemConfiguration. " +
+                    "New key Biometrics:RecognitionTolerance is preferred. Save settings once to migrate.");
             }
 
-            if (ConfigurationService.HasKey(db, "Biometrics:Liveness:GateWaitMs"))
+            if (ConfigurationService.HasKey(db, "Biometrics:AntiSpoof:GateWaitMs"))
             {
-                messages.Add("Removed key Biometrics:Liveness:GateWaitMs still exists in SystemConfiguration. Save settings once to clean it up.");
+                messages.Add("Removed key Biometrics:AntiSpoof:GateWaitMs still exists in SystemConfiguration. Save settings once to clean it up.");
             }
 
             return string.Join(" ", messages);
@@ -209,12 +175,12 @@ namespace FaceAttend.Areas.Admin.Helpers
         private static bool B(FaceAttendDBEntities db, string key, bool def)
             => ConfigurationService.GetBool(db, key, ConfigurationService.GetBool(key, def));
 
-        // Special case: DlibTolerance has a legacy key in the DB as an intermediate fallback.
-        private static double GetDlibToleranceWithLegacyFallback(FaceAttendDBEntities db)
+        // Special case: RecognitionTolerance has a legacy key in the DB as an intermediate fallback.
+        private static double GetRecognitionToleranceWithLegacyFallback(FaceAttendDBEntities db)
         {
-            var webConfigDefault = ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60);
-            var legacyDbValue    = ConfigurationService.GetDouble(db, "DlibTolerance", webConfigDefault);
-            return ConfigurationService.GetDouble(db, "Biometrics:DlibTolerance", legacyDbValue);
+            var webConfigDefault = ConfigurationService.GetDouble("Biometrics:RecognitionTolerance", 0.60);
+            var legacyDbValue    = ConfigurationService.GetDouble(db, "RecognitionTolerance", webConfigDefault);
+            return ConfigurationService.GetDouble(db, "Biometrics:RecognitionTolerance", legacyDbValue);
         }
 
         private static string NormalizeTimeOrDefault(string value, string fallback)
@@ -223,11 +189,6 @@ namespace FaceAttend.Areas.Admin.Helpers
             return TimeHelper.TryParseTime(value, out time)
                 ? time.ToString(@"hh\:mm", CultureInfo.InvariantCulture)
                 : fallback;
-        }
-
-        private static string NormalizeOrDefault(string value, string fallback)
-        {
-            return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
         }
 
         #endregion

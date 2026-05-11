@@ -1,15 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Web.Hosting;
 using System.Web.Mvc;
+using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Security;
 
 namespace FaceAttend.Controllers
 {
-    [AllowAnonymous]
     [RoutePrefix("health")]
     public class HealthController : Controller
     {
@@ -30,6 +31,7 @@ namespace FaceAttend.Controllers
         /// </summary>
         [HttpGet]
         [Route("")]
+        [AllowAnonymous]
         [OutputCache(NoStore = true, Duration = 0, VaryByParam = "*")]
         public ActionResult Index()
         {
@@ -100,18 +102,57 @@ namespace FaceAttend.Controllers
 
             // Get face matcher stats
             var faceStats = FastFaceMatcher.GetStats();
+            var modelIntegrity = ModelIntegrityService.Check();
 
             return Json(new
             {
                 ok                   = ready,
                 app                  = snap.App,
                 database             = snap.Database,
-                dlibModelsPresent    = snap.DlibModelsPresent,
-                livenessModelPresent = snap.LivenessModelPresent,
-                livenessCircuitOpen  = snap.LivenessCircuitOpen,
-                livenessCircuitStuck = snap.LivenessCircuitStuck,
+                writeReady           = snap.WriteReady,
+                databaseMigrations = new
+                {
+                    ok = snap.DatabaseMigrationsOk,
+                    required = snap.DatabaseMigrationsRequired,
+                    error = snap.DatabaseMigrationError,
+                    biometricTemplatesTableExists = snap.BiometricTemplatesTableExists,
+                    activeEmployeesMissingTemplates = snap.ActiveEmployeesMissingTemplates,
+                    remainingDeviceTokenRows = snap.RemainingDeviceTokenRows
+                },
+                biometricWorkerReady = snap.BiometricWorkerReady,
+                antiSpoofModelPresent = snap.AntiSpoofModelPresent,
+                antiSpoofCircuitOpen  = snap.AntiSpoofCircuitOpen,
+                antiSpoofCircuitStuck = snap.AntiSpoofCircuitStuck,
                 warmUpState          = snap.WarmUpState,
                 warmUpMessage        = snap.WarmUpMessage,
+                modelVersion         = snap.ModelVersion,
+                modelIntegrity = new
+                {
+                    ok = snap.ModelIntegrityOk,
+                    expectedHashesConfigured = snap.ModelHashesConfigured,
+                    aclOk = snap.ModelAclOk,
+                    requireReadOnlyAcl = snap.ModelRequireReadOnlyAcl,
+                    error = snap.ModelIntegrityError,
+                    files = modelIntegrity.Files.Select(f => new
+                    {
+                        f.Name,
+                        f.Exists,
+                        f.Sha256,
+                        f.ExpectedSha256,
+                        f.Match,
+                        f.AclLocked,
+                        f.CurrentIdentityCanWriteFile,
+                        f.CurrentIdentityCanWriteDirectory,
+                        f.AclError
+                    })
+                },
+                worker = new
+                {
+                    enabled = snap.WorkerEnabled,
+                    healthy = snap.WorkerHealthy,
+                    status = snap.WorkerStatus,
+                    durationMs = snap.WorkerDurationMs
+                },
                 disk = new
                 {
                     ok         = diskOk,
@@ -126,7 +167,8 @@ namespace FaceAttend.Controllers
                     loaded     = faceStats?.IsInitialized ?? false,
                     employees = faceStats?.EmployeeCount ?? 0,
                     vectors   = faceStats?.TotalFaceVectors ?? 0,
-                    memoryMb  = faceStats?.MemoryEstimateMB ?? 0
+                    memoryMb  = faceStats?.MemoryEstimateMB ?? 0,
+                    cacheAgeSeconds = snap.FaceMatcherCacheAgeSeconds
                 },
                 security = new
                 {
@@ -138,11 +180,12 @@ namespace FaceAttend.Controllers
         }
 
         /// <summary>
-        /// Liveness endpoint — just confirms the worker process is alive.
+        /// AntiSpoof endpoint — just confirms the worker process is alive.
         /// Does NOT check DB, disk, or models. Used by nginx upstream checks.
         /// </summary>
         [HttpGet]
         [Route("live")]
+        [AllowAnonymous]
         [OutputCache(NoStore = true, Duration = 0, VaryByParam = "*")]
         public ActionResult Live()
         {
@@ -155,30 +198,12 @@ namespace FaceAttend.Controllers
         /// </summary>
         [HttpGet]
         [Route("diagnostics")]
+        [AdminAuthorize]
         [OutputCache(NoStore = true, Duration = 0, VaryByParam = "*")]
         public ActionResult Diagnostics()
         {
-            var dlibDir = ConfigurationService.GetString("Biometrics:DlibModelsDir", "~/App_Data/models/dlib");
-            var livenessPath = ConfigurationService.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx");
-            
-            // Check individual model files
-            var dlibDetails = new Dictionary<string, object>();
-            try
-            {
-                var absDir = HostingEnvironment.MapPath(dlibDir);
-                if (Directory.Exists(absDir))
-                {
-                    foreach (var f in Directory.GetFiles(absDir, "*.dat"))
-                    {
-                        dlibDetails[Path.GetFileName(f)] = true;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                dlibDetails["_error"] = false;
-                dlibDetails["_errorMessage"] = ex.Message;
-            }
+            var policy = BiometricPolicy.Current;
+            var modelIntegrity = ModelIntegrityService.Check();
 
             // Check database in detail
             object dbDetails;
@@ -207,8 +232,7 @@ namespace FaceAttend.Controllers
                 dbDetails = new { ok = false, error = ex.Message, errorType = ex.GetType().Name };
             }
 
-            // Check Dlib pool status
-            var dlibPoolStatus = DlibBiometrics.GetPoolStatus();
+            var biometricWorkerStatus = OpenVinoBiometrics.GetWorkerStatus();
 
             // Face matcher cache stats
             var matcherStats = FaceAttend.Services.Biometrics.FastFaceMatcher.GetStats();
@@ -225,15 +249,15 @@ namespace FaceAttend.Controllers
                 },
                 models = new
                 {
-                    dlibDir = dlibDir,
-                    dlibMappedPath = HostingEnvironment.MapPath(dlibDir),
-                    dlibFiles = dlibDetails,
-                    livenessPath = livenessPath,
-                    livenessMappedPath = HostingEnvironment.MapPath(livenessPath),
-                    livenessExists = System.IO.File.Exists(HostingEnvironment.MapPath(livenessPath) ?? "")
+                    detector = policy.DetectorModel,
+                    recognizer = policy.RecognizerModel,
+                    antiSpoof = policy.AntiSpoofModel,
+                    modelVersion = policy.ModelVersion,
+                    integrityOk = modelIntegrity.Ok,
+                    files = modelIntegrity.Files.Select(f => new { f.Name, f.Exists, f.Match })
                 },
                 database = dbDetails,
-                dlibPool = dlibPoolStatus,
+                biometricWorker = biometricWorkerStatus,
                 faceMatcher = new
                 {
                     isInitialized    = matcherStats.IsInitialized,

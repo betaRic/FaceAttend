@@ -94,7 +94,7 @@
         </div>
         <div class="status-item">
             <i class="fa-solid fa-check-circle"></i>
-            <span>Pending device saved</span>
+            <span>Enrollment saved for review</span>
         </div>
         <div class="status-item pending">
             <i class="fa-solid fa-clock"></i>
@@ -109,7 +109,7 @@
 else
 {
     <p class="message">
-        Your device has been registered successfully. You can now use Face Attendance on this device.
+        Use the public scanner after administrator approval.
     </p>
     
     <div class="status-box">
@@ -119,11 +119,11 @@ else
         </div>
         <div class="status-item">
             <i class="fa-solid fa-check-circle"></i>
-            <span>Pending device saved</span>
+            <span>Face verified</span>
         </div>
         <div class="status-item">
             <i class="fa-solid fa-check-circle"></i>
-            <span>Ready to use</span>
+            <span>Ready to scan attendance</span>
         </div>
     </div>
 }
@@ -137,9 +137,12 @@ else
     @if (isNewEmployee && employeeDbId != null)
     {
         <script>
-            // Check approval status periodically
             var checkInterval = setInterval(function() {
-                fetch('/MobileRegistration/CheckStatus?employeeDbId=@employeeDbId')
+                var headers = window.FaceAttend && FaceAttend.Utils
+                    ? FaceAttend.Utils.mergeRequestHeaders()
+                    : {};
+
+                fetch('/MobileRegistration/CheckStatus?employeeDbId=@employeeDbId', { headers: headers })
                     .then(r => r.json())
                     .then(raw => {
                         var data = raw && raw.ok && raw.data ? Object.assign({ ok: raw.ok, message: raw.message || null }, raw.data) : raw;
@@ -151,7 +154,7 @@ else
                             document.querySelector('.check-status').innerHTML = data.message;
                         }
                     });
-            }, 10000); // Check every 10 seconds
+            }, 10000);
         </script>
     }
 }

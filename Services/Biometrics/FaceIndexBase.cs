@@ -165,7 +165,7 @@ namespace FaceAttend.Services.Biometrics
                 var entryVec = GetVectorFromEntry(entry);
                 if (entryVec == null) continue;
 
-                var d = DlibBiometrics.Distance(vec, entryVec);
+                var d = FaceVectorCodec.Distance(vec, entryVec);
                 if (d < bestDist)
                 {
                     bestDist = d;

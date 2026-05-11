@@ -35,33 +35,5 @@ namespace FaceAttend.Models.ViewModels.Mobile
 
         [Range(1, int.MaxValue, ErrorMessage = "Office is required")]
         public int OfficeId { get; set; }
-
-        [Required(ErrorMessage = "Face enrollment is required")]
-        public string FaceEncoding { get; set; }
-
-        public string AllFaceEncodingsJson { get; set; }
-
-        [Required(ErrorMessage = "Device Name is required")]
-        [StringLength(50, MinimumLength = 2, ErrorMessage = "Device Name must be 2-50 characters")]
-        [RegularExpression(@"^[A-Za-z0-9 ._@]+$", ErrorMessage = "Device Name contains invalid characters")]
-        public string DeviceName { get; set; }
-    }
-
-    public class DeviceRegistrationVm
-    {
-        public string EmployeeId       { get; set; }
-        public string EmployeeFullName { get; set; }
-        public string Department       { get; set; }
-        public string Position         { get; set; }
-        public bool   IsNewEmployee    { get; set; }
-        public int?   EmployeeDbId     { get; set; }
-        public string Fingerprint      { get; set; }
-        public bool   HasExistingDevice  { get; set; }
-        public string ExistingDeviceName { get; set; }
-
-        [Required(ErrorMessage = "Device Name is required")]
-        [StringLength(50, MinimumLength = 2, ErrorMessage = "Device Name must be 2-50 characters")]
-        [RegularExpression(@"^[A-Za-z0-9\s.\-_@]+$", ErrorMessage = "Device Name contains invalid characters")]
-        public string DeviceName { get; set; }
     }
 }

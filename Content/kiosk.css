@@ -179,8 +179,8 @@ html, body {
     margin-top: var(--space-1);
 }
 
-/* Liveness */
-#livenessLine {
+/* Anti-spoof */
+#antiSpoofLine {
     font-size: 0.8125rem;
     font-weight: 600;
     font-family: var(--font-mono);
@@ -195,16 +195,16 @@ html, body {
     font-family: var(--font-mono);
 }
 
-#livenessLine.live-pass {
+#antiSpoofLine.live-pass {
     color: var(--color-success);
     text-shadow: 0 0 12px var(--glow-success);
 }
 
-#livenessLine.live-near {
+#antiSpoofLine.live-near {
     color: var(--color-warning);
 }
 
-#livenessLine.live-fail {
+#antiSpoofLine.live-fail {
     color: var(--color-error);
 }
 
@@ -687,9 +687,9 @@ html, body {
 }
 
 /* ==========================================================================
-   8. Liveness Bar
+   8. Anti-spoof Bar
    ========================================================================== */
-#livenessBarWrap {
+#antiSpoofBarWrap {
     position: absolute;
     bottom: 0;
     left: var(--space-4);
@@ -700,7 +700,7 @@ html, body {
     overflow: hidden;
 }
 
-.liveness-bar-fill {
+.antiSpoof-bar-fill {
     height: 100%;
     width: 0%;
     transition: width 0.2s ease, background-color 0.2s ease;
@@ -708,17 +708,17 @@ html, body {
     box-shadow: 0 0 8px var(--glow-primary);
 }
 
-.liveness-bar-fill.live-pass {
+.antiSpoof-bar-fill.live-pass {
     background: var(--color-success);
     box-shadow: 0 0 8px var(--glow-success);
 }
 
-.liveness-bar-fill.live-near {
+.antiSpoof-bar-fill.live-near {
     background: var(--color-warning);
     box-shadow: 0 0 8px var(--glow-warning);
 }
 
-.liveness-bar-fill.live-fail {
+.antiSpoof-bar-fill.live-fail {
     background: var(--color-error);
 }
 

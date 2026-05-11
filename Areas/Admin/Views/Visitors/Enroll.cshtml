@@ -1,4 +1,4 @@
-@model FaceAttend.Models.Visitor
+@model FaceAttend.Visitor
 
 @{
     Layout = "~/Areas/Admin/Views/Shared/_AdminLayout.cshtml";
@@ -26,10 +26,6 @@
                 <p class="text-muted mb-0">
                     @Model.Name 
                     <span class="badge bg-secondary ms-2">ID: @Model.Id</span>
-                    @if (!string.IsNullOrWhiteSpace(Model.Company))
-                    {
-                        <span class="badge bg-info ms-1">@Model.Company</span>
-                    }
                 </p>
             </div>
         </div>
@@ -74,7 +70,7 @@
                                 <i class="fa-solid fa-camera"></i>
                             </div>
                             <h5 class="fa-method__title">Live Camera</h5>
-                            <p class="fa-method__desc">Real-time face capture with automatic liveness detection</p>
+                            <p class="fa-method__desc">Real-time face capture with server-side anti-spoof checks</p>
                         </div>
 
                         @* Upload Photos *@
@@ -128,14 +124,14 @@
                                 </div>
 
 
-                                @* Liveness *@
-                                <div class="enroll-liveness-mini">
+                                @* Anti-spoof *@
+                                <div class="enroll-antiSpoof-mini">
                                     <div class="d-flex justify-content-between mb-1">
-                                        <small class="fw-semibold">Liveness</small>
-                                        <small id="livenessText">0%</small>
+                                        <small class="fw-semibold">Anti-spoof</small>
+                                        <small id="antiSpoofText">0%</small>
                                     </div>
                                     <div class="progress" style="height: 6px;">
-                                        <div class="progress-bar bg-warning" id="livenessBar" style="width: 0%"></div>
+                                        <div class="progress-bar bg-warning" id="antiSpoofBar" style="width: 0%"></div>
                                     </div>
                                 </div>
                             </div>

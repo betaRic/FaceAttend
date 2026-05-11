@@ -13,6 +13,7 @@ using FaceAttend.Services.Helpers;
 namespace FaceAttend.Areas.Admin.Controllers
 {
     [AdminAuthorize]
+    [RateLimit(Name = "AdminAttendance", MaxRequests = 120, WindowSeconds = 60, Burst = 30)]
     public class AttendanceController : Controller
     {
         // ── Index ────────────────────────────────────────────────────────────────
@@ -52,12 +53,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                 // ── Base query (all filters except NeedsReviewOnly) ───────────────
 
                 var baseQ = db.AttendanceLogs.AsNoTracking().AsQueryable();
+                baseQ = baseQ.Where(x => !x.IsVoided);
 
-                if (range.FromUtc.HasValue)
-                    baseQ = baseQ.Where(x => x.Timestamp >= range.FromUtc.Value);
+                if (range.FromLocalInclusive.HasValue)
+                    baseQ = baseQ.Where(x => x.Timestamp >= range.FromLocalInclusive.Value);
 
-                if (range.ToUtcExclusive.HasValue)
-                    baseQ = baseQ.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
+                if (range.ToLocalExclusive.HasValue)
+                    baseQ = baseQ.Where(x => x.Timestamp < range.ToLocalExclusive.Value);
 
                 if (vm.OfficeId.HasValue && vm.OfficeId.Value > 0)
                     baseQ = baseQ.Where(x => x.OfficeId == vm.OfficeId.Value);
@@ -100,13 +102,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                     .Select(x => new AttendanceRowVm
                     {
                         Id               = x.Id,
-                        TimestampUtc     = x.Timestamp,
+                        TimestampLocal   = x.Timestamp,
                         EmployeeId       = x.Employee.EmployeeId,
                         EmployeeFullName = x.EmployeeFullName,
                         Department       = x.Department,
                         OfficeName       = x.OfficeName,
                         EventType        = x.EventType,
-                        LivenessScore    = x.LivenessScore,
+                        AntiSpoofScore    = x.AntiSpoofScore,
                         FaceDistance     = x.FaceDistance,
                         LocationVerified = x.LocationVerified,
                         NeedsReview      = x.NeedsReview,
@@ -209,7 +211,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var vm = new AttendanceDetailsVm
                 {
                     Id               = row.Id,
-                    TimestampUtc     = row.Timestamp,
+                    TimestampLocal   = row.Timestamp,
                     EventType        = row.EventType,
                     Source           = row.Source,
 
@@ -231,14 +233,23 @@ namespace FaceAttend.Areas.Admin.Controllers
                     FaceSimilarity   = row.FaceSimilarity,
                     MatchThreshold   = row.MatchThreshold,
 
-                    LivenessScore    = row.LivenessScore,
-                    LivenessResult   = row.LivenessResult,
-                    LivenessError    = row.LivenessError,
+                    AntiSpoofScore    = row.AntiSpoofScore,
+                    AntiSpoofResult   = row.AntiSpoofResult,
+                    AntiSpoofError    = row.AntiSpoofError,
 
                     ClientIP         = row.ClientIP,
                     UserAgent        = row.UserAgent,
 
                     NeedsReview      = row.NeedsReview,
+                    ReviewStatus     = row.ReviewStatus,
+                    ReviewReasonCodes = row.ReviewReasonCodes,
+                    ReviewedAt       = row.ReviewedAt,
+                    ReviewedBy       = row.ReviewedBy,
+                    ReviewNote       = row.ReviewNote,
+                    IsVoided         = row.IsVoided,
+                    VoidedAt         = row.VoidedAt,
+                    VoidedBy         = row.VoidedBy,
+                    VoidReason       = row.VoidReason,
                     Notes            = row.Notes
                 };
 
@@ -250,6 +261,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RateLimit(Name = "AdminAttendanceReview", MaxRequests = 30, WindowSeconds = 60, Burst = 5)]
         public ActionResult MarkReviewed(long id, string note)
         {
             using (var db = new FaceAttendDBEntities())
@@ -257,9 +269,14 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var row = db.AttendanceLogs.FirstOrDefault(x => x.Id == id);
                 if (row == null) return HttpNotFound();
 
+                var actor = AuditHelper.GetActorIp(Request);
                 row.NeedsReview = false;
+                row.ReviewStatus = "APPROVED";
+                row.ReviewedAt = TimeZoneHelper.NowLocal();
+                row.ReviewedBy = actor;
+                row.ReviewNote = StringHelper.Truncate((note ?? "").Trim(), 4000);
 
-                var stamp = "Reviewed " + DateTime.UtcNow.ToString("u");
+                var stamp = "Reviewed " + TimeZoneHelper.NowLocal().ToString("yyyy-MM-dd HH:mm");
                 var extra = (note ?? "").Trim();
                 if (!string.IsNullOrWhiteSpace(extra)) stamp += " - " + extra;
 
@@ -268,6 +285,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                     : row.Notes + "\n" + stamp;
 
                 db.SaveChanges();
+                AuditHelper.Log(db, Request, AuditHelper.ActionAttendanceReview, "AttendanceLog", id,
+                    "Attendance record reviewed.", null, new { row.ReviewStatus, row.ReviewNote });
             }
 
             TempData["msg"] = "Marked as reviewed.";
@@ -279,18 +298,29 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
-        public ActionResult Delete(long id)
+        [RateLimit(Name = "AdminAttendanceReview", MaxRequests = 30, WindowSeconds = 60, Burst = 5)]
+        public ActionResult Delete(long id, string reason)
         {
             using (var db = new FaceAttendDBEntities())
             {
                 var row = db.AttendanceLogs.FirstOrDefault(x => x.Id == id);
                 if (row == null) return HttpNotFound();
 
-                db.AttendanceLogs.Remove(row);
+                var actor = AuditHelper.GetActorIp(Request);
+                row.IsVoided = true;
+                row.NeedsReview = false;
+                row.ReviewStatus = "VOIDED";
+                row.VoidedAt = TimeZoneHelper.NowLocal();
+                row.VoidedBy = actor;
+                row.VoidReason = StringHelper.Truncate(
+                    string.IsNullOrWhiteSpace(reason) ? "Voided from attendance details." : reason.Trim(),
+                    500);
                 db.SaveChanges();
+                AuditHelper.Log(db, Request, AuditHelper.ActionAttendanceReview, "AttendanceLog", id,
+                    "Attendance record voided.", null, new { row.VoidReason });
             }
 
-            TempData["msg"] = "Record deleted.";
+            TempData["msg"] = "Record voided.";
             TempData["msgKind"] = "success";
             return RedirectToAction("Index");
         }
@@ -339,12 +369,12 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 var policy = AttendanceReportService.LoadPolicy();
 
-                var q = db.AttendanceLogs.AsNoTracking().AsQueryable();
+                var q = db.AttendanceLogs.AsNoTracking().Where(x => !x.IsVoided).AsQueryable();
 
-                if (range.FromUtc.HasValue)
-                    q = q.Where(x => x.Timestamp >= range.FromUtc.Value);
-                if (range.ToUtcExclusive.HasValue)
-                    q = q.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
+                if (range.FromLocalInclusive.HasValue)
+                    q = q.Where(x => x.Timestamp >= range.FromLocalInclusive.Value);
+                if (range.ToLocalExclusive.HasValue)
+                    q = q.Where(x => x.Timestamp < range.ToLocalExclusive.Value);
                 if (officeId.HasValue && officeId.Value > 0)
                     q = q.Where(x => x.OfficeId == officeId.Value);
                 var deptTerm = (department ?? "").Trim();
@@ -427,6 +457,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         /// [AdminAuthorize] so only authenticated admins can reach it.
         /// </summary>
         [HttpGet]
+        [RateLimit(Name = "AdminAttendanceExport", MaxRequests = 10, WindowSeconds = 60, Burst = 2)]
         public ActionResult Export(string from, string to, int? officeId, string employee,
             string eventType, bool? needsReview)
         {
@@ -434,13 +465,13 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 var range = AdminQueryHelper.ParseRange((from ?? "").Trim(), (to ?? "").Trim());
 
-                var q = db.AttendanceLogs.AsNoTracking().AsQueryable();
+                var q = db.AttendanceLogs.AsNoTracking().Where(x => !x.IsVoided).AsQueryable();
 
-                if (range.FromUtc.HasValue)
-                    q = q.Where(x => x.Timestamp >= range.FromUtc.Value);
+                if (range.FromLocalInclusive.HasValue)
+                    q = q.Where(x => x.Timestamp >= range.FromLocalInclusive.Value);
 
-                if (range.ToUtcExclusive.HasValue)
-                    q = q.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
+                if (range.ToLocalExclusive.HasValue)
+                    q = q.Where(x => x.Timestamp < range.ToLocalExclusive.Value);
 
                 if (officeId.HasValue && officeId.Value > 0)
                     q = q.Where(x => x.OfficeId == officeId.Value);
@@ -475,7 +506,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         Department       = x.Department,
                         OfficeName       = x.OfficeName,
                         EventType        = x.EventType,
-                        LivenessScore    = x.LivenessScore,
+                        AntiSpoofScore    = x.AntiSpoofScore,
                         FaceDistance     = x.FaceDistance,
                         LocationVerified = x.LocationVerified,
                         GPSAccuracy      = x.GPSAccuracy,
@@ -494,6 +525,20 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var fileName = truncated
                     ? ("attendance_truncated_" + max + "_" + nowLocal.ToString("yyyyMMdd_HHmm") + ".csv")
                     : ("attendance_" + nowLocal.ToString("yyyyMMdd_HHmm") + ".csv");
+
+                AuditHelper.Log(db, Request, AuditHelper.ActionAttendanceExport, "Attendance", "CsvExport",
+                    "Exported attendance CSV.", null, new
+                    {
+                        from,
+                        to,
+                        officeId,
+                        employee,
+                        eventType,
+                        needsReview,
+                        rowCount = rows.Count,
+                        truncated
+                    });
+
                 return File(bytes, "text/csv", fileName);
             }
         }
@@ -506,6 +551,7 @@ namespace FaceAttend.Areas.Admin.Controllers
         /// Hard upper bound: 50,000 raw rows pulled from the DB before in-memory grouping.
         /// </summary>
         [HttpGet]
+        [RateLimit(Name = "AdminAttendanceExport", MaxRequests = 10, WindowSeconds = 60, Burst = 2)]
         public ActionResult ExportSummaryCsv(string from, string to,
             int? officeId, string department)
         {
@@ -522,12 +568,12 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 var policy = AttendanceReportService.LoadPolicy();
 
-                var q = db.AttendanceLogs.AsNoTracking().AsQueryable();
+                var q = db.AttendanceLogs.AsNoTracking().Where(x => !x.IsVoided).AsQueryable();
 
-                if (range.FromUtc.HasValue)
-                    q = q.Where(x => x.Timestamp >= range.FromUtc.Value);
-                if (range.ToUtcExclusive.HasValue)
-                    q = q.Where(x => x.Timestamp < range.ToUtcExclusive.Value);
+                if (range.FromLocalInclusive.HasValue)
+                    q = q.Where(x => x.Timestamp >= range.FromLocalInclusive.Value);
+                if (range.ToLocalExclusive.HasValue)
+                    q = q.Where(x => x.Timestamp < range.ToLocalExclusive.Value);
                 if (officeId.HasValue && officeId.Value > 0)
                     q = q.Where(x => x.OfficeId == officeId.Value);
                 var deptTerm = (department ?? "").Trim();
@@ -591,8 +637,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                             row.AmOut.HasValue ? row.AmOut.Value.ToString("HH:mm") : "",
                             row.PmIn.HasValue ? row.PmIn.Value.ToString("HH:mm") : "",
                             row.PmOut.HasValue ? row.PmOut.Value.ToString("HH:mm") : "",
-                            row.FirstInUtc.HasValue ? row.FirstInUtc.Value.ToString("HH:mm") : "",
-                            row.LastOutUtc.HasValue ? row.LastOutUtc.Value.ToString("HH:mm") : "",
+                            row.FirstInLocal.HasValue ? row.FirstInLocal.Value.ToString("HH:mm") : "",
+                            row.LastOutLocal.HasValue ? row.LastOutLocal.Value.ToString("HH:mm") : "",
                             (row.HoursNet ?? row.HoursRaw).HasValue
                                 ? (row.HoursNet ?? row.HoursRaw).Value.ToString("0.00", System.Globalization.CultureInfo.InvariantCulture)
                                 : "",
@@ -606,6 +652,17 @@ namespace FaceAttend.Areas.Admin.Controllers
 
                 var bytes = new UTF8Encoding(true).GetBytes(sb.ToString());
                 var fileName = "attendance_summary_" + TimeZoneHelper.NowLocal().ToString("yyyyMMdd") + ".csv";
+
+                AuditHelper.Log(db, Request, AuditHelper.ActionAttendanceExport, "Attendance", "SummaryCsvExport",
+                    "Exported attendance summary CSV.", null, new
+                    {
+                        from,
+                        to,
+                        officeId,
+                        department,
+                        employeeCount = grouped.Count()
+                    });
+
                 return File(bytes, "text/csv", fileName);
             }
         }

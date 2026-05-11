@@ -12,7 +12,7 @@ FaceAttend.FaceGuide = (function () {
     var OVAL_ALPHA    = 0.12;  // slow convergence → ~1s grow-in
     var INIT_RX_RATIO = 0.10;  // starting radius = 40% of RX_RATIO target
     var _ema = { cx: null, cy: null, rx: null, ry: null };
-    var TOO_CLOSE_AREA = 0.90;  // face area ratio above this = liveness fails
+    var TOO_CLOSE_AREA = 0.90;  // face area ratio above this = antiSpoof fails
     var TOO_FAR_AREA   = 0.09;  // face area ratio below this = amber "too far"
     var CENTER_MARGIN  = 0.15;  // face center must be within middle 70% of canvas
 

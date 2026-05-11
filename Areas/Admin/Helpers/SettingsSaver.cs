@@ -28,7 +28,6 @@ namespace FaceAttend.Areas.Admin.Helpers
             SaveLocationSettings(db, vm, modifiedBy);
             SaveAttendanceSettings(db, vm, workStartTs, workEndTs, lunchStartTs, lunchEndTs, modifiedBy);
             SaveReviewQueueSettings(db, vm, modifiedBy);
-            SaveLivenessSettings(db, vm, modifiedBy);
             CleanupLegacyKeys(db);
             SavePerformanceSettings(db, vm, modifiedBy);
             SaveVisitorSettings(db, vm, modifiedBy);
@@ -38,18 +37,18 @@ namespace FaceAttend.Areas.Admin.Helpers
         {
             ConfigurationService.Upsert(
                 db,
-                "Biometrics:DlibTolerance",
-                vm.DlibTolerance.ToString(CultureInfo.InvariantCulture),
+                "Biometrics:RecognitionTolerance",
+                vm.RecognitionTolerance.ToString(CultureInfo.InvariantCulture),
                 "double",
-                "Dlib face distance tolerance. Lower = stricter match.",
+                "Face embedding distance tolerance. Lower = stricter match.",
                 modifiedBy);
 
             ConfigurationService.Upsert(
                 db,
-                "Biometrics:LivenessThreshold",
-                vm.LivenessThreshold.ToString(CultureInfo.InvariantCulture),
+                "Biometrics:AntiSpoof:ClearThreshold",
+                vm.AntiSpoofThreshold.ToString(CultureInfo.InvariantCulture),
                 "double",
-                "Minimum liveness score to accept a scan.",
+                "Minimum anti-spoof score to accept a scan.",
                 modifiedBy);
 
         }
@@ -184,9 +183,9 @@ namespace FaceAttend.Areas.Admin.Helpers
                 vm.EnrollmentStrictTolerance.ToString(CultureInfo.InvariantCulture), "double",
                 "Strict tolerance for enrollment duplicate detection. Lower = harder to enroll same face twice.", modifiedBy);
 
-            ConfigurationService.Upsert(db, "Biometrics:DlibPoolSize",
-                vm.DlibPoolSize.ToString(CultureInfo.InvariantCulture), "int",
-                "Number of Dlib instances in the pool. Requires app restart to take effect.", modifiedBy);
+            ConfigurationService.Upsert(db, "Biometrics:Worker:AnalyzeTimeoutMs",
+                vm.WorkerAnalyzeTimeoutMs.ToString(CultureInfo.InvariantCulture), "int",
+                "Timeout in milliseconds for OpenVINO worker face analysis.", modifiedBy);
 
             ConfigurationService.Upsert(db, "Kiosk:MaxConcurrentScans",
                 vm.MaxConcurrentScans.ToString(CultureInfo.InvariantCulture), "int",
@@ -200,8 +199,8 @@ namespace FaceAttend.Areas.Admin.Helpers
                 vm.EnrollMaxStoredVectors.ToString(CultureInfo.InvariantCulture), "int",
                 "Maximum face vectors stored per enrolled employee.", modifiedBy);
 
-            ConfigurationService.Upsert(db, "Visitors:DlibTolerance",
-                vm.VisitorDlibTolerance.ToString(CultureInfo.InvariantCulture), "double",
+            ConfigurationService.Upsert(db, "Visitors:RecognitionTolerance",
+                vm.VisitorRecognitionTolerance.ToString(CultureInfo.InvariantCulture), "double",
                 "Face distance tolerance for visitor recognition at kiosk.", modifiedBy);
 
             ConfigurationService.Upsert(db, "Biometrics:Enroll:SharpnessThreshold",
@@ -226,10 +225,10 @@ namespace FaceAttend.Areas.Admin.Helpers
 
             ConfigurationService.Upsert(
                 db,
-                "NeedsReview:LivenessMargin",
-                vm.NeedsReviewLivenessMargin.ToString(CultureInfo.InvariantCulture),
+                "NeedsReview:AntiSpoofMargin",
+                vm.NeedsReviewAntiSpoofMargin.ToString(CultureInfo.InvariantCulture),
                 "double",
-                "If liveness is within this margin above threshold, mark record as NeedsReview.",
+                "If anti-spoof is within this margin above threshold, mark record as NeedsReview.",
                 modifiedBy);
 
             ConfigurationService.Upsert(
@@ -242,119 +241,26 @@ namespace FaceAttend.Areas.Admin.Helpers
 
         }
 
-        private static void SaveLivenessSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
-        {
-            var decision = NormalizeOrDefault(vm.LivenessDecision, "max");
-            var scales = (vm.LivenessMultiCropScales ?? "").Trim();
-            var outputType = NormalizeOrDefault(vm.LivenessOutputType, "logits");
-            var normalize = NormalizeOrDefault(vm.LivenessNormalize, "minus1_1");
-            var channelOrder = NormalizeOrDefault(vm.LivenessChannelOrder, "BGR");
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:Decision",
-                decision,
-                "string",
-                "How to combine multi-crop liveness results: max or avg.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:MultiCropScales",
-                scales,
-                "string",
-                "Comma-separated crop scales for liveness tuning (example: 2.3,2.7,3.1).",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:LivenessInputSize",
-                vm.LivenessInputSize.ToString(CultureInfo.InvariantCulture),
-                "int",
-                "Liveness model input size (pixels). Must match the model.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:CropScale",
-                vm.LivenessCropScale.ToString(CultureInfo.InvariantCulture),
-                "double",
-                "Crop scale around detected face before liveness inference.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:RealIndex",
-                vm.LivenessRealIndex.ToString(CultureInfo.InvariantCulture),
-                "int",
-                "Index of the REAL class in model output.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:OutputType",
-                outputType,
-                "string",
-                "Model output type: logits or probs.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:Normalize",
-                normalize,
-                "string",
-                "Input normalize mode: 0_1, minus1_1, imagenet, none.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:ChannelOrder",
-                channelOrder,
-                "string",
-                "Channel order for tensor: RGB or BGR.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:RunTimeoutMs",
-                vm.LivenessRunTimeoutMs.ToString(CultureInfo.InvariantCulture),
-                "int",
-                "Max ONNX run time before the circuit breaker trips.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:SlowMs",
-                vm.LivenessSlowMs.ToString(CultureInfo.InvariantCulture),
-                "int",
-                "Milliseconds considered slow for liveness inference.",
-                modifiedBy);
-
-            // NOTE: CleanupLegacyKeys() is called by SaveSettings() after this method.
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:CircuitFailStreak",
-                vm.LivenessCircuitFailStreak.ToString(CultureInfo.InvariantCulture),
-                "int",
-                "How many failures before circuit opens.",
-                modifiedBy);
-
-            ConfigurationService.Upsert(
-                db,
-                "Biometrics:Liveness:CircuitDisableSeconds",
-                vm.LivenessCircuitDisableSeconds.ToString(CultureInfo.InvariantCulture),
-                "int",
-                "How long to disable liveness after failures.",
-                modifiedBy);
-
-        }
-
         private static void CleanupLegacyKeys(FaceAttendDBEntities db)
         {
-            ConfigurationService.Delete(db, "Biometrics:Liveness:GateWaitMs");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoofThreshold");
+            ConfigurationService.Delete(db, "Biometrics:MobileAntiSpoofThreshold");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoofInputSize");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:Decision");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:MultiCropScales");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:CropScale");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:RealIndex");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:OutputType");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:Normalize");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:ChannelOrder");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:RunTimeoutMs");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:SlowMs");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:CircuitFailStreak");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:CircuitDisableSeconds");
+            ConfigurationService.Delete(db, "Biometrics:AntiSpoof:GateWaitMs");
             ConfigurationService.Delete(db, "Biometrics:FaceMatchTuner:Enabled");
             ConfigurationService.Delete(db, "Biometrics:FaceMatchTunerEnabled");
+            ConfigurationService.DeleteByPrefix(db, "Queue:");
         }
 
         private static void SavePerformanceSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)
@@ -440,13 +346,13 @@ namespace FaceAttend.Areas.Admin.Helpers
                 new
                 {
                     vm.VisitorEnabled,
-                    vm.DlibTolerance,
-                    vm.LivenessThreshold,
+                    vm.RecognitionTolerance,
+                    vm.AntiSpoofThreshold,
                     vm.GPSAccuracyRequired,
                     vm.GPSRadiusDefault,
                     vm.MinGapSeconds,
                     vm.NeedsReviewNearMatchRatio,
-                    vm.NeedsReviewLivenessMargin,
+                    vm.NeedsReviewAntiSpoofMargin,
                     vm.NeedsReviewGpsMargin,
                     vm.VisitorMaxRecords,
                     vm.VisitorRetentionYears,
@@ -454,13 +360,5 @@ namespace FaceAttend.Areas.Admin.Helpers
                 });
         }
 
-        #region Private Helpers
-
-        private static string NormalizeOrDefault(string value, string fallback)
-        {
-            return string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-        }
-
-        #endregion
     }
 }

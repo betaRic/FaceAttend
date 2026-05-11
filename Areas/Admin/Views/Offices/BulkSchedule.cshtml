@@ -27,8 +27,7 @@
         </div>
     </div>
 
-    @using (Html.BeginForm("BulkSchedule", "Offices", FormMethod.Post, new { id = "bulkScheduleForm" }))
-    {
+    <form id="bulkScheduleForm" method="post" action="@Url.Action("BulkSchedule", "Offices", new { area = "Admin" })">
         @Html.AntiForgeryToken()
 
         @* Quick-apply bar *@
@@ -155,7 +154,7 @@
                 <i class="fa-solid fa-floppy-disk me-1"></i>Save Changes
             </button>
         </div>
-    }
+    </form>
 </div>
 
 @section scripts {

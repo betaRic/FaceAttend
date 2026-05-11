@@ -46,6 +46,11 @@ namespace FaceAttend.Services
         // Attendance actions
         public const string ActionAttendanceExport   = "ATTENDANCE_EXPORT";
         public const string ActionAttendanceReview   = "ATTENDANCE_REVIEW";
+        public const string ActionAttendanceScanSuccess = "ATTENDANCE_SCAN_SUCCESS";
+        public const string ActionAttendanceScanFail    = "ATTENDANCE_SCAN_FAIL";
+        public const string ActionAttendanceSelfView    = "ATTENDANCE_SELF_VIEW";
+        public const string ActionAttendanceSelfExport  = "ATTENDANCE_SELF_EXPORT";
+        public const string ActionPublicEnrollmentSubmitted = "PUBLIC_ENROLLMENT_SUBMITTED";
         
         // Visitor actions
         public const string ActionVisitorCreate      = "VISITOR_CREATE";

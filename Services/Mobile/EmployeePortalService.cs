@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Data.Entity;
 using System.Linq;
 using System.Text;
 using FaceAttend.Models.ViewModels.Mobile;
+using FaceAttend.Services.Helpers;
 
 namespace FaceAttend.Services.Mobile
 {
@@ -12,6 +14,86 @@ namespace FaceAttend.Services.Mobile
     /// </summary>
     public static class EmployeePortalService
     {
+        public static EmployeePortalVm BuildPortalVm(
+            FaceAttendDBEntities db,
+            Employee employee,
+            DateTime todayLocal,
+            DateTime? accessExpiresUtc = null)
+        {
+            if (db == null) throw new ArgumentNullException(nameof(db));
+            if (employee == null) throw new ArgumentNullException(nameof(employee));
+
+            var todayRange = TimeZoneHelper.LocalDateRange(todayLocal);
+            var todayLogs = db.AttendanceLogs
+                .Include("Office")
+                .Where(l => l.EmployeeId == employee.Id &&
+                            !l.IsVoided &&
+                            l.Timestamp >= todayRange.fromLocalInclusive &&
+                            l.Timestamp < todayRange.toLocalExclusive)
+                .OrderBy(l => l.Timestamp)
+                .ToList();
+
+            var firstDayOfMonth = new DateTime(todayLocal.Year, todayLocal.Month, 1, 0, 0, 0, DateTimeKind.Unspecified);
+            var firstDayOfNextMonth = firstDayOfMonth.AddMonths(1);
+
+            var monthLogs = db.AttendanceLogs
+                .Include("Office")
+                .Where(l => l.EmployeeId == employee.Id &&
+                            !l.IsVoided &&
+                            l.Timestamp >= firstDayOfMonth &&
+                            l.Timestamp < firstDayOfNextMonth)
+                .OrderBy(l => l.Timestamp)
+                .ToList();
+
+            var totalDaysPresent = monthLogs
+                .Where(l => l.EventType == "IN")
+                .Select(l => l.Timestamp.Date)
+                .Distinct()
+                .Count();
+
+            var totalEstimatedHours = totalDaysPresent * 8.0;
+            var lastAttendance = todayLogs.LastOrDefault();
+            var recentLogs = monthLogs
+                .OrderByDescending(l => l.Timestamp)
+                .Take(10)
+                .OrderBy(l => l.Timestamp)
+                .Select(l => new RecentAttendanceVm
+                {
+                    Date = l.Timestamp.ToString("MMM dd"),
+                    Time = l.Timestamp.ToString("h:mm tt"),
+                    Type = l.EventType,
+                    Office = l.Office != null ? l.Office.Name : "Unknown"
+                })
+                .ToList();
+
+            return new EmployeePortalVm
+            {
+                EmployeeId = employee.EmployeeId,
+                FullName = employee.FirstName + " " + employee.LastName,
+                Position = StringHelper.SanitizeDisplayText(employee.Position),
+                Department = StringHelper.SanitizeDisplayText(employee.Department),
+                OfficeName = StringHelper.SanitizeDisplayText(employee.Office != null ? employee.Office.Name : null),
+                RecordAccessMode = "Fresh scan",
+                AccessExpiresAtUtc = accessExpiresUtc,
+
+                TodayStatus = lastAttendance != null && lastAttendance.EventType == "IN" ? "Timed In" :
+                              lastAttendance != null && lastAttendance.EventType == "OUT" ? "Timed Out" : "Not Yet",
+                LastScanTime = lastAttendance != null ? lastAttendance.Timestamp.ToString("h:mm tt") : null,
+
+                TotalDaysPresent = totalDaysPresent,
+                TotalHours = Math.Round(totalEstimatedHours, 1),
+                AverageHoursPerDay = totalDaysPresent > 0
+                    ? Math.Round(totalEstimatedHours / totalDaysPresent, 1)
+                    : 0,
+
+                RecentEntries = recentLogs,
+                MonthlyReport = BuildMonthlyAttendanceReport(monthLogs, todayLocal),
+
+                CurrentMonth = todayLocal.ToString("yyyy_MM"),
+                CurrentMonthDisplay = todayLocal.ToString("MMMM yyyy")
+            };
+        }
+
         /// <summary>
         /// Builds a day-by-day attendance report for the month containing <paramref name="todayLocal"/>.
         /// </summary>

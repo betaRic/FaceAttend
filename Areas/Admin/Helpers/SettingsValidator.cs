@@ -13,40 +13,6 @@ namespace FaceAttend.Areas.Admin.Helpers
     public static class SettingsValidator
     {
         /// <summary>
-        /// Validates choice fields (enum-like values).
-        /// </summary>
-        public static void ValidateChoiceFields(SettingsVm vm, ModelStateDictionary modelState)
-        {
-            if (vm.LivenessDecision != null)
-            {
-                var value = vm.LivenessDecision.Trim().ToLowerInvariant();
-                if (value != "max" && value != "avg")
-                    modelState.AddModelError("LivenessDecision", "Use max or avg.");
-            }
-
-            if (vm.LivenessOutputType != null)
-            {
-                var value = vm.LivenessOutputType.Trim().ToLowerInvariant();
-                if (value != "logits" && value != "probs")
-                    modelState.AddModelError("LivenessOutputType", "Use logits or probs.");
-            }
-
-            if (vm.LivenessNormalize != null)
-            {
-                var value = vm.LivenessNormalize.Trim().ToLowerInvariant();
-                if (value != "0_1" && value != "minus1_1" && value != "imagenet" && value != "none")
-                    modelState.AddModelError("LivenessNormalize", "Use 0_1, minus1_1, imagenet, or none.");
-            }
-
-            if (vm.LivenessChannelOrder != null)
-            {
-                var value = vm.LivenessChannelOrder.Trim().ToUpperInvariant();
-                if (value != "RGB" && value != "BGR")
-                    modelState.AddModelError("LivenessChannelOrder", "Use RGB or BGR.");
-            }
-        }
-
-        /// <summary>
         /// Validates attendance-related fields (time values).
         /// </summary>
         public static void ValidateAttendanceFields(

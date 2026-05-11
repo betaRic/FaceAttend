@@ -1,0 +1,86 @@
+@model FaceAttend.Services.Biometrics.RiskyPairAuditService.AuditResult
+@{
+    ViewBag.Title = "Risky Pair Audit";
+}
+
+<div class="ea-page ea-ops-page">
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title"><i class="fa-solid fa-user-shield"></i> Risky Pair Audit</h1>
+            <div class="ea-page-subtitle">
+                @Model.EmployeeCount employees · @Model.VectorCount vectors · generated @Model.GeneratedAtUtc.ToString("yyyy-MM-dd HH:mm:ss") UTC
+            </div>
+        </div>
+        <div class="ea-page-actions">
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("Index", "Operations", new { area = "Admin" })">Operations</a>
+            <a class="btn btn-outline-primary btn-sm" href="@Url.Action("RiskyPairs", "Operations", new { area = "Admin", top = 250 })">Top 250</a>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-3">
+        <div class="col-6 col-xl-3">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Unsafe Employees</div>
+                <div class="h4 mb-0 text-@(Model.UnsafePairCount > 0 ? "danger" : "success")">@Model.UnsafePairCount</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Critical Distance</div>
+                <div class="h4 mb-0">@Model.CriticalDistance.ToString("0.000")</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Unsafe Distance</div>
+                <div class="h4 mb-0">@Model.UnsafeDistance.ToString("0.000")</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Watch Distance</div>
+                <div class="h4 mb-0">@Model.WatchDistance.ToString("0.000")</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="ea-form-card">
+        <div class="ea-form-header">
+            <div class="ea-form-title">Closest Cross-Employee Matches</div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Risk</th>
+                        <th>Employee</th>
+                        <th>Closest Other Employee</th>
+                        <th class="text-end">Distance</th>
+                        <th>Recommendation</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @foreach (var row in Model.Rows)
+                {
+                    var badge = row.RiskLevel == "CRITICAL" ? "danger" :
+                                row.RiskLevel == "HIGH" ? "warning" :
+                                row.RiskLevel == "WATCH" ? "info" : "success";
+                    <tr>
+                        <td><span class="badge bg-@badge">@row.RiskLevel</span></td>
+                        <td>
+                            <div class="fw-semibold">@row.DisplayName</div>
+                            <div class="text-muted small">@row.EmployeeId · vector @row.VectorIndex</div>
+                        </td>
+                        <td>
+                            <div class="fw-semibold">@row.OtherDisplayName</div>
+                            <div class="text-muted small">@row.OtherEmployeeId · vector @row.OtherVectorIndex</div>
+                        </td>
+                        <td class="text-end">@row.Distance.ToString("0.0000")</td>
+                        <td>@row.Recommendation</td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>

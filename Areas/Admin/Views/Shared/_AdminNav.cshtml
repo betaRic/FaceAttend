@@ -12,10 +12,10 @@
 
     bool onDash             = (curCtrl == "dashboard");
     bool onEmp              = (curCtrl == "employees" && curAct == "index");
-    bool onDevices          = (curCtrl == "employees" && curAct == "devices");
-    bool onPendingDevices   = (curCtrl == "employees" && curAct == "pendingdevices");
     bool onOff              = (curCtrl == "offices");
     bool onAtt              = (curCtrl == "attendance" && curAct == "index");
+    bool onReview           = (curCtrl == "review");
+    bool onOperations       = (curCtrl == "operations");
     bool onSummary          = (curCtrl == "attendance" && curAct == "summaryreport");
     bool onVisitors         = (curCtrl == "visitors");
     bool onSet              = (curCtrl == "settings");
@@ -37,12 +37,6 @@
             Employees
         </a>
 
-        <a class="admin-nav-link @(onDevices ? "active" : "")"
-           href="@Url.Action("Devices", "Employees", new { area = "Admin" })">
-            <span class="admin-nav-icon"><i class="fa-solid fa-mobile-screen" aria-hidden="true"></i></span>
-            Devices
-        </a>
-
         <a class="admin-nav-link @(onOff ? "active" : "")"
            href="@Url.Action("Index", "Offices", new { area = "Admin" })">
             <span class="admin-nav-icon"><i class="fa-solid fa-building" aria-hidden="true"></i></span>
@@ -61,6 +55,12 @@
             Summary Report
         </a>
 
+        <a class="admin-nav-link @(onReview ? "active" : "")"
+           href="@Url.Action("Index", "Review", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i></span>
+            Review Queue
+        </a>
+
         <a class="admin-nav-link @(onVisitors ? "active" : "")"
            href="@Url.Action("Index", "Visitors", new { area = "Admin" })">
             <span class="admin-nav-icon"><i class="fa-solid fa-user-check" aria-hidden="true"></i></span>
@@ -77,6 +77,12 @@
            href="@Url.Action("Index", "Settings", new { area = "Admin" })">
             <span class="admin-nav-icon"><i class="fa-solid fa-gear" aria-hidden="true"></i></span>
             Settings
+        </a>
+
+        <a class="admin-nav-link @(onOperations ? "active" : "")"
+           href="@Url.Action("Index", "Operations", new { area = "Admin" })">
+            <span class="admin-nav-icon"><i class="fa-solid fa-display" aria-hidden="true"></i></span>
+            Operations
         </a>
     </div>
 </nav>

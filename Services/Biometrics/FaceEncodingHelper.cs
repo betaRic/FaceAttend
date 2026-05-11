@@ -17,7 +17,7 @@ namespace FaceAttend.Services.Biometrics
                 if (!BiometricCrypto.TryGetBytesFromStoredBase64(base64, out bytes))
                     return null;
 
-                return DlibBiometrics.DecodeFromBytes(bytes);
+                return FaceVectorCodec.DecodeFromBytes(bytes);
             }
             catch (Exception ex)
             {

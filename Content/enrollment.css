@@ -218,8 +218,8 @@
     color: var(--color-success);
 }
 
-/* Liveness Mini */
-.enroll-liveness-mini {
+/* Anti-spoof Mini */
+.enroll-antiSpoof-mini {
     margin-top: 1rem;
     padding: 0.75rem;
     background: var(--warning-50);

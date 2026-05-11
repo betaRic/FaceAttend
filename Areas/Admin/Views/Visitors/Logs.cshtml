@@ -1,4 +1,3 @@
-@using FaceAttend.Services
 @model System.Collections.Generic.List<FaceAttend.Models.ViewModels.Admin.VisitorLogRowVm>
 @{
     ViewBag.Title = "Visitor Logs";
@@ -160,11 +159,10 @@
                     <tbody>
                         @foreach (var r in Model)
                         {
-                            var localTs = TimeZoneHelper.UtcToLocal(r.TimestampUtc);
                             <tr>
                                 <td style="white-space:nowrap;">
-                                    <div class="fw-semibold" style="font-size:.85rem;">@localTs.ToString("HH:mm")</div>
-                                    <div class="ea-cell-muted">@localTs.ToString("MMM d, yyyy")</div>
+                                    <div class="fw-semibold" style="font-size:.85rem;">@r.TimestampLocal.ToString("HH:mm")</div>
+                                    <div class="ea-cell-muted">@r.TimestampLocal.ToString("MMM d, yyyy")</div>
                                 </td>
                                 <td>
                                     <div class="fw-semibold" style="font-size:.875rem;">@r.VisitorName</div>

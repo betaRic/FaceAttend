@@ -7,9 +7,24 @@
   ```sql
   -- Execute: Scripts/Sql/DatabaseOptimization.sql
   ```
+- [ ] Run biometric template metadata migration
+  ```sql
+  -- Execute: Docs/Database/20260501_biometric_template_metadata.sql
+  ```
+- [ ] Remove obsolete legacy device bearer tokens
+  ```sql
+  -- Execute: Docs/Database/20260501_remove_legacy_device_tokens.sql
+  ```
+- [ ] Verify stabilization migrations
+  ```sql
+  -- Execute: Docs/Database/20260501_verify_stabilization_migrations.sql
+  ```
 - [ ] Verify all indexes created
 - [ ] Test connection to database
 - [ ] Verify AdminAuditLogs table exists
+- [ ] Verify BiometricTemplates table exists and backfill count matches enrolled employees
+- [ ] Verify no remaining non-empty `Devices.DeviceToken` values
+- [ ] Verify `/Kiosk/RegisterDevice`, `/Kiosk/CheckDeviceStatus`, and `/MobileRegistration/RegisterDevice` are not live product routes
 
 ### 2. Environment Configuration
 
@@ -28,13 +43,18 @@
 - [ ] Connection String: Pooling=True, Min Pool Size=5, Max Pool Size=100
 - [ ] Admin:SessionMinutes = 30
 - [ ] Admin:TotpEnabled = false (or true after testing)
-- [ ] Biometrics:DlibPoolSize = 20 (adjust based on CPU cores)
-- [ ] Biometrics:LivenessThreshold = 0.45 (or tune based on testing)
+- [ ] Biometrics:Worker:BaseUrl points to localhost worker
+- [ ] Biometrics:Worker:AnalyzeTimeoutMs = 5000 or tuned from pilot latency
+- [ ] Biometrics:AntiSpoof:*Threshold values are calibrated from pilot samples
+- [ ] Biometrics:ModelHashes = `<filename>=<sha256>;...` after model files are finalized
+- [ ] Biometrics:RequireModelReadOnlyAcl = true after model folder ACLs are locked
+- [ ] Database:RequireStabilizationMigrations = true after the migration verification script is clean
 
 ### 3. File & Folder Permissions
 - [ ] App_Data folder: Read/Write for application pool
 - [ ] Logs folder: Write for application pool
 - [ ] Temp folder: Read/Write for application pool
+- [ ] App_Data\models folder and model files: Read-only for application pool, no write/modify/delete rights
 
 ### 4. SSL/TLS Configuration
 - [ ] HTTPS enabled on site
@@ -48,7 +68,9 @@
 
 ### 1. Initial Verification
 - [ ] Health endpoint returns 200: `GET /health`
-- [ ] Response includes: database: true, dlibModelsPresent: true, livenessModelPresent: true
+- [ ] Response includes: database: true, biometricWorkerReady: true, worker.healthy: true
+- [ ] Response includes: writeReady: true, modelIntegrity.ok: true, modelIntegrity.aclOk: true, and model hash entries
+- [ ] Response includes: databaseMigrations.ok: true with zero missing templates and zero legacy device tokens
 - [ ] Disk space check passes
 
 ### 2. Admin Access Test
@@ -90,8 +112,8 @@
 | | `Admin:PinLockoutSeconds` | 300 | Lockout duration after max attempts |
 | | `Admin:SessionMinutes` | 30 | Admin session expiry |
 | | `Admin:TotpEnabled` | false | Enable TOTP 2FA |
-| **Biometrics** | `Biometrics:DlibPoolSize` | 20 | Concurrent face scans |
-| | `Biometrics:LivenessThreshold` | 0.45 | Liveness detection threshold |
+| **Biometrics** | `Biometrics:Worker:AnalyzeTimeoutMs` | 5000 | Worker scan timeout in milliseconds |
+| | `Biometrics:AntiSpoof:ClearThreshold` | 0.45 | Anti-spoof clear-pass threshold |
 | | `Biometrics:AttendanceTolerance` | 0.60 | Max distance for match |
 | | `Biometrics:BallTreeThreshold` | 50 | Employee count to enable BallTree |
 | **Attendance** | `Attendance:MinGapSeconds` | 180 | Min seconds between scans |
@@ -106,10 +128,10 @@
 
 | Issue | Solution |
 |-------|----------|
-| Health returns 503 | Check DB connection, model files exist |
+| Health returns 503 | Check DB connection and OpenVINO worker health |
 | Scan timeout | Increase `Kiosk:RequestTimeoutMs` |
-| High memory usage | Reduce `Biometrics:DlibPoolSize` |
-| Liveness circuit open | Check ONNX model file, reset in Settings |
+| High worker latency | Profile worker model load/inference and lower kiosk concurrency |
+| Anti-spoof failures | Check worker model health and review pilot calibration samples |
 | Face index not loaded | Check FastFaceMatcher initialization in logs |
 
 ### Log Locations
@@ -140,7 +162,7 @@ For production government deployment:
 4. Add application performance monitoring
 
 ### Current Limits
-- **Max concurrent scans**: Configurable (default: 20 via dlib pool)
+- **Max concurrent scans**: Configurable (default: 20 via OpenVINO pool)
 - **Face index**: In-memory (lost on restart, single server)
 - **Database**: Supports 10,000+ employees
 

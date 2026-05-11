@@ -113,17 +113,17 @@
             var scanning = _state.liveInFlight;
             var good     = _state.faceStatus === 'good';
 
-            // color based on liveness status (priority over scanning/good states)
+            // color based on antiSpoof status (priority over scanning/good states)
             var mainColor, glowColor;
-            var livenessCls = _ui.livenessLine ? (_ui.livenessLine.className || '') : '';
+            var antiSpoofCls = _ui.antiSpoofLine ? (_ui.antiSpoofLine.className || '') : '';
 
-            if (livenessCls.indexOf('live-fail') >= 0) {
+            if (antiSpoofCls.indexOf('live-fail') >= 0) {
                 mainColor = '#ef4444';
                 glowColor = 'rgba(239,68,68,0.60)';
-            } else if (livenessCls.indexOf('live-near') >= 0) {
+            } else if (antiSpoofCls.indexOf('live-near') >= 0) {
                 mainColor = '#f59e0b';
                 glowColor = 'rgba(245,158,11,0.60)';
-            } else if (livenessCls.indexOf('live-pass') >= 0) {
+            } else if (antiSpoofCls.indexOf('live-pass') >= 0) {
                 mainColor = '#22c55e';
                 glowColor = 'rgba(34,197,94,0.60)';
             } else if (scanning) {

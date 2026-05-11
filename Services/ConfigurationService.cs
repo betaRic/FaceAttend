@@ -29,10 +29,10 @@ namespace FaceAttend.Services
         private static readonly System.Collections.Generic.HashSet<string> _stableKeys =
             new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                "Biometrics:DlibModelsDir",
-                "Biometrics:LivenessModelPath",
-                "Biometrics:DlibDetector",
-                "Biometrics:DlibPoolSize",
+                "Biometrics:OpenVinoModelsDir",
+                "Biometrics:AntiSpoofModel",
+                "Biometrics:Worker:BaseUrl",
+                "Biometrics:Worker:AnalyzeTimeoutMs",
                 "App:TimeZoneId",
                 "Admin:AllowedIpRanges",
                 "TempFile:MaxAgeMinutes",
@@ -226,6 +226,18 @@ namespace FaceAttend.Services
         }
 
         /// <summary>
+        /// Upserts a configuration value using an internally managed DbContext.
+        /// </summary>
+        public static void Set(string key, string value,
+            string dataType = "string", string description = "", string modifiedBy = "ADMIN")
+        {
+            using (var db = new FaceAttendDBEntities())
+            {
+                SetInDb(db, key, value, dataType, description, modifiedBy);
+            }
+        }
+
+        /// <summary>
         /// Alias for SetInDb - for compatibility with SystemConfigService naming.
         /// </summary>
         public static void Upsert(FaceAttendDBEntities db, string key, string value, 
@@ -256,6 +268,27 @@ namespace FaceAttend.Services
         public static void Delete(FaceAttendDBEntities db, string key)
         {
             DeleteFromDb(db, key);
+        }
+
+        public static int DeleteByPrefix(FaceAttendDBEntities db, string prefix)
+        {
+            if (db == null) throw new ArgumentNullException(nameof(db));
+            if (string.IsNullOrWhiteSpace(prefix)) return 0;
+
+            var rows = db.SystemConfigurations
+                .Where(x => x.Key.StartsWith(prefix))
+                .ToList();
+
+            foreach (var row in rows)
+            {
+                db.SystemConfigurations.Remove(row);
+                InvalidateCache(row.Key);
+            }
+
+            if (rows.Count > 0)
+                db.SaveChanges();
+
+            return rows.Count;
         }
 
         #endregion

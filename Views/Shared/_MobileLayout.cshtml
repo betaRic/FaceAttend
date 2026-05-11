@@ -87,24 +87,123 @@
             background: #0f172a !important;
             color: #f8fafc !important;
         }
+
+        html,
+        body {
+            min-height: 100%;
+        }
+
+        body.mobile-app {
+            overflow: hidden;
+        }
+
+        .mobile-page-frame {
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .mobile-topnav,
+        .mobile-footer {
+            flex: 0 0 auto;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: .75rem;
+            padding: .55rem .9rem;
+            background: rgba(2, 6, 23, .92);
+            border-color: rgba(148, 163, 184, .16);
+        }
+
+        .mobile-topnav {
+            border-bottom: 1px solid rgba(148, 163, 184, .16);
+        }
+
+        .mobile-footer {
+            min-height: 32px;
+            border-top: 1px solid rgba(148, 163, 184, .16);
+            color: #94a3b8;
+            font-size: .72rem;
+        }
+
+        .mobile-topnav__brand {
+            color: #f8fafc;
+            font-weight: 800;
+            text-decoration: none;
+            white-space: nowrap;
+        }
+
+        .mobile-topnav__title {
+            color: #cbd5e1;
+            font-size: .84rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            text-align: right;
+        }
+
+        .mobile-content {
+            flex: 1 1 auto;
+            min-height: 0;
+            width: 100%;
+        }
+
+        .mobile-content > .row,
+        .mobile-content > .row > [class*="col-"] {
+            min-height: 0;
+        }
+
+        .mobile-content .mobile-shell {
+            min-height: 0;
+            max-height: calc(100vh - 96px);
+            max-height: calc(100dvh - 96px);
+            overflow: auto;
+            padding-bottom: .5rem;
+        }
+
+        @@media (max-width: 420px) {
+            .mobile-topnav,
+            .mobile-footer {
+                padding-left: .7rem;
+                padding-right: .7rem;
+            }
+
+            .mobile-topnav__title {
+                max-width: 58vw;
+            }
+        }
     </style>
 </head>
 <body class="mobile-app"
       data-audio-success="@Url.Content("~/Content/audio/success.mp3")"
       data-audio-notif="@Url.Content("~/Content/audio/notif.mp3")">
-    <div class="container-fluid px-3 px-sm-4 py-3">
-        <div class="row justify-content-center">
-            <div class="col-12 col-sm-11 col-md-8 col-lg-6">
-                <main class="mobile-shell">
-                    @RenderBody()
-                </main>
+    <div class="mobile-page-frame">
+        <header class="mobile-topnav">
+            <a class="mobile-topnav__brand" href="@Url.Action("Index", "Kiosk", new { area = "" })">FaceAttend</a>
+            <span class="mobile-topnav__title">@ViewBag.Title</span>
+        </header>
+
+        <div class="mobile-content container-fluid px-2 px-sm-3 py-2">
+            <div class="row justify-content-center h-100">
+                <div class="col-12 col-sm-11 col-md-8 col-lg-6 h-100">
+                    <main class="mobile-shell">
+                        @RenderBody()
+                    </main>
+                </div>
             </div>
         </div>
+
+        <footer class="mobile-footer">
+            <span>DILG</span>
+            <span>@DateTime.Now.ToString("yyyy-MM-dd")</span>
+        </footer>
     </div>
     
     <!-- Scripts -->
     @Scripts.Render("~/bundles/jquery")
     @Scripts.Render("~/bundles/sweetalert")
+    @Scripts.Render("~/bundles/fa-core")
     
     <!-- Unified Mobile Swal Helper -->
     <script>
@@ -211,12 +310,10 @@
             var isPhone = /iphone|android.*mobile|windows phone|iemobile|blackberry/.test(ua);
             var isTablet = /ipad|android(?!.*mobile)|tablet/.test(ua);
             
-            // Personal phone = mobile mode, so clear kiosk override
             if (isPhone) {
                 document.cookie = 'ForceKioskMode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
             }
             
-            // STRICT MOBILE CHECK: Detect desktop mode on phones
             function detectDesktopModeOnPhone() {
                 var isMobileUA = /iphone|android.*mobile|windows phone|iemobile|blackberry/.test(ua);
                 var viewportWidth = window.innerWidth || document.documentElement.clientWidth;

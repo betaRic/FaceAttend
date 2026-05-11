@@ -228,7 +228,7 @@
                             <th>Employee</th>
                             <th>Type</th>
                             <th>Office</th>
-                            <th>Liveness</th>
+                            <th>Anti-spoof</th>
                             <th>Distance</th>
                             <th>Flags</th>
                             <th style="width:140px;">Actions</th>
@@ -237,7 +237,7 @@
                     <tbody>
                         @foreach (var row in Model.Rows)
                         {
-                            var localTime = row.TimestampUtc;  // Timestamps are now stored in local time
+                            var localTime = row.TimestampLocal;
                             var isIn  = row.EventType == "IN"  || row.EventType == "TimeIn";
                             var isOut = row.EventType == "OUT" || row.EventType == "TimeOut";
 
@@ -286,9 +286,9 @@
                                     }
                                 </td>
                                 <td>
-                                    @if (row.LivenessScore.HasValue)
+                                    @if (row.AntiSpoofScore.HasValue)
                                     {
-                                        var lv = row.LivenessScore.Value;
+                                        var lv = row.AntiSpoofScore.Value;
                                         var lvCls = lv >= 0.8 ? "text-success" : lv >= 0.6 ? "text-warning" : "text-danger";
                                         <span class="fw-semibold @lvCls" style="font-size:.82rem;">
                                             @(lv.ToString("0.00"))
@@ -407,9 +407,6 @@
                     </a>
                 </div>
             </div>
-        </div>
+        }
     </div>
-</div>
-    </div>
-
 </div>

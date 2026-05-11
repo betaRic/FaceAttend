@@ -1,4 +1,4 @@
-﻿@{
+@{
     Layout = null;
     Response.Cache.SetCacheability(System.Web.HttpCacheability.NoCache);
     Response.Cache.SetNoStore();
@@ -121,9 +121,9 @@
                     <div id="mobileRegisterBtn" class="mobile-register-container" style="display: none; margin-top: 20px;">
                         <a href="/MobileRegistration" class="mobile-register-btn">
                             <i class="fa-solid fa-mobile-screen"></i>
-                            Register This Device
+                            Register Employee
                         </a>
-                        <div class="mobile-register-hint">New employee? First time on this phone?</div>
+                        <div class="mobile-register-hint">New employee or pending enrollment?</div>
                     </div>
                 </div>
             </div>
@@ -144,9 +144,9 @@
 
         <!-- HUD: Top Right -->
         <div id="topRight" class="hud-panel">
-            <div id="livenessLine" class="live-unk">Waiting</div>
-            <div id="livenessBarWrap">
-                <div id="livenessBarFill" class="liveness-bar-fill"></div>
+            <div id="antiSpoofLine" class="live-unk">Waiting</div>
+            <div id="antiSpoofBarWrap">
+                <div id="antiSpoofBarFill" class="antiSpoof-bar-fill"></div>
             </div>
         </div>
 

@@ -12,8 +12,8 @@
         officeLine:        el('officeLine'),
         timeLine:          el('timeLine'),
         dateLine:          el('dateLine'),
-        livenessLine:      el('livenessLine'),
-        livenessBarFill:   el('livenessBarFill'),
+        antiSpoofLine:      el('antiSpoofLine'),
+        antiSpoofBarFill:   el('antiSpoofBarFill'),
         scanEtaLine:       el('scanEtaLine'),
 
         unlockBackdrop:        el('unlockBackdrop'),
@@ -57,7 +57,7 @@
     var nextGenEnabled = (document.body.getAttribute('data-nextgen') || 'false').toLowerCase() === 'true';
 
     var CFG = {
-        debug: true,
+        debug: false,
 
         loopMs: 60,
 
@@ -91,7 +91,7 @@
         gating: {
             stableFramesRequired: 1,
             // FIX: Restored to 120 (original). The 35px value caused constant resets.
-            // Server-side liveness/encoding handles quality — client just needs to detect a face.
+            // Server-side antiSpoof/encoding handles quality — client just needs to detect a face.
             stableMaxMovePx:      120,
             // FIX: Very permissive area ratio. Server will reject if face is too small.
             minFaceAreaRatio:     0.03,
@@ -112,12 +112,6 @@
             modelPath: appBase + 'Scripts/vendor/mediapipe/tasks-vision/models/blaze_face_short_range.tflite',
         },
 
-        fastPreview: {
-            enabled: false,
-            wsUrl: 'ws://localhost:8080/preview',
-            previewIntervalMs: 200,
-            confidenceThreshold: 0.70,
-        },
     };
 
     var EP = {
@@ -126,8 +120,7 @@
         checkAdminAuthed:  appBase + 'Kiosk/CheckAdminAuthed',
         resolveOffice:     appBase + 'Kiosk/ResolveOffice',
         attend:            appBase + 'Kiosk/Attend',
-        submitVisitor:     appBase + 'Kiosk/SubmitVisitor',
-        deviceState:       appBase + 'Kiosk/GetCurrentMobileDeviceState'
+        submitVisitor:     appBase + 'Kiosk/SubmitVisitor'
     };
 
     function validateConfig() {
@@ -138,7 +131,7 @@
             errors.push('CFG.server.captureCooldownMs is missing');
         if (!CFG.server || !CFG.server.resolveMs)
             errors.push('CFG.server.resolveMs is missing');
-        if (!CFG.mp || !CFG.mp.stableNeededMs === undefined)
+        if (!CFG.mp || CFG.mp.stableNeededMs === undefined)
             errors.push('CFG.mp.stableNeededMs is missing');
 
         ['kioskVideo', 'overlayCanvas', 'kioskRoot', 'mainPrompt', 'subPrompt'].forEach(function (id) {

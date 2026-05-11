@@ -6,7 +6,7 @@ namespace FaceAttend.Models.ViewModels.Admin
     public class AttendanceDetailsVm
     {
         public long Id { get; set; }
-        public DateTime TimestampUtc { get; set; }
+        public DateTime TimestampLocal { get; set; }
         public string EventType { get; set; }
         public string Source { get; set; }
 
@@ -28,14 +28,23 @@ namespace FaceAttend.Models.ViewModels.Admin
         public double? FaceSimilarity { get; set; }
         public double? MatchThreshold { get; set; }
 
-        public double? LivenessScore { get; set; }
-        public string LivenessResult { get; set; }
-        public string LivenessError { get; set; }
+        public double? AntiSpoofScore { get; set; }
+        public string AntiSpoofResult { get; set; }
+        public string AntiSpoofError { get; set; }
 
         public string ClientIP { get; set; }
         public string UserAgent { get; set; }
 
         public bool NeedsReview { get; set; }
+        public string ReviewStatus { get; set; }
+        public string ReviewReasonCodes { get; set; }
+        public DateTime? ReviewedAt { get; set; }
+        public string ReviewedBy { get; set; }
+        public string ReviewNote { get; set; }
+        public bool IsVoided { get; set; }
+        public DateTime? VoidedAt { get; set; }
+        public string VoidedBy { get; set; }
+        public string VoidReason { get; set; }
 
         [Display(Name = "Notes")]
         public string Notes { get; set; }

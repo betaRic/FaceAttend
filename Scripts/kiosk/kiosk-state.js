@@ -21,8 +21,6 @@
         scanBlockUntil:   0,
         blockMessage:     null,
         submitInProgress: false,
-        deviceStatus:     'unknown',
-        deviceChecked:    false,
         consecutiveFailures: 0,
 
         gps:             { lat: null, lon: null, accuracy: null },
@@ -51,8 +49,8 @@
         mpPrevCenter:    null,
         smoothedBox:     null,
 
-        latestLiveness:    null,
-        livenessThreshold: 0.65,
+        latestAntiSpoof:    null,
+        antiSpoofThreshold: 0.45,
 
         motionDiffNow:   null,
         frameDiffs:      [],
@@ -64,13 +62,6 @@
         localPresent:    false,
 
         scanLineProgress: 0,
-
-        // Fast preview (WebSocket, disabled by default)
-        fastWs:              null,
-        fastPreviewLastAt:   0,
-        fastPreviewResult:   null,
-        fastPreviewScanning: false,
-        fastPreviewFailCount: 0,
 
         // Idle map
         idleMap:       null,

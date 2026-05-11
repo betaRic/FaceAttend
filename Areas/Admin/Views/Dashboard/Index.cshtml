@@ -87,27 +87,18 @@
 
     @* â”€â”€ Circuit-breaker warning banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
        Hidden by default (display:none).
-       Shown immediately on page load if circuit was open at render time.
+       Shown immediately on page load if the biometric worker is not ready.
        Also toggled by the AJAX refresh loop (see @section scripts below).
-       The Reset Circuit button posts to DashboardController.ResetLivenessCircuit.
     â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
-    <div id="circuit-breaker-warning"
+    <div id="biometric-worker-warning"
          class="alert alert-danger d-flex align-items-center gap-2 mb-3"
          style="display:none !important;"
          role="alert">
         <i class="fa-solid fa-triangle-exclamation fa-lg flex-shrink-0" aria-hidden="true"></i>
         <div class="flex-grow-1">
-            <strong>Liveness Detection Problem!</strong>
-            The liveness circuit breaker is open - employees cannot scan at the kiosk.
-            Check system logs and reset when the issue is resolved.
+            <strong>Biometric worker problem.</strong>
+            OpenVINO face recognition or anti-spoof inference is not ready. Kiosk and public scans should fail closed until the worker is healthy.
         </div>
-        @using (Html.BeginForm("ResetLivenessCircuit", "Dashboard", new { area = "Admin" }, FormMethod.Post))
-        {
-            @Html.AntiForgeryToken()
-            <button type="submit" class="btn btn-outline-light btn-sm flex-shrink-0">
-                <i class="fa-solid fa-rotate-right me-1" aria-hidden="true"></i>Reset Circuit
-            </button>
-        }
     </div>
 
     @* â”€â”€ Pending-review alert â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
@@ -304,8 +295,7 @@
                         var healthItems = new[]
                         {
                             new { Label = "Database",       Ok = Model.DatabaseHealthy,     Icon = "fa-database",    DomId = "db-health-indicator" },
-                            new { Label = "Liveness model", Ok = Model.LivenessModelLoaded, Icon = "fa-eye",         DomId = ""                    },
-                            new { Label = "Dlib models",    Ok = Model.DlibModelsLoaded,    Icon = "fa-face-smile",  DomId = ""                    },
+                            new { Label = "OpenVINO worker", Ok = Model.BiometricWorkerReady, Icon = "fa-face-smile",  DomId = ""                    },
                             new { Label = "Offline assets", Ok = Model.OfflineAssetsOk,     Icon = "fa-wifi",        DomId = ""                    },
                         };
                     }
@@ -398,10 +388,9 @@
      kpi-total-visitors    - Known Visitors card number
      kpi-pending-reviews   - Pending Reviews badge (right column)
 
-   CIRCUIT BREAKER:
-     If the server reports  livenessCircuitOpen = true  or
-     livenessCircuitStuck = true, the #circuit-breaker-warning banner is shown.
-     It is hidden again as soon as both flags go false.
+   WORKER HEALTH:
+     If the server reports biometricWorkerReady = false, the worker warning banner is shown.
+     It is hidden again as soon as the worker is healthy.
    ============================================================================ *@
 @section scripts {
 <script>
@@ -444,10 +433,10 @@
     // This runs synchronously - the Razor if block emits the JS call only
     // when the circuit was already open when the page was rendered.
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-@if (Model.LivenessCircuitOpen || Model.LivenessCircuitStuck)
+@if (!Model.BiometricWorkerReady)
 {
     @:document.addEventListener('DOMContentLoaded', function () {
-    @:    var warn = document.getElementById('circuit-breaker-warning');
+    @:    var warn = document.getElementById('biometric-worker-warning');
     @:    if (warn) warn.style.removeProperty('display');
     @:});
 }
@@ -496,13 +485,12 @@
             }
 
             // â”€â”€ Circuit-breaker warning banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            var circuitWarn = document.getElementById('circuit-breaker-warning');
-            if (circuitWarn) {
-                var circuitOpen = data.livenessCircuitOpen || data.livenessCircuitStuck;
-                if (circuitOpen) {
-                    circuitWarn.style.removeProperty('display');
+            var workerWarn = document.getElementById('biometric-worker-warning');
+            if (workerWarn) {
+                if (data.biometricWorkerReady === false) {
+                    workerWarn.style.removeProperty('display');
                 } else {
-                    circuitWarn.style.setProperty('display', 'none', 'important');
+                    workerWarn.style.setProperty('display', 'none', 'important');
                 }
             }
 

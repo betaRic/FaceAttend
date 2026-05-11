@@ -1,4 +1,3 @@
-@using FaceAttend.Services
 @model Visitor
 @{
     ViewBag.Title = "Edit Visitor";
@@ -53,7 +52,7 @@
                     <div class="col-sm-4">
                         <div class="p-2 border rounded-3 text-center bg-light-subtle">
                             <div class="fw-bold" style="font-size:.9rem;">
-                                @(Model.FirstVisitDate == default(DateTime) ? "-" : TimeZoneHelper.UtcToLocal(Model.FirstVisitDate).ToString("MMM d, yy"))
+                                @(Model.FirstVisitDate == default(DateTime) ? "-" : Model.FirstVisitDate.ToString("MMM d, yy"))
                             </div>
                             <div class="text-muted small">First Visit</div>
                         </div>
@@ -61,7 +60,7 @@
                     <div class="col-sm-4">
                         <div class="p-2 border rounded-3 text-center bg-light-subtle">
                             <div class="fw-bold" style="font-size:.9rem;">
-                                @(Model.LastVisitDate == default(DateTime) ? "-" : TimeZoneHelper.UtcToLocal(Model.LastVisitDate).ToString("MMM d, yy"))
+                                @(Model.LastVisitDate == default(DateTime) ? "-" : Model.LastVisitDate.ToString("MMM d, yy"))
                             </div>
                             <div class="text-muted small">Last Visit</div>
                         </div>

@@ -38,7 +38,7 @@
           })
         : null;
 
-    // Sync liveness + sharpness + face-area thresholds from server config.
+    // Sync antiSpoof + sharpness + face-area thresholds from server config.
     if (liveEnrollment) liveEnrollment.loadServerConfig('/api/enrollment/config');
 
     // Allow enrollment-tracker.js to publish livePose to this instance
@@ -114,9 +114,9 @@
             if (el) el.textContent = msg || '';
         };
 
-        liveEnrollment.callbacks.onLivenessUpdate = function (pct) {
-            var bar = document.getElementById('livenessBar');
-            var txt = document.getElementById('livenessText');
+        liveEnrollment.callbacks.onAntiSpoofUpdate = function (pct) {
+            var bar = document.getElementById('antiSpoofBar');
+            var txt = document.getElementById('antiSpoofText');
             if (bar) bar.style.width = pct + '%';
             if (txt) txt.textContent = pct + '%';
         };
@@ -152,7 +152,7 @@
                         '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i>' +
                             '<strong>' + data.frameCount + '</strong> frames captured</div>' +
                         '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>' +
-                            'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
+                            'Best anti-spoof: <strong>' + data.bestAntiSpoof + '%</strong></div>' +
                     '</div>';
 
                 Swal.fire({

@@ -18,7 +18,7 @@ namespace FaceAttend
     public partial class FaceAttendDBEntities : DbContext
     {
         public FaceAttendDBEntities()
-            : base("name=FaceAttendDBEntities")
+            : base(Services.Data.FaceAttendConnectionFactory.GetEntityConnectionString())
         {
         }
     

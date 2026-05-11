@@ -37,8 +37,8 @@ namespace FaceAttend.Services.Biometrics
                         if (!BiometricCrypto.TryGetBytesFromStoredBase64(v.FaceEncodingBase64, out bytes))
                             continue;
 
-                        var vec = DlibBiometrics.DecodeFromBytes(bytes);
-                        if (vec != null && vec.Length == 128)
+                        var vec = FaceVectorCodec.DecodeFromBytes(bytes);
+                        if (FaceVectorCodec.IsValidVector(vec))
                         {
                             list.Add(new Entry
                             {

@@ -162,24 +162,6 @@ namespace FaceAttend.Services.Helpers
         }
 
         /// <summary>
-        /// Validates a device name is acceptable.
-        /// </summary>
-        public static (bool IsValid, string ErrorMessage) ValidateDeviceName(string deviceName)
-        {
-            if (string.IsNullOrWhiteSpace(deviceName))
-                return (false, "Device name is required.");
-
-            if (deviceName.Length > 100)
-                return (false, "Device name must not exceed 100 characters.");
-
-            // Check for invalid characters
-            if (Regex.IsMatch(deviceName, @"[<>&]"))
-                return (false, "Device name contains invalid characters.");
-
-            return (true, null);
-        }
-
-        /// <summary>
         /// Validates a purpose/description string.
         /// </summary>
         public static (bool IsValid, string ErrorMessage) ValidatePurpose(string purpose, int maxLength = 500)

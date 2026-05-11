@@ -1,0 +1,188 @@
+@using Newtonsoft.Json
+@using System.Linq
+@model FaceAttend.Models.ViewModels.Admin.OperationsVm
+@{
+    ViewBag.Title = "Operations";
+    var readyClass = Model.DatabaseHealthy && Model.BiometricWorkerReady && Model.ModelIntegrityOk ? "success" : "danger";
+    var calibration = Model.CalibrationSummary;
+    var migrations = Model.MigrationStatus;
+}
+
+<div class="ea-page ea-ops-page">
+    <div class="ea-page-header">
+        <div>
+            <h1 class="ea-page-title"><i class="fa-solid fa-display"></i> Kiosk Operations</h1>
+            <div class="ea-page-subtitle">Local time: @Model.ServerTimeLocal.ToString("yyyy-MM-dd HH:mm:ss")</div>
+        </div>
+        <div class="ea-page-actions">
+            @using (Html.BeginForm("ReloadFaceCache", "Operations", new { area = "Admin" }, FormMethod.Post, new { @class = "d-inline" }))
+            {
+                @Html.AntiForgeryToken()
+                <button class="btn btn-outline-primary btn-sm" type="submit">Reload Face Cache</button>
+            }
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("RiskyPairs", "Operations", new { area = "Admin" })">Risk Audit</a>
+            <a class="btn btn-outline-secondary btn-sm" href="@Url.Action("CalibrationExport", "Operations", new { area = "Admin" })">Calibration CSV</a>
+        </div>
+    </div>
+
+    @if (TempData["msg"] != null)
+    {
+        <div class="alert alert-@(TempData["msgKind"] ?? "info") py-2">@TempData["msg"]</div>
+    }
+
+    @if (Model.Warnings.Any())
+    {
+        <div class="alert alert-warning py-2">
+            @string.Join(" ", Model.Warnings)
+        </div>
+    }
+
+    <div class="row g-3">
+        <div class="col-6 col-xl-2">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Readiness</div>
+                <div class="h4 mb-0 text-@readyClass">@(readyClass == "success" ? "Ready" : "Check")</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Pending Reviews</div>
+                <div class="h4 mb-0">@Model.PendingReviews</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Scan Success</div>
+                <div class="h4 mb-0">@Model.ScanMetrics.SuccessCount</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Scan Failures</div>
+                <div class="h4 mb-0">@Model.ScanMetrics.FailureCount</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">P95 Scan</div>
+                <div class="h4 mb-0">@Model.ScanMetrics.P95Ms ms</div>
+            </div></div>
+        </div>
+        <div class="col-6 col-xl-2">
+            <div class="ea-card h-100"><div class="ea-card-body">
+                <div class="text-muted small">Disk Free</div>
+                <div class="h4 mb-0">@(Model.DiskFreeGb.HasValue ? Model.DiskFreeGb + " GB" : "-")</div>
+            </div></div>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-1">
+        <div class="col-12 col-xl-6">
+            <div class="ea-form-card h-100">
+                <div class="ea-form-header"><div class="ea-form-title">Health</div></div>
+                <div class="ea-form-body">
+                    <dl class="row mb-0 small">
+                        <dt class="col-5">Database</dt><dd class="col-7">@(Model.DatabaseHealthy ? "OK" : Model.DatabaseError ?? "Failed")</dd>
+                        <dt class="col-5">DB migrations</dt><dd class="col-7">@(migrations != null && migrations.Ok ? "OK" : "Incomplete") @(migrations != null && migrations.Required ? "· enforced" : "· warn only")</dd>
+                        <dt class="col-5">Warm-up</dt><dd class="col-7">@Model.WarmUpState · @Model.WarmUpMessage</dd>
+                        <dt class="col-5">OpenVINO worker</dt><dd class="col-7">@(Model.BiometricWorkerReady ? "Ready" : "Not ready")</dd>
+                        <dt class="col-5">Model version</dt><dd class="col-7">@Model.ModelVersion</dd>
+                        <dt class="col-5">Model integrity</dt><dd class="col-7">@(Model.ModelIntegrityOk ? "OK" : "Failed") @(Model.ModelHashesConfigured ? "· pinned" : "· hashes not pinned") · @(Model.ModelAclOk ? "ACL locked" : "ACL writable") @(Model.ModelRequireReadOnlyAcl ? "· enforced" : "· warn only")</dd>
+                        <dt class="col-5">Worker</dt><dd class="col-7">@(Model.WorkerEnabled ? (Model.WorkerHealthy ? "Healthy" : "Not ready") : "Disabled") @Model.WorkerStatus</dd>
+                        <dt class="col-5">Cache age</dt><dd class="col-7">@(Model.FaceMatcherCacheAgeSeconds.HasValue ? Model.FaceMatcherCacheAgeSeconds + "s" : "-")</dd>
+                        <dt class="col-5">Temp folder</dt><dd class="col-7">@(Model.TmpMb.HasValue ? Model.TmpMb + " MB" : "-")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="ea-form-card h-100">
+                <div class="ea-form-header"><div class="ea-form-title">Database Migrations</div></div>
+                <div class="ea-form-body">
+                    @if (migrations == null)
+                    {
+                        <div class="text-muted small">Migration status unavailable.</div>
+                    }
+                    else
+                    {
+                        if (migrations.Warnings.Any())
+                        {
+                            <div class="alert alert-warning py-2 small">@string.Join(" ", migrations.Warnings)</div>
+                        }
+                        <dl class="row mb-0 small">
+                            <dt class="col-6">AdminAuditLogs</dt><dd class="col-6">@(migrations.AdminAuditLogsTableExists ? "Present" : "Missing")</dd>
+                            <dt class="col-6">BiometricTemplates</dt><dd class="col-6">@(migrations.BiometricTemplatesTableExists ? "Present" : "Missing")</dd>
+                            <dt class="col-6">Active employees</dt><dd class="col-6">@migrations.ActiveEmployeeCount</dd>
+                            <dt class="col-6">With face data</dt><dd class="col-6">@migrations.ActiveEmployeesWithFaceData</dd>
+                            <dt class="col-6">Template rows</dt><dd class="col-6">@migrations.BiometricTemplateRows (@migrations.ActiveBiometricTemplateRows active)</dd>
+                            <dt class="col-6">Missing templates</dt><dd class="col-6">@migrations.ActiveEmployeesMissingTemplates</dd>
+                            <dt class="col-6">Legacy devices</dt><dd class="col-6">@migrations.LegacyDeviceRows</dd>
+                            <dt class="col-6">Plain tokens left</dt><dd class="col-6">@migrations.RemainingDeviceTokenRows</dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="ea-form-card h-100">
+                <div class="ea-form-header"><div class="ea-form-title">Rolling Scan Metrics</div></div>
+                <div class="ea-form-body">
+                    <div class="row g-2 text-center">
+                        <div class="col-3"><div class="text-muted small">Total</div><div class="fw-bold">@Model.ScanMetrics.TotalScans</div></div>
+                        <div class="col-3"><div class="text-muted small">OK</div><div class="fw-bold text-success">@Model.ScanMetrics.SuccessCount</div></div>
+                        <div class="col-3"><div class="text-muted small">Failed</div><div class="fw-bold text-danger">@Model.ScanMetrics.FailureCount</div></div>
+                        <div class="col-3"><div class="text-muted small">Busy</div><div class="fw-bold text-warning">@Model.ScanMetrics.BusyCount</div></div>
+                    </div>
+                    <hr />
+                    <div class="small text-muted">Average @Model.ScanMetrics.AverageMs.ToString("0") ms · P50 @Model.ScanMetrics.P50Ms ms · P95 @Model.ScanMetrics.P95Ms ms</div>
+                    <div class="mt-2 small">
+                        @foreach (var failure in Model.ScanMetrics.RecentFailures)
+                        {
+                            <div>@failure.TimestampLocal.ToString("HH:mm:ss") · @failure.Outcome · @failure.DurationMs ms</div>
+                        }
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="ea-form-card h-100">
+                <div class="ea-form-header"><div class="ea-form-title">Threshold Calibration</div></div>
+                <div class="ea-form-body">
+                    @if (calibration == null)
+                    {
+                        <div class="text-muted small">Calibration summary unavailable.</div>
+                    }
+                    else
+                    {
+                        <div class="row g-2 text-center">
+                            <div class="col-4"><div class="text-muted small">Matches</div><div class="fw-bold">@calibration.MatchCount</div></div>
+                            <div class="col-4"><div class="text-muted small">Near Limit</div><div class="fw-bold text-warning">@calibration.NearThresholdCount</div></div>
+                            <div class="col-4"><div class="text-muted small">Unsafe Dist</div><div class="fw-bold text-danger">@calibration.UnsafeDistanceCount</div></div>
+                        </div>
+                        <hr />
+                        <dl class="row mb-0 small">
+                            <dt class="col-5">Window</dt><dd class="col-7">@calibration.Days days</dd>
+                            <dt class="col-5">Median / P95 dist</dt><dd class="col-7">@calibration.MedianDistance.ToString("0.000") / @calibration.P95Distance.ToString("0.000")</dd>
+                            <dt class="col-5">Max accepted dist</dt><dd class="col-7">@calibration.MaxDistance.ToString("0.000")</dd>
+                            <dt class="col-5">Min ambiguity gap</dt><dd class="col-7">@(calibration.MinAmbiguityGap.HasValue ? calibration.MinAmbiguityGap.Value.ToString("0.000") : "-")</dd>
+                            <dt class="col-5">Low-gap matches</dt><dd class="col-7">@calibration.LowGapCount</dd>
+                            <dt class="col-5">Kiosk / Mobile / Unknown</dt><dd class="col-7">@calibration.KioskCount / @calibration.MobileCount / @calibration.UnknownSourceCount</dd>
+                        </dl>
+                    }
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="ea-form-card h-100">
+                <div class="ea-form-header"><div class="ea-form-title">OpenVINO Worker</div></div>
+                <pre class="small mb-0 p-3">@JsonConvert.SerializeObject(Model.BiometricWorkerStatus, Formatting.Indented)</pre>
+            </div>
+        </div>
+        <div class="col-12 col-xl-6">
+            <div class="ea-form-card h-100">
+                <div class="ea-form-header"><div class="ea-form-title">Face Matcher</div></div>
+                <pre class="small mb-0 p-3">@JsonConvert.SerializeObject(Model.FaceMatcherStats, Formatting.Indented)</pre>
+            </div>
+        </div>
+    </div>
+</div>

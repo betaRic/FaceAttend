@@ -4,7 +4,7 @@ FaceAttend.Enrollment = (function () {
     'use strict';
 
     var CONSTANTS = {
-        AUTO_INTERVAL_MS:  200,
+        AUTO_INTERVAL_MS:  1000,
         PASS_WINDOW:       3,
         PASS_REQUIRED:     1,
         CAPTURE_TARGET:    10,
@@ -13,20 +13,33 @@ FaceAttend.Enrollment = (function () {
         MAX_IMAGES:        12,
         CAPTURE_WIDTH:     640,
         CAPTURE_HEIGHT:    480,
-        UPLOAD_QUALITY:    0.92,  // Raised from 0.75: JPEG artifacts degrade landmark accuracy on small faces
-        SHARPNESS_THRESHOLD_DESKTOP: 35,  // Matches Biometrics:Enroll:SharpnessThreshold (Web.config)
-        SHARPNESS_THRESHOLD_MOBILE:  28,  // Matches Biometrics:Enroll:SharpnessThreshold:Mobile (Web.config)
+        UPLOAD_QUALITY:    0.92,
+        SHARPNESS_THRESHOLD_DESKTOP: 35,
+        SHARPNESS_THRESHOLD_MOBILE:  28,
         SHARPNESS_SAMPLE_SIZE:       256,
-        MIN_FACE_AREA_RATIO_DESKTOP: 0.08, // Normal webcam distance ~60cm; research baseline: dlib needs only 0.27% area
-        MIN_FACE_AREA_RATIO_MOBILE:  0.06, // Arm-length phone distance
-        FACE_AREA_WARNING_RATIO:     0.05, // Amber warning fires just below enrollment threshold
-        MAX_FACE_AREA_RATIO:         0.90, // Face area ratio above which liveness CNN returns 0.00 (too close)
-        MIN_BRIGHTNESS:              30,   // Mean gray 0-255; allow slightly dim environments
+        MIN_FACE_AREA_RATIO_DESKTOP: 0.08,
+        MIN_FACE_AREA_RATIO_MOBILE:  0.06,
+        FACE_AREA_WARNING_RATIO:     0.05,
+        MAX_FACE_AREA_RATIO:         0.90,
+        MIN_BRIGHTNESS:              30,
         AUTO_CONFIRM_TIMEOUT_MS:     5000
     };
 
     function getCsrfToken() {
         return FaceAttend.Utils ? FaceAttend.Utils.getCsrfToken() : '';
+    }
+
+    function buildRequestHeaders(extraHeaders) {
+        if (FaceAttend.Utils && typeof FaceAttend.Utils.mergeRequestHeaders === 'function')
+            return FaceAttend.Utils.mergeRequestHeaders(extraHeaders);
+
+        var headers = {};
+        if (extraHeaders) {
+            Object.keys(extraHeaders).forEach(function (key) {
+                headers[key] = extraHeaders[key];
+            });
+        }
+        return headers;
     }
 
     function escapeHtml(text) {
@@ -90,7 +103,7 @@ FaceAttend.Enrollment = (function () {
     function Enrollment(config) {
         this.config = Object.assign({
             empId: '',
-            perFrameThreshold: 0.65,
+            perFrameThreshold: 0.45,
             scanUrl: '/api/scan/frame',
             enrollUrl: '/api/enrollment/enroll',
             redirectUrl: '/Admin/Employees',
@@ -112,12 +125,12 @@ FaceAttend.Enrollment = (function () {
         this._tickRunning          = false;
         this._tickEnabled          = false;
         this._scanController       = null;
-        this._zeroLivenessStreak   = 0;   // consecutive frames with liveness ≈ 0
+        this._zeroAntiSpoofStreak   = 0;
 
         this.elements  = {};
         this.callbacks = {
             onStatus:             null,
-            onLivenessUpdate:     null,
+            onAntiSpoofUpdate:     null,
             onCaptureProgress:    null,
             onEnrollmentComplete: null,
             onEnrollmentError:    null,
@@ -166,7 +179,6 @@ FaceAttend.Enrollment = (function () {
         return (sumSq / count) - (mean * mean);
     };
 
-    // Reads the sharpnessCanvas that calculateSharpness already drew — no extra decode.
     Enrollment.prototype.calculateBrightness = function () {
         var W = CONSTANTS.SHARPNESS_SAMPLE_SIZE, H = CONSTANTS.SHARPNESS_SAMPLE_SIZE;
         var tmp = this.sharpnessCanvas;
@@ -279,7 +291,13 @@ FaceAttend.Enrollment = (function () {
         }
 
         return fetch(this.config.scanUrl || '/api/scan/frame', {
-            method: 'POST', body: fd, credentials: 'same-origin', signal: controller.signal
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            signal: controller.signal,
+            headers: buildRequestHeaders({
+                'X-Requested-With': 'XMLHttpRequest'
+            })
         })
         .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
         .then(function (data) { return self.normalizeSuccessResult(data); })
@@ -341,7 +359,7 @@ FaceAttend.Enrollment = (function () {
         this.enrolled = false;
         this.passHist = [];
         this.goodFrames = [];
-        this._zeroLivenessStreak = 0;
+        this._zeroAntiSpoofStreak = 0;
         this.lastFaceBox = null;
 
         this._tickEnabled = true;
@@ -358,13 +376,13 @@ FaceAttend.Enrollment = (function () {
         this._clearConfirmTimer();
         if (!this.callbacks.onReadyToConfirm) return;
 
-        var bestLiveness = 0;
+        var bestAntiSpoof = 0;
         for (var j = 0; j < this.goodFrames.length; j++)
-            if (this.goodFrames[j].p > bestLiveness) bestLiveness = this.goodFrames[j].p;
+            if (this.goodFrames[j].p > bestAntiSpoof) bestAntiSpoof = this.goodFrames[j].p;
 
         this.callbacks.onReadyToConfirm({
             frameCount:   this.goodFrames.length,
-            bestLiveness: Math.round(bestLiveness * 100),
+            bestAntiSpoof: Math.round(bestAntiSpoof * 100),
             frames:       this.goodFrames.slice()
         });
     };
@@ -383,17 +401,16 @@ FaceAttend.Enrollment = (function () {
         if (this.confirmTimer) { clearTimeout(this.confirmTimer); this.confirmTimer = null; }
     };
 
-    Enrollment.prototype.pushGoodFrame = function (blob, probability, encoding, sharpness) {
+    Enrollment.prototype.pushGoodFrame = function (blob, probability, sharpness) {
         if (!blob) return;
 
         var normSharp = typeof sharpness === 'number' ? Math.min(sharpness / 500, 1.0) : 0;
-        var liveness  = typeof probability === 'number' ? probability : 0;
-        var quality   = liveness * 0.7 + normSharp * 0.3;
+        var antiSpoof  = typeof probability === 'number' ? probability : 0;
+        var quality   = antiSpoof * 0.7 + normSharp * 0.3;
 
         var newFrame = {
             blob:      blob,
-            encoding:  encoding || null,
-            p:         liveness,
+            p:         antiSpoof,
             sharpness: typeof sharpness === 'number' ? sharpness : 0,
             quality:   quality
         };
@@ -418,10 +435,6 @@ FaceAttend.Enrollment = (function () {
         return this.goodFrames.map(function (x) { return x.blob; });
     };
 
-    Enrollment.prototype.getBestEncoding = function () {
-        return this.goodFrames.length ? (this.goodFrames[0].encoding || null) : null;
-    };
-
     Enrollment.prototype.processScanResult = function (r) {
         var self = this;
 
@@ -429,16 +442,16 @@ FaceAttend.Enrollment = (function () {
             var errorCode = r && r.error;
             if (errorCode === 'NO_FACE' || errorCode === 'NO_IMAGE') {
                 this.handleStatus('No face detected.', 'warning');
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
-            } else if (errorCode === 'LIVENESS_FAIL') {
-                this.handleStatus('Liveness check failed. Ensure good lighting.', 'warning');
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(25, 'fail');
+                if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(0, 'fail');
+            } else if (errorCode === 'ANTI_SPOOF_FAIL') {
+                this.handleStatus('Anti-spoof check failed. Ensure good lighting.', 'warning');
+                if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(25, 'fail');
             } else if (errorCode === 'ENCODING_FAIL') {
                 this.handleStatus('Could not encode face. Please try again.', 'warning');
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
+                if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(0, 'fail');
             } else {
                 this.handleStatus((r && r.message) ? r.message : (errorCode || 'Scan error'), 'warning');
-                if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
+                if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(0, 'fail');
             }
             this.passHist = [];
             return;
@@ -447,7 +460,7 @@ FaceAttend.Enrollment = (function () {
         if (r.count === 0) {
             this.handleStatus('No face detected.', 'warning');
             this.passHist = [];
-            if (this.callbacks.onLivenessUpdate) this.callbacks.onLivenessUpdate(0, 'fail');
+            if (this.callbacks.onAntiSpoofUpdate) this.callbacks.onAntiSpoofUpdate(0, 'fail');
             return;
         }
 
@@ -457,22 +470,22 @@ FaceAttend.Enrollment = (function () {
             if (!this.multiFaceWarned) { this.multiFaceWarned = true; if (this.callbacks.onMultiFaceWarning) this.callbacks.onMultiFaceWarning(r.count); }
         } else if (this.multiFaceWarned) { this.multiFaceWarned = false; if (this.callbacks.onMultiFaceWarning) this.callbacks.onMultiFaceWarning(1); }
 
-        var p    = typeof r.liveness === 'number' ? r.liveness : 0;
-        var pass = (r.livenessOk === true) && (p >= this.config.perFrameThreshold);
+        var p    = typeof r.antiSpoofScore === 'number' ? r.antiSpoofScore : 0;
+        var pass = (r.antiSpoofOk === true) && (p >= this.config.perFrameThreshold);
 
         this.passHist.push(pass ? 1 : 0);
         if (this.passHist.length > CONSTANTS.PASS_WINDOW) this.passHist.shift();
 
-        if (this.callbacks.onLivenessUpdate)
-            this.callbacks.onLivenessUpdate(Math.round(p * 100), pass ? 'pass' : 'fail');
+        if (this.callbacks.onAntiSpoofUpdate)
+            this.callbacks.onAntiSpoofUpdate(Math.round(p * 100), pass ? 'pass' : 'fail');
 
         if (pass) {
-            this._zeroLivenessStreak = 0;
+            this._zeroAntiSpoofStreak = 0;
 
             if (r.faceBox && r.faceBox.w > 0) this.lastFaceBox = r.faceBox;
 
             var sharpness = r.sharpness || r.clientSharpness || 0;
-            this.pushGoodFrame(r.lastBlob || null, p, r.encoding || null, sharpness);
+            this.pushGoodFrame(r.lastBlob || null, p, sharpness);
 
             var hasEnoughFrames = this.goodFrames.length >= this.config.minGoodFrames;
             var hasMaxFrames    = this.goodFrames.length >= this.config.maxKeepFrames;
@@ -493,18 +506,18 @@ FaceAttend.Enrollment = (function () {
                 'success');
         } else {
             if (p < 0.02 && r.count > 0) {
-                this._zeroLivenessStreak = (this._zeroLivenessStreak || 0) + 1;
+                this._zeroAntiSpoofStreak = (this._zeroAntiSpoofStreak || 0) + 1;
             } else {
-                this._zeroLivenessStreak = 0;
+                this._zeroAntiSpoofStreak = 0;
             }
 
-            if (this._zeroLivenessStreak >= 8) {
+            if (this._zeroAntiSpoofStreak >= 8) {
                 this.handleStatus('Look directly at the camera in good lighting.', 'warning');
             } else if (r.count === 0) {
                 this.handleStatus('No face detected — face the camera.', 'warning');
             } else {
                 this.handleStatus(
-                    'Liveness: ' + Math.round(p * 100) + '% (need ' +
+                    'Anti-spoof: ' + Math.round(p * 100) + '% (need ' +
                     Math.round(this.config.perFrameThreshold * 100) + '%) — look at camera.',
                     'warning');
             }
@@ -517,11 +530,10 @@ FaceAttend.Enrollment = (function () {
         if (this.enrolling) return;
         this.enrolling = true;
 
-        var frames    = this.getGoodFrameBlobs();
-        var encodings = this.getEncodings();  // pre-computed from per-frame ScanFrame responses
+        var frames = this.getGoodFrameBlobs();
         this.handleStatus('Saving enrollment (' + frames.length + ' frames)...', 'info');
 
-        this.postEnrollMany(frames, encodings)
+        this.postEnrollMany(frames)
             .then(function (result) {
                 self.enrolling = false;
                 if (result && result.ok === true) {
@@ -541,7 +553,7 @@ FaceAttend.Enrollment = (function () {
             });
     };
 
-    Enrollment.prototype.postEnrollMany = function (blobs, encodings) {
+    Enrollment.prototype.postEnrollMany = function (blobs) {
         var self = this;
         if (!blobs || !blobs.length) return Promise.resolve({ ok: false, error: 'NO_IMAGE' });
 
@@ -563,12 +575,16 @@ FaceAttend.Enrollment = (function () {
         fd.append('__RequestVerificationToken', getCsrfToken());
         fd.append('employeeId', this.config.empId);
         for (var i = 0; i < blobs.length; i++)
-            fd.append('image', blobs[i], 'enroll_' + (i + 1) + '.jpg');
-        // Send pre-computed encodings so the server can skip blob re-processing (fast path)
-        if (encodings && encodings.length > 0)
-            fd.append('allEncodingsJson', JSON.stringify(encodings));
+            fd.append('images', blobs[i], 'enroll_' + (i + 1) + '.jpg');
 
-        return fetch(this.config.enrollUrl, { method: 'POST', body: fd })
+        return fetch(this.config.enrollUrl, {
+            method: 'POST',
+            body: fd,
+            credentials: 'same-origin',
+            headers: buildRequestHeaders({
+                'X-Requested-With': 'XMLHttpRequest'
+            })
+        })
             .then(function (res) { return res.json(); })
             .then(function (result) {
                 result = self.normalizeSuccessResult(result) || result;
@@ -606,8 +622,15 @@ FaceAttend.Enrollment = (function () {
                 fd.append('__RequestVerificationToken', getCsrfToken());
                 fd.append('employeeId', self.config.empId);
                 for (var i = 0; i < imgs.length; i++)
-                    fd.append('image', imgs[i], imgs[i].name || ('upload_' + (i + 1) + '.jpg'));
-                return fetch(self.config.enrollUrl, { method: 'POST', body: fd }).then(function (res) { return res.json(); });
+                    fd.append('images', imgs[i], imgs[i].name || ('upload_' + (i + 1) + '.jpg'));
+                return fetch(self.config.enrollUrl, {
+                    method: 'POST',
+                    body: fd,
+                    credentials: 'same-origin',
+                    headers: buildRequestHeaders({
+                        'X-Requested-With': 'XMLHttpRequest'
+                    })
+                }).then(function (res) { return res.json(); });
             })
             .then(function (result) {
                 if (result && result.ok === true) {
@@ -663,28 +686,19 @@ FaceAttend.Enrollment = (function () {
         return (r.error || 'Enrollment failed') + timeInfo;
     };
 
-    /**
-     * Fetches enrollment thresholds from the server and merges them into this
-     * instance's config and the shared CONSTANTS object.  Call immediately after
-     * create() so values are live before the first frame is processed.
-     * Silently falls back to the compile-time CONSTANTS if the fetch fails.
-     *
-     * @param  {string} [url]  Override URL — defaults to /api/enrollment/config
-     * @return {Promise<void>}
-     */
     Enrollment.prototype.loadServerConfig = function (url) {
         var self = this;
         return fetch(url || '/api/enrollment/config', { credentials: 'same-origin' })
             .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
             .then(function (cfg) {
                 if (!cfg || typeof cfg !== 'object') return;
-                if (typeof cfg.livenessThreshold  === 'number') self.config.perFrameThreshold       = cfg.livenessThreshold;
+                if (typeof cfg.antiSpoofThreshold  === 'number') self.config.perFrameThreshold       = cfg.antiSpoofThreshold;
                 if (typeof cfg.sharpnessDesktop   === 'number') CONSTANTS.SHARPNESS_THRESHOLD_DESKTOP = cfg.sharpnessDesktop;
                 if (typeof cfg.sharpnessMobile    === 'number') CONSTANTS.SHARPNESS_THRESHOLD_MOBILE  = cfg.sharpnessMobile;
                 if (typeof cfg.minFaceAreaDesktop === 'number') CONSTANTS.MIN_FACE_AREA_RATIO_DESKTOP  = cfg.minFaceAreaDesktop;
                 if (typeof cfg.minFaceAreaMobile  === 'number') CONSTANTS.MIN_FACE_AREA_RATIO_MOBILE   = cfg.minFaceAreaMobile;
             })
-            .catch(function () { /* network error — CONSTANTS remain as compile-time defaults */ });
+            .catch(function () {});
     };
 
     Enrollment.prototype.enableDebug  = function () { this.config.debug = true;  };
@@ -701,15 +715,6 @@ FaceAttend.Enrollment = (function () {
             videoWidth:      this.elements.cam && this.elements.cam.videoWidth,
             videoHeight:     this.elements.cam && this.elements.cam.videoHeight
         };
-    };
-
-    Enrollment.prototype.getEncodings = function () {
-        var result = [];
-        for (var i = 0; i < this.goodFrames.length; i++) {
-            var enc = this.goodFrames[i].encoding || this.goodFrames[i].enc || null;
-            if (enc) result.push(enc);
-        }
-        return result;
     };
 
     return {

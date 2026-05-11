@@ -52,32 +52,6 @@ namespace FaceAttend.Services.Helpers
         }
 
         /// <summary>
-        /// Checks if Dlib model files are present in the specified directory.
-        /// Requires at least 2 .dat files to be considered valid.
-        /// </summary>
-        /// <param name="virtualDir">Virtual directory path</param>
-        /// <returns>True if models are present, false otherwise</returns>
-        public static bool DlibModelsPresent(string virtualDir)
-        {
-            if (string.IsNullOrWhiteSpace(virtualDir))
-                return false;
-
-            try
-            {
-                var absPath = HostingEnvironment.MapPath(virtualDir);
-                if (string.IsNullOrWhiteSpace(absPath) || !Directory.Exists(absPath))
-                    return false;
-
-                var datFiles = Directory.GetFiles(absPath, "*.dat", SearchOption.TopDirectoryOnly);
-                return datFiles.Length >= 2;
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        /// <summary>
         /// Safely deletes a file if it exists.
         /// </summary>
         /// <param name="filePath">Absolute file path</param>

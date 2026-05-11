@@ -3,10 +3,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using System.IO;
-using System.Threading.Tasks;
 using System.Web;
-using FaceRecognitionDotNet;
-using FaceAttend.Services;
+using FaceAttend.Services.Recognition;
 
 namespace FaceAttend.Services.Biometrics
 {
@@ -17,247 +15,204 @@ namespace FaceAttend.Services.Biometrics
             public bool Ok { get; set; }
             public string Error { get; set; }
             public double[] FaceEncoding { get; set; }
-            public float LivenessScore { get; set; }
-            public bool LivenessOk { get; set; }
-            public DlibBiometrics.FaceBox FaceBox { get; set; }
+            public float AntiSpoofScore { get; set; }
+            public bool AntiSpoofOk { get; set; }
+            public float[] Landmarks5 { get; set; }
+            public string AntiSpoofDecision { get; set; }
+            public bool AntiSpoofModelOk { get; set; }
+            public OpenVinoBiometrics.FaceBox FaceBox { get; set; }
             public float Sharpness { get; set; }
+            public float SharpnessThreshold { get; set; }
             public int ImageWidth { get; set; }
+            public int ImageHeight { get; set; }
             public long TimingMs { get; set; }
             public Dictionary<string, long> Timings { get; set; }
         }
 
-        public class EnrollmentScanResult
-        {
-            public bool Ok { get; set; }
-            public string Error { get; set; }
-            public string Base64Encoding { get; set; }
-            public double[] FaceEncoding { get; set; }
-            public float[] Landmarks5 { get; set; }
-            public float LivenessScore { get; set; }
-            public bool LivenessOk { get; set; }
-            public float Sharpness { get; set; }
-            public float SharpnessThreshold { get; set; }
-            public DlibBiometrics.FaceBox FaceBox { get; set; }
-            public int ImageWidth { get; set; }
-            public int ImageHeight { get; set; }
-            public long TimingMs { get; set; }
-        }
-
-        private class CoreResult
-        {
-            public bool Ok { get; set; }
-            public string Error { get; set; }
-            public double[] Encoding { get; set; }
-            public float[] Landmarks5 { get; set; }
-            public float LivenessScore { get; set; }
-            public bool LivenessOk { get; set; }
-            public float Sharpness { get; set; }
-            public float SharpnessThreshold { get; set; }
-            public DlibBiometrics.FaceBox FaceBox { get; set; }
-            public int ImageWidth { get; set; }
-            public int ImageHeight { get; set; }
-        }
+        public class EnrollmentScanResult : ScanResult { }
 
         public static EnrollmentScanResult EnrollmentScanInMemory(
             HttpPostedFileBase image,
-            DlibBiometrics.FaceBox clientFaceBox = null,
-            bool isMobile = false)
+            OpenVinoBiometrics.FaceBox clientFaceBox = null,
+            bool isMobile = false,
+            float? antiSpoofThreshold = null)
         {
-            var sw = Stopwatch.StartNew();
-
-            Bitmap bitmap;
-            int imageWidth, imageHeight;
-            string loadErr;
-            if (!LoadBitmap(image.InputStream, out bitmap, out imageWidth, out imageHeight, out loadErr))
-                return new EnrollmentScanResult { Ok = false, Error = loadErr, TimingMs = sw.ElapsedMilliseconds };
-
-            using (bitmap)
+            var result = Analyze(image, BiometricScanMode.Enrollment, null, includeTimings: false, isMobile: isMobile);
+            return new EnrollmentScanResult
             {
-                var core = RunCore(bitmap, imageWidth, imageHeight, clientFaceBox, needLandmarks: true, isMobile: isMobile);
-
-                if (!core.Ok)
-                    return new EnrollmentScanResult { Ok = false, Error = core.Error, TimingMs = sw.ElapsedMilliseconds };
-
-                return new EnrollmentScanResult
-                {
-                    Ok                 = true,
-                    Base64Encoding     = Convert.ToBase64String(DlibBiometrics.EncodeToBytes(core.Encoding)),
-                    FaceEncoding       = core.Encoding,
-                    Landmarks5         = core.Landmarks5,
-                    LivenessScore      = core.LivenessScore,
-                    LivenessOk         = core.LivenessOk,
-                    Sharpness          = core.Sharpness,
-                    SharpnessThreshold = core.SharpnessThreshold,
-                    FaceBox            = core.FaceBox,
-                    ImageWidth         = core.ImageWidth,
-                    ImageHeight        = core.ImageHeight,
-                    TimingMs           = sw.ElapsedMilliseconds
-                };
-            }
+                Ok = result.Ok,
+                Error = result.Error,
+                FaceEncoding = result.FaceEncoding,
+                AntiSpoofScore = result.AntiSpoofScore,
+                AntiSpoofOk = result.AntiSpoofOk,
+                AntiSpoofDecision = result.AntiSpoofDecision,
+                AntiSpoofModelOk = result.AntiSpoofModelOk,
+                FaceBox = result.FaceBox,
+                Sharpness = result.Sharpness,
+                SharpnessThreshold = result.SharpnessThreshold,
+                ImageWidth = result.ImageWidth,
+                ImageHeight = result.ImageHeight,
+                TimingMs = result.TimingMs,
+                Timings = result.Timings,
+                Landmarks5 = result.Landmarks5
+            };
         }
 
         public static ScanResult ScanInMemory(
             HttpPostedFileBase image,
-            DlibBiometrics.FaceBox clientFaceBox = null,
-            bool includeTimings = false)
+            OpenVinoBiometrics.FaceBox clientFaceBox = null,
+            bool includeTimings = false,
+            float? antiSpoofThreshold = null,
+            bool isMobile = false)
+        {
+            return Analyze(
+                image,
+                isMobile ? BiometricScanMode.PublicScan : BiometricScanMode.Kiosk,
+                isMobile ? null : clientFaceBox,
+                includeTimings,
+                isMobile);
+        }
+
+        private static ScanResult Analyze(
+            HttpPostedFileBase image,
+            BiometricScanMode mode,
+            OpenVinoBiometrics.FaceBox faceBoxHint,
+            bool includeTimings,
+            bool isMobile)
         {
             var sw = Stopwatch.StartNew();
             var timings = includeTimings ? new Dictionary<string, long>() : null;
 
-            Bitmap bitmap;
-            int imageWidth, imageHeight;
-            string loadErr;
-            if (!LoadBitmap(image.InputStream, out bitmap, out imageWidth, out imageHeight, out loadErr))
-                return new ScanResult { Ok = false, Error = loadErr, Timings = timings, TimingMs = sw.ElapsedMilliseconds };
+            byte[] imageBytes;
+            string loadError;
+            if (!ReadImageBytes(image, out imageBytes, out loadError))
+                return new ScanResult { Ok = false, Error = loadError, TimingMs = sw.ElapsedMilliseconds, Timings = timings };
 
-            using (bitmap)
+            if (timings != null) timings["read_ms"] = sw.ElapsedMilliseconds;
+
+            var biometric = new OpenVinoBiometrics();
+            string workerError;
+            var response = biometric.AnalyzeBytes(imageBytes, mode, faceBoxHint, out workerError);
+            if (timings != null) timings["openvino_analyze_ms"] = sw.ElapsedMilliseconds;
+
+            if (response == null || !response.Ok)
             {
-                var core = RunCore(bitmap, imageWidth, imageHeight, clientFaceBox, needLandmarks: false, isMobile: false);
-                if (timings != null) timings["scan"] = sw.ElapsedMilliseconds;
-
-                if (!core.Ok)
-                    return new ScanResult { Ok = false, Error = core.Error, Timings = timings, TimingMs = sw.ElapsedMilliseconds };
-
                 return new ScanResult
                 {
-                    Ok            = true,
-                    FaceEncoding  = core.Encoding,
-                    LivenessScore = core.LivenessScore,
-                    LivenessOk    = core.LivenessOk,
-                    FaceBox       = core.FaceBox,
-                    Sharpness     = core.Sharpness,
-                    ImageWidth    = core.ImageWidth,
-                    Timings       = timings,
-                    TimingMs      = sw.ElapsedMilliseconds
+                    Ok = false,
+                    Error = response?.Error ?? workerError ?? "OPENVINO_ANALYZE_FAIL",
+                    TimingMs = sw.ElapsedMilliseconds,
+                    Timings = timings
                 };
             }
+
+            var faceBox = ToFaceBox(response.SelectedFaceBox);
+            var antiSpoof = response.AntiSpoof;
+            var quality = response.Quality;
+            var policy = BiometricPolicy.Current;
+            var antiSpoofScore = antiSpoof?.Score ?? 0f;
+            var modelOk = antiSpoof == null || antiSpoof.ModelOk;
+            var decision = !string.IsNullOrWhiteSpace(antiSpoof?.Decision)
+                ? antiSpoof.Decision
+                : policy.EvaluateAntiSpoof(modelOk, antiSpoofScore, isMobile).Decision.ToString().ToUpperInvariant();
+
+            int width;
+            int height;
+            ReadImageDimensions(imageBytes, out width, out height);
+
+            return new ScanResult
+            {
+                Ok = true,
+                FaceEncoding = response.Embedding,
+                Landmarks5 = ToLandmarksArray(response),
+                AntiSpoofScore = antiSpoofScore,
+                AntiSpoofOk = string.Equals(decision, "PASS", StringComparison.OrdinalIgnoreCase),
+                AntiSpoofDecision = decision.ToUpperInvariant(),
+                AntiSpoofModelOk = modelOk,
+                FaceBox = faceBox,
+                Sharpness = quality?.Sharpness ?? 0f,
+                SharpnessThreshold = quality?.SharpnessThreshold ?? FaceQualityAnalyzer.GetSharpnessThreshold(isMobile),
+                ImageWidth = width,
+                ImageHeight = height,
+                TimingMs = sw.ElapsedMilliseconds,
+                Timings = timings
+            };
         }
 
-        private static bool LoadBitmap(Stream stream, out Bitmap bitmap, out int width, out int height, out string error)
+        private static bool ReadImageBytes(HttpPostedFileBase image, out byte[] bytes, out string error)
         {
-            bitmap = null; width = 0; height = 0; error = null;
+            bytes = null;
+            error = null;
+            if (image == null || image.ContentLength <= 0)
+            {
+                error = "NO_IMAGE";
+                return false;
+            }
+
             try
             {
-                stream.Position = 0;
-                byte[] raw;
+                image.InputStream.Position = 0;
                 using (var ms = new MemoryStream())
                 {
-                    stream.CopyTo(ms);
-                    raw = ms.ToArray();
+                    image.InputStream.CopyTo(ms);
+                    bytes = ms.ToArray();
                 }
-                using (var ms = new MemoryStream(raw))
-                using (var tmp = new Bitmap(ms))
-                {
-                    width  = tmp.Width;
-                    height = tmp.Height;
-                    bitmap = tmp.Clone(
-                        new Rectangle(0, 0, width, height),
-                        System.Drawing.Imaging.PixelFormat.Format32bppArgb);
-                }
-                return true;
+                image.InputStream.Position = 0;
+                return bytes.Length > 0;
             }
             catch (Exception ex)
             {
-                Trace.TraceError("[Scan] Load failed: " + ex.Message);
+                Trace.TraceError("[FastScanPipeline] image read failed: " + ex.Message);
                 error = "IMAGE_LOAD_FAIL";
                 return false;
             }
         }
 
-        private static CoreResult RunCore(
-            Bitmap bitmap, int imageWidth, int imageHeight,
-            DlibBiometrics.FaceBox clientFaceBox,
-            bool needLandmarks, bool isMobile)
+        private static void ReadImageDimensions(byte[] bytes, out int width, out int height)
         {
-            var dlib = new DlibBiometrics();
-            DlibBiometrics.FaceBox faceBox, reportedFaceBox;
-            Location faceLocation;
-
-            if (clientFaceBox != null && clientFaceBox.Width > 20 && clientFaceBox.Height > 20)
+            width = 0;
+            height = 0;
+            try
             {
-                reportedFaceBox = clientFaceBox;
-                var padX = Math.Max(6, (int)(clientFaceBox.Width  * 0.10));
-                var padY = Math.Max(6, (int)(clientFaceBox.Height * 0.12));
-                var left = Math.Max(0, clientFaceBox.Left - padX);
-                var top  = Math.Max(0, clientFaceBox.Top  - padY);
-                faceBox = new DlibBiometrics.FaceBox
+                using (var ms = new MemoryStream(bytes))
+                using (var image = Image.FromStream(ms))
                 {
-                    Left   = left,
-                    Top    = top,
-                    Width  = Math.Min(imageWidth  - left, clientFaceBox.Width  + padX * 2),
-                    Height = Math.Min(imageHeight - top,  clientFaceBox.Height + padY * 2)
-                };
-                faceLocation = new Location(
-                    faceBox.Left, faceBox.Top,
-                    faceBox.Left + faceBox.Width,
-                    faceBox.Top  + faceBox.Height);
+                    width = image.Width;
+                    height = image.Height;
+                }
             }
-            else
+            catch
             {
-                string detectErr;
-                if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLocation, out detectErr))
-                    return new CoreResult { Ok = false, Error = detectErr ?? "NO_FACE" };
-                reportedFaceBox = faceBox;
             }
+        }
 
-            var sharpness = FaceQualityAnalyzer.CalculateSharpnessFromBitmap(bitmap, faceBox);
-            var sharpTh   = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile);
+        private static OpenVinoBiometrics.FaceBox ToFaceBox(FaceBoxHint hint)
+        {
+            if (hint == null)
+                return null;
 
-            byte[] rgbData;
-            try   { rgbData = DlibBiometrics.ExtractRgbData(bitmap); }
-            catch (Exception ex)
+            return new OpenVinoBiometrics.FaceBox
             {
-                Trace.TraceError("[FastScanPipeline] ExtractRgbData failed: " + ex.Message);
-                return new CoreResult { Ok = false, Error = "BITMAP_CONVERT_FAIL" };
-            }
-
-            double[] encoding  = null;
-            float[]  landmarks = null;
-            string   encErr    = null;
-            bool     liveOk    = false;
-            float?   liveProb  = null;
-
-            Parallel.Invoke(
-                () =>
-                {
-                    var live = new OnnxLiveness();
-                    var r    = live.ScoreFromBitmap(bitmap, faceBox);
-                    liveOk   = r.Ok;
-                    liveProb = r.Probability;
-                },
-                () =>
-                {
-                    if (needLandmarks)
-                    {
-                        dlib.TryEncodeWithLandmarksFromRgbData(
-                            rgbData, imageWidth, imageHeight, faceLocation,
-                            out encoding, out landmarks, out encErr);
-                    }
-                    else
-                    {
-                        dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLocation, out encoding, out encErr);
-                    }
-                });
-
-            if (encoding == null)
-                return new CoreResult { Ok = false, Error = encErr ?? "ENCODING_FAIL" };
-
-            var liveTh    = (float)ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.45);
-            var liveScore = liveProb ?? 0f;
-
-            return new CoreResult
-            {
-                Ok                 = true,
-                Encoding           = encoding,
-                Landmarks5         = landmarks,
-                LivenessScore      = liveScore,
-                LivenessOk         = liveOk && liveScore >= liveTh,
-                Sharpness          = sharpness,
-                SharpnessThreshold = sharpTh,
-                FaceBox            = reportedFaceBox,
-                ImageWidth         = imageWidth,
-                ImageHeight        = imageHeight
+                Left = hint.X,
+                Top = hint.Y,
+                Width = hint.Width,
+                Height = hint.Height
             };
+        }
+
+        private static float[] ToLandmarksArray(WorkerAnalyzeFaceResponse response)
+        {
+            if (response?.Landmarks == null)
+                return null;
+
+            var items = new List<float>();
+            foreach (var point in response.Landmarks)
+            {
+                items.Add(point.X);
+                items.Add(point.Y);
+            }
+
+            return items.Count == 0 ? null : items.ToArray();
         }
     }
 }

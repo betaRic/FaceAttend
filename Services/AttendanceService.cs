@@ -24,40 +24,32 @@ namespace FaceAttend.Services
             public string Code { get; set; }
             public string Message { get; set; }
             public string EventType { get; set; }
-            public DateTime TimestampUtc { get; set; }
+            public DateTime TimestampLocal { get; set; }
             public int ApplicableGapSeconds { get; set; }
+            public long AttendanceLogId { get; set; }
         }
 
-        public RecordResult Record(AttendanceLog log, DateTime? attemptedAtUtc = null)
+        public RecordResult Record(AttendanceLog log, DateTime? attemptedAtLocal = null)
         {
             if (log == null) throw new ArgumentNullException(nameof(log));
 
-            // SWITCHED TO LOCAL TIME: Timestamps stored in DB are now local (Asia/Manila)
-            var nowLocal = attemptedAtUtc ?? TimeZoneHelper.NowLocal();
-
-            // Direct date comparison since timestamps are now local
-            var startLocal = nowLocal.Date;                    // start of today in local time
-            var endLocal   = nowLocal.Date.AddDays(1);         // start of tomorrow in local time
+            var nowLocal = attemptedAtLocal ?? TimeZoneHelper.NowLocal();
+            var todayRange = TimeZoneHelper.LocalDateRange(nowLocal);
+            var startLocal = todayRange.fromLocalInclusive;
+            var endLocal = todayRange.toLocalExclusive;
 
             int minGapSeconds = ConfigurationService.GetInt(
                 _db, "Attendance:MinGapSeconds",
                 ConfigurationService.GetInt("Attendance:MinGapSeconds", 180));
 
-            // --- Transaction: prevents concurrent duplicate scans ---
-            // Changed from SERIALIZABLE to REPEATABLE READ for better concurrency.
-            // SERIALIZABLE holds range locks which can cause lock contention under load.
-            // REPEATABLE READ holds shared locks on read rows until commit, which prevents
-            // the other transaction from modifying/deleting those rows. This is sufficient
-            // because we only query by EmployeeId within a date range - no range locks needed.
-            // The unique index (UX_AttendanceLogs) on EmployeeId + EventType + Date still
-            // catches any concurrent duplicate that slips through.
-            using (var tx = _db.Database.BeginTransaction(IsolationLevel.RepeatableRead))
+            using (var tx = _db.Database.BeginTransaction(IsolationLevel.Serializable))
             {
                 try
                 {
                     var lastToday = _db.AttendanceLogs
                         .Where(x =>
                             x.EmployeeId == log.EmployeeId &&
+                            !x.IsVoided &&
                             x.Timestamp >= startLocal &&
                             x.Timestamp < endLocal)
                         .OrderByDescending(x => x.Timestamp)
@@ -120,15 +112,20 @@ namespace FaceAttend.Services
                                 Ok      = false,
                                 Code    = "TOO_SOON",
                                 Message = gapMessage,
-                                TimestampUtc = nowLocal,   // Now local time
+                                TimestampLocal = nowLocal,
                                 ApplicableGapSeconds = applicableGap
                             };
                         }
                     }
 
-                    log.Timestamp = nowLocal;  // Store as local time
+                    log.Timestamp = nowLocal;
+                    log.AttemptedAtLocal = nowLocal;
                     log.EventType = next;
                     log.Source    = string.IsNullOrWhiteSpace(log.Source) ? "KIOSK" : log.Source;
+                    log.ReviewStatus = string.IsNullOrWhiteSpace(log.ReviewStatus)
+                        ? (log.NeedsReview ? "PENDING" : "NONE")
+                        : log.ReviewStatus;
+                    log.IsVoided = false;
 
                     _db.AttendanceLogs.Add(log);
 
@@ -154,7 +151,7 @@ namespace FaceAttend.Services
                                 Ok      = false,
                                 Code    = "TOO_SOON",
                                 Message = "Already scanned. Duplicate record prevented.",
-                                TimestampUtc = nowLocal   // Now local time
+                                TimestampLocal = nowLocal
                             };
                         }
                         throw;
@@ -167,7 +164,8 @@ namespace FaceAttend.Services
                         Ok          = true,
                         Code        = "RECORDED",
                         EventType   = next,
-                        TimestampUtc = nowLocal,  // Now local time
+                        TimestampLocal = nowLocal,
+                        AttendanceLogId = log.Id,
                         Message     = next == "IN" ? "Time in recorded." : "Time out recorded."
                     };
                 }

@@ -10,14 +10,13 @@ using FaceAttend.Services.Helpers;
 using FaceAttend.Services.Security;
 using static FaceAttend.Services.Security.FileSecurityService;
 using static FaceAttend.Services.OfficeLocationService;
-using FaceRecognitionDotNet;
 
 namespace FaceAttend.Services.Recognition
 {
     /// <summary>
     /// Encapsulates the full attendance scan pipeline:
-    /// image validation → office resolution → face detection → liveness →
-    /// matching → tier voting → device check → attendance recording.
+    /// image validation → office resolution → face detection → anti-spoof →
+    /// matching -> tier voting -> attendance recording.
     ///
     /// KioskController.Attend() is a thin HTTP entry point that calls this service.
     /// </summary>
@@ -44,40 +43,14 @@ namespace FaceAttend.Services.Recognition
         private static ActionResult NoOfficesResult(bool perf, IDictionary<string, long> timings)
             => JsonResponseBuilder.NoOffices(timings, perf);
 
-        // ── Face location helper ──────────────────────────────────────────────
-
-        private static bool TryBuildFaceLocationFromClientBox(
-            DlibBiometrics.FaceBox sourceBox,
-            out DlibBiometrics.FaceBox faceBox,
-            out Location faceLoc)
-        {
-            faceBox = null;
-            faceLoc = default(Location);
-
-            if (sourceBox == null || sourceBox.Width <= 20 || sourceBox.Height <= 20)
-                return false;
-
-            var padX   = Math.Max(6, (int)Math.Round(sourceBox.Width  * 0.10));
-            var padY   = Math.Max(6, (int)Math.Round(sourceBox.Height * 0.12));
-            var left   = Math.Max(0, sourceBox.Left - padX);
-            var top    = Math.Max(0, sourceBox.Top  - padY);
-            var width  = Math.Max(1, sourceBox.Width  + (padX * 2));
-            var height = Math.Max(1, sourceBox.Height + (padY * 2));
-
-            faceBox = new DlibBiometrics.FaceBox { Left = left, Top = top, Width = width, Height = height };
-            faceLoc = new Location(faceBox.Left, faceBox.Top, faceBox.Left + faceBox.Width, faceBox.Top + faceBox.Height);
-            return true;
-        }
-
         // ── Main pipeline ─────────────────────────────────────────────────────
 
         public ActionResult Scan(
             double? lat, double? lon, double? accuracy,
             HttpPostedFileBase image,
-            DlibBiometrics.FaceBox clientFaceBox,
-            DateTime requestedAtUtc,
+            OpenVinoBiometrics.FaceBox clientFaceBox,
+            DateTime requestedAtLocal,
             bool includePerfTimings,
-            string deviceToken,
             HttpContextBase httpContext,
             bool wfhMode = false)
         {
@@ -97,9 +70,6 @@ namespace FaceAttend.Services.Recognition
 
             if (!IsValidImage(image.InputStream, new[] { ".jpg", ".jpeg", ".png" }))
                 return JsonResponseBuilder.ErrorWithTimings("INVALID_IMAGE_FORMAT", timings, includePerfTimings);
-
-            string path          = null;
-            string processedPath = null;
 
             try
             {
@@ -136,139 +106,64 @@ namespace FaceAttend.Services.Recognition
                     if (office == null && !wfhMode)
                         return NoOfficesResult(includePerfTimings, timings);
 
-                    // ── Image save + preprocess ───────────────────────────────────────
-                    path = SaveTemp(image, "k_", max);
-                    mark("saved_ms");
-                    if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
-
-                    bool isProcessed;
-                    processedPath = ImagePreprocessor.PreprocessForDetection(path, "k_", out isProcessed);
-                    mark("preprocess_ms");
-                    if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
-
-                    var dlib = new DlibBiometrics();
-
-                    // ── Face detection ────────────────────────────────────────────────
-                    DlibBiometrics.FaceBox faceBox;
-                    Location               faceLoc;
-                    string                 faceErr;
-                    bool                   usedClientBox = false;
-
-                    if (TryBuildFaceLocationFromClientBox(clientFaceBox, out faceBox, out faceLoc))
-                    {
-                        usedClientBox = true;
-                        faceErr       = null;
-                    }
-                    else
-                    {
-                        if (!dlib.TryDetectBestFaceFromFile(processedPath, out faceBox, out faceLoc, out faceErr,
-                            allowLargestFace: true, primaryUpsample: 0, retryUpsampleOnNoFace: true))
-                        {
-                            return JsonResponseBuilder.ErrorWithTimings(faceErr ?? "FACE_FAIL", timings, includePerfTimings);
-                        }
-                    }
-
-                    mark(usedClientBox ? "detect_skip_ms" : "dlib_detect_ms");
-                    if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
-
-                    // ── Liveness threshold (read once) ────────────────────────────────
                     var isMobileAttend = DeviceService.IsMobileDevice(request);
+                    var biometricPolicy = BiometricPolicy.Current;
+                    var antiSpoofThreshold = biometricPolicy.AntiSpoofClearThresholdFor(isMobileAttend);
 
-                    var liveTh = isMobileAttend
-                        ? (float)ConfigurationService.GetDouble("Biometrics:MobileLivenessThreshold", 0.68)
-                        : (float)ConfigurationService.GetDoubleCached(
-                            "Biometrics:LivenessThreshold",
-                            ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65));
-
-                    // ── Embedding + liveness ──────────────────────────────────────────
                     double[] vec               = null;
                     float    p                 = 0f;
-                    bool     livenessConfirmed = false;
+                    bool     antiSpoofConfirmed = false;
+                    AntiSpoofPolicyResult antiSpoofResult = null;
                     int      actualImageWidth  = 1280;
+                    int      actualImageHeight = 0;
+                    float    sharpness         = 0f;
+                    float    sharpnessThreshold = FaceQualityAnalyzer.GetSharpnessThreshold(isMobileAttend);
 
-                    FastScanPipeline.ScanResult fastResult = null;
+                    var scanFaceBox = isMobileAttend ? null : clientFaceBox;
+                    var fastResult = FastScanPipeline.ScanInMemory(
+                        image,
+                        scanFaceBox,
+                        includePerfTimings,
+                        antiSpoofThreshold: antiSpoofThreshold,
+                        isMobile: isMobileAttend);
 
-                    if (ConfigurationService.GetBool("Kiosk:UseFastPipeline", true))
+                    if (fastResult.Timings != null)
+                        foreach (var t in fastResult.Timings)
+                            timings["openvino_" + t.Key] = t.Value;
+
+                    if (!fastResult.Ok)
                     {
-                        image.InputStream.Position = 0;
-                        // Pass client face box when available — RunCore uses it instead of running HOG detection,
-                        // saving 200-500ms. Previously this path was skipped when usedClientBox=true (mobile always
-                        // sent a box from MediaPipe), forcing mobile into the slow sequential disk path every scan.
-                        var scanFaceBox = usedClientBox ? clientFaceBox : null;
-                        fastResult = FastScanPipeline.ScanInMemory(image, scanFaceBox, includePerfTimings);
-
-                        if (fastResult.Timings != null)
-                            foreach (var t in fastResult.Timings)
-                                timings["fast_" + t.Key] = t.Value;
-
-                        if (!fastResult.Ok)
-                        {
-                            var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
-                            return JsonResponseBuilder.EncodingFail(fastResult.Error, timings, includePerfTimings, debug);
-                        }
-
-                        if (!fastResult.LivenessOk)
-                            return JsonResponseBuilder.LivenessFail(fastResult.LivenessScore, liveTh, timings, includePerfTimings);
-
-                        vec               = fastResult.FaceEncoding;
-                        p                 = fastResult.LivenessScore;
-                        actualImageWidth  = fastResult.ImageWidth;
-                        livenessConfirmed = true;
-                        mark("fast_pipeline_ms");
+                        var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
+                        return JsonResponseBuilder.EncodingFail(fastResult.Error, timings, includePerfTimings, debug);
                     }
-                    else
-                    {
-                        // Legacy sequential path
-                        var live   = new OnnxLiveness();
-                        var scored = live.ScoreFromFile(processedPath, faceBox);
-                        mark("liveness_ms");
-                        if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
 
-                        var skipLiveness = ConfigurationService.GetBool("Biometrics:SkipLiveness", false);
+                    antiSpoofResult = biometricPolicy.EvaluateAntiSpoof(
+                        fastResult.AntiSpoofModelOk,
+                        fastResult.AntiSpoofScore,
+                        isMobileAttend);
 
-                        if (!scored.Ok && !skipLiveness)
-                            return JsonResponseBuilder.ErrorWithTimings(scored.Error, timings, includePerfTimings);
+                    if (antiSpoofResult.Decision == AntiSpoofDecision.Block)
+                        return JsonResponseBuilder.AntiSpoofFail(fastResult.AntiSpoofScore, antiSpoofThreshold,
+                            antiSpoofResult.Decision.ToString().ToUpperInvariant(), timings, includePerfTimings);
 
-                        p = scored.Probability ?? 0f;
+                    if (antiSpoofResult.Decision == AntiSpoofDecision.Retry)
+                        return JsonResponseBuilder.AntiSpoofRetry(fastResult.AntiSpoofScore, antiSpoofThreshold, timings, includePerfTimings);
 
-                        if (p < liveTh && !skipLiveness)
-                            return JsonResponseBuilder.LivenessFail(p, liveTh, timings, includePerfTimings);
-
-                        livenessConfirmed = !skipLiveness;
-
-                        string encErr;
-                        if (!dlib.TryEncodeFromFileWithLocation(processedPath, faceLoc, out vec, out encErr) || vec == null)
-                        {
-                            var debug = ConfigurationService.GetBool("Biometrics:Debug", false);
-                            return JsonResponseBuilder.EncodingFail(encErr, timings, includePerfTimings, debug);
-                        }
-
-                        try
-                        {
-                            if (!string.IsNullOrEmpty(processedPath) && System.IO.File.Exists(processedPath))
-                                using (var img = System.Drawing.Image.FromFile(processedPath))
-                                    actualImageWidth = img.Width;
-                        }
-                        catch { }
-
-                        mark("dlib_encode_ms");
-                    }
+                    vec                = fastResult.FaceEncoding;
+                    p                  = fastResult.AntiSpoofScore;
+                    actualImageWidth   = fastResult.ImageWidth;
+                    actualImageHeight  = fastResult.ImageHeight;
+                    sharpness          = fastResult.Sharpness;
+                    sharpnessThreshold = fastResult.SharpnessThreshold;
+                    antiSpoofConfirmed  = antiSpoofResult.Decision == AntiSpoofDecision.Pass;
+                    mark("openvino_pipeline_ms");
 
                     if (vec == null)
                         return JsonResponseBuilder.ErrorWithTimings("ENCODING_FAIL", timings, includePerfTimings);
 
                     if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
 
-                    var attendanceTol = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.50);
-                    if (isMobileAttend)
-                    {
-                        var mobileTol = ConfigurationService.GetDouble("Biometrics:MobileAttendanceTolerance", 0.48);
-                        attendanceTol = Math.Max(0.40, Math.Min(FastFaceMatcher.MedDistThresholdPublic, mobileTol));
-                    }
-                    else
-                    {
-                        attendanceTol = Math.Max(0.40, Math.Min(FastFaceMatcher.MedDistThresholdPublic, attendanceTol));
-                    }
+                    var attendanceTol = biometricPolicy.AttendanceToleranceFor(isMobileAttend);
 
                     // ── Matching ──────────────────────────────────────────────────────
                     if (!FastFaceMatcher.IsInitialized)
@@ -282,6 +177,9 @@ namespace FaceAttend.Services.Recognition
                     // ── Unknown / visitor path ────────────────────────────────────────
                     if (!matchResult.IsMatch)
                     {
+                        if (matchResult.WasAmbiguous)
+                            return JsonResponseBuilder.NotRecognized(timings, includePerfTimings);
+
                         var fingerprint    = DeviceService.GenerateFingerprint(request);
                         var isMobile       = DeviceService.IsMobileDevice(request);
                         var kioskCookieUnk = request.Cookies["ForceKioskMode"];
@@ -294,7 +192,7 @@ namespace FaceAttend.Services.Recognition
                                 "Face not recognized. Would you like to enroll as a new employee?");
                         }
 
-                        double vTol = ConfigurationService.GetDouble("Visitors:DlibTolerance", attendanceTol);
+                        double vTol = ConfigurationService.GetDouble("Visitors:RecognitionTolerance", attendanceTol);
 
                         int?   bestVisitorId   = null;
                         string bestVisitorName = null;
@@ -305,7 +203,7 @@ namespace FaceAttend.Services.Recognition
                             var entries = VisitorFaceIndex.GetEntries(db);
                             foreach (var e in entries)
                             {
-                                var d = DlibBiometrics.Distance(vec, e.Vec);
+                                var d = FaceVectorCodec.Distance(vec, e.Vec);
                                 if (d < bestVisitorDist)
                                 {
                                     bestVisitorDist = d;
@@ -336,15 +234,12 @@ namespace FaceAttend.Services.Recognition
                             timings, includePerfTimings);
                     }
 
-                    // ── Tier-based acceptance ─────────────────────────────────────────
                     var bestEmpId = matchResult.Employee?.EmployeeId;
                     var bestDist  = matchResult.Distance;
 
                     if (matchResult.Tier == FastFaceMatcher.MatchTier.Medium)
                     {
-                        var deviceKeyMed = deviceToken
-                            ?? DeviceService.GetDeviceTokenFromCookie(request)
-                            ?? DeviceService.GenerateFingerprint(request);
+                        var deviceKeyMed = DeviceService.GenerateFingerprint(request);
 
                         var existing = PendingScanService.Get(deviceKeyMed);
 
@@ -355,10 +250,10 @@ namespace FaceAttend.Services.Recognition
                                 EmployeeId   = bestEmpId,
                                 EmployeeDbId = matchResult.Employee?.Id ?? 0,
                                 Distance     = bestDist,
-                                Liveness     = p,
+                                AntiSpoof     = p,
                                 AmbiguityGap = matchResult.AmbiguityGap,
-                                OfficeId     = office.Id,
-                                OfficeName   = office.Name,
+                                OfficeId     = office?.Id ?? 0,
+                                OfficeName   = office?.Name ?? (wfhMode ? "WFH" : null),
                                 DeviceKey    = deviceKeyMed,
                                 CreatedUtc   = DateTime.UtcNow
                             });
@@ -374,8 +269,8 @@ namespace FaceAttend.Services.Recognition
                                     ok        = false,
                                     error     = "SCAN_CONFIRM_NEEDED",
                                     message   = "Almost there — please look at the camera one more time.",
-                                    liveness  = p,
-                                    threshold = liveTh
+                                    antiSpoofScore = p,
+                                    threshold = antiSpoofThreshold
                                 }
                             };
                         }
@@ -419,60 +314,12 @@ namespace FaceAttend.Services.Recognition
                     // ── WFH office resolution (deferred from pre-match) ───────────────
                     if (wfhMode && office == null)
                     {
-                        var todayLocal = requestedAtUtc.Date;
+                        var todayLocal = requestedAtLocal.Date;
                         var empOffice  = db.Offices.FirstOrDefault(o => o.Id == emp.OfficeId && o.IsActive);
                         if (empOffice == null || !OfficeScheduleService.IsWfhEnabledToday(empOffice, todayLocal))
                             return JsonResponseBuilder.ErrorWithTimings("GPS_REQUIRED", timings, includePerfTimings);
                         office           = empOffice;
                         locationVerified = false;  // WFH scan — location not verified
-                    }
-
-                    // ── Device check (mobile only) ────────────────────────────────────
-                    var deviceFingerprint = DeviceService.GenerateFingerprint(request);
-                    var deviceIsMobile    = DeviceService.IsMobileDevice(request);
-
-                    var kioskCookie    = request.Cookies["ForceKioskMode"];
-                    var chUaMobile     = request.Headers["Sec-CH-UA-Mobile"];
-                    bool isHardwareMobile = (chUaMobile == "?1");
-                    var forceKiosk     = !isHardwareMobile && (
-                        (kioskCookie != null && kioskCookie.Value == "true") ||
-                        (request.Headers["X-Kiosk-Mode"] == "true"));
-
-                    var tokenFromCookie   = DeviceService.GetDeviceTokenFromCookie(request);
-                    string deviceTokenFromCheck = null;
-
-                    if (deviceIsMobile && !forceKiosk)
-                    {
-                        var effectiveDeviceToken = deviceToken ?? tokenFromCookie;
-                        var activeDevice = db.Devices.FirstOrDefault(d =>
-                            d.Status == "ACTIVE" && (
-                                (!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken)
-                                || d.Fingerprint == deviceFingerprint));
-
-                        if (activeDevice == null)
-                        {
-                            var anyDevice = db.Devices.FirstOrDefault(d =>
-                                (!string.IsNullOrEmpty(effectiveDeviceToken) && d.DeviceToken == effectiveDeviceToken)
-                                || d.Fingerprint == deviceFingerprint);
-
-                            if (anyDevice != null && anyDevice.Status == "PENDING")
-                                return JsonResponseBuilder.DevicePending("Your device registration is pending admin approval.");
-
-                            if (anyDevice != null && anyDevice.Status == "BLOCKED")
-                                return JsonResponseBuilder.DeviceBlocked("This device has been blocked. Contact administrator.");
-
-                            return JsonResponseBuilder.RegisterDeviceRequired(
-                                emp.Id,
-                                emp.FirstName + " " + emp.LastName,
-                                deviceFingerprint,
-                                "This device is not registered. Please register it to continue.");
-                        }
-
-                        activeDevice.LastUsedAt = DateTime.UtcNow;
-                        activeDevice.UseCount   = activeDevice.UseCount + 1;
-                        deviceTokenFromCheck    = activeDevice.DeviceToken;
-                        if (!string.IsNullOrEmpty(deviceTokenFromCheck))
-                            DeviceService.SetDeviceTokenCookie(response, deviceTokenFromCheck, request.IsSecureConnection);
                     }
 
                     var displayName = emp.LastName + ", " + emp.FirstName +
@@ -482,30 +329,49 @@ namespace FaceAttend.Services.Recognition
                         ? Math.Max(0.0, Math.Min(1.0, 1.0 - (bestDist / attendanceTol)))
                         : (double?)null;
 
-                    // ── NeedsReview flags ─────────────────────────────────────────────
                     var nearMatchRatio = ConfigurationService.GetDoubleCached("NeedsReview:NearMatchRatio", 0.90);
-                    var livenessMargin = ConfigurationService.GetDoubleCached("NeedsReview:LivenessMargin", 0.03);
+                    var antiSpoofMargin = ConfigurationService.GetDoubleCached(
+                        "NeedsReview:AntiSpoofMargin",
+                        0.03);
                     var gpsMargin      = ConfigurationService.GetIntCached("NeedsReview:GPSAccuracyMargin", 10);
 
                     bool needsReviewFlag = false;
                     var  reviewNotes     = new System.Text.StringBuilder();
+                    var reviewCodes = new List<string>();
+
+                    if (antiSpoofResult != null && antiSpoofResult.NeedsReview)
+                    {
+                        needsReviewFlag = true;
+                        reviewCodes.Add(antiSpoofResult.Decision == AntiSpoofDecision.ModelError
+                            ? "ANTI_SPOOF_MODEL_ERROR"
+                            : "ANTI_SPOOF_REVIEW");
+                        reviewNotes.Append("Anti-spoof ")
+                            .Append(antiSpoofResult.Decision.ToString().ToUpperInvariant())
+                            .Append(" score=")
+                            .Append(p.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(" clear=")
+                            .Append(antiSpoofThreshold.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(". ");
+                    }
 
                     if (attendanceTol > 0 && bestDist >= (attendanceTol * nearMatchRatio))
                     {
                         needsReviewFlag = true;
+                        reviewCodes.Add("NEAR_MATCH");
                         reviewNotes.Append("Near-match dist=")
                             .Append(bestDist.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
                             .Append(" tol=").Append((attendanceTol * nearMatchRatio).ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
                             .Append(". ");
                     }
 
-                    if (p < (liveTh + livenessMargin))
+                    if (p < (antiSpoofThreshold + antiSpoofMargin))
                     {
                         if (reviewNotes.Length > 0) reviewNotes.Append(" ");
                         needsReviewFlag = true;
-                        reviewNotes.Append("Near liveness. Score=")
+                        reviewCodes.Add("NEAR_ANTI_SPOOF");
+                        reviewNotes.Append("Near anti-spoof. Score=")
                             .Append(p.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
-                            .Append(" (th=").Append(liveTh.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
+                            .Append(" (th=").Append(antiSpoofThreshold.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture))
                             .Append(")");
                     }
 
@@ -516,13 +382,13 @@ namespace FaceAttend.Services.Recognition
                         {
                             if (reviewNotes.Length > 0) reviewNotes.Append(" ");
                             needsReviewFlag = true;
+                            reviewCodes.Add("GPS_ACCURACY");
                             reviewNotes.Append("Near GPS accuracy. Acc=")
                                 .Append(accuracy.Value.ToString("0.0", System.Globalization.CultureInfo.InvariantCulture))
                                 .Append("m (req=").Append(requiredAcc).Append("m)");
                         }
                     }
 
-                    // ── Anti-spoofing (GPS) ───────────────────────────────────────────
                     var deviceFp = DeviceService.GetShortDeviceFingerprint(httpContext);
                     if (lat.HasValue && lon.HasValue)
                     {
@@ -537,12 +403,12 @@ namespace FaceAttend.Services.Recognition
                         if (spoofCheck.Action == "WARN")
                         {
                             needsReviewFlag = true;
+                            reviewCodes.Add("GPS_REPEAT");
                             if (reviewNotes.Length > 0) reviewNotes.Append(" ");
                             reviewNotes.Append("GPS repeat: ").Append(spoofCheck.Reason).Append(".");
                         }
                     }
 
-                    // ── Record attendance ─────────────────────────────────────────────
                     var tierNote = string.Format("Tier={0} d={1:F3} gap={2}",
                         matchResult.Tier,
                         bestDist,
@@ -562,10 +428,11 @@ namespace FaceAttend.Services.Recognition
                     {
                         EmployeeId       = emp.Id,
                         OfficeId         = office.Id,
-                        EmployeeFullName = StringHelper.Truncate(displayName, 400),
+                        EmployeeFullName = StringHelper.Truncate(displayName, 200),
+                        Source           = isMobileAttend ? "MOBILE" : "KIOSK",
                         Department       = StringHelper.Truncate(emp.Department, 200),
                         OfficeType       = StringHelper.Truncate(office.Type, 40),
-                        OfficeName       = StringHelper.Truncate(office.Name, 400),
+                        OfficeName       = StringHelper.Truncate(office.Name, 200),
                         GPSLatitude      = TruncateGpsCoordinate(lat),
                         GPSLongitude     = TruncateGpsCoordinate(lon),
                         GPSAccuracy      = accuracy,
@@ -573,12 +440,16 @@ namespace FaceAttend.Services.Recognition
                         FaceDistance     = bestDist,
                         FaceSimilarity   = similarity,
                         MatchThreshold   = attendanceTol,
-                        LivenessScore    = p,
-                        LivenessResult   = "PASS",
+                        AntiSpoofScore    = p,
+                        AntiSpoofResult   = antiSpoofResult == null
+                            ? (antiSpoofConfirmed ? "PASS" : "UNKNOWN")
+                            : antiSpoofResult.Decision.ToString().ToUpperInvariant(),
                         ClientIP         = StringHelper.Truncate(request.UserHostAddress ?? "", 100),
                         UserAgent        = StringHelper.Truncate(request.UserAgent ?? "", 1000),
                         WiFiBSSID        = StringHelper.Truncate(office.WiFiBSSID, 200),
                         NeedsReview      = needsReviewFlag,
+                        ReviewStatus     = needsReviewFlag ? "PENDING" : "NONE",
+                        ReviewReasonCodes = reviewCodes.Count == 0 ? null : string.Join(",", reviewCodes.Distinct()),
                         Notes            = reviewNotes.ToString(),
                         IsWfh            = isWfhScan
                     };
@@ -586,7 +457,7 @@ namespace FaceAttend.Services.Recognition
                     if (IsTimedOut(sw)) return TimeoutResult(response, includePerfTimings, timings);
 
                     var svc = new AttendanceService(db);
-                    var rec = svc.Record(log, requestedAtUtc);
+                    var rec = svc.Record(log, requestedAtLocal);
                     mark("db_ms");
 
                     if (!rec.Ok)
@@ -603,7 +474,7 @@ namespace FaceAttend.Services.Recognition
 
                     // Distance log — grep "[MATCH]" to build threshold tuning dataset.
                     Trace.TraceInformation(
-                        "[MATCH] emp={0} event={1} tier={2} dist={3:F3} gap={4} liveness={5:F3} tol={6:F3} ms={7}",
+                        "[MATCH] emp={0} event={1} tier={2} dist={3:F3} gap={4} antiSpoof={5:F3} tol={6:F3} ms={7}",
                         emp.EmployeeId,
                         rec.EventType,
                         matchResult.Tier,
@@ -617,10 +488,35 @@ namespace FaceAttend.Services.Recognition
 
                     mark("total_ms");
 
+                    var attendanceAccess = AttendanceAccessReceiptService.Issue(
+                        response,
+                        request,
+                        emp,
+                        rec.AttendanceLogId,
+                        rec.EventType,
+                        biometricPolicy.ModelVersion,
+                        request.IsSecureConnection);
+
+                    var recognitionDecision = RecognitionDecisionFactory.FromAttendance(
+                        "ATTENDANCE_ACCEPTED",
+                        true,
+                        isMobileAttend ? "MOBILE" : "KIOSK",
+                        p,
+                        antiSpoofThreshold,
+                        antiSpoofResult,
+                        sharpness,
+                        sharpnessThreshold,
+                        fastResult?.FaceBox,
+                        actualImageWidth,
+                        actualImageHeight,
+                        matchResult,
+                        attendanceTol,
+                        sw.ElapsedMilliseconds);
+
                     return JsonResponseBuilder.AttendanceSuccess(
                         emp.EmployeeId, displayName, displayName, rec.EventType, rec.Message,
-                        office.Id, office.Name, p, bestDist, requestedAtUtc,
-                        timings, includePerfTimings, deviceTokenFromCheck);
+                        office.Id, office.Name, p, bestDist, requestedAtLocal,
+                        timings, includePerfTimings, attendanceAccess, recognitionDecision);
                 }
             }
             catch (Exception ex)
@@ -632,8 +528,6 @@ namespace FaceAttend.Services.Recognition
             }
             finally
             {
-                ImagePreprocessor.Cleanup(processedPath, path);
-                TryDelete(path);
             }
         }
     }

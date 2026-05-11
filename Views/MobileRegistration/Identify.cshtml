@@ -1,6 +1,6 @@
 @{
     Layout = "~/Views/Shared/_MobileLayout.cshtml";
-    ViewBag.Title = "Identify Yourself";
+    ViewBag.Title = "Public Attendance Scan";
 }
 
 @section styles {
@@ -182,8 +182,8 @@
 }
 
 <div class="text-center mb-4">
-    <h1 class="mobile-title"><i class="fa-solid fa-fingerprint me-2"></i>Face Identification</h1>
-    <p class="mobile-subtitle">Position your face within the frame</p>
+    <h1 class="mobile-title"><i class="fa-solid fa-fingerprint me-2"></i>Face Attendance</h1>
+    <p class="mobile-subtitle">Scan once to record attendance</p>
 </div>
 
 @Html.AntiForgeryToken()
@@ -223,23 +223,16 @@
                 <div class="employee-details-list" id="employeeDetails"></div>
             </div>
             
-            <!-- Device Warning -->
-            <div class="mobile-alert mobile-alert-warning mt-3" id="deviceWarning" style="display: none;">
-                <i class="fa-solid fa-triangle-exclamation me-2"></i>
-                You already have a registered device: <span id="existingDeviceName"></span>. 
-                Registering this device will replace it.
-            </div>
-            
-            <!-- Already Registered Message -->
+            <!-- Ready Message -->
             <div id="alreadyRegisteredMsg" style="display:none;" class="alert alert-success mt-3">
                 <i class="fa-solid fa-circle-check me-2"></i>
-                Your device is already registered. You can go directly to attendance.
+                Attendance recorded. You may view your monthly record.
             </div>
             
             <!-- Actions -->
             <div class="d-grid gap-2 mt-4">
                 <button type="button" class="mobile-btn mobile-btn-success" id="continueBtn">
-                    <i class="fa-solid fa-arrow-right"></i> Continue to Device Registration
+                    <i class="fa-solid fa-arrow-right"></i> View Attendance
                 </button>
                 <button type="button" class="mobile-btn mobile-btn-secondary" id="retryBtn" style="display: none;">
                     <i class="fa-solid fa-rotate-right"></i> Try Again
@@ -280,27 +273,7 @@
             let lastFaceBox = null;
             let detectionInterval = null;
             let stream = null;
-            
-            // Initialize MediaPipe face detection
-            async function initFaceDetector() {
-                try {
-                    const script = document.createElement('script');
-                    script.src = 'https://cdn.jsdelivr.net/npm/@@mediapipe/face_detection/face_detection.js';
-                    script.crossOrigin = 'anonymous';
-                    document.head.appendChild(script);
-                    
-                    await new Promise((resolve, reject) => {
-                        script.onload = resolve;
-                        script.onerror = reject;
-                        setTimeout(reject, 10000);
-                    });
-                    
-                    return true;
-                } catch (err) {
-                    console.warn('Face detector not loaded, using basic detection');
-                    return false;
-                }
-            }
+            let locationFix = null;
             
             function setStatus(status, text) {
                 cameraStatus.className = 'camera-status ' + status;
@@ -314,6 +287,36 @@
                 } else {
                     retryCounter.style.display = 'none';
                 }
+            }
+
+            async function getLocationFix() {
+                if (locationFix && locationFix.capturedAt && (Date.now() - locationFix.capturedAt) < 30000) {
+                    return locationFix;
+                }
+
+                if (!navigator.geolocation) {
+                    return null;
+                }
+
+                setStatus('ready', 'Checking location');
+
+                return new Promise(resolve => {
+                    navigator.geolocation.getCurrentPosition(function(pos) {
+                        locationFix = {
+                            lat: pos.coords.latitude,
+                            lon: pos.coords.longitude,
+                            accuracy: pos.coords.accuracy,
+                            capturedAt: Date.now()
+                        };
+                        resolve(locationFix);
+                    }, function() {
+                        resolve(null);
+                    }, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 30000
+                    });
+                });
             }
             
             function renderEmployeeDetails(data) {
@@ -337,9 +340,6 @@
             // MIGRATED: Use FaceAttend.Camera instead of direct getUserMedia
             async function initCamera() {
                 try {
-                    // Initialize face detector
-                    const detectorReady = await initFaceDetector();
-                    
                     // Use unified FaceAttend.Camera
                     FaceAttend.Camera.start(video, {
                         width: { ideal: 640 },
@@ -417,6 +417,11 @@
                 setStatus('scanning', 'Scanning...');
                 
                 try {
+                    const gps = await getLocationFix();
+                    if (!gps) {
+                        throw { code: 'GPS_REQUIRED' };
+                    }
+
                     // SIMPLIFIED: Single frame capture - same as desktop kiosk
                     // Server uses FastScanPipeline for fast face detection
                     const blob = await captureFrame();
@@ -427,11 +432,19 @@
                     
                     const formData = new FormData();
                     formData.append('image', blob, 'frame.jpg');
+                    formData.append('lat', gps.lat);
+                    formData.append('lon', gps.lon);
+                    formData.append('accuracy', gps.accuracy);
                     formData.append('__RequestVerificationToken', 
                         document.querySelector('input[name="__RequestVerificationToken"]').value);
-                    
-                    const response = await fetch('/MobileRegistration/IdentifyEmployee', {
+
+                    const headers = window.FaceAttend && FaceAttend.Utils
+                        ? FaceAttend.Utils.mergeRequestHeaders()
+                        : {};
+
+                    const response = await fetch('/Attendance/Scan', {
                         method: 'POST',
+                        headers: headers,
                         body: formData
                     });
                     
@@ -444,66 +457,50 @@
                     scanOverlay.classList.remove('active');
                     
                     if (data.ok) {
-                        onIdentificationSuccess(data);
+                        onAttendanceSuccess(data);
                     } else {
                         onIdentificationError(data);
                     }
                 } catch (err) {
                     console.error('Scan error:', err);
-                    onIdentificationError({ error: 'NETWORK_ERROR' });
+                    onIdentificationError(err && err.code === 'GPS_REQUIRED'
+                        ? { error: 'GPS_REQUIRED', message: 'Location access is required for public attendance.' }
+                        : { error: 'NETWORK_ERROR' });
                 } finally {
                     isScanning = false;
                 }
             }
             
-            function onIdentificationSuccess(data) {
+            function onAttendanceSuccess(data) {
                 identifiedEmployeeId = data.employeeId;
                 cameraContainer.classList.add('success');
                 faceOverlay.classList.add('success');
-                setStatus('identified', 'Identified!');
+                setStatus('identified', 'Recorded');
                 
-                document.getElementById('employeeName').textContent = data.fullName;
-                renderEmployeeDetails(data);
+                document.getElementById('employeeName').textContent = data.displayName || data.name || data.employeeId || 'Employee';
+                renderEmployeeDetails({
+                    position: data.eventType ? ('Attendance: ' + data.eventType) : '',
+                    department: data.message,
+                    office: data.officeName
+                });
                 
-                const deviceWarning       = document.getElementById('deviceWarning');
                 const alreadyRegistered   = document.getElementById('alreadyRegisteredMsg');
                 const continueBtn         = document.getElementById('continueBtn');
 
-                if (data.isCurrentDeviceRegistered) {
-                    // THIS device is already registered - no need to register again
-                    if (deviceWarning)     deviceWarning.style.display     = 'none';
-                    if (alreadyRegistered) alreadyRegistered.style.display = 'block';
-                    if (continueBtn) {
-                        continueBtn.textContent = 'Go to Attendance';
-                        continueBtn.onclick = function() {
-                            window.location.href = '/MobileRegistration/Employee';
-                        };
-                    }
-                } else if (data.hasExistingDevice) {
-                    // A DIFFERENT device is registered - show replace warning, allow proceed
-                    if (alreadyRegistered) alreadyRegistered.style.display = 'none';
-                    if (deviceWarning) {
-                        deviceWarning.style.display = 'block';
-                        document.getElementById('existingDeviceName').textContent = data.existingDeviceName;
-                    }
-                    if (continueBtn) {
-                        continueBtn.textContent = 'Replace & Register This Device';
-                        continueBtn.onclick = function() {
-                            window.location.href = '/MobileRegistration/Device?employeeId=' + 
-                                encodeURIComponent(identifiedEmployeeId);
-                        };
-                    }
-                } else {
-                    // No device registered at all - clean flow
-                    if (deviceWarning)     deviceWarning.style.display     = 'none';
-                    if (alreadyRegistered) alreadyRegistered.style.display = 'none';
+                if (alreadyRegistered) alreadyRegistered.style.display = 'block';
+                if (continueBtn) {
+                    continueBtn.textContent = 'View Attendance';
+                    continueBtn.onclick = function() {
+                        const access = data.attendanceAccess || {};
+                        window.location.href = access.recordUrl || '/Attendance/MyMonth';
+                    };
                 }
                 
                 resultSection.style.display = 'block';
                 resultSection.scrollIntoView({ behavior: 'smooth' });
                 
                 if (typeof MobileSwal !== 'undefined') {
-                    MobileSwal.success('Identified!', 'Welcome, ' + data.fullName);
+                    MobileSwal.success('Recorded!', data.message || 'Attendance recorded.');
                 }
             }
             
@@ -547,8 +544,7 @@
             
             continueBtn.addEventListener('click', () => {
                 if (identifiedEmployeeId) {
-                    window.location.href = '/MobileRegistration/Device?employeeId=' + 
-                        encodeURIComponent(identifiedEmployeeId);
+                    window.location.href = '/Attendance/MyMonth';
                 }
             });
             

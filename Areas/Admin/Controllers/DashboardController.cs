@@ -1,10 +1,11 @@
-﻿using System;
+using System;
 using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Recognition;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -24,23 +25,23 @@ namespace FaceAttend.Areas.Admin.Controllers
                         vm.TotalEmployees = db.Employees.Count(e => e.Status == "ACTIVE");
 
                         var todayLocal = TimeZoneHelper.TodayLocalDate();
-                        var todayRange = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
-                        var todayUtc = todayRange.fromUtc;
-                        var tomorrowUtc = todayRange.toUtcExclusive;
+                        var todayRange = TimeZoneHelper.LocalDateRange(todayLocal);
+                        var todayStart = todayRange.fromLocalInclusive;
+                        var tomorrowStart = todayRange.toLocalExclusive;
 
                         vm.TodayTimeIns = db.AttendanceLogs.Count(l =>
-                            l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "IN");
+                            !l.IsVoided &&
+                            l.Timestamp >= todayStart && l.Timestamp < tomorrowStart && l.EventType == "IN");
 
                         vm.TodayTimeOuts = db.AttendanceLogs.Count(l =>
-                            l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "OUT");
+                            !l.IsVoided &&
+                            l.Timestamp >= todayStart && l.Timestamp < tomorrowStart && l.EventType == "OUT");
 
                         vm.TotalVisitors = db.Visitors.Count(v => v.IsActive);
-                        vm.PendingReviews = db.AttendanceLogs.Count(l => l.NeedsReview);
+                        vm.PendingReviews = db.AttendanceLogs.Count(l => !l.IsVoided && l.ReviewStatus == "PENDING");
 
-                        // FIX (CS0019): l.EmployeeId is int — materialize first,
-                        // then convert int->string in C# memory (not inside EF LINQ).
-                        // EF6 cannot translate .ToString() to SQL.
                         var rawLogs = db.AttendanceLogs
+                            .Where(l => !l.IsVoided)
                             .OrderByDescending(l => l.Timestamp)
                             .Take(10)
                             .Select(l => new
@@ -58,7 +59,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         vm.RecentLogs = rawLogs.Select(l => new RecentAttendanceRow
                         {
                             Id = l.Id,
-                            TimestampUtc = l.Timestamp,
+                            TimestampLocal = l.Timestamp,
                             EmployeeId = l.EmployeeId.ToString(),
                             EmployeeFullName = l.EmployeeFullName ?? "",
                             EventType = l.EventType,
@@ -75,28 +76,10 @@ namespace FaceAttend.Areas.Admin.Controllers
                     vm.DatabaseHealthy = false;
                 }
 
-                vm.LivenessModelLoaded = FaceAttend.Services.Helpers.FileSystemHelper.FileExists(
-                    ConfigurationService.GetString("Biometrics:LivenessModelPath",
-                        "~/App_Data/models/liveness/minifasnet.onnx"));
-
-                vm.DlibModelsLoaded = FaceAttend.Services.Helpers.FileSystemHelper.DlibModelsPresent(
-                    ConfigurationService.GetString("Biometrics:DlibModelsDir",
-                        "~/App_Data/models/dlib"));
+                var worker = BiometricWorkerClient.CheckHealth();
+                vm.BiometricWorkerReady = worker.Enabled && worker.Healthy;
 
                 vm.OfflineAssetsOk = true;
-
-                try
-                {
-                    var circuitState = OnnxLiveness.GetCircuitState();
-                    vm.LivenessCircuitOpen = circuitState.IsOpen;
-                    vm.LivenessCircuitStuck = circuitState.IsStuck;
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.TraceError("[Dashboard.Index] Liveness health error: " + ex);
-                    vm.LivenessCircuitOpen = false;
-                    vm.LivenessCircuitStuck = true;
-                }
 
                 ViewBag.Title = "Dashboard";
                 return View(vm);
@@ -118,18 +101,20 @@ namespace FaceAttend.Areas.Admin.Controllers
                 using (var db = new FaceAttendDBEntities())
                 {
                     var todayLocal = TimeZoneHelper.TodayLocalDate();
-                    var todayRange = TimeZoneHelper.LocalDateToUtcRange(todayLocal);
-                    var todayUtc = todayRange.fromUtc;
-                    var tomorrowUtc = todayRange.toUtcExclusive;
+                    var todayRange = TimeZoneHelper.LocalDateRange(todayLocal);
+                    var todayStart = todayRange.fromLocalInclusive;
+                    var tomorrowStart = todayRange.toLocalExclusive;
 
                     var totalEmployees = db.Employees.Count(e => e.Status == "ACTIVE");
                     var todayIns = db.AttendanceLogs.Count(l =>
-                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "IN");
+                        !l.IsVoided &&
+                        l.Timestamp >= todayStart && l.Timestamp < tomorrowStart && l.EventType == "IN");
                     var todayOuts = db.AttendanceLogs.Count(l =>
-                        l.Timestamp >= todayUtc && l.Timestamp < tomorrowUtc && l.EventType == "OUT");
+                        !l.IsVoided &&
+                        l.Timestamp >= todayStart && l.Timestamp < tomorrowStart && l.EventType == "OUT");
                     var visitors = db.Visitors.Count(v => v.IsActive);
-                    var pending = db.AttendanceLogs.Count(l => l.NeedsReview);
-                    var circuit = OnnxLiveness.GetCircuitState();
+                    var pending = db.AttendanceLogs.Count(l => !l.IsVoided && l.ReviewStatus == "PENDING");
+                    var worker = BiometricWorkerClient.CheckHealth();
 
                     return Json(new
                     {
@@ -140,8 +125,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         totalVisitors = visitors,
                         pendingReviews = pending,
                         dbHealthy = true,
-                        livenessCircuitOpen = circuit.IsOpen,
-                        livenessCircuitStuck = circuit.IsStuck,
+                        biometricWorkerReady = worker.Enabled && worker.Healthy,
                         serverTimeLocal = TimeZoneHelper.NowLocal().ToString("HH:mm:ss")
                     }, JsonRequestBehavior.AllowGet);
                 }
@@ -151,24 +135,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 System.Diagnostics.Trace.TraceError("[Dashboard.KpiJson] Error: " + ex.Message);
                 return Json(new { ok = false, dbHealthy = false }, JsonRequestBehavior.AllowGet);
             }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult ResetLivenessCircuit()
-        {
-            try
-            {
-                OnnxLiveness.ResetCircuit();
-                TempData["msg"] = "Liveness circuit breaker na-reset. Maaari na ulit mag-scan.";
-                TempData["msgKind"] = "success";
-            }
-            catch (Exception ex)
-            {
-                TempData["msg"] = "Error: " + ex.Message;
-                TempData["msgKind"] = "danger";
-            }
-            return RedirectToAction("Index");
         }
 
         [HttpPost]
@@ -192,6 +158,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
             return RedirectToAction("Index");
         }
-        // FileSystemHelper now provides CheckFileExists and DlibModelsPresent
+        // FileSystemHelper now provides CheckFileExists and BiometricWorkerReady
     }
 }

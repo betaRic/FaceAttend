@@ -20,7 +20,7 @@ namespace FaceAttend.Services.Recognition
             public string   EmployeeId   { get; set; }
             public int      EmployeeDbId { get; set; }
             public double   Distance     { get; set; }
-            public float    Liveness     { get; set; }
+            public float    AntiSpoof     { get; set; }
             public double   AmbiguityGap { get; set; }
             public int      OfficeId     { get; set; }
             public string   OfficeName   { get; set; }

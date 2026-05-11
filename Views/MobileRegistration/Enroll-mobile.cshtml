@@ -10,11 +10,24 @@
     @Styles.Render("~/Content/enrollment")
     <style>
         /* ── Step 1 & 3 wizard chrome ─────────────────────────────────── */
+        .header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .header h1 {
+            margin: 0;
+            font-size: 1.05rem;
+            line-height: 1.15;
+        }
+        .header p { display: none; }
         .wizard-steps {
-            display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
         }
         .wizard-step {
-            flex: 1; text-align: center; padding: 10px 8px; border-radius: 12px;
+            flex: 1; text-align: center; padding: 7px 6px; border-radius: 8px;
             border: 1px solid rgba(255,255,255,0.12);
             background: rgba(255,255,255,0.04);
             color: var(--text-muted); font-size: 13px; font-weight: 600;
@@ -25,50 +38,82 @@
         .wizard-pane        { display: none; }
         .wizard-pane.active { display: block; animation: slideIn .25s ease; }
         @@keyframes slideIn { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:translateY(0); } }
-        .wizard-actions { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
+        #step1.active, #step3.active {
+            max-height: calc(100vh - 146px);
+            max-height: calc(100dvh - 146px);
+            overflow: auto;
+            padding-right: 2px;
+        }
+        .wizard-actions {
+            position: sticky;
+            bottom: 0;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            margin-top: 8px;
+            padding-top: 8px;
+            background: linear-gradient(to top, rgba(2,6,23,0.98) 75%, rgba(2,6,23,0));
+        }
         .hint-box {
             background: rgba(59,130,246,0.08); border: 1px solid rgba(59,130,246,0.2);
-            color: var(--text-secondary); border-radius: 12px; padding: 12px 14px;
-            margin-bottom: 16px; font-size: 14px;
+            color: var(--text-secondary); border-radius: 8px; padding: 8px 10px;
+            margin-bottom: 8px; font-size: 13px;
         }
-        .form-section  { margin-bottom: 16px; }
-        .form-row      { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-        .form-group    { margin-bottom: 14px; }
+        .form-section  { margin-bottom: 8px; }
+        .form-row      { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+        .form-group    { margin-bottom: 8px; }
         .form-group label {
-            display: block; font-size: 12px; font-weight: 700; color: var(--text-muted);
-            text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px;
+            display: block; font-size: 11px; font-weight: 700; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0; margin-bottom: 3px;
         }
         .form-group label .required { color: var(--color-error); }
         .form-group label .hint     { font-weight: 400; font-size: 11px; text-transform: none; letter-spacing: 0; }
         .form-group input, .form-group select {
-            width: 100%; padding: 11px 14px;
+            width: 100%; min-height: 38px; padding: 8px 10px;
             background: rgba(255,255,255,0.05); border: 1.5px solid rgba(255,255,255,0.12);
-            border-radius: 10px; color: var(--text-primary); font-size: 14px;
+            border-radius: 8px; color: var(--text-primary); font-size: 14px;
             transition: border-color .2s;
         }
         .form-group input:focus, .form-group select:focus { outline: none; border-color: var(--color-primary); }
         .form-group input.valid   { border-color: var(--color-success); }
         .form-group input.invalid { border-color: var(--color-error); }
-        .validation-message { font-size: 11px; color: var(--color-error); margin-top: 4px; min-height: 16px; }
+        .validation-message { font-size: 10px; color: var(--color-error); margin-top: 2px; min-height: 12px; }
         .security-badge {
             display: flex; align-items: center; gap: 8px; padding: 10px 14px;
             background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.2);
             border-radius: 10px; font-size: 12px; color: #4ade80; margin-top: 4px;
         }
         .uppercase { text-transform: uppercase; }
-        .review-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        .review-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
         .review-item {
-            padding: 12px 14px; border-radius: 12px;
+            padding: 8px 10px; border-radius: 8px;
             background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
         }
-        .review-label { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: .4px; }
-        .review-value { font-size: 15px; color: var(--text-primary); word-break: break-word; }
+        .review-label { font-size: 11px; color: var(--text-muted); margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0; }
+        .review-value { font-size: 14px; color: var(--text-primary); word-break: break-word; }
         .status-bar {
-            padding: 12px 16px; border-radius: 12px; text-align: center;
-            font-size: 14px; font-weight: 500; margin-top: 12px;
+            padding: 8px 10px; border-radius: 8px; text-align: center;
+            font-size: 13px; font-weight: 500; margin-top: 8px;
         }
         .status-bar.success { background: rgba(34,197,94,0.1); color: #34d399; border: 1px solid rgba(34,197,94,0.2); }
         .status-bar.error   { background: rgba(239,68,68,0.1); color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
+
+        @@media (max-height: 720px) {
+            .header { display: none; }
+            #step1.active, #step3.active {
+                max-height: calc(100vh - 98px);
+                max-height: calc(100dvh - 98px);
+            }
+            .wizard-step { font-size: 12px; padding: 6px 4px; }
+        }
+
+        @@media (max-width: 360px) {
+            .form-row,
+            .review-grid,
+            .wizard-actions {
+                grid-template-columns: 1fr;
+            }
+        }
 
         /* ── Step 2: Full-screen camera ───────────────────────────────── */
 
@@ -216,15 +261,15 @@
             background: linear-gradient(to top, rgba(0,0,0,0.82) 0%, transparent 100%);
         }
 
-        /* Liveness row */
-        .cam-fs-liveness {
+        /* Anti-spoof row */
+        .cam-fs-antiSpoof {
             display: flex;
             align-items: center;
             gap: 0.75rem;
             margin-bottom: 1.25rem;
         }
 
-        .cam-fs-liveness-label {
+        .cam-fs-antiSpoof-label {
             font-size: 0.75rem;
             font-weight: 600;
             color: rgba(255,255,255,0.6);
@@ -234,7 +279,7 @@
             width: 4rem;
         }
 
-        .cam-fs-liveness-track {
+        .cam-fs-antiSpoof-track {
             flex: 1;
             height: 5px;
             background: rgba(255,255,255,0.18);
@@ -242,7 +287,7 @@
             overflow: hidden;
         }
 
-        .cam-fs-liveness-fill {
+        .cam-fs-antiSpoof-fill {
             height: 100%;
             width: 0%;
             background: #22c55e;
@@ -250,11 +295,11 @@
             transition: width 0.35s ease, background-color 0.35s ease;
         }
 
-        .cam-fs-liveness-fill.low  { background: #ef4444; }
-        .cam-fs-liveness-fill.mid  { background: #f59e0b; }
-        .cam-fs-liveness-fill.high { background: #22c55e; }
+        .cam-fs-antiSpoof-fill.low  { background: #ef4444; }
+        .cam-fs-antiSpoof-fill.mid  { background: #f59e0b; }
+        .cam-fs-antiSpoof-fill.high { background: #22c55e; }
 
-        .cam-fs-liveness-pct {
+        .cam-fs-antiSpoof-pct {
             font-size: 0.8125rem;
             font-weight: 700;
             color: #fff;
@@ -365,18 +410,6 @@
             <div class="validation-message" id="officeIdValidation"></div>
         </div>
 
-        <div class="form-group">
-            <label>Device Name <span class="required">*</span> <span class="hint">(e.g., MY IPHONE 15)</span></label>
-            <input type="text" id="deviceName" class="uppercase" value="MY PHONE"
-                   required maxlength="50" autocomplete="off" />
-            <div class="validation-message" id="deviceNameValidation"></div>
-        </div>
-
-        <div class="security-badge">
-            <i class="fa-solid fa-lock"></i>
-            <span>Form protected by anti-XSS validation</span>
-        </div>
-
     </div>
 
     <div class="wizard-actions">
@@ -425,13 +458,13 @@
         @* ── Bottom HUD *@
         <div class="cam-fs-bottom">
 
-            @* Liveness bar *@
-            <div class="cam-fs-liveness">
-                <span class="cam-fs-liveness-label">Liveness</span>
-                <div class="cam-fs-liveness-track">
-                    <div class="cam-fs-liveness-fill" id="livenessBar"></div>
+            @* Anti-spoof bar *@
+            <div class="cam-fs-antiSpoof">
+                <span class="cam-fs-antiSpoof-label">Anti-spoof</span>
+                <div class="cam-fs-antiSpoof-track">
+                    <div class="cam-fs-antiSpoof-fill" id="antiSpoofBar"></div>
                 </div>
-                <span class="cam-fs-liveness-pct" id="livenessText">0%</span>
+                <span class="cam-fs-antiSpoof-pct" id="antiSpoofText">0%</span>
             </div>
 
             @* 10 capture-progress dots (matches MAX_FRAMES = 10 in mobile-enroll-page.js) *@
@@ -481,12 +514,8 @@
                 <div class="review-value" id="reviewOffice">-</div>
             </div>
             <div class="review-item">
-                <div class="review-label">Device Name</div>
-                <div class="review-value" id="reviewDeviceName">-</div>
-            </div>
-            <div class="review-item">
                 <div class="review-label">Face Samples</div>
-                <div class="review-value" id="reviewSampleCount">0 / 5</div>
+                <div class="review-value" id="reviewSampleCount">0 / 10</div>
             </div>
         </div>
         <div class="status-bar success" id="reviewStatus">Ready to submit</div>

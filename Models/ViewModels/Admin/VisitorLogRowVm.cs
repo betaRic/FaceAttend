@@ -4,7 +4,7 @@ namespace FaceAttend.Models.ViewModels.Admin
 {
     public class VisitorLogRowVm
     {
-        public DateTime TimestampUtc { get; set; }
+        public DateTime TimestampLocal { get; set; }
         public int? VisitorId { get; set; }
         public string VisitorName { get; set; }
         public string Purpose { get; set; }

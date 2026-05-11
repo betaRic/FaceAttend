@@ -14,21 +14,13 @@ namespace FaceAttend.Services.Biometrics
         private static readonly ReaderWriterLockSlim _lock = new ReaderWriterLockSlim();
         private static bool _isInitialized = false;
 
-        // BallTree index for O(log n) search - enabled when >= 50 employees
-        private static BallTreeIndex _ballTree;
-        private static int _ballTreeThreshold = 50;
-
         public static double HighDistThresholdPublic => HighDistThreshold;
         public static double MedDistThresholdPublic  => MedDistThreshold;
 
         private static double HighDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.40);
-        private static double HighGapThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:HighGapThreshold", 0.15);
+            => BiometricPolicy.Current.HighDistanceThreshold;
         private static double MedDistThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.55);
-        private static double MedGapThreshold
-            => ConfigurationService.GetDouble("Biometrics:Match:MedGapThreshold", 0.15);
+            => BiometricPolicy.Current.MediumDistanceThreshold;
 
         public class EmployeeInfo
         {
@@ -54,6 +46,8 @@ namespace FaceAttend.Services.Biometrics
             public double       Distance           { get; set; }
             public double       Confidence         { get; set; }
             public double       SecondBestDistance { get; set; } = double.PositiveInfinity;
+            public string       SecondBestEmployeeId { get; set; }
+            public double       BestRawDistance    { get; set; } = double.PositiveInfinity;
             public double       AmbiguityGap       { get; set; }
             public MatchTier    Tier               { get; set; } = MatchTier.Low;
             public string       MatchedPhotoIndex  { get; set; }
@@ -101,37 +95,9 @@ namespace FaceAttend.Services.Biometrics
                     }
                 }
 
-                // Build BallTree for fast O(log n) search when >= threshold employees
-                _ballTree = null;
-                var totalVectors = newFaces.Values.Sum(v => v.Count);
-                if (totalVectors >= _ballTreeThreshold)
-                {
-                    try
-                    {
-                        var leafSize = ConfigurationService.GetInt("Biometrics:BallTreeLeafSize", 16);
-                        var entries = new List<BallTreeIndex.Entry>();
-                        foreach (var kvp in newFaces)
-                        {
-                            foreach (var vec in kvp.Value)
-                            {
-                                entries.Add(new BallTreeIndex.Entry
-                                {
-                                    Id = kvp.Key,
-                                    Vec = vec
-                                });
-                            }
-                        }
-                        _ballTree = new BallTreeIndex(entries, leafSize);
-                        System.Diagnostics.Trace.TraceInformation(
-                            "[FastFaceMatcher] BallTree built with {0} vectors from {1} employees",
-                            entries.Count, newFaces.Count);
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Trace.TraceWarning(
-                            "[FastFaceMatcher] BallTree build failed: {0}", ex.Message);
-                    }
-                }
+                System.Diagnostics.Trace.TraceInformation(
+                    "[FastFaceMatcher] Loaded {0} vectors from {1} employees for exact matching",
+                    newFaces.Values.Sum(v => v.Count), newFaces.Count);
             }
 
             _employeeFaces = newFaces;
@@ -143,11 +109,12 @@ namespace FaceAttend.Services.Biometrics
         {
             if (!_isInitialized) Initialize();
 
-            if (faceVector == null || faceVector.Length != 128)
+            if (!FaceVectorCodec.IsValidVector(faceVector))
                 return new MatchResult { IsMatch = false };
 
             string bestEmpId    = null;
             double bestDist     = double.MaxValue;
+            double bestRawDist  = double.MaxValue;
             int    bestPhotoIdx = -1;
             string secondEmpId  = null;
             double secondDist   = double.MaxValue;
@@ -155,85 +122,33 @@ namespace FaceAttend.Services.Biometrics
             _lock.EnterReadLock();
             try
             {
-                // Use BallTree for O(log n) search when available
-                var tree = _ballTree;
-                if (tree != null)
+                // For attendance, correctness beats the tiny speed gain from nearest-vector
+                // indexing. At this scale, exact employee-level scoring is cheap and avoids
+                // accepting a single vector while another employee is nearly tied.
+                foreach (var kvp in _employeeFaces)
                 {
-                    // BallTree gives us the nearest neighbor
-                    var ballResult = tree.FindNearest(faceVector, tolerance, out double ballDist);
-                    if (ballResult != null)
+                    var empId   = kvp.Key;
+                    var vectors = kvp.Value;
+
+                    int empIdx;
+                    double rawDist;
+                    var empScore = ScoreEmployee(faceVector, vectors, out empIdx, out rawDist);
+                    if (double.IsPositiveInfinity(empScore))
+                        continue;
+
+                    if (empScore < bestDist)
                     {
-                        bestEmpId = ballResult;
-                        bestDist = ballDist;
+                        secondEmpId = bestEmpId;
+                        secondDist  = bestDist;
+                        bestEmpId   = empId;
+                        bestDist    = empScore;
+                        bestRawDist = rawDist;
+                        bestPhotoIdx = empIdx;
                     }
-
-                    // If no match in BallTree tolerance, try full scan as fallback
-                    // This handles cases where the closest is within tolerance but BallTree returned null
-                    if (bestEmpId == null)
+                    else if (empScore < secondDist && empId != bestEmpId)
                     {
-                        // Fallback to linear scan for candidates within extended tolerance
-                        bestEmpId = FindNearestLinearFallback(faceVector, tolerance * 1.2, out bestDist, out bestPhotoIdx);
-                    }
-
-                    // Need to compute second-best for ambiguity check
-                    if (bestEmpId != null)
-                    {
-                        // Get best employee's vectors to find second-best
-                        if (_employeeFaces.TryGetValue(bestEmpId, out var bestVectors))
-                        {
-                            var allDists = new List<(double d, int idx)>();
-                            for (int i = 0; i < bestVectors.Count; i++)
-                            {
-                                var d = DlibBiometrics.Distance(faceVector, bestVectors[i]);
-                                allDists.Add((d, i));
-                            }
-                            allDists.Sort((a, b) => a.d.CompareTo(b.d));
-
-                            // Second-best is second closest vector OR second closest employee
-                            if (allDists.Count > 1)
-                            {
-                                secondDist = allDists[1].d;
-                            }
-                            else
-                            {
-                                // Need to check other employees for true second-best
-                                secondDist = FindSecondBestDistance(faceVector, bestEmpId, bestDist);
-                            }
-                        }
-                    }
-                }
-                else
-                {
-                    // Fallback to linear scan (original O(n) implementation)
-                    foreach (var kvp in _employeeFaces)
-                    {
-                        var empId   = kvp.Key;
-                        var vectors = kvp.Value;
-
-                        var allDists = new List<(double d, int idx)>(vectors.Count);
-                        for (int i = 0; i < vectors.Count; i++)
-                            allDists.Add((DlibBiometrics.Distance(faceVector, vectors[i]), i));
-                        allDists.Sort((a, b) => a.d.CompareTo(b.d));
-
-                        int    empIdx   = allDists[0].idx;
-                        int    k        = Math.Min(3, allDists.Count);
-                        double empScore = 0;
-                        for (int i = 0; i < k; i++) empScore += allDists[i].d;
-                        empScore /= k;
-
-                        if (empScore < bestDist)
-                        {
-                            secondEmpId  = bestEmpId;
-                            secondDist   = bestDist;
-                            bestEmpId    = empId;
-                            bestDist     = empScore;
-                            bestPhotoIdx = empIdx;
-                        }
-                        else if (empScore < secondDist && empId != bestEmpId)
-                        {
-                            secondEmpId = empId;
-                            secondDist  = empScore;
-                        }
+                        secondEmpId = empId;
+                        secondDist  = empScore;
                     }
                 }
             }
@@ -259,8 +174,9 @@ namespace FaceAttend.Services.Biometrics
                 return new MatchResult { IsMatch = false };
             }
 
+            var ambiguityRelativeGap = BiometricPolicy.Current.AmbiguityRelativeGap;
             bool ambiguous = gap != double.PositiveInfinity
-                && gap < (bestDist * 0.25);
+                && gap < (bestDist * ambiguityRelativeGap);
             if (ambiguous)
             {
                 System.Diagnostics.Trace.TraceInformation(
@@ -272,6 +188,8 @@ namespace FaceAttend.Services.Biometrics
                     WasAmbiguous       = true,
                     Distance           = bestDist,
                     SecondBestDistance = secondDist,
+                    SecondBestEmployeeId = secondEmpId,
+                    BestRawDistance    = bestRawDist,
                     AmbiguityGap       = gap
                 };
             }
@@ -314,6 +232,8 @@ namespace FaceAttend.Services.Biometrics
                 Distance           = bestDist,
                 Confidence         = confidence,
                 SecondBestDistance = secondDist,
+                SecondBestEmployeeId = secondEmpId,
+                BestRawDistance    = bestRawDist,
                 AmbiguityGap       = gap,
                 Tier               = tier,
                 MatchedPhotoIndex  = bestPhotoIdx.ToString(),
@@ -321,51 +241,32 @@ namespace FaceAttend.Services.Biometrics
             };
         }
 
-        private static string FindNearestLinearFallback(double[] vec, double tolerance, out double bestDist, out int bestPhotoIdx)
+        private static double ScoreEmployee(double[] vec, List<double[]> vectors, out int bestPhotoIdx, out double rawBestDist)
         {
-            bestDist = double.MaxValue;
             bestPhotoIdx = -1;
-            string bestEmpId = null;
+            rawBestDist = double.PositiveInfinity;
 
-            foreach (var kvp in _employeeFaces)
-            {
-                var vectors = kvp.Value;
-                var allDists = new List<(double d, int idx)>(vectors.Count);
-                for (int i = 0; i < vectors.Count; i++)
-                    allDists.Add((DlibBiometrics.Distance(vec, vectors[i]), i));
-                allDists.Sort((a, b) => a.d.CompareTo(b.d));
+            if (vectors == null || vectors.Count == 0)
+                return double.PositiveInfinity;
 
-                if (allDists[0].d < bestDist)
-                {
-                    bestDist = allDists[0].d;
-                    bestPhotoIdx = allDists[0].idx;
-                    bestEmpId = kvp.Key;
-                }
-            }
+            var allDists = new List<(double d, int idx)>(vectors.Count);
+            for (int i = 0; i < vectors.Count; i++)
+                if (FaceVectorCodec.IsValidVector(vectors[i]))
+                    allDists.Add((FaceVectorCodec.Distance(vec, vectors[i]), i));
 
-            return bestDist <= tolerance ? bestEmpId : null;
-        }
+            if (allDists.Count == 0)
+                return double.PositiveInfinity;
 
-        private static double FindSecondBestDistance(double[] vec, string excludeEmpId, double bestDist)
-        {
-            double secondBest = double.MaxValue;
+            allDists.Sort((a, b) => a.d.CompareTo(b.d));
+            bestPhotoIdx = allDists[0].idx;
+            rawBestDist = allDists[0].d;
 
-            foreach (var kvp in _employeeFaces)
-            {
-                if (kvp.Key == excludeEmpId) continue;
+            var k = Math.Min(3, allDists.Count);
+            double score = 0;
+            for (int i = 0; i < k; i++)
+                score += allDists[i].d;
 
-                var vectors = kvp.Value;
-                double minDist = double.MaxValue;
-                foreach (var v in vectors)
-                {
-                    var d = DlibBiometrics.Distance(vec, v);
-                    if (d < minDist) minDist = d;
-                }
-
-                if (minDist < secondBest) secondBest = minDist;
-            }
-
-            return secondBest;
+            return score / k;
         }
 
         private static MatchTier ClassifyTier(double dist, double gap)
@@ -430,7 +331,8 @@ namespace FaceAttend.Services.Biometrics
             LastLoaded       = _lastLoaded,
             EmployeeCount    = _employeeFaces?.Count ?? 0,
             TotalFaceVectors = _employeeFaces?.Values.Sum(v => v.Count) ?? 0,
-            MemoryEstimateMB = (_employeeFaces?.Count ?? 0) * 128 * 8 / 1024.0 / 1024.0
+            MemoryEstimateMB = (_employeeFaces?.Values.Sum(v => v.Count) ?? 0) *
+                BiometricPolicy.Current.EmbeddingDim * 8 / 1024.0 / 1024.0
         };
     }
 }

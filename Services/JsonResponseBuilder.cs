@@ -186,21 +186,38 @@ namespace FaceAttend.Services
             };
         }
 
-        /// <summary>
-        /// Creates a liveness failure response with details.
-        /// </summary>
-        public static JsonResult LivenessFail(float liveness, float threshold,
+        public static JsonResult AntiSpoofFail(float score, float threshold, string decision,
             IDictionary<string, long> timings = null, bool includeTimings = false)
         {
             return new JsonResult
             {
-                Data = new 
-                { 
-                    ok = false, 
-                    error = "LIVENESS_FAIL", 
-                    liveness, 
-                    threshold, 
-                    timings = includeTimings ? timings : null 
+                Data = new
+                {
+                    ok = false,
+                    error = "ANTI_SPOOF_FAIL",
+                    antiSpoofScore = score,
+                    threshold,
+                    decision,
+                    timings = includeTimings ? timings : null
+                },
+                JsonRequestBehavior = JsonRequestBehavior.AllowGet
+            };
+        }
+
+        public static JsonResult AntiSpoofRetry(float score, float threshold,
+            IDictionary<string, long> timings = null, bool includeTimings = false)
+        {
+            return new JsonResult
+            {
+                Data = new
+                {
+                    ok = false,
+                    error = "ANTI_SPOOF_RETRY_NEEDED",
+                    message = "Please scan again with your face clear and the screen steady.",
+                    antiSpoofScore = score,
+                    threshold,
+                    retryAfter = 1,
+                    timings = includeTimings ? timings : null
                 },
                 JsonRequestBehavior = JsonRequestBehavior.AllowGet
             };
@@ -253,11 +270,12 @@ namespace FaceAttend.Services
         /// Creates an attendance success response.
         /// </summary>
         public static JsonResult AttendanceSuccess(
-            string employeeId, string name, string displayName, string eventType, 
-            string message, int officeId, string officeName, float liveness, 
-            double distance, DateTime attemptedAtUtc,
+            string employeeId, string name, string displayName, string eventType,
+            string message, int officeId, string officeName, float antiSpoofScore,
+            double distance, DateTime attemptedAtLocal,
             IDictionary<string, long> timings = null, bool includeTimings = false,
-            string deviceToken = null)
+            object attendanceAccess = null,
+            object recognition = null)
         {
             return new JsonResult
             {
@@ -271,11 +289,12 @@ namespace FaceAttend.Services
                     message,
                     officeId,
                     officeName,
-                    liveness,
+                    antiSpoofScore,
                     distance,
-                    attemptedAtUtc,
-                    timings = includeTimings ? timings : null,
-                    deviceToken // Return token so client can save to localStorage
+                    attemptedAtLocal,
+                    attendanceAccess,
+                    recognition,
+                    timings = includeTimings ? timings : null
                 },
                 JsonRequestBehavior = JsonRequestBehavior.AllowGet
             };
@@ -285,7 +304,7 @@ namespace FaceAttend.Services
         /// Creates a visitor scan response.
         /// </summary>
         public static JsonResult VisitorScan(string scanId, bool isKnown, 
-            string visitorName, double? distance, double threshold, float liveness,
+            string visitorName, double? distance, double threshold, float antiSpoofScore,
             IDictionary<string, long> timings = null, bool includeTimings = false)
         {
             return new JsonResult
@@ -299,63 +318,8 @@ namespace FaceAttend.Services
                     visitorName = isKnown ? visitorName : null,
                     distance = double.IsInfinity(distance ?? double.PositiveInfinity) ? (double?)null : distance,
                     threshold,
-                    liveness,
+                    antiSpoofScore,
                     timings = includeTimings ? timings : null
-                },
-                JsonRequestBehavior = JsonRequestBehavior.AllowGet
-            };
-        }
-
-        /// <summary>
-        /// Creates a device registration required response.
-        /// </summary>
-        public static JsonResult RegisterDeviceRequired(int employeeId, 
-            string employeeName, string fingerprint, string message)
-        {
-            return new JsonResult
-            {
-                Data = new
-                {
-                    ok = false,
-                    action = "REGISTER_DEVICE",
-                    employeeId,
-                    employeeName,
-                    fingerprint,
-                    message
-                },
-                JsonRequestBehavior = JsonRequestBehavior.AllowGet
-            };
-        }
-
-        /// <summary>
-        /// Creates a device pending approval response.
-        /// </summary>
-        public static JsonResult DevicePending(string message)
-        {
-            return new JsonResult
-            {
-                Data = new
-                {
-                    ok = false,
-                    action = "DEVICE_PENDING",
-                    message
-                },
-                JsonRequestBehavior = JsonRequestBehavior.AllowGet
-            };
-        }
-
-        /// <summary>
-        /// Creates a device blocked response.
-        /// </summary>
-        public static JsonResult DeviceBlocked(string message)
-        {
-            return new JsonResult
-            {
-                Data = new
-                {
-                    ok = false,
-                    action = "DEVICE_BLOCKED",
-                    message
                 },
                 JsonRequestBehavior = JsonRequestBehavior.AllowGet
             };

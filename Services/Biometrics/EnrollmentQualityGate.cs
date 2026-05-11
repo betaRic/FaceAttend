@@ -48,7 +48,7 @@ namespace FaceAttend.Services.Biometrics
             {
                 for (int j = i + 1; j < candidates.Count; j++)
                 {
-                    var d = DlibBiometrics.Distance(candidates[i].Vec, candidates[j].Vec);
+                    var d = FaceVectorCodec.Distance(candidates[i].Vec, candidates[j].Vec);
                     if (d < minDist) minDist = d;
                 }
             }

@@ -17,16 +17,13 @@
     // Callbacks wired in from kiosk.js
     var _setPrompt              = null;
     var _safeSetPrompt          = null;
-    var _setLiveness            = null;
+    var _setAntiSpoof            = null;
     var _updateEta              = null;
     var _setIdleUi              = null;
     var _setMobileRegisterVisible = null;
     var _toastSuccess           = null;
     var _toastError             = null;
     var _isForcedKioskMode      = null;
-    var _getDeviceToken         = null;
-    var _setDeviceToken         = null;
-    var _registerDevice         = null;
     var _openVisitor            = null;
 
     // ── Capture canvas ─────────────────────────────────────────────────────────
@@ -104,9 +101,6 @@
         if (_state.gps.lon      != null) fd.append('lon',      _state.gps.lon);
         if (_state.gps.accuracy != null) fd.append('accuracy', _state.gps.accuracy);
 
-        var deviceToken = _getDeviceToken();
-        if (deviceToken) fd.append('deviceToken', deviceToken);
-
         var faceBox = getFaceBoxForServer();
         if (faceBox) {
             fd.append('faceX', faceBox.x);
@@ -148,18 +142,18 @@
     function handleAttendanceResponse(j, onSwalShownCallback) {
         if (!j) return;
 
-        if (typeof j.liveness === 'number') {
-            var p  = Number(j.liveness);
+        if (typeof j.antiSpoofScore === 'number') {
+            var p  = Number(j.antiSpoofScore);
             var th = (j.threshold != null) ? Number(j.threshold) : null;
-            var threshold = th !== null ? th : 0.65;
+            var threshold = th !== null ? th : 0.45;
             var cls;
             if (p >= threshold) cls = 'live-pass';
             else if (p >= threshold * 0.80) cls = 'live-near';
             else cls = 'live-fail';
 
-            _setLiveness(p, th, cls);
-            _state.latestLiveness    = p;
-            _state.livenessThreshold = threshold;
+            _setAntiSpoof(p, th, cls);
+            _state.latestAntiSpoof    = p;
+            _state.antiSpoofThreshold = threshold;
         }
 
         var err     = j.error || '';
@@ -172,9 +166,6 @@
         }
 
         if (j.ok === true) {
-            var deviceToken = j.deviceToken || (j.data && j.data.deviceToken);
-            if (deviceToken) _setDeviceToken(deviceToken);
-
             _state.consecutiveFailures = 0;
 
             if (j.mode !== 'VISITOR') {
@@ -185,6 +176,8 @@
                 if (window.FaceAttendAudio) FaceAttendAudio.playSuccess();
 
                 var shouldRedirectMobile = _isMobile && !document.body.getAttribute('data-force-kiosk');
+                var access = j.attendanceAccess || (j.data && j.data.attendanceAccess) || {};
+                var recordUrl = String(access.recordUrl || 'Attendance/MyMonth').replace(/^\/+/, '');
 
                 if (shouldRedirectMobile) {
                     if (window.Swal) {
@@ -203,12 +196,12 @@
                                 if (typeof onSwalShownCallback === 'function') onSwalShownCallback();
                             }
                         }).then(function () {
-                            window.location.href = _appBase + 'MobileRegistration/Employee';
+                            window.location.href = _appBase + recordUrl;
                         });
                     } else {
                         _toastSuccess((isTimeIn ? 'Time In' : 'Time Out') + ' -- ' + name);
                         setTimeout(function () {
-                            window.location.href = _appBase + 'MobileRegistration/Employee';
+                            window.location.href = _appBase + recordUrl;
                         }, 2500);
                     }
 
@@ -282,61 +275,18 @@
             return;
         }
 
-        // ── Device flow ────────────────────────────────────────────────────────
-
         var action = j.action || '';
-
-        if (action === 'REGISTER_DEVICE') {
-            if (_isPersonalMobile && !_isForcedKioskMode()) {
-                _state.deviceChecked = true;
-                _state.deviceStatus  = 'not_registered';
-                _setIdleUi(true);
-                _setPrompt('Device not registered.', 'Tap "Register This Device" below.');
-                _setMobileRegisterVisible(true);
-                armPostScanHold(5000);
-            } else {
-                if (confirm('This device is not registered. Register "' + (j.employeeName || 'your device') + '" now?')) {
-                    _registerDevice(j.employeeId, j.employeeName);
-                } else {
-                    _setPrompt('Device not registered.', 'Please contact administrator.');
-                    armPostScanHold(3000);
-                }
-            }
-            return;
-        }
-
-        if (action === 'DEVICE_PENDING') {
-            _state.deviceChecked = true;
-            _state.deviceStatus  = 'pending';
-            _setIdleUi(true);
-            _setMobileRegisterVisible(false);
-            _toastError('Your device registration is pending admin approval.');
-            _setPrompt('Device pending approval.', 'Please wait for admin to approve.');
-            armPostScanHold(3000);
-            return;
-        }
-
-        if (action === 'DEVICE_BLOCKED') {
-            _state.deviceChecked = true;
-            _state.deviceStatus  = 'blocked';
-            _setIdleUi(true);
-            _setMobileRegisterVisible(false);
-            _toastError('This device has been blocked.');
-            _setPrompt('Device blocked.', 'Please contact administrator.');
-            armPostScanHold(3000);
-            return;
-        }
 
         if (action === 'SELF_ENROLL') {
             var matchedEmployee = j.matchedEmployee || j.matchedEmployeeId || j.employeeName;
 
             if (_isPersonalMobile && !_isForcedKioskMode()) {
                 if (matchedEmployee && matchedEmployee !== 'Unknown') {
-                    _toastError('This device belongs to ' + matchedEmployee + '. Please use your own device.');
+                    _toastError('Face matched another employee. Please retry alone in the frame.');
                     if (window.Swal) {
                         Swal.fire({
-                            title: 'Wrong Device',
-                            html:  '<div style="font-size: 1.1rem;">This device belongs to <strong>' + matchedEmployee + '</strong>.<br>Please use your own registered device.</div>',
+                            title: 'Wrong Employee',
+                            html:  '<div style="font-size: 1.1rem;">Face matched <strong>' + matchedEmployee + '</strong>.<br>Please retry with one face in the frame.</div>',
                             icon: 'warning',
                             confirmButtonText:  'Understood',
                             confirmButtonColor: '#f59e0b',
@@ -344,7 +294,7 @@
                             color:      '#f8fafc'
                         });
                     }
-                    _setPrompt('Wrong employee detected.', 'Use your own device.');
+                    _setPrompt('Wrong employee detected.', 'Retry with one face in frame.');
                 } else {
                     _setPrompt('Not recognized.', 'Retrying...');
                     setTimeout(function () {
@@ -381,8 +331,8 @@
 
         if (err === 'WRONG_DEVICE') {
             var matchedEmp = (j.details && j.details.matchedEmployee) || j.matchedEmployee || 'another employee';
-            _toastError('This device is registered to ' + matchedEmp + '. Use your own device.');
-            _setPrompt('Wrong device.', 'Use your own registered device.');
+            _toastError('Face matched ' + matchedEmp + '. Retry with one face in frame.');
+            _setPrompt('Wrong employee.', 'Retry with one face in frame.');
             armPostScanHold(5000);
             return;
         }
@@ -400,8 +350,8 @@
                     _setPrompt('Ready.', 'Stand still. One face only.');
                 }
             }, 2500);
-        } else if (err === 'LIVENESS_FAIL') {
-            _setPrompt('Liveness check failed.', 'Look directly at the camera in good lighting.');
+        } else if (err === 'ANTI_SPOOF_FAIL') {
+            _setPrompt('Anti-spoof check failed.', 'Look directly at the camera in good lighting.');
             armPostScanHold(1500);
         } else if (err === 'NOT_RECOGNIZED') {
             _toastError('Face not recognized. Try moving closer or adjusting angle.');
@@ -438,16 +388,13 @@
 
         _setPrompt              = deps.setPrompt;
         _safeSetPrompt          = deps.safeSetPrompt;
-        _setLiveness            = deps.setLiveness;
+        _setAntiSpoof            = deps.setAntiSpoof;
         _updateEta              = deps.updateEta;
         _setIdleUi              = deps.setIdleUi;
         _setMobileRegisterVisible = deps.setMobileRegisterVisible;
         _toastSuccess           = deps.toastSuccess;
         _toastError             = deps.toastError;
         _isForcedKioskMode      = deps.isForcedKioskMode;
-        _getDeviceToken         = deps.getDeviceToken;
-        _setDeviceToken         = deps.setDeviceToken;
-        _registerDevice         = deps.registerDevice;
         _openVisitor            = deps.openVisitor;
     }
 

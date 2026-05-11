@@ -6,7 +6,7 @@ namespace FaceAttend.Services.Biometrics
 {
     public static class FaceQualityAnalyzer
     {
-        public static float CalculateSharpnessFromBitmap(Bitmap bitmap, DlibBiometrics.FaceBox faceBox)
+        public static float CalculateSharpnessFromBitmap(Bitmap bitmap, OpenVinoBiometrics.FaceBox faceBox)
         {
             if (bitmap == null || faceBox == null) return 0f;
 
@@ -91,7 +91,7 @@ namespace FaceAttend.Services.Biometrics
         }
 
         public static (float yaw, float pitch) EstimatePose(
-            DlibBiometrics.FaceBox faceBox, int imageWidth, int imageHeight)
+            OpenVinoBiometrics.FaceBox faceBox, int imageWidth, int imageHeight)
         {
             if (faceBox == null || imageWidth <= 0 || imageHeight <= 0)
                 return (0f, 0f);
@@ -122,9 +122,9 @@ namespace FaceAttend.Services.Biometrics
         }
 
         public static float CalculateQualityScore(
-            float liveness, float sharpness, int area, float yaw, float pitch)
+            float antiSpoof, float sharpness, int area, float yaw, float pitch)
         {
-            var wLiveness  = (float)ConfigurationService.GetDouble("Biometrics:Enroll:Quality:LivenessWeight",  0.40);
+            var wAntiSpoof  = (float)ConfigurationService.GetDouble("Biometrics:Enroll:Quality:AntiSpoofWeight",  0.40);
             var wSharpness = (float)ConfigurationService.GetDouble("Biometrics:Enroll:Quality:SharpnessWeight", 0.30);
             var wArea      = (float)ConfigurationService.GetDouble("Biometrics:Enroll:Quality:AreaWeight",      0.20);
             var wPose      = (float)ConfigurationService.GetDouble("Biometrics:Enroll:Quality:PoseWeight",      0.10);
@@ -133,7 +133,7 @@ namespace FaceAttend.Services.Biometrics
             float normArea       = Math.Min(area      / 50000f, 1f);
             float poseCentrality = 1f - Math.Min((Math.Abs(yaw) + Math.Abs(pitch)) / 60f, 1f);
 
-            return (liveness       * wLiveness)
+            return (antiSpoof       * wAntiSpoof)
                  + (normSharpness  * wSharpness)
                  + (normArea       * wArea)
                  + (poseCentrality * wPose);

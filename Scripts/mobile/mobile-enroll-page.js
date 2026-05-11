@@ -1,12 +1,3 @@
-/*
- * Scripts/mobile/mobile-enroll-page.js
- * Enrollment page controller for Views/MobileRegistration/Enroll-mobile.cshtml.
- *
- * Changes vs previous version:
- *  - Full-screen camera in step 2: captureProgress is now the 5 enDot* divs
- *  - onDistanceFeedback wired so users see "move closer" guidance instead of silent 0%
- *  - Liveness bar colour tracks score (red / amber / green)
- */
 (function () {
     'use strict';
 
@@ -19,13 +10,29 @@
         valid: {
             employeeId: false, firstName:  false, lastName:   false,
             middleName: true,  position:   false, department: false,
-            officeId:   false, deviceName: false
+            officeId:   false
         }
     };
 
     var _cameraStarted = false;
 
     function el(id) { return document.getElementById(id); }
+
+    function buildRequestHeaders(extraHeaders) {
+        if (typeof FaceAttend !== 'undefined' &&
+            FaceAttend.Utils &&
+            typeof FaceAttend.Utils.mergeRequestHeaders === 'function') {
+            return FaceAttend.Utils.mergeRequestHeaders(extraHeaders);
+        }
+
+        var headers = {};
+        if (extraHeaders) {
+            Object.keys(extraHeaders).forEach(function (key) {
+                headers[key] = extraHeaders[key];
+            });
+        }
+        return headers;
+    }
 
     var els = {
         employeeId:       el('employeeId'),
@@ -35,7 +42,6 @@
         position:         el('position'),
         department:       el('department'),
         officeId:         el('officeId'),
-        deviceName:       el('deviceName'),
         btnToCapture:     el('btnToCapture'),
         btnBackToDetails: el('btnBackToDetails'),
         btnBackToCapture: el('btnBackToCapture'),
@@ -57,19 +63,15 @@
           })
         : null;
 
-    // Sync thresholds from server config so client and server always agree
     if (enroll) enroll.loadServerConfig('/api/enrollment/config');
 
     window.FaceAttendEnrollment = enroll;
-
-    /* ── UI helpers ────────────────────────────────────────────────────────── */
 
     function setStatusText(msg) {
         var e = el('cameraStatusText');
         if (e) e.textContent = msg || '';
     }
 
-    /* Update the 10 capture dots + counter */
     function updateCaptureUI(frameCount, target) {
         var cnt = el('captureCount');
         if (cnt) cnt.textContent = frameCount;
@@ -82,26 +84,23 @@
 
     function resetCaptureUI() {
         updateCaptureUI(0, MIN_FRAMES);
-        var bar = el('livenessBar');
-        if (bar) { bar.style.width = '0%'; bar.className = 'cam-fs-liveness-fill'; }
-        var txt = el('livenessText');
+        var bar = el('antiSpoofBar');
+        if (bar) { bar.style.width = '0%'; bar.className = 'cam-fs-antiSpoof-fill'; }
+        var txt = el('antiSpoofText');
         if (txt) txt.textContent = '0%';
         setStatusText('Initializing camera…');
     }
 
-    /* Colour the liveness bar based on score 0-100 */
-    function setLivenessUI(pct) {
-        var bar = el('livenessBar');
-        var txt = el('livenessText');
+    function setAntiSpoofUI(pct) {
+        var bar = el('antiSpoofBar');
+        var txt = el('antiSpoofText');
         if (bar) {
             bar.style.width = pct + '%';
-            bar.className = 'cam-fs-liveness-fill' +
+            bar.className = 'cam-fs-antiSpoof-fill' +
                 (pct >= 65 ? ' high' : pct >= 35 ? ' mid' : ' low');
         }
         if (txt) txt.textContent = pct + '%';
     }
-
-    /* ── Step navigation ───────────────────────────────────────────────────── */
 
     function setStep(step) {
         state.step = step;
@@ -120,11 +119,8 @@
         if (step === 2) startCamera(); else stopCamera();
         if (step === 3) populateReview();
 
-        // Only scroll when NOT in camera mode (camera step is fixed-position)
         if (step !== 2) window.scrollTo(0, 0);
     }
-
-    /* ── Review panel ──────────────────────────────────────────────────────── */
 
     function populateReview() {
         var sel      = els.officeId;
@@ -142,7 +138,6 @@
                 els.department ? els.department.value : ''
             ].filter(Boolean).join(' / ') || '-',
             reviewOffice:      officeTx,
-            reviewDeviceName:  els.deviceName ? els.deviceName.value : '-',
             reviewSampleCount: samples + ' / ' + MAX_FRAMES
         };
         Object.keys(map).forEach(function (id) {
@@ -150,16 +145,13 @@
         });
     }
 
-    /* ── Form validation ───────────────────────────────────────────────────── */
-
     var Rules = {
         employeeId : { min:5,  max:20,  pat:/^[A-Z0-9 \-]+$/,          label:'Employee ID' },
         firstName  : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,           label:'First Name'  },
         lastName   : { min:2,  max:50,  pat:/^[A-Z \.\-']+$/,           label:'Last Name'   },
         middleName : { min:0,  max:50,  pat:/^[A-Z \.\-']*$/,           label:'Middle Name', opt:true },
         position   : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/, label:'Position'    },
-        department : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/, label:'Department'  },
-        deviceName : { min:2,  max:50,  pat:/^[A-Z0-9 \._]+$/,         label:'Device Name' }
+        department : { min:2,  max:100, pat:/^[A-Z0-9 \.\-\/\(\),]+$/, label:'Department'  }
     };
 
     function validateField(inputEl, rules, msgId) {
@@ -204,7 +196,6 @@
     wire(els.middleName, 'middleName', 'middleNameValidation', 'middleName');
     wire(els.position,   'position',   'positionValidation',   'position');
     wire(els.department, 'department', 'departmentValidation', 'department');
-    wire(els.deviceName, 'deviceName', 'deviceNameValidation', 'deviceName');
 
     if (els.officeId) {
         els.officeId.addEventListener('change', function () {
@@ -212,8 +203,6 @@
             updateContinueBtn();
         });
     }
-
-    /* ── Camera lifecycle ──────────────────────────────────────────────────── */
 
     function startCamera() {
         if (_cameraStarted) return;
@@ -251,30 +240,19 @@
         if (guideEl) guideEl.innerHTML = '<i class="fa-solid fa-circle-dot"></i> Position your face in the frame';
     }
 
-    /* ── Enrollment callbacks ──────────────────────────────────────────────── */
-
     if (enroll) {
-
-        /* Plain status text updates */
         enroll.callbacks.onStatus = function (msg) {
             setStatusText(msg || '');
         };
 
-        /* Liveness bar + colour */
-        enroll.callbacks.onLivenessUpdate = function (pct) {
-            setLivenessUI(pct);
+        enroll.callbacks.onAntiSpoofUpdate = function (pct) {
+            setAntiSpoofUI(pct);
         };
 
-        /* Dot progress */
         enroll.callbacks.onCaptureProgress = function (current, target) {
             updateCaptureUI(current, target);
         };
 
-        /*
-         * Distance / centering feedback.
-         * This fires instead of sending to server when the face is too small/far.
-         * Without this, liveness stays at 0% and users get no guidance.
-         */
         enroll.callbacks.onDistanceFeedback = function (data) {
             var guideEl = el('enrollGuidePrompt');
             if (data.status === 'too_far' || data.status === 'borderline') {
@@ -292,7 +270,6 @@
             }
         };
 
-        /* Ready to confirm — show thumbnail confirmation dialog */
         enroll.callbacks.onReadyToConfirm = function (data) {
             Promise.all(
                 (data.frames || []).slice(0, 4).map(function (frame) {
@@ -317,7 +294,7 @@
                         thumbHtml + '</div>' +
                         '<div style="font-size:.9rem;">' +
                         '<p>' + data.frameCount + ' frames captured</p>' +
-                        '<p>Best liveness: ' + data.bestLiveness + '%</p></div>',
+                        '<p>Best anti-spoof: ' + data.bestAntiSpoof + '%</p></div>',
                     showCancelButton:  true,
                     confirmButtonText: 'Continue to Review \u2192',
                     cancelButtonText:  'Retake',
@@ -342,23 +319,20 @@
         };
     }
 
-    /* ── Button wiring ─────────────────────────────────────────────────────── */
-
     if (els.btnToCapture)     els.btnToCapture.addEventListener('click',     function () { setStep(2); });
     if (els.btnBackToDetails) els.btnBackToDetails.addEventListener('click', function () { setStep(1); });
     if (els.btnBackToCapture) els.btnBackToCapture.addEventListener('click', function () { doRetake(); setStep(2); });
 
     if (els.submitBtn) {
         els.submitBtn.addEventListener('click', function () {
-            var encodings = [];
-            (state.capturedFrames || []).forEach(function (f) {
-                var enc = f.encoding || f.enc;
-                if (enc) encodings.push(enc);
+            var frames = [];
+            (state.capturedFrames || []).forEach(function (frame) {
+                if (frame && frame.blob) frames.push(frame.blob);
             });
 
-            if (encodings.length === 0) {
+            if (frames.length < MIN_FRAMES) {
                 if (typeof Swal !== 'undefined') {
-                    Swal.fire({ icon: 'error', title: 'No Face Data',
+                    Swal.fire({ icon: 'error', title: 'Capture Incomplete',
                         text: 'Please complete face capture before submitting.',
                         background: '#0f172a', color: '#f8fafc' });
                 }
@@ -374,16 +348,21 @@
             form.append('Position',             els.position   ? els.position.value.trim().toUpperCase()   : '');
             form.append('Department',           els.department ? els.department.value.trim().toUpperCase() : '');
             form.append('OfficeId',             els.officeId   ? els.officeId.value                        : '');
-            form.append('DeviceName',           els.deviceName ? els.deviceName.value.trim().toUpperCase() : '');
-            form.append('FaceEncoding',         encodings[0]);
-            form.append('AllFaceEncodingsJson', JSON.stringify(encodings));
+            frames.forEach(function (blob, index) {
+                form.append('images', blob, 'mobile_enroll_' + (index + 1) + '.jpg');
+            });
             if (tokenInput) form.append('__RequestVerificationToken', tokenInput.value);
 
             els.submitBtn.disabled = true;
             els.submitBtn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin me-2"></i>Submitting…';
 
             fetch('/MobileRegistration/SubmitEnrollment', {
-                method: 'POST', body: form, credentials: 'same-origin'
+                method: 'POST',
+                body: form,
+                credentials: 'same-origin',
+                headers: buildRequestHeaders({
+                    'X-Requested-With': 'XMLHttpRequest'
+                })
             })
             .then(function (r) { return r.json(); })
             .then(function (data) {

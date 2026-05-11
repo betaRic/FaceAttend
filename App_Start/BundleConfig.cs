@@ -101,7 +101,6 @@ namespace FaceAttend
                 .Include("~/Scripts/kiosk/kiosk-fullscreen.js")
                 .Include("~/Scripts/kiosk/kiosk-unlock.js")
                 .Include("~/Scripts/kiosk/kiosk-visitor.js")
-                .Include("~/Scripts/kiosk/kiosk-device.js")
                 .Include("~/Scripts/kiosk/kiosk-location.js")
                 .Include("~/Scripts/kiosk/kiosk-map.js")
                 .Include("~/Scripts/kiosk/kiosk-canvas.js")
@@ -109,9 +108,6 @@ namespace FaceAttend
                 .Include("~/Scripts/kiosk/kiosk-attendance.js")
                 .Include("~/Scripts/kiosk.js"));
 
-            // Enrollment Bundle (Core + Enrollment logic)
-            // Order matters: fa-helpers must be first (provides Utils for other modules)
-            // face-guide.js → enrollment-overlay.js → enrollment-core.js → enrollment-tracker.js
             bundles.Add(new ScriptBundle("~/bundles/enrollment")
                 .Include("~/Scripts/core/fa-helpers.js")
                 .Include("~/Scripts/core/camera.js")
@@ -121,17 +117,14 @@ namespace FaceAttend
                 .Include("~/Scripts/modules/enrollment-overlay.js")
                 .Include("~/Scripts/modules/enrollment-core.js")
                 .Include("~/Scripts/enrollment-tracker.js")
-                .Include("~/Scripts/modules/enrollment-gate.js"));
+                .Include("~/Scripts/modules/enrollment-gates.js"));
 
-            // Admin Employee Enrollment page (loaded after enrollment bundle)
             bundles.Add(new ScriptBundle("~/bundles/enroll-page")
                 .Include("~/Scripts/admin/enroll-page.js"));
 
-            // Mobile Enrollment page (loaded after enrollment bundle)
             bundles.Add(new ScriptBundle("~/bundles/mobile-enroll-page")
                 .Include("~/Scripts/mobile/mobile-enroll-page.js"));
 
-            // Admin Visitor Enrollment page (loaded after enrollment bundle)
             bundles.Add(new ScriptBundle("~/bundles/visitor-enroll-page")
                 .Include("~/Scripts/admin/visitor-enroll-page.js"));
 

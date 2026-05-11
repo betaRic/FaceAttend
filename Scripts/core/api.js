@@ -45,6 +45,19 @@
             
             this.timeout = options.timeout || this.timeout;
         },
+
+        buildRequestHeaders: function(extraHeaders) {
+            var headers = {};
+            if (window.FaceAttend && FaceAttend.Utils &&
+                typeof FaceAttend.Utils.mergeRequestHeaders === 'function') {
+                headers = FaceAttend.Utils.mergeRequestHeaders(extraHeaders);
+            } else if (extraHeaders) {
+                Object.keys(extraHeaders).forEach(function(key) {
+                    headers[key] = extraHeaders[key];
+                });
+            }
+            return headers;
+        },
         
         /**
          * Get CSRF token from page
@@ -114,9 +127,9 @@
                 body: formData,
                 credentials: 'same-origin',
                 signal: controller.signal,
-                headers: {
+                headers: this.buildRequestHeaders({
                     'X-Requested-With': 'XMLHttpRequest'
-                }
+                })
             })
             .then(function(response) {
                 clearTimeout(timeoutId);
@@ -168,9 +181,9 @@
                 method: 'GET',
                 credentials: 'same-origin',
                 signal: controller.signal,
-                headers: {
+                headers: this.buildRequestHeaders({
                     'X-Requested-With': 'XMLHttpRequest'
-                }
+                })
             })
             .then(function(response) {
                 clearTimeout(timeoutId);
@@ -226,16 +239,6 @@
             this.post('api/scan/frame', data, onSuccess, onError);
         },
         
-        /**
-         * Enroll face(s) for employee
-         * 
-         * @param {string} employeeId - Employee ID
-         * @param {Blob[]} imageBlobs - Array of image blobs
-         * @param {Object} options - Additional options
-         * @param {string[]} options.allEncodings - Base64 encodings of all frames
-         * @param {function} onSuccess - Success callback
-         * @param {function} onError - Error callback
-         */
         enroll: function(employeeId, imageBlobs, options, onSuccess, onError) {
             if (typeof options === 'function') {
                 onError = onSuccess;
@@ -250,10 +253,6 @@
                 formData.append('images', blob, 'frame_' + index + '.jpg');
             });
             
-            if (options && options.allEncodings) {
-                formData.append('allEncodingsJson', JSON.stringify(options.allEncodings));
-            }
-            
             this.post('api/enrollment/enroll', formData, onSuccess, onError);
         },
         
@@ -265,7 +264,6 @@
          * @param {number} options.lat - GPS latitude
          * @param {number} options.lon - GPS longitude
          * @param {number} options.accuracy - GPS accuracy
-         * @param {string} options.deviceToken - Device token
          * @param {function} onSuccess - Success callback
          * @param {function} onError - Error callback
          */
@@ -283,7 +281,6 @@
                 if (options.lat !== undefined) formData.append('lat', options.lat);
                 if (options.lon !== undefined) formData.append('lon', options.lon);
                 if (options.accuracy !== undefined) formData.append('accuracy', options.accuracy);
-                if (options.deviceToken) formData.append('deviceToken', options.deviceToken);
             }
             
             this.post('api/attendance/record', formData, onSuccess, onError);
@@ -315,33 +312,7 @@
                 if (options.lon !== undefined) formData.append('lon', options.lon);
                 if (options.accuracy !== undefined) formData.append('accuracy', options.accuracy);
             }
-            
             this.post('api/attendance/burst', formData, onSuccess, onError);
-        },
-        
-        /**
-         * Check device registration status
-         * 
-         * @param {function} onSuccess - Success callback
-         * @param {function} onError - Error callback
-         */
-        checkDeviceStatus: function(onSuccess, onError) {
-            this.get('api/device/status', onSuccess, onError);
-        },
-        
-        /**
-         * Register device
-         * 
-         * @param {string} employeeId - Employee ID
-         * @param {string} deviceName - Device name
-         * @param {function} onSuccess - Success callback
-         * @param {function} onError - Error callback
-         */
-        registerDevice: function(employeeId, deviceName, onSuccess, onError) {
-            this.post('api/device/register', {
-                employeeId: employeeId,
-                deviceName: deviceName
-            }, onSuccess, onError);
         }
     };
 

@@ -34,7 +34,7 @@
           })
         : null;
 
-    // Sync liveness + sharpness + face-area thresholds from server config so client
+    // Sync antiSpoof + sharpness + face-area thresholds from server config so client
     // and server gates always match, even after Web.config edits.
     if (enroll) enroll.loadServerConfig('/api/enrollment/config');
 
@@ -97,8 +97,8 @@
         var countEl    = document.getElementById('captureCount');
         var progressEl = document.getElementById('captureProgress');
         var saveBtn    = document.getElementById('saveBtn');
-        var livenessBar = document.getElementById('livenessBar');
-        var livenessTxt = document.getElementById('livenessText');
+        var antiSpoofBar = document.getElementById('antiSpoofBar');
+        var antiSpoofTxt = document.getElementById('antiSpoofText');
 
         if (countEl)    countEl.textContent = '0';
         if (progressEl) progressEl.style.width = '0%';
@@ -106,8 +106,8 @@
             saveBtn.disabled = true;
             saveBtn.innerHTML = '<i class="fa-solid fa-check me-2"></i>Save Enrollment';
         }
-        if (livenessBar) livenessBar.style.width = '0%';
-        if (livenessTxt) livenessTxt.textContent = '0%';
+        if (antiSpoofBar) antiSpoofBar.style.width = '0%';
+        if (antiSpoofTxt) antiSpoofTxt.textContent = '0%';
     }
 
     function updateCaptureUI(frameCount, target) {
@@ -128,9 +128,9 @@
             if (el) el.textContent = msg || '';
         };
 
-        enroll.callbacks.onLivenessUpdate = function (pct) {
-            var bar = document.getElementById('livenessBar');
-            var txt = document.getElementById('livenessText');
+        enroll.callbacks.onAntiSpoofUpdate = function (pct) {
+            var bar = document.getElementById('antiSpoofBar');
+            var txt = document.getElementById('antiSpoofText');
             if (bar) bar.style.width = pct + '%';
             if (txt) txt.textContent = pct + '%';
         };
@@ -168,7 +168,7 @@
                         '<div><i class="fa-solid fa-layer-group" style="margin-right:8px;color:#3b82f6;"></i>' +
                             '<strong>' + data.frameCount + '</strong> frames captured</div>' +
                         '<div><i class="fa-solid fa-shield-heart" style="margin-right:8px;color:#22c55e;"></i>' +
-                            'Best liveness: <strong>' + data.bestLiveness + '%</strong></div>' +
+                            'Best anti-spoof: <strong>' + data.bestAntiSpoof + '%</strong></div>' +
                     '</div>';
 
                 Swal.fire({

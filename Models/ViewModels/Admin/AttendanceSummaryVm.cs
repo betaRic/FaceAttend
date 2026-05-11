@@ -23,8 +23,8 @@ namespace FaceAttend.Models.ViewModels.Admin
     public class DailyEmployeeRow
     {
         public DateTime  DateLocal  { get; set; }
-        public DateTime? FirstInUtc { get; set; }
-        public DateTime? LastOutUtc { get; set; }
+        public DateTime? FirstInLocal { get; set; }
+        public DateTime? LastOutLocal { get; set; }
 
         // AM/PM split (noon boundary)
         public DateTime? AmIn  { get; set; }
@@ -43,8 +43,8 @@ namespace FaceAttend.Models.ViewModels.Admin
         public int? UndertimeMinutes { get; set; }
 
         public string DateLabel        => DateLocal.ToString("yyyy-MM-dd");
-        public string FirstInDisplay   => FirstInUtc.HasValue ? FirstInUtc.Value.ToString("HH:mm") : "-";
-        public string LastOutDisplay   => LastOutUtc.HasValue ? LastOutUtc.Value.ToString("HH:mm") : "-";
+        public string FirstInDisplay   => FirstInLocal.HasValue ? FirstInLocal.Value.ToString("HH:mm") : "-";
+        public string LastOutDisplay   => LastOutLocal.HasValue ? LastOutLocal.Value.ToString("HH:mm") : "-";
         public string AmInDisplay      => AmIn.HasValue  ? AmIn.Value.ToString("HH:mm")  : "-";
         public string AmOutDisplay     => AmOut.HasValue ? AmOut.Value.ToString("HH:mm") : "-";
         public string PmInDisplay      => PmIn.HasValue  ? PmIn.Value.ToString("HH:mm")  : "-";

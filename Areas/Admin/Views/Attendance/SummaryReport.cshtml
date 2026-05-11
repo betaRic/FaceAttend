@@ -28,9 +28,9 @@
         {
             Emp       = emp,
             Idx       = i,
-            Present   = emp.Days.Count(d => d.FirstInUtc.HasValue),
+            Present   = emp.Days.Count(d => d.FirstInLocal.HasValue),
             Total     = emp.Days.Count,
-            Absent    = emp.Days.Count(d => !d.FirstInUtc.HasValue && d.StatusCode != "OFF"),
+            Absent    = emp.Days.Count(d => !d.FirstInLocal.HasValue && d.StatusCode != "OFF"),
             Off       = emp.Days.Count(d => d.StatusCode == "OFF"),
             LateDays  = emp.Days.Count(d => d.LateMinutes.GetValueOrDefault() > 0),
             UtDays    = emp.Days.Count(d => d.UndertimeMinutes.GetValueOrDefault() > 0),

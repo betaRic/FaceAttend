@@ -42,7 +42,7 @@ namespace FaceAttend.Services
             public string   Department       { get; set; }
             public string   OfficeName       { get; set; }
             public string   EventType        { get; set; }
-            public double?  LivenessScore    { get; set; }
+            public double?  AntiSpoofScore    { get; set; }
             public double?  FaceDistance     { get; set; }
             public bool     LocationVerified { get; set; }
             public double?  GPSAccuracy      { get; set; }
@@ -89,18 +89,18 @@ namespace FaceAttend.Services
                 };
             }
 
-            DateTime? firstInUtc = null;
-            DateTime? lastOutUtc = null;
+            DateTime? firstInLocal = null;
+            DateTime? lastOutLocal = null;
 
             if (events != null && events.Count > 0)
             {
-                firstInUtc = events
+                firstInLocal = events
                     .Where(x => x.EventType == "IN")
                     .OrderBy(x => x.Timestamp)
                     .Select(x => (DateTime?)x.Timestamp)
                     .FirstOrDefault();
 
-                lastOutUtc = events
+                lastOutLocal = events
                     .Where(x => x.EventType == "OUT")
                     .OrderByDescending(x => x.Timestamp)
                     .Select(x => (DateTime?)x.Timestamp)
@@ -117,16 +117,16 @@ namespace FaceAttend.Services
             var row = new DailyEmployeeRow
             {
                 DateLocal  = dayLocal,
-                FirstInUtc = firstInUtc,
-                LastOutUtc = lastOutUtc,
+                FirstInLocal = firstInLocal,
+                LastOutLocal = lastOutLocal,
                 AmIn  = amIns  != null && amIns.Any()  ? (DateTime?)amIns.First().Timestamp  : null,
                 AmOut = amOuts != null && amOuts.Any() ? (DateTime?)amOuts.First().Timestamp : null,
                 PmIn  = pmIns  != null && pmIns.Any()  ? (DateTime?)pmIns.First().Timestamp  : null,
                 PmOut = pmOuts != null && pmOuts.Any() ? (DateTime?)pmOuts.First().Timestamp : null,
             };
 
-            bool hasIn  = firstInUtc.HasValue;
-            bool hasOut = lastOutUtc.HasValue;
+            bool hasIn  = firstInLocal.HasValue;
+            bool hasOut = lastOutLocal.HasValue;
 
             if (!hasIn && !hasOut)
             {
@@ -153,8 +153,8 @@ namespace FaceAttend.Services
             }
 
             // Both in and out — timestamps are stored in local time
-            var firstLocal = firstInUtc.Value;
-            var lastLocal  = lastOutUtc.Value;
+            var firstLocal = firstInLocal.Value;
+            var lastLocal  = lastOutLocal.Value;
 
             var rawHours = (lastLocal - firstLocal).TotalHours;
             if (rawHours < 0) rawHours = 0;
@@ -221,7 +221,7 @@ namespace FaceAttend.Services
             var sb = new StringBuilder();
             sb.AppendLine(
                 "TimestampLocal,EmployeeId,EmployeeName,Department,Office," +
-                "EventType,LivenessScore,FaceDistance,LocationVerified," +
+                "EventType,AntiSpoofScore,FaceDistance,LocationVerified," +
                 "GPSAccuracy,NeedsReview,WiFiBSSID,Notes");
 
             foreach (var r in rows)
@@ -235,8 +235,8 @@ namespace FaceAttend.Services
                     CsvHelper.SafeCell(r.Department),
                     CsvHelper.SafeCell(r.OfficeName),
                     CsvHelper.SafeCell(r.EventType),
-                    r.LivenessScore.HasValue
-                        ? r.LivenessScore.Value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "",
+                    r.AntiSpoofScore.HasValue
+                        ? r.AntiSpoofScore.Value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "",
                     r.FaceDistance.HasValue
                         ? r.FaceDistance.Value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture) : "",
                     r.LocationVerified ? "YES" : "NO",

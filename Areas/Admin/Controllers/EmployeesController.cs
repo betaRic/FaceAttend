@@ -15,6 +15,7 @@ using FaceAttend.Services.Biometrics;
 namespace FaceAttend.Areas.Admin.Controllers
 {
     [AdminAuthorize]
+    [RateLimit(Name = "AdminEmployees", MaxRequests = 120, WindowSeconds = 60, Burst = 30)]
     public class EmployeesController : Controller
     {
         public ActionResult Index(string q, int? page, string status)
@@ -63,6 +64,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RateLimit(Name = "AdminEmployeeMutate", MaxRequests = 30, WindowSeconds = 60, Burst = 5)]
         public ActionResult Create(EmployeeEditVm vm)
         {
             vm.EmployeeId = (vm.EmployeeId ?? "").Trim().ToUpperInvariant();
@@ -176,6 +178,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RateLimit(Name = "AdminEmployeeMutate", MaxRequests = 30, WindowSeconds = 60, Burst = 5)]
         public ActionResult Edit(int id, EmployeeEditVm vm)
         {
             vm.EmployeeId = (vm.EmployeeId ?? "").Trim().ToUpperInvariant();
@@ -306,6 +309,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RateLimit(Name = "AdminEmployeeApproval", MaxRequests = 20, WindowSeconds = 60, Burst = 5)]
         public ActionResult ApprovePendingEmployee(int id)
         {
             using (var db = new FaceAttendDBEntities())
@@ -338,6 +342,7 @@ namespace FaceAttend.Areas.Admin.Controllers
 
         [HttpPost]
         [ValidateAntiForgeryToken]
+        [RateLimit(Name = "AdminEmployeeMutate", MaxRequests = 30, WindowSeconds = 60, Burst = 5)]
         public ActionResult Delete(int id)
         {
             using (var db = new FaceAttendDBEntities())
@@ -379,7 +384,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                 var office = db.Offices.FirstOrDefault(o => o.Id == emp.OfficeId);
                 ViewBag.OfficeName = office != null ? office.Name : "-";
 
-                var perFrame = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
+                var perFrame = BiometricPolicy.Current.AntiSpoofClearThreshold;
                 ViewBag.PerFrame = perFrame.ToString("0.00####", CultureInfo.InvariantCulture);
 
                 return View(emp);
@@ -394,92 +399,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 "Name",
                 selectedOfficeId
             );
-        }
-
-        public ActionResult PendingDevices()
-        {
-            using (var db = new FaceAttendDBEntities())
-            {
-                var devices = db.Devices
-                    .Where(d => d.Status == "PENDING")
-                    .Include(d => d.Employee)
-                    .OrderByDescending(d => d.RegisteredAt)
-                    .ToList();
-
-                return View(devices);
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult ApproveDevice(int id)
-        {
-            using (var db = new FaceAttendDBEntities())
-            {
-                var adminId = AdminAuthorizeAttribute.GetAdminId(Session);
-                var result = DeviceService.ApproveDevice(db, id, adminId);
-
-                if (result.Success)
-                    TempData["Success"] = result.Message ?? "Device approved.";
-                else
-                    TempData["Error"] = result.Message ?? "Failed to approve device.";
-
-                return RedirectToAction("PendingDevices");
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult RejectDevice(int id)
-        {
-            using (var db = new FaceAttendDBEntities())
-            {
-                var device = db.Devices.Find(id);
-                if (device == null)
-                    return HttpNotFound();
-
-                device.Status = "BLOCKED";
-                db.SaveChanges();
-
-                TempData["Success"] = "Device rejected.";
-                return RedirectToAction("PendingDevices");
-            }
-        }
-
-        public ActionResult Devices()
-        {
-            using (var db = new FaceAttendDBEntities())
-            {
-                var devices = db.Devices
-                    .Include(d => d.Employee)
-                    .OrderByDescending(d => d.RegisteredAt)
-                    .ToList();
-
-                return View(devices);
-            }
-        }
-
-        [HttpPost]
-        [ValidateAntiForgeryToken]
-        public ActionResult DisableDevice(int id)
-        {
-            using (var db = new FaceAttendDBEntities())
-            {
-                var device = db.Devices.Find(id);
-                if (device == null)
-                    return HttpNotFound();
-
-                device.Status = "BLOCKED";
-                db.SaveChanges();
-
-                AuditHelper.Log(db, Request, "DEVICE_DISABLED", "Device",
-                    device.Id.ToString(),
-                    $"Device disabled for employee {device.EmployeeId}",
-                    null, null);
-
-                TempData["Success"] = "Device disabled.";
-                return RedirectToAction("Devices");
-            }
         }
 
     }

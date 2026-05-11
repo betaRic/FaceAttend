@@ -1,29 +1,21 @@
 using System;
-using System.IO;
-using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
+using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Security;
 
 namespace FaceAttend.Controllers.Api
 {
-    /// <summary>
-    /// Unified face scanning API
-    /// Single endpoint for all face detection needs across kiosk, mobile, and admin
-    /// </summary>
-    [RoutePrefix("api/scan")]
-    public class ScanController : Controller
-    {
-        /// <summary>
-        /// Scan a single frame for face detection
-        /// Returns liveness score, face encoding, and pose information
-        /// </summary>
+        [RoutePrefix("api/scan")]
+        public class ScanController : Controller
+        {
         [HttpPost]
         [Route("frame")]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Frame(HttpPostedFileBase image, 
+        [RateLimit(Name = "ApiScanFrame", MaxRequests = 60, WindowSeconds = 60, Burst = 10)]
+        public ActionResult Frame(HttpPostedFileBase image,
             int? faceX = null, int? faceY = null, int? faceW = null, int? faceH = null)
         {
             if (image == null || image.ContentLength <= 0)
@@ -31,25 +23,22 @@ namespace FaceAttend.Controllers.Api
                 return JsonResponseBuilder.Error("NO_IMAGE", "No image provided");
             }
 
-            // Size validation
             var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
             if (image.ContentLength > maxBytes)
             {
                 return JsonResponseBuilder.Error("TOO_LARGE", "Image exceeds maximum size");
             }
 
-            // Security: Validate file content
             if (!FileSecurityService.IsValidImage(image.InputStream, new[] { ".jpg", ".jpeg", ".png" }))
             {
                 return JsonResponseBuilder.Error("INVALID_FORMAT", "Invalid image format");
             }
 
-            // Build client face box if provided (skips server HOG detection — saves 200-500ms)
-            DlibBiometrics.FaceBox clientFaceBox = null;
+            OpenVinoBiometrics.FaceBox clientFaceBox = null;
             if (faceX.HasValue && faceY.HasValue && faceW.HasValue && faceH.HasValue
                 && faceW.Value > 0 && faceH.Value > 0)
             {
-                clientFaceBox = new DlibBiometrics.FaceBox
+                clientFaceBox = new OpenVinoBiometrics.FaceBox
                 {
                     Left   = faceX.Value,
                     Top    = faceY.Value,
@@ -61,10 +50,13 @@ namespace FaceAttend.Controllers.Api
             try
             {
                 var isMobile = DeviceService.IsMobileDevice(Request);
-
-                // FAST PATH: single-decode, parallel liveness+encode+landmarks
-                // Replaces 5 sequential file reads with 1 Bitmap load + parallel ops
-                var scan = FastScanPipeline.EnrollmentScanInMemory(image, clientFaceBox, isMobile);
+                var policy = BiometricPolicy.Current;
+                var antiSpoofThreshold = policy.AntiSpoofClearThresholdFor(isMobile);
+                var scan = FastScanPipeline.EnrollmentScanInMemory(
+                    image,
+                    clientFaceBox,
+                    isMobile,
+                    antiSpoofThreshold);
 
                 if (!scan.Ok)
                 {
@@ -77,7 +69,7 @@ namespace FaceAttend.Controllers.Api
                     });
                 }
 
-                // Pose estimation: landmark-based when available, box-geometry fallback
+                var antiSpoof = policy.EvaluateAntiSpoof(scan.AntiSpoofModelOk, scan.AntiSpoofScore, isMobile);
                 float yaw, pitch;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
                     (yaw, pitch) = FaceQualityAnalyzer.EstimatePoseFromLandmarks(scan.Landmarks5);
@@ -86,9 +78,6 @@ namespace FaceAttend.Controllers.Api
                         scan.FaceBox, scan.ImageWidth, scan.ImageHeight);
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(yaw, pitch);
 
-                // Landmarks response: 3 or 4 points depending on model
-                // 3 points: [leftEye, rightEye, noseTip]
-                // 4 points: [leftEye, rightEye, noseTip, chin] — when 68-point model succeeded
                 object landmarksResponse = null;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
                 {
@@ -119,13 +108,13 @@ namespace FaceAttend.Controllers.Api
                 {
                     ok               = true,
                     count            = 1,
-                    liveness         = scan.LivenessScore,
-                    livenessOk       = scan.LivenessOk,
-                    livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65),
+                    antiSpoofScore   = scan.AntiSpoofScore,
+                    antiSpoofOk      = antiSpoof.Decision == AntiSpoofDecision.Pass,
+                    antiSpoofDecision = antiSpoof.Decision.ToString().ToUpperInvariant(),
+                    antiSpoofThreshold = antiSpoofThreshold,
                     sharpness        = scan.Sharpness,
                     sharpnessThreshold = scan.SharpnessThreshold,
                     sharpnessOk      = scan.Sharpness >= scan.SharpnessThreshold,
-                    encoding         = scan.Base64Encoding,
                     poseYaw          = yaw,
                     posePitch        = pitch,
                     poseBucket       = poseBucket,
@@ -147,14 +136,11 @@ namespace FaceAttend.Controllers.Api
             }
         }
 
-        /// <summary>
-        /// Quick validation endpoint - checks if face is valid without full processing
-        /// Used for duplicate checking during enrollment
-        /// </summary>
         [HttpPost]
         [Route("validate")]
         [ValidateAntiForgeryToken]
-        public async Task<ActionResult> Validate(HttpPostedFileBase image)
+        [RateLimit(Name = "ApiScanValidate", MaxRequests = 30, WindowSeconds = 60, Burst = 5)]
+        public ActionResult Validate(HttpPostedFileBase image)
         {
             if (image == null || image.ContentLength <= 0)
             {
@@ -168,12 +154,11 @@ namespace FaceAttend.Controllers.Api
                 var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
                 tempPath = FileSecurityService.SaveTemp(image, "val_", maxBytes);
 
-                var dlib = new DlibBiometrics();
-                DlibBiometrics.FaceBox faceBox;
-                FaceRecognitionDotNet.Location faceLoc;
-                string detectError;
+                var biometric = new OpenVinoBiometrics();
+                string analyzeError;
+                var analysis = biometric.AnalyzeFile(tempPath, BiometricScanMode.Enrollment, null, out analyzeError);
 
-                if (!dlib.TryDetectSingleFaceFromFile(tempPath, out faceBox, out faceLoc, out detectError))
+                if (analysis == null || !analysis.Ok || analysis.SelectedFaceBox == null)
                 {
                     return JsonResponseBuilder.Success(new
                     {
@@ -183,11 +168,7 @@ namespace FaceAttend.Controllers.Api
                     });
                 }
 
-                // Quick encode
-                double[] encoding;
-                string encodeError;
-                if (!dlib.TryEncodeFromFileWithLocation(tempPath, faceLoc, out encoding, out encodeError) 
-                    || encoding == null)
+                if (!FaceVectorCodec.IsValidVector(analysis.Embedding))
                 {
                     return JsonResponseBuilder.Success(new
                     {

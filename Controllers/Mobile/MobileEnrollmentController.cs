@@ -1,27 +1,24 @@
 using System;
-using System.Drawing;
-using System.IO;
+using System.Collections.Generic;
 using System.Linq;
+using System.Web;
 using System.Web.Mvc;
+using FaceAttend.Filters;
 using FaceAttend.Models.ViewModels.Mobile;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Helpers;
+using FaceAttend.Services.Recognition;
+using FaceAttend.Services.Security;
 
 namespace FaceAttend.Controllers.Mobile
 {
-    /// <summary>
-    /// Handles new-employee face enrollment and existing-employee identification
-    /// for the mobile registration wizard.
-    /// URLs remain at /MobileRegistration/* for compatibility.
-    /// </summary>
     [RoutePrefix("MobileRegistration")]
     public class MobileEnrollmentController : Controller
     {
-        // ── New employee: face enrollment wizard ─────────────────────────────────
-
         [HttpGet]
         [Route("Enroll")]
+        [RateLimit(Name = "MobileEnrollPage", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
         public ActionResult Enroll()
         {
             if (!DeviceService.IsMobileDevice(Request))
@@ -31,7 +28,7 @@ namespace FaceAttend.Controllers.Mobile
             {
                 ViewBag.Offices = db.Offices.Where(o => o.IsActive).ToList();
                 ViewBag.Fingerprint = DeviceService.GenerateFingerprint(Request);
-                ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
+                ViewBag.PerFrameThreshold = BiometricPolicy.Current.AntiSpoofClearThresholdFor(true);
             }
 
             return View("~/Views/MobileRegistration/Enroll-mobile.cshtml");
@@ -40,6 +37,7 @@ namespace FaceAttend.Controllers.Mobile
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Route("ScanFrame")]
+        [RateLimit(Name = "MobileEnrollFrame", MaxRequests = 90, WindowSeconds = 60, Burst = 30)]
         public ActionResult ScanFrame()
         {
             try
@@ -49,22 +47,19 @@ namespace FaceAttend.Controllers.Mobile
                     return JsonResponseBuilder.Error("NO_IMAGE");
 
                 var isMobile = DeviceService.IsMobileDevice(Request);
-
-                var scan = FastScanPipeline.EnrollmentScanInMemory(image, null, isMobile);
+                var policy = BiometricPolicy.Current;
+                var antiSpoofThreshold = policy.AntiSpoofClearThresholdFor(isMobile);
+                var scan = FastScanPipeline.EnrollmentScanInMemory(
+                    image,
+                    null,
+                    isMobile,
+                    antiSpoofThreshold);
 
                 if (!scan.Ok)
                     return JsonResponseBuilder.Error(scan.Error ?? "SCAN_FAIL", scan.Error);
 
-                double livenessThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
-
-                bool livenessOk = scan.LivenessOk && scan.LivenessScore >= (float)livenessThreshold;
-
-                var enrollStrictTolerance =
-                    ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
-
-                // NOTE: Duplicate check moved to SubmitEnrollment to avoid DB query on every frame
-                // This improves response time during capture phase
-
+                var antiSpoof = policy.EvaluateAntiSpoof(scan.AntiSpoofModelOk, scan.AntiSpoofScore, isMobile);
+                bool antiSpoofOk = antiSpoof.Decision == AntiSpoofDecision.Pass;
                 float poseYaw, posePitch;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
                 {
@@ -83,6 +78,24 @@ namespace FaceAttend.Controllers.Mobile
                 }
 
                 var poseBucket = FaceQualityAnalyzer.GetPoseBucket(poseYaw, posePitch);
+                var faceAreaRatio = scan.FaceBox != null && scan.ImageWidth > 0 && scan.ImageHeight > 0
+                    ? (double?)(Math.Max(0, scan.FaceBox.Width) * Math.Max(0, scan.FaceBox.Height) /
+                                (double)(scan.ImageWidth * scan.ImageHeight))
+                    : null;
+                var sharpnessOk = scan.Sharpness >= scan.SharpnessThreshold;
+                var recognition = RecognitionDecisionFactory.FromEnrollmentFrame(
+                    antiSpoofOk && sharpnessOk ? "ENROLLMENT_FRAME_ACCEPTABLE" : "ENROLLMENT_FRAME_REJECT",
+                    antiSpoofOk && sharpnessOk,
+                    isMobile ? "MOBILE_ENROLLMENT" : "KIOSK_ENROLLMENT",
+                    scan.AntiSpoofScore,
+                    antiSpoofThreshold,
+                    antiSpoof,
+                    scan.Sharpness,
+                    scan.SharpnessThreshold,
+                    scan.FaceBox,
+                    scan.ImageWidth,
+                    scan.ImageHeight,
+                    scan.TimingMs);
 
                 object landmarksResponse = null;
                 if (scan.Landmarks5 != null && scan.Landmarks5.Length >= 6)
@@ -108,19 +121,19 @@ namespace FaceAttend.Controllers.Mobile
 
                 return JsonResponseBuilder.Success(new
                 {
-                    liveness = scan.LivenessScore,
-                    livenessOk = livenessOk,
-                    encoding = scan.Base64Encoding,
+                    antiSpoofScore = scan.AntiSpoofScore,
+                    antiSpoofOk = antiSpoofOk,
+                    antiSpoofDecision = antiSpoof.Decision.ToString().ToUpperInvariant(),
                     sharpness = scan.Sharpness,
                     sharpnessThreshold = scan.SharpnessThreshold,
                     count = 1,
-                    // NOTE: Duplicate check is done at SubmitEnrollment, not per-frame
                     isMatch = false,
                     matchEmployee = (string)null,
-                    sharpnessOk = scan.Sharpness >= scan.SharpnessThreshold,
+                    sharpnessOk = sharpnessOk,
                     poseYaw = poseYaw,
                     posePitch = posePitch,
                     poseBucket = poseBucket,
+                    recognition = recognition,
                     landmarks = landmarksResponse,
                     faceBox = scan.FaceBox != null ? new
                     {
@@ -143,7 +156,8 @@ namespace FaceAttend.Controllers.Mobile
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Route("SubmitEnrollment")]
-        public ActionResult SubmitEnrollment(NewEmployeeEnrollmentVm vm)
+        [RateLimit(Name = "MobileSubmitEnrollment", MaxRequests = 8, WindowSeconds = 60, Burst = 2)]
+        public ActionResult SubmitEnrollment(NewEmployeeEnrollmentVm vm, List<HttpPostedFileBase> images)
         {
             try
             {
@@ -157,10 +171,23 @@ namespace FaceAttend.Controllers.Mobile
                     return JsonResponseBuilder.Error("VALIDATION_ERROR", errors);
                 }
 
-                var fingerprint = DeviceService.GenerateFingerprint(Request);
                 var isMobile = DeviceService.IsMobileDevice(Request);
-
                 var normalizedEmployeeId = vm.EmployeeId.Trim().ToUpperInvariant();
+                var files = EnrollmentCaptureService.CollectFiles(Request, images);
+                var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
+                var maxImages = ConfigurationService.GetInt("Biometrics:Enroll:CaptureTarget", 30);
+                var maxStored = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 25);
+                var parallelism = Math.Min(
+                    files.Count == 0 ? 1 : files.Count,
+                    ConfigurationService.GetInt("Biometrics:Enroll:Parallelism", 4));
+
+                files = files.Take(maxImages).ToList();
+                if (files.Count == 0)
+                {
+                    Response.StatusCode = 400;
+                    Response.TrySkipIisCustomErrors = true;
+                    return JsonResponseBuilder.Error("FACE_REQUIRED", "Face enrollment is required.");
+                }
 
                 using (var db = new FaceAttendDBEntities())
                 {
@@ -175,32 +202,33 @@ namespace FaceAttend.Controllers.Mobile
                             "Employee ID already exists or is pending approval.");
                     }
 
-                    byte[] faceTemplate;
-                    double[] faceVector;
-                    try
-                    {
-                        faceTemplate = Convert.FromBase64String(vm.FaceEncoding ?? string.Empty);
-                        faceVector = DlibBiometrics.DecodeFromBytes(faceTemplate);
-                    }
-                    catch
+                    var captureResult = EnrollmentCaptureService.ExtractCandidates(
+                        files,
+                        isMobile,
+                        maxBytes,
+                        parallelism);
+                    if (captureResult.Candidates.Count == 0)
                     {
                         Response.StatusCode = 400;
                         Response.TrySkipIisCustomErrors = true;
-                        return JsonResponseBuilder.Error("INVALID_FACE_DATA", "Invalid face data.");
-                    }
-
-                    if (faceTemplate == null || faceTemplate.Length == 0 || faceVector == null)
-                    {
-                        Response.StatusCode = 400;
-                        Response.TrySkipIisCustomErrors = true;
-                        return JsonResponseBuilder.Error("FACE_REQUIRED", "Face enrollment is required.");
+                        return JsonResponseBuilder.Error(
+                            "NO_GOOD_FRAME",
+                            "No usable face samples were captured. Retake in better lighting and hold still.");
                     }
 
                     var strictTolerance =
                         ConfigurationService.GetDouble("Biometrics:EnrollmentStrictTolerance", 0.45);
 
-                    var duplicateEmployeeId = DuplicateCheckHelper.FindDuplicate(
-                        db, faceVector, normalizedEmployeeId, strictTolerance);
+                    var selected = EnrollmentCaptureService.SelectDiverseByEmbedding(
+                        captureResult.Candidates,
+                        maxStored);
+                    var closestEmployee = EnrollmentCaptureService.FindClosestEmployee(
+                        db,
+                        selected,
+                        normalizedEmployeeId);
+                    var duplicateEmployeeId = closestEmployee != null && closestEmployee.Distance <= strictTolerance
+                        ? closestEmployee.EmployeeId
+                        : null;
 
                     if (!string.IsNullOrEmpty(duplicateEmployeeId))
                     {
@@ -212,6 +240,33 @@ namespace FaceAttend.Controllers.Mobile
                             "If this is an error, please contact admin.");
                     }
 
+                    var riskyTolerance = ConfigurationService.GetDouble(
+                        "Biometrics:EnrollmentRiskTolerance",
+                        FastFaceMatcher.MedDistThresholdPublic);
+                    if (closestEmployee != null && closestEmployee.Distance <= riskyTolerance)
+                    {
+                        Response.StatusCode = 400;
+                        Response.TrySkipIisCustomErrors = true;
+                        return JsonResponseBuilder.Error(
+                            "FACE_RISKY_PAIR",
+                            $"Enrollment is too visually close to employee: {closestEmployee.EmployeeId}. " +
+                            "Please contact admin for supervised enrollment.",
+                            details: new
+                            {
+                                closestEmployeeId = closestEmployee.EmployeeId,
+                                distance = closestEmployee.Distance,
+                                threshold = riskyTolerance
+                            });
+                    }
+
+                    var gate = EnrollmentQualityGate.Validate(selected);
+                    if (!gate.Passed)
+                    {
+                        Response.StatusCode = 400;
+                        Response.TrySkipIisCustomErrors = true;
+                        return JsonResponseBuilder.Error(gate.ErrorCode, gate.Message);
+                    }
+
                     var employee = new Employee
                     {
                         EmployeeId = normalizedEmployeeId,
@@ -221,31 +276,28 @@ namespace FaceAttend.Controllers.Mobile
                         Position = string.IsNullOrWhiteSpace(vm.Position) ? null : vm.Position.Trim(),
                         Department = string.IsNullOrWhiteSpace(vm.Department) ? null : vm.Department.Trim(),
                         OfficeId = vm.OfficeId,
-
-                        FaceEncodingBase64 = BiometricCrypto.ProtectBase64Bytes(faceTemplate),
-                        FaceEncodingsJson = !string.IsNullOrWhiteSpace(vm.AllFaceEncodingsJson)
-                            ? EncryptEncodingsJson(vm.AllFaceEncodingsJson)
-                            : null,
-
                         Status = "PENDING",
-
                         CreatedDate = DateTime.UtcNow,
                         EnrolledDate = DateTime.UtcNow,
                         LastModifiedDate = DateTime.UtcNow,
                         ModifiedBy = "SELF_ENROLLMENT_MOBILE"
                     };
+                    EnrollmentCaptureService.ApplyStoredVectors(employee, selected);
 
                     db.Employees.Add(employee);
                     db.SaveChanges();
-
-                    // Register the device as PENDING so it is auto-approved when admin
-                    // approves this employee via ApprovePendingEmployee / Edit flow.
-                    DeviceService.CreatePendingDevice(
+                    BiometricTemplateMetadataService.ReplaceForEmployee(
                         db,
                         employee.Id,
-                        fingerprint,
-                        vm.DeviceName,
-                        Request.UserHostAddress);
+                        selected,
+                        "SELF_ENROLLMENT_MOBILE",
+                        isActive: false);
+                    PublicAuditService.RecordEnrollmentSubmitted(
+                        Request,
+                        employee.EmployeeId,
+                        employee.Id,
+                        selected.Count,
+                        isMobile);
 
                     Services.Biometrics.EmployeeFaceIndex.Invalidate();
 
@@ -255,7 +307,6 @@ namespace FaceAttend.Controllers.Mobile
                     }
                     catch
                     {
-                        // Non-fatal: cache will rebuild on next scan
                     }
 
                     Response.StatusCode = 200;
@@ -266,6 +317,14 @@ namespace FaceAttend.Controllers.Mobile
                         employeeDbId = employee.Id,
                         employeeId = employee.EmployeeId,
                         status = employee.Status,
+                        savedVectors = selected.Count,
+                        modelVersion = BiometricPolicy.Current.ModelVersion,
+                        quality = new
+                        {
+                            average = selected.Count == 0 ? 0 : selected.Average(x => x.QualityScore),
+                            min = selected.Count == 0 ? 0 : selected.Min(x => x.QualityScore),
+                            max = selected.Count == 0 ? 0 : selected.Max(x => x.QualityScore)
+                        },
                         isMobile = isMobile
                     }, "Enrollment submitted. Waiting for admin approval.");
                 }
@@ -305,43 +364,16 @@ namespace FaceAttend.Controllers.Mobile
             }
         }
 
-        /// <summary>
-        /// Converts a JSON array of raw base64 face-vector strings (as returned by ScanFrame)
-        /// into the encrypted format written by EnrollmentController.Enroll:
-        ///   ProtectString( JSON( [ ProtectBase64Bytes(bytes1), ProtectBase64Bytes(bytes2), … ] ) )
-        /// Returns null on any parse/encrypt failure so the caller can fall back gracefully.
-        /// </summary>
-        private static string EncryptEncodingsJson(string rawJson)
-        {
-            try
-            {
-                var rawList = Newtonsoft.Json.JsonConvert.DeserializeObject<System.Collections.Generic.List<string>>(rawJson);
-                if (rawList == null || rawList.Count == 0) return null;
-
-                var protectedList = rawList
-                    .Select(b64 => BiometricCrypto.ProtectBase64Bytes(Convert.FromBase64String(b64)))
-                    .ToList();
-
-                return BiometricCrypto.ProtectString(
-                    Newtonsoft.Json.JsonConvert.SerializeObject(protectedList));
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
-        // ── Existing employee: face identification ────────────────────────────────
-
         [HttpGet]
         [Route("Identify")]
+        [RateLimit(Name = "MobileIdentifyPage", MaxRequests = 60, WindowSeconds = 60, Burst = 20)]
         public ActionResult Identify()
         {
             if (!DeviceService.IsMobileDevice(Request))
                 return RedirectToRoute(new { controller = "Kiosk", action = "Index", area = "" });
 
             ViewBag.Fingerprint = DeviceService.GenerateFingerprint(Request);
-            ViewBag.PerFrameThreshold = ConfigurationService.GetDouble("Biometrics:LivenessThreshold", 0.65);
+            ViewBag.PerFrameThreshold = BiometricPolicy.Current.AntiSpoofClearThresholdFor(true);
 
             return View("~/Views/MobileRegistration/Identify.cshtml");
         }
@@ -349,106 +381,14 @@ namespace FaceAttend.Controllers.Mobile
         [HttpPost]
         [ValidateAntiForgeryToken]
         [Route("IdentifyEmployee")]
+        [RateLimit(Name = "MobileIdentifyEmployee", MaxRequests = 30, WindowSeconds = 60, Burst = 10)]
         public ActionResult IdentifyEmployee()
         {
-            try
-            {
-                var image = Request.Files["image"];
-                if (image == null || image.ContentLength == 0)
-                    return JsonResponseBuilder.Error("NO_IMAGE");
-
-                Bitmap bitmap = null;
-                try
-                {
-                    using (var ms = new MemoryStream())
-                    {
-                        image.InputStream.CopyTo(ms);
-                        ms.Position = 0;
-                        bitmap = new Bitmap(ms);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Trace.TraceError("[IdentifyEmployee] Failed to load image: " + ex.Message);
-                    return JsonResponseBuilder.Error("IMAGE_LOAD_FAIL", "Could not process image.");
-                }
-
-                double[] faceEncoding;
-                using (bitmap)
-                {
-                    var dlib = new DlibBiometrics();
-                    DlibBiometrics.FaceBox faceBox;
-                    FaceRecognitionDotNet.Location faceLoc;
-                    string detectErr;
-
-                    if (!dlib.TryDetectSingleFaceFromBitmap(bitmap, out faceBox, out faceLoc, out detectErr))
-                    {
-                        System.Diagnostics.Trace.TraceWarning("[IdentifyEmployee] Face detection failed: " + detectErr);
-                        return JsonResponseBuilder.Error("NO_FACE", "Could not detect a face. Please try again.");
-                    }
-
-                    string encErr;
-                    if (!dlib.TryEncodeFromBitmapWithLocation(bitmap, faceLoc, out faceEncoding, out encErr) || faceEncoding == null)
-                    {
-                        System.Diagnostics.Trace.TraceError("[IdentifyEmployee] Encoding failed: " + encErr);
-                        return JsonResponseBuilder.Error("ENCODING_FAIL", "Could not process face.");
-                    }
-                }
-
-                if (!FastFaceMatcher.IsInitialized)
-                    FastFaceMatcher.Initialize();
-
-                double identifyTol = ConfigurationService.GetDouble(
-                    "Biometrics:AttendanceTolerance",
-                    ConfigurationService.GetDouble("Biometrics:DlibTolerance", 0.60));
-
-                var matchResult = FastFaceMatcher.FindBestMatch(faceEncoding, identifyTol);
-
-                if (!matchResult.IsMatch)
-                    return JsonResponseBuilder.Error("NOT_RECOGNIZED", "Face not recognized. Please check if you're enrolled.");
-
-                using (var db = new FaceAttendDBEntities())
-                {
-                    var employee = db.Employees
-                        .FirstOrDefault(e => e.EmployeeId == matchResult.Employee.EmployeeId);
-
-                    if (employee == null)
-                        return JsonResponseBuilder.NotFound("Employee");
-
-                    var employeeStatus = employee.Status ?? "INACTIVE";
-                    if (!string.Equals(employeeStatus, "ACTIVE", StringComparison.OrdinalIgnoreCase))
-                        return JsonResponseBuilder.Error("INVALID_STATUS", "This employee is not active yet.");
-
-                    var currentFingerprint = DeviceService.GenerateFingerprint(Request);
-                    var currentToken = DeviceService.GetDeviceTokenFromCookie(Request);
-
-                    var existingDevice = db.Devices
-                        .FirstOrDefault(d => d.EmployeeId == employee.Id && d.Status == "ACTIVE");
-
-                    bool isCurrentDeviceRegistered = existingDevice != null && (
-                        existingDevice.Fingerprint == currentFingerprint ||
-                        (!string.IsNullOrEmpty(currentToken) && existingDevice.DeviceToken == currentToken)
-                    );
-
-                    return JsonResponseBuilder.Success(new
-                    {
-                        employeeId = employee.EmployeeId,
-                        employeeDbId = employee.Id,
-                        fullName = $"{employee.FirstName} {employee.LastName}",
-                        department = StringHelper.SanitizeDisplayText(employee.Department),
-                        position = StringHelper.SanitizeDisplayText(employee.Position),
-                        office = StringHelper.SanitizeDisplayText(employee.Office?.Name),
-                        hasExistingDevice = existingDevice != null,
-                        existingDeviceName = existingDevice?.DeviceName,
-                        isCurrentDeviceRegistered = isCurrentDeviceRegistered,
-                        confidence = matchResult.Confidence
-                    });
-                }
-            }
-            catch (Exception ex)
-            {
-                return JsonResponseBuilder.Error("SERVER_ERROR", ex.Message);
-            }
+            Response.StatusCode = 410;
+            Response.TrySkipIisCustomErrors = true;
+            return JsonResponseBuilder.Error(
+                "ENDPOINT_RETIRED",
+                "Use /Attendance/Scan for public attendance scans.");
         }
     }
 }

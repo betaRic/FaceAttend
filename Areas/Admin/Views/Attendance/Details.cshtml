@@ -21,7 +21,11 @@
             <i class="fa-solid fa-arrow-left me-1" aria-hidden="true"></i>Back
         </a>
 
-        @if (Model.NeedsReview)
+        @if (Model.IsVoided)
+        {
+            <span class="badge bg-danger">Voided</span>
+        }
+        else if (Model.NeedsReview || Model.ReviewStatus == "PENDING")
         {
             <span class="ea-badge review">
                 <i class="fa-solid fa-triangle-exclamation fa-xs"></i>Needs review
@@ -37,7 +41,7 @@
                 <div class="row g-3">
                     <div class="col-12 col-md-6">
                         <div class="text-muted small">Time (local)</div>
-                        <div class="fw-semibold">@Model.TimestampUtc.ToString("yyyy-MM-dd HH:mm:ss")</div>  @* Timestamps are now stored in local time *@
+                        <div class="fw-semibold">@Model.TimestampLocal.ToString("yyyy-MM-dd HH:mm:ss")</div>
                     </div>
 
                     <div class="col-12 col-md-6">
@@ -66,9 +70,9 @@
                     </div>
 
                     <div class="col-12 col-md-4">
-                        <div class="text-muted small">Liveness</div>
-                        <div class="fw-semibold">@(Model.LivenessScore.HasValue ? Model.LivenessScore.Value.ToString("0.000") : "-")</div>
-                        <div class="text-muted small">@Model.LivenessResult @(!string.IsNullOrWhiteSpace(Model.LivenessError) ? ("· " + Model.LivenessError) : "")</div>
+                        <div class="text-muted small">Anti-spoof</div>
+                        <div class="fw-semibold">@(Model.AntiSpoofScore.HasValue ? Model.AntiSpoofScore.Value.ToString("0.000") : "-")</div>
+                        <div class="text-muted small">@Model.AntiSpoofResult @(!string.IsNullOrWhiteSpace(Model.AntiSpoofError) ? ("· " + Model.AntiSpoofError) : "")</div>
                     </div>
 
                     <div class="col-12 col-md-4">
@@ -111,8 +115,19 @@
                 <div class="text-muted small mb-2">
                     Use this when a scan looks suspicious but you still want to keep the record.
                 </div>
+                <dl class="row small mb-3">
+                    <dt class="col-5">Status</dt>
+                    <dd class="col-7">@(!string.IsNullOrWhiteSpace(Model.ReviewStatus) ? Model.ReviewStatus : "NONE")</dd>
+                    <dt class="col-5">Reasons</dt>
+                    <dd class="col-7">@(!string.IsNullOrWhiteSpace(Model.ReviewReasonCodes) ? Model.ReviewReasonCodes.Replace(",", ", ") : "-")</dd>
+                    @if (Model.IsVoided)
+                    {
+                        <dt class="col-5">Void reason</dt>
+                        <dd class="col-7">@Model.VoidReason</dd>
+                    }
+                </dl>
 
-                @if (Model.NeedsReview)
+                @if (!Model.IsVoided && (Model.NeedsReview || Model.ReviewStatus == "PENDING"))
                 {
                     using (Html.BeginForm("MarkReviewed", "Attendance", new { area = "Admin" }, FormMethod.Post))
                     {
@@ -124,6 +139,17 @@
 
                         <button type="submit" class="btn btn-success w-100">
                             <i class="fa-solid fa-check me-1"></i>Mark as reviewed
+                        </button>
+                    }
+
+                    using (Html.BeginForm("Delete", "Attendance", new { area = "Admin" }, FormMethod.Post))
+                    {
+                        @Html.AntiForgeryToken()
+                        <input type="hidden" name="id" value="@Model.Id" />
+                        <label class="form-label mt-3">Void reason</label>
+                        <input class="form-control mb-2" name="reason" placeholder="Required reason" required />
+                        <button type="submit" class="btn btn-outline-danger w-100">
+                            <i class="fa-solid fa-ban me-1"></i>Void record
                         </button>
                     }
                 }

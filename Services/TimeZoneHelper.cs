@@ -3,17 +3,9 @@ using System.Collections.Generic;
 
 namespace FaceAttend.Services
 {
-    /// <summary>
-    /// Central timezone helper for the whole app.
-    ///
-    /// Lahat ng business date boundaries dapat dumaan dito para iisa lang ang
-    /// batayan ng "today", reports, exports, at attendance day cutoffs.
-    /// </summary>
     public static class TimeZoneHelper
     {
         private static readonly object _lock = new object();
-
-        // Volatile references para safe ang fast-path reads kahit may concurrent rebuild.
         private static volatile TimeZoneInfo _tz;
         private static volatile string _loadedId;
 
@@ -97,16 +89,19 @@ namespace FaceAttend.Services
             return TimeZoneInfo.ConvertTimeToUtc(local, Ensure());
         }
 
-        public static (DateTime fromUtc, DateTime toUtcExclusive) LocalDateToUtcRange(DateTime localDate)
+        public static (DateTime fromLocalInclusive, DateTime toLocalExclusive) LocalDateRange(DateTime localDate)
         {
-            // Taglish note:
-            // localDate dito ay "calendar day" lang. Gawing Unspecified para
-            // ang ConvertTimeToUtc ay gumamit ng configured app timezone.
             var startLocal = DateTime.SpecifyKind(localDate.Date, DateTimeKind.Unspecified);
             var endLocal = DateTime.SpecifyKind(localDate.Date.AddDays(1), DateTimeKind.Unspecified);
 
-            var startUtc = TimeZoneInfo.ConvertTimeToUtc(startLocal, Ensure());
-            var endUtc = TimeZoneInfo.ConvertTimeToUtc(endLocal, Ensure());
+            return (startLocal, endLocal);
+        }
+
+        public static (DateTime fromUtc, DateTime toUtcExclusive) LocalDateToUtcRange(DateTime localDate)
+        {
+            var localRange = LocalDateRange(localDate);
+            var startUtc = TimeZoneInfo.ConvertTimeToUtc(localRange.fromLocalInclusive, Ensure());
+            var endUtc = TimeZoneInfo.ConvertTimeToUtc(localRange.toLocalExclusive, Ensure());
 
             return (startUtc, endUtc);
         }

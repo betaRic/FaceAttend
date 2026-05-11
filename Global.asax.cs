@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Configuration;
 using System.Threading.Tasks;
 using System.Web;
@@ -102,8 +102,7 @@ namespace FaceAttend
 
         private static void RunWarmUpPipeline()
         {
-            WarmUpDlibPool();
-            WarmUpOnnxLiveness();
+            WarmUpBiometricWorker();
             WarmUpEmployeeFaceIndex();
             WarmUpVisitorFaceIndex();
 
@@ -135,36 +134,19 @@ namespace FaceAttend
             }
         }
 
-        private static void WarmUpDlibPool()
+        private static void WarmUpBiometricWorker()
         {
             try
             {
-                DlibBiometrics.InitializePool();
+                OpenVinoBiometrics.InitializeWorker();
 
                 System.Diagnostics.Trace.TraceInformation(
-                    "[Application_Start] Dlib instance pool loaded successfully.");
+                    "[Application_Start] OpenVINO biometric worker is healthy.");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError(
-                    "[Application_Start] WARNING: Failed to initialize Dlib pool: " +
-                    ex.Message);
-            }
-        }
-
-        private static void WarmUpOnnxLiveness()
-        {
-            try
-            {
-                OnnxLiveness.WarmUp();
-
-                System.Diagnostics.Trace.TraceInformation(
-                    "[Application_Start] ONNX liveness model loaded successfully.");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Trace.TraceError(
-                    "[Application_Start] WARNING: Failed to load ONNX liveness model: " +
+                    "[Application_Start] WARNING: OpenVINO biometric worker is not ready: " +
                     ex.Message);
             }
         }
@@ -327,21 +309,13 @@ namespace FaceAttend
 
             try
             {
-                DlibBiometrics.DisposePool();
+                OpenVinoBiometrics.DisposeWorker();
             }
             catch
             {
                 // Best effort cleanup only.
             }
 
-            try
-            {
-                OnnxLiveness.DisposeSession();
-            }
-            catch
-            {
-                // Best effort cleanup only.
-            }
         }
 
         private static void ValidateCriticalConfiguration()

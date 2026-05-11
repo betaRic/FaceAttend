@@ -17,13 +17,6 @@
     var setEta     = KioskClock.setEta;
     var updateEta  = KioskClock.updateEta;
 
-    var isForcedKioskMode             = KioskDevice.isForcedKioskMode;
-    var getDeviceToken                = KioskDevice.getDeviceToken;
-    var setDeviceToken                = KioskDevice.setDeviceToken;
-    var setMobileRegisterVisible      = KioskDevice.setMobileRegisterVisible;
-    var registerDevice                = KioskDevice.registerDevice;
-    var checkCurrentMobileDeviceState = KioskDevice.checkCurrentMobileDeviceState;
-
     var applyLocationUi          = KioskLocation.applyLocationUi;
     var startGpsIfAvailable      = KioskLocation.startGpsIfAvailable;
     var resolveOfficeIfNeeded    = KioskLocation.resolveOfficeIfNeeded;
@@ -33,9 +26,8 @@
     var canvas = document.getElementById('overlayCanvas');
     // ctx lives in kiosk-canvas.js
 
-    // Handle ?reset=1 parameter - clears device mode selection
+    // Handle ?reset=1 parameter - clears forced kiosk mode.
     if (location.search.includes('reset=1')) {
-        localStorage.removeItem('FaceAttend_DeviceMode');
         document.cookie = 'ForceKioskMode=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
         history.replaceState(null, '', location.pathname + location.hash);
     }
@@ -72,6 +64,21 @@
     }
 
     // setCenterBlock / humanizeResolveError / setLocationState / applyLocationUi -> KioskLocation module
+
+    function getCookieValue(name) {
+        var match = document.cookie.match(new RegExp('(?:^|; )' + name.replace(/[.$?*|{}()\[\]\/+^]/g, '\\$&') + '=([^;]*)'));
+        return match ? decodeURIComponent(match[1]) : '';
+    }
+
+    function isForcedKioskMode() {
+        return getCookieValue('ForceKioskMode') === 'true';
+    }
+
+    function setMobileRegisterVisible(show) {
+        var btn = document.getElementById('mobileRegisterBtn');
+        if (!btn) return;
+        btn.style.display = show ? '' : 'none';
+    }
 
     // idle map / GPS / office resolve / location state -> KioskMap + KioskLocation modules
     // =========
@@ -146,14 +153,14 @@
     }
 
     // =========
-    // liveness display
+    // antiSpoof display
     // =========
-    function setLiveness(p, th, cls) {
-        if (!ui.livenessLine) return;
+    function setAntiSpoof(p, th, cls) {
+        if (!ui.antiSpoofLine) return;
         var hasP  = (typeof p  === 'number') && isFinite(p);
         var hasTh = (typeof th === 'number') && isFinite(th);
         
-        // User-friendly text based on liveness state
+        // User-friendly text based on antiSpoof state
         var statusText = 'Live: --';
         if (hasP) {
             if (cls === 'live-pass') {
@@ -167,16 +174,16 @@
             }
         }
         
-        ui.livenessLine.textContent = statusText;
-        ui.livenessLine.classList.remove('live-pass','live-near','live-fail','live-unk');
-        ui.livenessLine.classList.add(cls || 'live-unk');
+        ui.antiSpoofLine.textContent = statusText;
+        ui.antiSpoofLine.classList.remove('live-pass','live-near','live-fail','live-unk');
+        ui.antiSpoofLine.classList.add(cls || 'live-unk');
         
-        // Update liveness bar visual (interactive bar that fills left to right)
-        if (ui.livenessBarFill) {
+        // Update antiSpoof bar visual (interactive bar that fills left to right)
+        if (ui.antiSpoofBarFill) {
             var barWidth = hasP ? Math.round(p * 100) + '%' : '0%';
-            ui.livenessBarFill.style.width = barWidth;
-            ui.livenessBarFill.classList.remove('live-pass','live-near','live-fail','live-unk');
-            ui.livenessBarFill.classList.add(cls || 'live-unk');
+            ui.antiSpoofBarFill.style.width = barWidth;
+            ui.antiSpoofBarFill.classList.remove('live-pass','live-near','live-fail','live-unk');
+            ui.antiSpoofBarFill.classList.add(cls || 'live-unk');
         }
     }
 
@@ -195,13 +202,13 @@
         state.mpStableStart    = 0;
         state.mpFaceSeenAt     = 0;
         state.frameDiffs       = [];
-        state.latestLiveness   = null;
+        state.latestAntiSpoof   = null;
         state.scanLineProgress = 0;
         // CRITICAL: Reset submission flags when resetting scan state
         // This prevents getting stuck in "Capturing..." state
         state.submitInProgress = false;
         state.liveInFlight     = false;
-        setLiveness(null, null, 'live-unk');
+        setAntiSpoof(null, null, 'live-unk');
         setEta('ETA: --');
     }
 
@@ -286,15 +293,7 @@
                     state.localPresent
                 );
 
-                // Personal mobile phones stay in idle until the current device is active.
-                var mobileDeviceGateActive = (
-                    isPersonalMobile &&
-                    !isForcedKioskMode() &&
-                    state.deviceChecked &&
-                    state.deviceStatus !== 'active'
-                );
-
-                var shouldIdle = (!facePresent || state.locationState !== 'allowed' || mobileDeviceGateActive);
+                var shouldIdle = (!facePresent || state.locationState !== 'allowed');
 
                 if (shouldIdle) {
                     if (!state.wasIdle) {
@@ -315,27 +314,12 @@
                         );
                         setMobileRegisterVisible(false);
                         updateEta(true);
-                    } else if (mobileDeviceGateActive) {
-                        if (state.deviceStatus === 'not_registered') {
-                            setPrompt('Device not registered.', 'Tap "Register This Device" below.');
-                            setMobileRegisterVisible(true);
-                        } else if (state.deviceStatus === 'pending') {
-                            setPrompt('Device pending approval.', 'Please wait for admin approval.');
-                            setMobileRegisterVisible(false);
-                        } else if (state.deviceStatus === 'blocked') {
-                            setPrompt('Device blocked.', 'Please contact administrator.');
-                            setMobileRegisterVisible(false);
-                        } else {
-                            setPrompt('Checking device.', 'Please wait.');
-                            setMobileRegisterVisible(false);
-                        }
-                        updateEta(true);
                     } else if (!facePresent) {
                         setPrompt(
                             'Idle.',
                             'Look at the camera.'
                         );
-                        if (isPersonalMobile && state.deviceStatus === 'not_registered') {
+                        if (isPersonalMobile && !isForcedKioskMode()) {
                             setMobileRegisterVisible(true);
                         } else {
                             setMobileRegisterVisible(false);
@@ -370,7 +354,7 @@
                     if (!KioskMediapipe.isReady()) { safeSetPrompt('System not ready.', 'Face detection unavailable.'); updateEta(true); return; }
                     
                     // PREVENT IMMEDIATE SCAN: Must wait at least 2 seconds after page load
-                    // This prevents liveness from firing immediately when webpage loads
+                    // This prevents antiSpoof from firing immediately when webpage loads
                     var timeSincePageLoad = now - pageLoadTime;
                     if (timeSincePageLoad < 2000) { 
                         safeSetPrompt('Initializing...', 'Please wait a moment.'); 
@@ -378,8 +362,7 @@
                         return; 
                     }
 
-                    // SERVER WARM-UP GATE: Block scans until Dlib + ONNX models fully loaded
-                    // The 68-landmark model (~97MB)  pool size takes 15-20s on cold start.
+                    // SERVER WARM-UP GATE: Block scans until biometric worker health is ready.
                     // The /Health endpoint reports ready:true when WarmUpState == 1.
                     if (!state.serverReady) {
                         safeSetPrompt('System starting...', 'Models loading, please wait.');
@@ -432,16 +415,13 @@
             isPersonalMobile:         isPersonalMobile,
             setPrompt:                setPrompt,
             safeSetPrompt:            safeSetPrompt,
-            setLiveness:              setLiveness,
+            setAntiSpoof:              setAntiSpoof,
             updateEta:                updateEta,
             setIdleUi:                setIdleUi,
             setMobileRegisterVisible: setMobileRegisterVisible,
             toastSuccess:             toastSuccess,
             toastError:               toastError,
             isForcedKioskMode:        isForcedKioskMode,
-            getDeviceToken:           getDeviceToken,
-            setDeviceToken:           setDeviceToken,
-            registerDevice:           registerDevice,
             openVisitor:              function (j) { KioskVisitor.open(j); }
         });
 
@@ -449,7 +429,6 @@
         KioskWarmup.start(appBase, state);
         KioskUnlock.init(ui, state, EP, token, appBase, allowUnlock, setPrompt);
         KioskVisitor.init(ui, state, EP, token, CFG, setPrompt, setEta, KioskAttendance.armPostScanHold, toastSuccess, toastError);
-        KioskDevice.init(state, EP, token, appBase, isPersonalMobile, setPrompt, setIdleUi, KioskAttendance.armPostScanHold, toastSuccess, toastError);
         KioskLocation.init(state, EP, token, appBase, isMobile, ui);
         KioskMap.init(state, ui);
         startClock();
@@ -459,7 +438,7 @@
         setIdleUi(true);
         setPrompt('Initializing...', 'Loading face detection models (this may take 15 seconds).');
         setEta('ETA: loading');
-        setLiveness(null, null, 'live-unk');
+        setAntiSpoof(null, null, 'live-unk');
         applyLocationUi();
 
         startGpsIfAvailable();
@@ -473,26 +452,19 @@
                     safeSetPrompt: safeSetPrompt
                 });
             })
-            .then(function () { return checkCurrentMobileDeviceState(); })
             .then(function () {
                 setIdleUi(true);
 
-                if (isPersonalMobile && !isForcedKioskMode() && state.deviceStatus === 'not_registered') {
-                    setPrompt('Device not registered.', 'Tap "Register This Device" below.');
+                if (isPersonalMobile && !isForcedKioskMode()) {
+                    setPrompt('Employee registration available.', 'Tap "Register Employee" below.');
                     setMobileRegisterVisible(true);
-                } else if (isPersonalMobile && !isForcedKioskMode() && state.deviceStatus === 'pending') {
-                    setPrompt('Device pending approval.', 'Please wait for admin approval.');
-                    setMobileRegisterVisible(false);
-                } else if (isPersonalMobile && !isForcedKioskMode() && state.deviceStatus === 'blocked') {
-                    setPrompt('Device blocked.', 'Please contact administrator.');
-                    setMobileRegisterVisible(false);
                 } else {
                     setPrompt('Idle.', state.locationSub || 'Please wait while the location is verified.');
                     setMobileRegisterVisible(false);
                 }
 
                 setEta(state.locationState === 'allowed' ? 'ETA: idle' : 'ETA: locating');
-                setLiveness(null, null, 'live-unk');
+                setAntiSpoof(null, null, 'live-unk');
                 KioskCanvas.start();
                 localSenseLoop();
                 loop();

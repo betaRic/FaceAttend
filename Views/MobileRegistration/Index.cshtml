@@ -1,6 +1,6 @@
 @{
     Layout = "~/Views/Shared/_MobileLayout.cshtml";
-    ViewBag.Title = "Device Registration";
+    ViewBag.Title = "Employee Access";
 }
 
 @section styles {
@@ -96,28 +96,28 @@
 }
 
 <div class="header">
-    <div class="logo"><i class="fa-solid fa-mobile-screen-button"></i></div>
-    <h1 class="title">Device Registration</h1>
-    <p class="subtitle">Register your mobile device for Face Attendance</p>
+    <div class="logo"><i class="fa-solid fa-id-card-clip"></i></div>
+    <h1 class="title">Employee Access</h1>
+    <p class="subtitle">Register publicly or scan attendance.</p>
 </div>
 
 <div class="choices">
     @* Use explicit route URLs to ensure they don't get routed to Admin area *@
     <a href="/MobileRegistration/Enroll" class="choice-card new">
         <span class="choice-icon"><i class="fa-solid fa-user-plus"></i></span>
-        <div class="choice-title">New Employee</div>
-        <div class="choice-desc">I'm a new employee and need to enroll my face first</div>
+        <div class="choice-title">Register Employee</div>
+        <div class="choice-desc">Submit a pending enrollment for administrator approval</div>
     </a>
     
     <a href="/MobileRegistration/Identify" class="choice-card existing">
-        <span class="choice-icon"><i class="fa-solid fa-user-check"></i></span>
-        <div class="choice-title">Existing Employee</div>
-        <div class="choice-desc">I already work here and want to register this device</div>
+        <span class="choice-icon"><i class="fa-solid fa-camera"></i></span>
+        <div class="choice-title">Scan Attendance</div>
+        <div class="choice-desc">Record attendance and unlock your current month record</div>
     </a>
 </div>
 
 <a href="/" class="back-link">
-    <i class="fa-solid fa-arrow-left"></i> Back to Kiosk
+    <i class="fa-solid fa-arrow-left"></i> Back
 </a>
 
-<div class="footer">One device per employee limit applies</div>
+<div class="footer">Monthly records require a fresh successful scan</div>

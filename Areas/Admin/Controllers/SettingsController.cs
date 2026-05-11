@@ -26,9 +26,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                     var vm = SettingsViewModelBuilder.BuildVm(db);
                     vm.SavedMessage = TempData["msg"] as string;
                     vm.FaceCacheStats = FastFaceMatcher.GetStats()?.ToString();
-                    vm.LivenessModelPath = System.Web.Hosting.HostingEnvironment.MapPath(
-                        ConfigurationService.GetString("Biometrics:LivenessModelPath", "~/App_Data/models/liveness/minifasnet.onnx"));
-                    vm.LivenessModelExists = System.IO.File.Exists(vm.LivenessModelPath);
                     
                     // Add TOTP status to view model
                     vm.TotpEnabled = AdminSessionService.IsTotpEnabled();
@@ -297,22 +294,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             return RedirectToAction("Index");
         }
 
-        // GET: /Admin/Settings/ResetLivenessCircuit
-        [HttpGet]
-        public ActionResult ResetLivenessCircuit()
-        {
-            try
-            {
-                OnnxLiveness.ResetCircuit();
-                TempData["msg"] = "Liveness circuit breaker reset successfully.";
-            }
-            catch (Exception ex)
-            {
-                TempData["msg"] = "Failed to reset circuit: " + ex.Message;
-            }
-            return RedirectToAction("Index");
-        }
-
         // POST: /Admin/Settings/Save
         [HttpPost]
         [ValidateAntiForgeryToken]
@@ -324,7 +305,6 @@ namespace FaceAttend.Areas.Admin.Controllers
                 return RedirectToAction("Index");
 
             // Validate
-            SettingsValidator.ValidateChoiceFields(vm, ModelState);
             SettingsValidator.ValidateRanges(vm, ModelState);
 
             TimeSpan workStartTs;

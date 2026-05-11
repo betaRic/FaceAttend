@@ -13,6 +13,13 @@ namespace FaceAttend.Services.Biometrics
     /// </summary>
     public static class DuplicateCheckHelper
     {
+        public sealed class ClosestFaceResult
+        {
+            public string EmployeeId { get; set; }
+            public string Status { get; set; }
+            public double Distance { get; set; }
+        }
+
         /// <summary>
         /// Checks whether the given face vector already exists in the database
         /// for any active employee other than excludeEmployeeId.
@@ -26,7 +33,18 @@ namespace FaceAttend.Services.Biometrics
             string excludeEmployeeId,
             double tolerance)
         {
-            if (faceVector == null || faceVector.Length != 128)
+            var closest = FindClosest(db, faceVector, excludeEmployeeId);
+            return closest != null && closest.Distance <= tolerance
+                ? closest.EmployeeId
+                : null;
+        }
+
+        public static ClosestFaceResult FindClosest(
+            FaceAttendDBEntities db,
+            double[] faceVector,
+            string excludeEmployeeId)
+        {
+            if (!FaceVectorCodec.IsValidVector(faceVector))
                 return null;
 
             var employees = db.Employees
@@ -41,24 +59,35 @@ namespace FaceAttend.Services.Biometrics
                 })
                 .ToList();
 
+            var maxPerEmployee = ConfigurationService.GetInt("Biometrics:Enroll:MaxStoredVectors", 25);
+            ClosestFaceResult closest = null;
+
             foreach (var emp in employees)
             {
                 var vectors = FaceEncodingHelper.LoadEmployeeVectors(
                     emp.FaceEncodingBase64,
                     emp.FaceEncodingsJson,
-                    maxPerEmployee: 5);
+                    maxPerEmployee: maxPerEmployee);
 
                 foreach (var vec in vectors)
                 {
-                    if (vec != null && vec.Length == 128)
+                    if (FaceVectorCodec.IsValidVector(vec))
                     {
-                        if (DlibBiometrics.Distance(faceVector, vec) <= tolerance)
-                            return emp.EmployeeId;
+                        var distance = FaceVectorCodec.Distance(faceVector, vec);
+                        if (closest == null || distance < closest.Distance)
+                        {
+                            closest = new ClosestFaceResult
+                            {
+                                EmployeeId = emp.EmployeeId,
+                                Status = emp.Status,
+                                Distance = distance
+                            };
+                        }
                     }
                 }
             }
 
-            return null;
+            return closest;
         }
     }
 }

@@ -60,7 +60,7 @@ namespace FaceAttend.Services.Security
                 {
                     // IMPROVED: Exponential backoff - each failed attempt increases lockout time
                     // 1st failure: 5 min, 2nd: 10 min, 3rd: 20 min, 4th: 40 min, etc.
-                    var existingLockout = _lockouts.TryGetValue(ip, out var existing) ? existing : null;
+                    var existingLockout = _lockouts.TryGetValue(ip, out var priorLockout) ? priorLockout : null;
                     var attemptCount = existingLockout?.Attempts ?? 0;
                     var scaledLockout = (int)(lockoutSeconds * Math.Pow(2, attemptCount));
                     scaledLockout = Math.Min(scaledLockout, 3600); // Cap at 1 hour max

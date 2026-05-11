@@ -10,7 +10,8 @@ namespace FaceAttend.Models.ViewModels.Mobile
         public string Position    { get; set; }
         public string Department  { get; set; }
         public string OfficeName  { get; set; }
-        public string DeviceName  { get; set; }
+        public string RecordAccessMode { get; set; }
+        public DateTime? AccessExpiresAtUtc { get; set; }
 
         public string TodayStatus  { get; set; }
         public string LastScanTime { get; set; }

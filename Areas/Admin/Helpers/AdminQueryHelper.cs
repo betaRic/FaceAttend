@@ -60,20 +60,19 @@ namespace FaceAttend.Areas.Admin.Helpers
 
         public class RangeResult
         {
-            public DateTime? FromUtc         { get; set; }
-            public DateTime? ToUtcExclusive  { get; set; }
-            public DateTime  FromLocalDate   { get; set; }
-            public DateTime  ToLocalDate     { get; set; }
-            public string    FromText        { get; set; }
-            public string    ToText          { get; set; }
-            public string    Label           { get; set; }
+            public DateTime? FromUtc { get; set; }
+            public DateTime? ToUtcExclusive { get; set; }
+            public DateTime? FromLocalInclusive { get; set; }
+            public DateTime? ToLocalExclusive { get; set; }
+            public DateTime FromLocalDate { get; set; }
+            public DateTime ToLocalDate { get; set; }
+            public string FromText { get; set; }
+            public string ToText { get; set; }
+            public string Label { get; set; }
         }
 
         public static RangeResult ParseRange(string from, string to)
         {
-            // Important:
-            // admin reports dapat naka-anchor sa configured app timezone,
-            // hindi sa timezone ng server.
             var today = TimeZoneHelper.TodayLocalDate();
             var defaultFrom = today.AddDays(-6);
             var defaultTo = today;
@@ -123,6 +122,8 @@ namespace FaceAttend.Areas.Admin.Helpers
                 toLocal = tmp;
             }
 
+            var localRange = TimeZoneHelper.LocalDateRange(fromLocal);
+            var localEndRange = TimeZoneHelper.LocalDateRange(toLocal);
             var utcRange = TimeZoneHelper.LocalDateToUtcRange(fromLocal);
             var utcEndRange = TimeZoneHelper.LocalDateToUtcRange(toLocal);
 
@@ -134,6 +135,8 @@ namespace FaceAttend.Areas.Admin.Helpers
             {
                 FromUtc = utcRange.fromUtc,
                 ToUtcExclusive = utcEndRange.toUtcExclusive,
+                FromLocalInclusive = localRange.fromLocalInclusive,
+                ToLocalExclusive = localEndRange.toLocalExclusive,
                 FromLocalDate = fromLocal,
                 ToLocalDate = toLocal,
                 FromText = fromLocal.ToString("yyyy-MM-dd"),
