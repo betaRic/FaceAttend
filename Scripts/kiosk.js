@@ -161,16 +161,16 @@
         var hasTh = (typeof th === 'number') && isFinite(th);
         
         // User-friendly text based on antiSpoof state
-        var statusText = 'Live: --';
+        var statusText = 'Anti-spoof: --';
         if (hasP) {
             if (cls === 'live-pass') {
-                statusText = 'Live: PASS (' + p.toFixed(2) + ')';
+                statusText = 'Anti-spoof: PASS (' + p.toFixed(2) + ')';
             } else if (cls === 'live-near') {
-                statusText = 'Live: CHECKING... (' + p.toFixed(2) + ')';
+                statusText = 'Anti-spoof: CHECKING... (' + p.toFixed(2) + ')';
             } else if (cls === 'live-fail') {
-                statusText = 'Live: FAILED - Move naturally (' + p.toFixed(2) + ')';
+                statusText = 'Anti-spoof: FAILED - use your real face (' + p.toFixed(2) + ')';
             } else {
-                statusText = 'Live: ' + p.toFixed(2) + (hasTh ? ' / ' + th.toFixed(2) : '');
+                statusText = 'Anti-spoof: ' + p.toFixed(2) + (hasTh ? ' / ' + th.toFixed(2) : '');
             }
         }
         

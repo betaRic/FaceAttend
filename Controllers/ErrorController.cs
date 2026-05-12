@@ -61,6 +61,10 @@ namespace FaceAttend.Controllers
 
         private string GetRequestId()
         {
+            var fromQuery = Request?.QueryString["requestId"];
+            if (!string.IsNullOrWhiteSpace(fromQuery))
+                return fromQuery.Trim();
+
             var existing = HttpContext?.Items["RequestId"] as string;
             if (!string.IsNullOrWhiteSpace(existing))
                 return existing;

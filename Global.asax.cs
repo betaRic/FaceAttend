@@ -197,8 +197,18 @@ namespace FaceAttend
             var ex = Server.GetLastError();
             var httpEx = ex as HttpException;
             var statusCode = httpEx?.GetHttpCode() ?? 500;
+            var requestId = EnsureRequestId();
+            var baseEx = ex?.GetBaseException();
+            var method = SafeRequestValue(() => Request?.HttpMethod);
+            var rawUrl = SafeRequestValue(() => Request?.RawUrl);
 
-            System.Diagnostics.Trace.TraceError($"[Application_Error] {statusCode}: {ex?.Message}");
+            System.Diagnostics.Trace.TraceError(
+                "[Application_Error] RequestId=" + requestId +
+                " Status=" + statusCode +
+                " Method=" + method +
+                " Url=" + rawUrl +
+                " Error=" + (baseEx?.Message ?? ex?.Message ?? "Unknown") +
+                Environment.NewLine + ex);
 
             if (HttpContext.Current?.IsDebuggingEnabled == true && Request.IsLocal)
                 return;
@@ -234,6 +244,7 @@ namespace FaceAttend
                 {
                     ok = false,
                     error = statusCode == 404 ? "NOT_FOUND" : "SERVER_ERROR",
+                    requestId = requestId,
                     message = (Request != null && Request.IsLocal && HttpContext.Current?.IsDebuggingEnabled == true)
                         ? (ex?.GetBaseException()?.Message ?? "Unexpected error")
                         : "We couldn't process your request."
@@ -267,7 +278,11 @@ namespace FaceAttend
                     break;
             }
             
-            try { Response.Redirect($"~/Error/{action}"); }
+            try
+            {
+                Response.Redirect(
+                    "~/Error/" + action + "?requestId=" + HttpUtility.UrlEncode(requestId));
+            }
             catch { }
         }
 
@@ -364,6 +379,32 @@ namespace FaceAttend
                    rawUrl.StartsWith(
                        VirtualPathUtility.ToAbsolute("~/Admin/Error"),
                        StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string EnsureRequestId()
+        {
+            var context = HttpContext.Current;
+            var existing = context?.Items["RequestId"] as string;
+            if (!string.IsNullOrWhiteSpace(existing))
+                return existing;
+
+            var id = Guid.NewGuid().ToString("N");
+            if (context != null)
+                context.Items["RequestId"] = id;
+
+            return id;
+        }
+
+        private static string SafeRequestValue(Func<string> getValue)
+        {
+            try
+            {
+                return getValue() ?? "";
+            }
+            catch
+            {
+                return "";
+            }
         }
     }
 }

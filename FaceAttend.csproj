@@ -498,7 +498,7 @@
     </Compile>
   </ItemGroup>
   <ItemGroup>
-    <Content Include=".tools\nuget.exe" />
+    <None Include=".tools\nuget.exe" />
     <Content Include="App_Data\models\openvino\anti-spoof-mn3.bin" />
     <Content Include="App_Data\models\openvino\anti-spoof-mn3.xml" />
     <Content Include="App_Data\models\openvino\face-detection-retail-0004.bin" />
@@ -561,7 +561,6 @@
     <Content Include="Content\images\dilg-logo.svg" />
     <Content Include="Content\kiosk-bootstrap-compat.css" />
     <Content Include="Content\kiosk.css" />
-    <Content Include="Content\kiosk.css" />
     <Content Include="Content\toastr.less" />
     <Content Include="Content\toastr.min.css" />
     <Content Include="Content\toastr.scss" />
@@ -581,8 +580,7 @@
     <Content Include="Content\_unified\components\modal.css" />
     <Content Include="Content\_unified\components\uploader.css" />
     <Content Include="Content\_unified\components\wizard.css" />
-    <Content Include="FaceAttendDB.sql" />
-    <Content Include="Docs\Database\20260425_hardening_migration.sql" />
+    <None Include="FaceAttendDB.sql" />
     <Content Include="FaceAttendDBEntities.Context.tt">
       <Generator>TextTemplatingFileGenerator</Generator>
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
@@ -599,9 +597,9 @@
       <Generator>EntityModelCodeGenerator</Generator>
       <LastGenOutput>FaceAttendDBEntities.Designer.cs</LastGenOutput>
     </EntityDeploy>
-    <Content Include="FaceAttendDBEntities.edmx.diagram">
+    <None Include="FaceAttendDBEntities.edmx.diagram">
       <DependentUpon>FaceAttendDBEntities.edmx</DependentUpon>
-    </Content>
+    </None>
     <Content Include="Scripts\admin.js" />
     <Content Include="Scripts\admin\admin-back-to-top.js" />
     <Content Include="Scripts\admin\admin-confirm-links.js" />
@@ -716,7 +714,7 @@
   <ItemGroup>
     <Content Include="Areas\Admin\Views\Offices\BulkSchedule.cshtml" />
     <None Include="packages.config" />
-    <Content Include="README.md" />
+    <None Include="README.md" />
     <None Include="Scripts\jquery-3.7.1.intellisense.js" />
     <None Include="Scripts\jquery.validate-vsdoc.js" />
     <Content Include="Views\MobileRegistration\Enroll-mobile.cshtml" />

@@ -71,19 +71,6 @@ namespace FaceAttend.Services
         }
 
         /// <summary>
-        /// Returns true if ANY active office has WFH enabled for <paramref name="localDate"/>.
-        /// Used by the kiosk page to set the data-wfh-day flag.
-        /// </summary>
-        public static bool IsWfhPossibleAnywhere(FaceAttendDBEntities db, DateTime localDate)
-        {
-            var wfhOffices = db.Offices
-                .Where(o => o.IsActive && o.WfhEnabled)
-                .ToList();
-
-            return wfhOffices.Any(o => IsWfhEnabledToday(o, localDate));
-        }
-
-        /// <summary>
         /// Validates and normalises an ISO day list into a comma-separated string.
         /// Deduplicates, clamps to 1–7, sorts ascending.
         /// Returns empty string for empty input.

@@ -31,12 +31,7 @@ namespace FaceAttend.Controllers
             ViewBag.ReturnUrl   = AdminAuthorizeAttribute.SanitizeReturnUrl(returnUrl);
             ViewBag.UnlockHint  = (unlock ?? 0) == 1;
             ViewBag.AllowUnlock = !DeviceService.IsMobileDevice(Request);
-
-            using (var db = new FaceAttendDBEntities())
-            {
-                var today = TimeZoneHelper.NowLocal().Date;
-                ViewBag.WfhDay = OfficeScheduleService.IsWfhPossibleAnywhere(db, today);
-            }
+            ViewBag.WfhDay      = false;
 
             return View();
         }
