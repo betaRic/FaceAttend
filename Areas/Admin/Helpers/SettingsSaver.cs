@@ -51,6 +51,14 @@ namespace FaceAttend.Areas.Admin.Helpers
                 "Minimum anti-spoof score to accept a scan.",
                 modifiedBy);
 
+            ConfigurationService.Upsert(
+                db,
+                "Biometrics:ModelHashes",
+                (vm.BiometricModelHashes ?? "").Trim(),
+                "string",
+                "SHA-256 pins for deployed ONNX model files. Update only after model replacement and calibration.",
+                modifiedBy);
+
         }
 
         private static void SaveLocationSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)

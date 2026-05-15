@@ -57,7 +57,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             if (!vm.ModelAclOk) vm.Warnings.Add("Model files or folders are writable by the app identity; lock ACLs before production.");
             if (vm.EngineEnabled && !vm.EngineHealthy) vm.Warnings.Add("Biometric engine is enabled but not healthy.");
             if (vm.EngineHealthy && !vm.EngineAnalyzeSupported) vm.Warnings.Add("ONNX Runtime is available, but model-specific scan adapters are not implemented yet.");
-            if (string.IsNullOrWhiteSpace(ConfigurationService.GetString("Kiosk:AllowedIpRanges", ""))) vm.Warnings.Add("Kiosk IP allowlist is empty; set Kiosk:AllowedIpRanges before controlled deployment.");
             if (vm.DiskFreeGb.HasValue && vm.DiskFreeGb.Value < 3.0) vm.Warnings.Add("Disk free space is below 3GB.");
             if (vm.TmpMb.HasValue && vm.TmpMb.Value > 500) vm.Warnings.Add("Temporary scan folder is above 500MB.");
 

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Services.Helpers;
@@ -74,6 +75,8 @@ namespace FaceAttend.Areas.Admin.Helpers
 
             if (vm.HalfDayHours < 0.5 || vm.HalfDayHours > 12.0)
                 modelState.AddModelError("HalfDayHours", "Must be between 0.5 and 12.");
+
+            ValidateModelHashes(vm, modelState);
         }
 
         /// <summary>
@@ -86,6 +89,28 @@ namespace FaceAttend.Areas.Admin.Helpers
                 var exists = db.Offices.Any(o => o.Id == vm.FallbackOfficeId && o.IsActive);
                 if (!exists)
                     modelState.AddModelError("FallbackOfficeId", "Select an active office.");
+            }
+        }
+
+        private static void ValidateModelHashes(SettingsVm vm, ModelStateDictionary modelState)
+        {
+            var value = (vm.BiometricModelHashes ?? "").Trim();
+            if (value.Length == 0)
+                return;
+
+            var entries = value.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var entry in entries)
+            {
+                var parts = entry.Split(new[] { '=' }, 2);
+                if (parts.Length != 2 ||
+                    string.IsNullOrWhiteSpace(parts[0]) ||
+                    !Regex.IsMatch(parts[1].Trim(), "^[a-fA-F0-9]{64}$"))
+                {
+                    modelState.AddModelError(
+                        "BiometricModelHashes",
+                        "Use file.onnx=64-character-sha256 entries separated by semicolons.");
+                    return;
+                }
             }
         }
 

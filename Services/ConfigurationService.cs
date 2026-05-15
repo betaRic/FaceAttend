@@ -39,9 +39,9 @@ namespace FaceAttend.Services
                 "Biometrics:EmbeddingDim",
                 "Biometrics:ModelHashes",
                 "Biometrics:RequireModelReadOnlyAcl",
+                "Admin:PinHash",
                 "App:TimeZoneId",
                 "Admin:AllowedIpRanges",
-                "Kiosk:AllowedIpRanges",
                 "TempFile:MaxAgeMinutes",
                 "TempFile:CleanupIntervalMinutes"
             };

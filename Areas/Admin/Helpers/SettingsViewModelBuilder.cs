@@ -1,9 +1,12 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Web.Mvc;
 using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Services;
+using FaceAttend.Services.Biometrics;
 using FaceAttend.Services.Helpers;
+using FaceAttend.Services.Security;
 
 namespace FaceAttend.Areas.Admin.Helpers
 {
@@ -20,6 +23,9 @@ namespace FaceAttend.Areas.Admin.Helpers
         {
             var attendTol = D(db, "Biometrics:AttendanceTolerance", 0.65);
             var fb        = I(db, "Kiosk:FallbackOfficeId", 0);
+            var modelHashes = RawDbString(db, "Biometrics:ModelHashes");
+            if (string.IsNullOrWhiteSpace(modelHashes))
+                modelHashes = ModelIntegrityService.BuildCurrentModelHashes();
 
             var vm = new SettingsVm
             {
@@ -29,6 +35,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 AttendanceTolerance       = attendTol,
                 EnrollmentStrictTolerance = D(db, "Biometrics:EnrollmentStrictTolerance", 0.45),
                 EngineAnalyzeTimeoutMs     = I(db, "Biometrics:Engine:AnalyzeTimeoutMs", 5000),
+                BiometricModelHashes      = modelHashes,
                 MaxConcurrentScans        = I(db, "Kiosk:MaxConcurrentScans", 4),
                 EnrollCaptureTarget       = I(db, "Biometrics:Enroll:CaptureTarget", 8),
                 EnrollMaxStoredVectors    = I(db, "Biometrics:Enroll:MaxStoredVectors", 8),
@@ -73,7 +80,11 @@ namespace FaceAttend.Areas.Admin.Helpers
                 VisitorMaxRecords   = I(db, "Visitors:MaxRecords",     10000),
                 VisitorRetentionYears = I(db, "Visitors:RetentionYears", 2),
 
-                OfficeOptions = AdminQueryHelper.BuildOfficeOptionsWithAuto(db, fb)
+                OfficeOptions = AdminQueryHelper.BuildOfficeOptionsWithAuto(db, fb),
+                AdminPinStoredInDatabase = !string.IsNullOrWhiteSpace(RawDbString(db, "Admin:PinHash")),
+                AdminPinUsingLegacyEnvironmentFallback =
+                    string.IsNullOrWhiteSpace(RawDbString(db, "Admin:PinHash")) &&
+                    AdminPinService.HasLegacyEnvironmentPinHash()
             };
 
             vm.WarningMessage = BuildWarningMessages(db);
@@ -93,6 +104,7 @@ namespace FaceAttend.Areas.Admin.Helpers
 
                 RecognitionTolerance = ConfigurationService.GetDouble("Biometrics:RecognitionTolerance", 0.60),
                 EngineAnalyzeTimeoutMs = ConfigurationService.GetInt("Biometrics:Engine:AnalyzeTimeoutMs", 5000),
+                BiometricModelHashes = "",
                 AntiSpoofThreshold = ConfigurationService.GetDouble("Biometrics:AntiSpoof:ClearThreshold", 0.45),
 
                 GPSAccuracyRequired = ConfigurationService.GetInt("Location:GPSAccuracyRequired", 50),
@@ -131,7 +143,9 @@ namespace FaceAttend.Areas.Admin.Helpers
                         Value = "0",
                         Selected = true
                     }
-                }
+                },
+                AdminPinStoredInDatabase = false,
+                AdminPinUsingLegacyEnvironmentFallback = AdminPinService.HasLegacyEnvironmentPinHash()
             };
         }
 
@@ -174,6 +188,15 @@ namespace FaceAttend.Areas.Admin.Helpers
 
         private static bool B(FaceAttendDBEntities db, string key, bool def)
             => ConfigurationService.GetBool(db, key, ConfigurationService.GetBool(key, def));
+
+        private static string RawDbString(FaceAttendDBEntities db, string key)
+        {
+            if (db == null || string.IsNullOrWhiteSpace(key)) return "";
+            return (db.SystemConfigurations
+                .Where(x => x.Key == key)
+                .Select(x => x.Value)
+                .FirstOrDefault() ?? "").Trim();
+        }
 
         // Special case: RecognitionTolerance has a legacy key in the DB as an intermediate fallback.
         private static double GetRecognitionToleranceWithLegacyFallback(FaceAttendDBEntities db)

@@ -46,8 +46,7 @@ namespace FaceAttend.Services.Biometrics
             };
             try
             {
-                var expected = ParseExpectedHashes(
-                    ConfigurationService.GetString("Biometrics:ModelHashes", ""));
+                var expected = ParseExpectedHashes(GetConfiguredModelHashes());
                 snapshot.ExpectedHashesConfigured = expected.Count > 0;
 
                 var paths = ResolveConfiguredModelPaths(expected.Keys).ToList();
@@ -110,6 +109,17 @@ namespace FaceAttend.Services.Biometrics
         public static IEnumerable<string> ResolveConfiguredModelPaths()
         {
             return ResolveConfiguredModelPaths(Enumerable.Empty<string>());
+        }
+
+        public static string BuildCurrentModelHashes()
+        {
+            var entries = new List<string>();
+            foreach (var path in ResolveConfiguredModelPaths().Where(File.Exists).OrderBy(System.IO.Path.GetFileName))
+            {
+                entries.Add(System.IO.Path.GetFileName(path) + "=" + ComputeSha256(path));
+            }
+
+            return string.Join(";", entries);
         }
 
         private static IEnumerable<string> ResolveConfiguredModelPaths(IEnumerable<string> expectedFileNames)
@@ -251,6 +261,27 @@ namespace FaceAttend.Services.Biometrics
             }
 
             return result;
+        }
+
+        private static string GetConfiguredModelHashes()
+        {
+            try
+            {
+                using (var db = new FaceAttendDBEntities())
+                {
+                    var value = db.SystemConfigurations
+                        .Where(x => x.Key == "Biometrics:ModelHashes")
+                        .Select(x => x.Value)
+                        .FirstOrDefault();
+                    if (!string.IsNullOrWhiteSpace(value))
+                        return value.Trim();
+                }
+            }
+            catch
+            {
+            }
+
+            return ConfigurationService.GetString("Biometrics:ModelHashes", "");
         }
 
         private static string ComputeSha256(string path)

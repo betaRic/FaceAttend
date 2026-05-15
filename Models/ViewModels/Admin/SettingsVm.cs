@@ -28,6 +28,10 @@ namespace FaceAttend.Models.ViewModels.Admin
         [Display(Name = "Engine analyze timeout (ms)")]
         public int EngineAnalyzeTimeoutMs { get; set; }
 
+        [Display(Name = "Model hashes")]
+        [DataType(DataType.MultilineText)]
+        public string BiometricModelHashes { get; set; }
+
         [Range(1, 32)]
         [Display(Name = "Max concurrent scans")]
         public int MaxConcurrentScans { get; set; }
@@ -178,5 +182,8 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         public bool TotpEnabled { get; set; }
         public bool TotpConfigured { get; set; }
+
+        public bool AdminPinStoredInDatabase { get; set; }
+        public bool AdminPinUsingLegacyEnvironmentFallback { get; set; }
     }
 }

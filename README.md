@@ -103,7 +103,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 ### Security
 - Admin PIN authentication with **PBKDF2** (120,000 iterations, SHA-256, random salt)
 - Per-IP brute-force lockout (5 attempts → 300s lockout, configurable)
-- PIN hash stored in IIS environment variable — never in source control
+- PIN hash stored in database configuration as `Admin:PinHash` — never plaintext
 - IP allowlist for admin panel (configurable LAN subnet)
 - CSRF protection on all POST endpoints (`ValidateAntiForgeryToken`)
 - Security headers on every response: `X-Content-Type-Options`, `X-Frame-Options`, `X-XSS-Protection`, `Referrer-Policy`, CSP
@@ -294,7 +294,7 @@ The controlled-deployment candidate ONNX files are installed under `App_Data/mod
 | `face-recognizer.onnx` | OpenCV SFace 2021dec recognizer | `0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79` |
 | `anti-spoof.onnx` | OpenVINO anti-spoof-mn3 ONNX classifier | `c4c99af04603b62d7e44f6f4daeb33e0daeccc696008c0b1d62f6f5cebbb3262` |
 
-`Biometrics:ModelHashes` pins these exact files. If any model file changes, treat the model version as changed and run pilot calibration before enrolling employees.
+`Biometrics:ModelHashes` is stored in `SystemConfigurations` and editable from Admin Settings. If any model file changes, treat the model version as changed and run pilot calibration before enrolling employees.
 
 ### 3. Configure the Database
 
@@ -331,63 +331,13 @@ Build in Visual Studio (`Ctrl+Shift+B`) targeting **x64**. The project requires 
 3. Ensure the app pool identity has **read/write** access to `App_Data/`.
 4. (Optional) Bind an SSL certificate to enable HTTPS and activate the `Secure` flag on cookies.
 
-### 7. Set Required Environment Variables
+### 7. Set Database Configuration
 
-Set these in IIS Manager → Application Pools → [your pool] → Advanced Settings → Environment Variables, or via PowerShell as Administrator:
+Runtime settings live in the `SystemConfigurations` table. After the first admin login, change the admin PIN from:
 
-```powershell
-# Run this on Poweshell as administrative
+`Admin → Settings → Security/Ops → Admin PIN`
 
-# Prompt for PIN securely
-$pin = Read-Host -Prompt "Enter new PIN" -AsSecureString
-$pinPlain = [System.Runtime.InteropServices.Marshal]::PtrToStringAuto(
-    [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($pin))
-
-# Generate salt (works on all PowerShell versions)
-$saltBytes = New-Object byte[] 16
-
-if ([System.Security.Cryptography.RandomNumberGenerator].GetMethod("Fill")) {
-    # Newer .NET
-    [System.Security.Cryptography.RandomNumberGenerator]::Fill($saltBytes)
-} else {
-    # Older .NET fallback
-    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
-    $rng.GetBytes($saltBytes)
-    $rng.Dispose()
-}
-
-# Hash using PBKDF2 SHA256
-$pbkdf2 = New-Object System.Security.Cryptography.Rfc2898DeriveBytes(
-    $pinPlain, $saltBytes, 120000,
-    [System.Security.Cryptography.HashAlgorithmName]::SHA256)
-
-$hashBytes = $pbkdf2.GetBytes(32)
-$pbkdf2.Dispose()
-
-# Convert to Base64
-$salt64 = [Convert]::ToBase64String($saltBytes)
-$hash64 = [Convert]::ToBase64String($hashBytes)
-
-# Final formatted string
-$result = "PBKDF2`$120000`$$salt64`$$hash64"
-
-# Set environment variable (Machine level)
-[System.Environment]::SetEnvironmentVariable(
-    "FACEATTEND_ADMIN_PIN_HASH",
-    $result,
-    "Machine"
-)
-
-Write-Host "`nEnvironment variable set successfully."
-
-
-
-# Optional: To restrict admin panel to LAN subnet only
-[System.Environment]::SetEnvironmentVariable(
-    "FACEATTEND_ADMIN_ALLOWED_IP_RANGES",
-    "192.168.1.0/24",
-    "Machine")
-```
+The stored value is `Admin:PinHash`, a PBKDF2 hash. Existing installs should log in with the current PIN once, change it in Admin Settings, and then operate from the database value.
 
 ### 8. First Launch
 
@@ -399,7 +349,7 @@ Navigate to `https://your-server/` — the kiosk page loads. Navigate to `https:
 
 ## Configuration Reference
 
-All settings are configurable via Admin → Settings at runtime. They are stored in the `Configurations` database table. `Web.config` values serve as initial defaults.
+Most settings are configurable via Admin → Settings at runtime. They are stored in the `SystemConfigurations` database table. `Web.config` values serve as initial defaults only.
 
 ### Biometrics
 
@@ -410,8 +360,7 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 | `Biometrics:Engine:AnalyzeTimeoutMs` | `5000` | Maximum engine analysis time per submitted frame. |
 | `Biometrics:ModelVersion` | `yunet-sface-antispoofmn3-v1-pending-calibration` | Model identity written into decisions/receipts/templates. Fresh enrollment must happen after this is final. |
 | `Biometrics:EmbeddingDim` | `128` | Expected SFace embedding length. |
-| `Biometrics:ModelHashes` | pinned file hashes | SHA-256 pins for deployed ONNX files. |
-| `Kiosk:AllowedIpRanges` | blank | Comma-separated kiosk IPv4 allowlist. Set before controlled deployment. |
+| `Biometrics:ModelHashes` | database value | SHA-256 pins for deployed ONNX files, managed from Admin Settings. |
 | `Biometrics:AttendanceTolerance` | `0.60` | Face match tolerance for attendance scanning. |
 | `Biometrics:AntiSpoof:ClearThreshold` | `0.45` | Anti-spoof clear-pass threshold applied by MVC policy. |
 | `Biometrics:AntiSpoof:ReviewThreshold` | `0.30` | Gray-zone threshold; retry or mark `NeedsReview`. |
@@ -463,17 +412,7 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 
 ### Admin PIN
 
-The admin PIN is **never stored in plain text or in source control**. Only its PBKDF2 hash is stored, and only in an IIS environment variable.
-
-To generate a hash for a new PIN:
-
-```csharp
-// In Package Manager Console:
-var hash = FaceAttend.Filters.AdminAuthorizeAttribute.HashPin("your-pin-here");
-// Output: PBKDF2$120000$<base64-salt>$<base64-hash>
-```
-
-Set the hash as an environment variable named `FACEATTEND_ADMIN_PIN_HASH`.
+The admin PIN is **never stored in plain text or in source control**. Only its PBKDF2 hash is stored in `SystemConfigurations` as `Admin:PinHash`. Change it from Admin Settings.
 
 ### IP Allowlist
 
@@ -832,7 +771,7 @@ Navigate to `/Health/diagnostics` for detailed step-by-step status. Common cause
 
 ### Admin panel inaccessible
 
-1. Check `FACEATTEND_ADMIN_PIN_HASH` is set in the IIS environment variable.
+1. Check `Admin:PinHash` exists in `SystemConfigurations`.
 2. Check `FACEATTEND_ADMIN_ALLOWED_IP_RANGES` — if set, your IP must be in the allowed subnet.
 3. Check IIS application pool is running and the app pool identity has correct file permissions.
 

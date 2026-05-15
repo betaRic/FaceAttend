@@ -134,6 +134,61 @@ namespace FaceAttend.Areas.Admin.Controllers
             return RedirectToAction("Index");
         }
 
+        // POST: /Admin/Settings/ChangePin
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult ChangePin(string currentPin, string newPin, string confirmPin)
+        {
+            var clientIp = Request != null ? (Request.UserHostAddress ?? "").Trim() : "";
+
+            if (!AdminPinService.VerifyPin(currentPin, clientIp))
+            {
+                TempData["msg"] = "Current PIN is incorrect. Admin PIN was NOT changed.";
+                return RedirectToAction("Index");
+            }
+
+            newPin = (newPin ?? "").Trim();
+            confirmPin = (confirmPin ?? "").Trim();
+
+            if (newPin.Length < AdminPinService.MinimumPinLength)
+            {
+                TempData["msg"] = "New PIN must be at least " + AdminPinService.MinimumPinLength + " characters.";
+                return RedirectToAction("Index");
+            }
+
+            if (!string.Equals(newPin, confirmPin, StringComparison.Ordinal))
+            {
+                TempData["msg"] = "New PIN confirmation does not match.";
+                return RedirectToAction("Index");
+            }
+
+            using (var db = new FaceAttendDBEntities())
+            {
+                var by = string.IsNullOrWhiteSpace(clientIp) ? "ADMIN" : "ADMIN@" + clientIp;
+                ConfigurationService.Upsert(
+                    db,
+                    "Admin:PinHash",
+                    AdminPinService.HashPin(newPin),
+                    "string",
+                    "PBKDF2 hash for admin PIN. Managed from Admin Settings.",
+                    by);
+
+                AuditHelper.Log(
+                    db,
+                    Request,
+                    AuditHelper.ActionSettingChange,
+                    "System",
+                    "AdminPin",
+                    "Admin PIN hash updated from settings.",
+                    null,
+                    new { storedInDatabase = true });
+            }
+
+            ConfigurationService.Invalidate("Admin:PinHash");
+            TempData["msg"] = "Admin PIN changed.";
+            return RedirectToAction("Index");
+        }
+
         // GET: /Admin/Settings/EnterTotp - Enter TOTP code (when required)
         [HttpGet]
         public ActionResult EnterTotp(string returnUrl)

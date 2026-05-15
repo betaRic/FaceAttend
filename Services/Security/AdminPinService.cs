@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
 using FaceAttend.Services;
@@ -10,12 +11,13 @@ namespace FaceAttend.Services.Security
     /// <summary>
     /// Verifies the admin PIN with PBKDF2-primary / SHA256-fallback verification
     /// and per-IP brute-force lockout tracking.
-    /// PIN hash is stored in the env var FACEATTEND_ADMIN_PIN_HASH (not Web.config).
-    /// Generate a hash with: AdminPinService.HashPin("your-pin")
+    /// The active PIN hash is stored in SystemConfigurations as Admin:PinHash.
+    /// FACEATTEND_ADMIN_PIN_HASH is kept only as a legacy bootstrap fallback.
     /// </summary>
     public static class AdminPinService
     {
         private const string PinHashEnvVar = "FACEATTEND_ADMIN_PIN_HASH";
+        public const int MinimumPinLength = 6;
 
         private static readonly ConcurrentDictionary<string, LockoutEntry> _lockouts =
             new ConcurrentDictionary<string, LockoutEntry>(StringComparer.OrdinalIgnoreCase);
@@ -25,8 +27,7 @@ namespace FaceAttend.Services.Security
             pin = (pin ?? "").Trim();
             ip  = StringHelper.NormalizeIp(ip);
             
-            // SECURITY: Require minimum 6 characters (was 4-digit PIN - too weak)
-            if (pin.Length < 6) return false;
+            if (pin.Length < MinimumPinLength) return false;
 
             var maxAttempts    = ConfigurationService.GetInt("Admin:PinMaxAttempts",    5);
             var lockoutSeconds = ConfigurationService.GetInt("Admin:PinLockoutSeconds", 300);
@@ -37,13 +38,7 @@ namespace FaceAttend.Services.Security
                     return false;
             }
 
-            var stored = (
-                Environment.GetEnvironmentVariable(PinHashEnvVar)
-                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Process)
-                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.User)
-                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Machine)
-                ?? ""
-            ).Trim();
+            var stored = GetStoredPinHash();
 
             if (stored.Length == 0)
                 return false;
@@ -75,13 +70,25 @@ namespace FaceAttend.Services.Security
             return verified;
         }
 
-        /// <summary>
-        /// Returns a PBKDF2 hash string suitable for FACEATTEND_ADMIN_PIN_HASH.
-        /// </summary>
+        public static bool HasDatabasePinHash()
+        {
+            return !string.IsNullOrWhiteSpace(GetDatabasePinHash());
+        }
+
+        public static bool HasLegacyEnvironmentPinHash()
+        {
+            return !string.IsNullOrWhiteSpace(GetLegacyEnvironmentPinHash());
+        }
+
+        /// <summary>Returns a PBKDF2 hash string for Admin:PinHash.</summary>
         public static string HashPin(string pin)
         {
             if (string.IsNullOrWhiteSpace(pin))
                 throw new ArgumentException("PIN is required.", nameof(pin));
+
+            pin = pin.Trim();
+            if (pin.Length < MinimumPinLength)
+                throw new ArgumentException("PIN must be at least " + MinimumPinLength + " characters.", nameof(pin));
 
             const int iterations = 120_000;
             var salt = new byte[16];
@@ -93,6 +100,46 @@ namespace FaceAttend.Services.Security
                 var hash = pbkdf2.GetBytes(32);
                 return $"PBKDF2${iterations}${Convert.ToBase64String(salt)}${Convert.ToBase64String(hash)}";
             }
+        }
+
+        private static string GetStoredPinHash()
+        {
+            var dbHash = GetDatabasePinHash();
+            return !string.IsNullOrWhiteSpace(dbHash)
+                ? dbHash
+                : GetLegacyEnvironmentPinHash();
+        }
+
+        private static string GetDatabasePinHash()
+        {
+            try
+            {
+                using (var db = new FaceAttendDBEntities())
+                {
+                    return (db.SystemConfigurations
+                        .Where(x => x.Key == "Admin:PinHash")
+                        .Select(x => x.Value)
+                        .FirstOrDefault() ?? "").Trim();
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "[AdminPinService] Could not read Admin:PinHash from database: {0}",
+                    ex.GetBaseException().Message);
+                return "";
+            }
+        }
+
+        private static string GetLegacyEnvironmentPinHash()
+        {
+            return (
+                Environment.GetEnvironmentVariable(PinHashEnvVar)
+                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Process)
+                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.User)
+                ?? Environment.GetEnvironmentVariable(PinHashEnvVar, EnvironmentVariableTarget.Machine)
+                ?? ""
+            ).Trim();
         }
 
         private static bool TryVerifyPbkdf2(string stored, string pin)

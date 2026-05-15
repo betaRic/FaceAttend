@@ -1,5 +1,4 @@
 using System;
-using System.Configuration;
 using System.Threading.Tasks;
 using System.Web;
 using System.Web.Mvc;
@@ -9,6 +8,7 @@ using Newtonsoft.Json;
 using FaceAttend.Services;
 using FaceAttend.Services.Background;
 using FaceAttend.Services.Biometrics;
+using FaceAttend.Services.Security;
 
 namespace FaceAttend
 {
@@ -329,17 +329,18 @@ namespace FaceAttend
 
         private static void ValidateAdminPinHashConfiguration()
         {
-            var pinHash =
-                (Environment.GetEnvironmentVariable("FACEATTEND_ADMIN_PIN_HASH")
-                ?? ConfigurationManager.AppSettings["Admin:PinHash"]
-                ?? string.Empty)
-                .Trim();
-
-            if (string.IsNullOrWhiteSpace(pinHash))
+            if (!AdminPinService.HasDatabasePinHash() &&
+                !AdminPinService.HasLegacyEnvironmentPinHash())
             {
                 System.Diagnostics.Trace.TraceError(
                     "[Application_Start] CRITICAL: Admin PIN hash is not configured. " +
-                    "Admin PIN login will fail until FACEATTEND_ADMIN_PIN_HASH or Admin:PinHash is set.");
+                    "Admin PIN login will fail until Admin:PinHash is saved in SystemConfigurations.");
+            }
+            else if (!AdminPinService.HasDatabasePinHash())
+            {
+                System.Diagnostics.Trace.TraceWarning(
+                    "[Application_Start] Admin PIN is using the legacy environment fallback. " +
+                    "Open Admin Settings and change the PIN once to store Admin:PinHash in the database.");
             }
         }
 

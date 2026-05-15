@@ -476,6 +476,18 @@
                                         @Html.ValidationMessageFor(m => m.MaxConcurrentScans, "", new { @class = "text-danger small" })
                                         <div class="form-text">Maximum simultaneous attendance scans before 503 is returned. Default 4.</div>
                                     </div>
+                                    <div class="col-12">
+                                        @Html.LabelFor(m => m.BiometricModelHashes, new { @class = "form-label" })
+                                        @Html.TextAreaFor(m => m.BiometricModelHashes, new
+                                        {
+                                            @class = "form-control form-control-sm font-monospace",
+                                            rows = "3",
+                                            spellcheck = "false",
+                                            placeholder = "face-detector.onnx=...;face-recognizer.onnx=...;anti-spoof.onnx=..."
+                                        })
+                                        @Html.ValidationMessageFor(m => m.BiometricModelHashes, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Stored in database. Change only when replacing ONNX model files.</div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -574,6 +586,72 @@
             </div>
         </div>
         <div class="ea-form-body">
+            <div class="mb-4">
+                <h6 class="mb-3">
+                    <i class="fa-solid fa-key me-2"></i>Admin PIN
+                </h6>
+                <div class="row g-3">
+                    <div class="col-md-5">
+                        <div class="card bg-light h-100">
+                            <div class="card-body">
+                                <h6 class="card-title">Current Storage</h6>
+                                <dl class="row mb-0" style="font-size: 0.85rem;">
+                                    <dt class="col-6">Database:</dt>
+                                    <dd class="col-6">
+                                        @if (Model.AdminPinStoredInDatabase)
+                                        {
+                                            <span class="badge bg-success">Active</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="badge bg-warning text-dark">Not set</span>
+                                        }
+                                    </dd>
+                                    <dt class="col-6">Legacy env:</dt>
+                                    <dd class="col-6">
+                                        @if (Model.AdminPinUsingLegacyEnvironmentFallback)
+                                        {
+                                            <span class="badge bg-secondary">Fallback</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="text-muted">No</span>
+                                        }
+                                    </dd>
+                                </dl>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        @using (Html.BeginForm("ChangePin", "Settings", new { area = "Admin" }, FormMethod.Post, new { autocomplete = "off" }))
+                        {
+                            @Html.AntiForgeryToken()
+                            <div class="row g-2">
+                                <div class="col-12">
+                                    <label class="form-label">Current PIN</label>
+                                    <input type="password" name="currentPin" class="form-control form-control-sm" required minlength="6" autocomplete="current-password" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">New PIN</label>
+                                    <input type="password" name="newPin" class="form-control form-control-sm" required minlength="6" autocomplete="new-password" />
+                                </div>
+                                <div class="col-12 col-md-6">
+                                    <label class="form-label">Confirm new PIN</label>
+                                    <input type="password" name="confirmPin" class="form-control form-control-sm" required minlength="6" autocomplete="new-password" />
+                                </div>
+                                <div class="col-12">
+                                    <button type="submit" class="btn btn-outline-primary btn-sm">
+                                        <i class="fa-solid fa-key me-1"></i>Change PIN
+                                    </button>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                </div>
+            </div>
+
+            <hr class="my-4" />
+
             @* ── TOTP 2FA Section ── *@
             <div class="mb-4">
                 <h6 class="mb-3">

@@ -88,15 +88,6 @@ namespace FaceAttend.Controllers
             var requestedAtLocal = TimeZoneHelper.NowLocal();
             var scanSw = System.Diagnostics.Stopwatch.StartNew();
 
-            if (!IsKioskClientAllowed())
-            {
-                Response.StatusCode = 403;
-                Response.TrySkipIisCustomErrors = true;
-                var denied = JsonResponseBuilder.Error("KIOSK_IP_DENIED", "This device is not allowed to use kiosk scanning.");
-                PublicAuditService.RecordScan(Request, denied, "KIOSK", scanSw.ElapsedMilliseconds);
-                return denied;
-            }
-
             var activeScans = Interlocked.Increment(ref _activeScanCount);
             try
             {
@@ -124,15 +115,6 @@ namespace FaceAttend.Controllers
             {
                 Interlocked.Decrement(ref _activeScanCount);
             }
-        }
-
-        private bool IsKioskClientAllowed()
-        {
-            var ranges = ConfigurationService.GetString("Kiosk:AllowedIpRanges", "");
-            if (string.IsNullOrWhiteSpace(ranges))
-                return true;
-
-            return AdminAccessControl.IsAllowedByRanges(Request.UserHostAddress, ranges);
         }
 
         [HttpPost]
