@@ -383,6 +383,19 @@ html, body {
     object-fit: contain;
 }
 
+.idle-logo-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+}
+
 .idle-brand-text {
     display: flex;
     flex-direction: column;
@@ -656,6 +669,49 @@ html, body {
     flex-direction: column;
     align-items: center;
     gap: var(--space-1);
+}
+
+.mobile-register-container {
+    animation: fadeInUp 0.5s ease;
+    margin-top: 20px;
+}
+
+.mobile-register-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 28px;
+    background: var(--color-primary);
+    color: #fff;
+    border-radius: 30px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 1rem;
+    box-shadow: 0 4px 15px rgba(37, 99, 235, 0.32);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mobile-register-btn:hover {
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(37, 99, 235, 0.42);
+}
+
+.mobile-register-hint {
+    margin-top: 10px;
+    font-size: 0.8125rem;
+    color: #94a3b8;
+}
+
+@keyframes fadeInUp {
+    from {
+        opacity: 0;
+        transform: translateY(20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .idle-footer .idle-clock {

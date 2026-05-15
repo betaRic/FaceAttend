@@ -53,7 +53,7 @@
 
     @Html.AntiForgeryToken()
 
-    <div id="kioskRoot" data-location-state="pending" data-wfh-day="@(ViewBag.WfhDay == true ? "true" : "false")" style="display: none;">
+    <div id="kioskRoot" data-location-state="pending" data-wfh-day="@(ViewBag.WfhDay == true ? "true" : "false")">
 
         <!-- Video Background -->
         <video id="kioskVideo" playsinline autoplay muted></video>
@@ -64,8 +64,8 @@
             <div class="idle-wrapper">
                 <!-- Brand Header -->
                 <div class="idle-brand">
-                    <div class="idle-logo-wrap">
-                        <img class="idle-logo" src="@Url.Content("~/Content/images/dilg-logo.svg")" alt="DILG" />
+                    <div class="idle-logo-wrap" role="img" aria-label="DILG">
+                        <span class="idle-logo idle-logo-mark" aria-hidden="true">DILG</span>
                     </div>
                     <div class="idle-brand-text">
                         <div class="idle-eyebrow">Department of the Interior and Local Government</div>
@@ -118,7 +118,7 @@
                     <div id="idleHint" class="idle-hint">Look at the camera to scan</div>
                     
                     <!-- MOBILE REGISTRATION BUTTON - Only shown on mobile devices -->
-                    <div id="mobileRegisterBtn" class="mobile-register-container" style="display: none; margin-top: 20px;">
+                    <div id="mobileRegisterBtn" class="mobile-register-container" style="display: none;">
                         <a href="/MobileRegistration" class="mobile-register-btn">
                             <i class="fa-solid fa-mobile-screen"></i>
                             Register Employee
@@ -242,43 +242,11 @@
 
     </div>
 
-    @Scripts.Render("~/bundles/jquery")
-    <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
-    @Scripts.Render("~/bundles/kiosk-vendor")
-    @Scripts.Render("~/bundles/fa-core")
-    @Scripts.Render("~/bundles/kiosk")
-    
-    @Scripts.Render("~/bundles/audio-manager")
-
-    <style>
-        /* Mobile Registration Button Styles */
-        .mobile-register-container { animation: fadeInUp 0.5s ease; }
-        .mobile-register-btn {
-            display: inline-flex; align-items: center; gap: 10px;
-            padding: 14px 28px;
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white; border-radius: 30px; text-decoration: none;
-            font-weight: 600; font-size: 16px;
-            box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
-            transition: all 0.3s ease;
-        }
-        .mobile-register-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(59, 130, 246, 0.5); }
-        .mobile-register-hint { margin-top: 10px; font-size: 13px; color: #94a3b8; }
-        @@keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-    </style>
-    
     <script>
         // Device detection and setup
         (function() {
-            var kioskRoot = document.getElementById('kioskRoot');
             var mobileRegisterBtn = document.getElementById('mobileRegisterBtn');
-            
-            // Show kiosk UI
-            if (kioskRoot) kioskRoot.style.display = '';
-            
+
             var ua = navigator.userAgent.toLowerCase();
             var isPhone = /iphone|android.*mobile|windows phone|iemobile|blackberry/.test(ua);
             
@@ -296,5 +264,13 @@
 
         })();
     </script>
+
+    @Scripts.Render("~/bundles/jquery")
+    <script type="module" src="@Url.Content("~/Scripts/vendor/mediapipe/tasks-vision/vision_loader.mjs")"></script>
+    @Scripts.Render("~/bundles/kiosk-vendor")
+    @Scripts.Render("~/bundles/fa-core")
+    @Scripts.Render("~/bundles/kiosk")
+
+    @Scripts.Render("~/bundles/audio-manager")
 </body>
 </html>

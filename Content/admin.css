@@ -78,6 +78,22 @@ body.admin-body {
     text-decoration: none;
 }
 
+.admin-brand-mark {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 0.875rem;
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.22);
+}
+
 .admin-brand i {
     font-size: 1.25rem;
     color: var(--color-primary);

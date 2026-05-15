@@ -559,7 +559,6 @@
     <Content Include="Content\fa-design-system.css" />
     <Content Include="Content\fa-mobile.css" />
     <Content Include="Content\favicon.ico" />
-    <Content Include="Content\images\dilg-logo.svg" />
     <Content Include="Content\kiosk-bootstrap-compat.css" />
     <Content Include="Content\kiosk.css" />
     <Content Include="Content\toastr.less" />
