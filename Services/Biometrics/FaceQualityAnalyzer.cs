@@ -47,7 +47,7 @@ namespace FaceAttend.Services.Biometrics
         }
 
         public static (float yaw, float pitch) EstimatePose(
-            OpenVinoBiometrics.FaceBox faceBox, int imageWidth, int imageHeight)
+            BiometricEngine.FaceBox faceBox, int imageWidth, int imageHeight)
         {
             if (faceBox == null || imageWidth <= 0 || imageHeight <= 0)
                 return (0f, 0f);

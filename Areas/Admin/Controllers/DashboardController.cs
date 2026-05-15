@@ -5,7 +5,6 @@ using FaceAttend.Models.ViewModels.Admin;
 using FaceAttend.Filters;
 using FaceAttend.Services;
 using FaceAttend.Services.Biometrics;
-using FaceAttend.Services.Recognition;
 
 namespace FaceAttend.Areas.Admin.Controllers
 {
@@ -76,8 +75,8 @@ namespace FaceAttend.Areas.Admin.Controllers
                     vm.DatabaseHealthy = false;
                 }
 
-                var worker = BiometricWorkerClient.CheckHealth();
-                vm.BiometricWorkerReady = worker.Enabled && worker.Healthy;
+                var engine = BiometricEngine.GetStatus();
+                vm.BiometricEngineReady = engine.Ready;
 
                 vm.OfflineAssetsOk = true;
 
@@ -114,7 +113,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         l.Timestamp >= todayStart && l.Timestamp < tomorrowStart && l.EventType == "OUT");
                     var visitors = db.Visitors.Count(v => v.IsActive);
                     var pending = db.AttendanceLogs.Count(l => !l.IsVoided && l.ReviewStatus == "PENDING");
-                    var worker = BiometricWorkerClient.CheckHealth();
+                    var engine = BiometricEngine.GetStatus();
 
                     return Json(new
                     {
@@ -125,7 +124,7 @@ namespace FaceAttend.Areas.Admin.Controllers
                         totalVisitors = visitors,
                         pendingReviews = pending,
                         dbHealthy = true,
-                        biometricWorkerReady = worker.Enabled && worker.Healthy,
+                        biometricEngineReady = engine.Ready,
                         serverTimeLocal = TimeZoneHelper.NowLocal().ToString("HH:mm:ss")
                     }, JsonRequestBehavior.AllowGet);
                 }
@@ -157,6 +156,6 @@ namespace FaceAttend.Areas.Admin.Controllers
             }
             return RedirectToAction("Index");
         }
-        // FileSystemHelper now provides CheckFileExists and BiometricWorkerReady
+        // FileSystemHelper now provides CheckFileExists; biometric readiness is owned by BiometricEngine.
     }
 }

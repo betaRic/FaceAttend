@@ -183,9 +183,9 @@ namespace FaceAttend.Areas.Admin.Helpers
                 vm.EnrollmentStrictTolerance.ToString(CultureInfo.InvariantCulture), "double",
                 "Strict tolerance for enrollment duplicate detection. Lower = harder to enroll same face twice.", modifiedBy);
 
-            ConfigurationService.Upsert(db, "Biometrics:Worker:AnalyzeTimeoutMs",
-                vm.WorkerAnalyzeTimeoutMs.ToString(CultureInfo.InvariantCulture), "int",
-                "Timeout in milliseconds for OpenVINO worker face analysis.", modifiedBy);
+            ConfigurationService.Upsert(db, "Biometrics:Engine:AnalyzeTimeoutMs",
+                vm.EngineAnalyzeTimeoutMs.ToString(CultureInfo.InvariantCulture), "int",
+                "Timeout in milliseconds for in-process biometric engine analysis.", modifiedBy);
 
             ConfigurationService.Upsert(db, "Kiosk:MaxConcurrentScans",
                 vm.MaxConcurrentScans.ToString(CultureInfo.InvariantCulture), "int",
@@ -243,6 +243,7 @@ namespace FaceAttend.Areas.Admin.Helpers
 
         private static void CleanupLegacyKeys(FaceAttendDBEntities db)
         {
+            DeleteLegacyModelHashes(db);
             ConfigurationService.Delete(db, "Biometrics:AntiSpoofThreshold");
             ConfigurationService.Delete(db, "Biometrics:MobileAntiSpoofThreshold");
             ConfigurationService.Delete(db, "Biometrics:AntiSpoofInputSize");
@@ -258,9 +259,31 @@ namespace FaceAttend.Areas.Admin.Helpers
             ConfigurationService.Delete(db, "Biometrics:AntiSpoof:CircuitFailStreak");
             ConfigurationService.Delete(db, "Biometrics:AntiSpoof:CircuitDisableSeconds");
             ConfigurationService.Delete(db, "Biometrics:AntiSpoof:GateWaitMs");
+            ConfigurationService.DeleteByPrefix(db, "Biometrics:Worker:");
+            ConfigurationService.Delete(db, "Biometrics:OpenVinoModelsDir");
+            ConfigurationService.Delete(db, "DlibTolerance");
+            ConfigurationService.Delete(db, "LivenessThreshold");
+            ConfigurationService.Delete(db, "Biometrics:DlibPoolSize");
+            ConfigurationService.Delete(db, "Biometrics:DlibTolerance");
+            ConfigurationService.Delete(db, "Biometrics:SkipLiveness");
+            ConfigurationService.Delete(db, "Visitors:DlibTolerance");
             ConfigurationService.Delete(db, "Biometrics:FaceMatchTuner:Enabled");
             ConfigurationService.Delete(db, "Biometrics:FaceMatchTunerEnabled");
             ConfigurationService.DeleteByPrefix(db, "Queue:");
+        }
+
+        private static void DeleteLegacyModelHashes(FaceAttendDBEntities db)
+        {
+            var hashes = ConfigurationService.GetString(db, "Biometrics:ModelHashes", "");
+            if (string.IsNullOrWhiteSpace(hashes))
+                return;
+
+            if (hashes.IndexOf(".xml", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                hashes.IndexOf(".bin", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                hashes.IndexOf("retail-", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                ConfigurationService.Delete(db, "Biometrics:ModelHashes");
+            }
         }
 
         private static void SavePerformanceSettings(FaceAttendDBEntities db, SettingsVm vm, string modifiedBy)

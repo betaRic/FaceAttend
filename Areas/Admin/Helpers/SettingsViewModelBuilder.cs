@@ -28,7 +28,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                 AntiSpoofThreshold         = D(db, "Biometrics:AntiSpoof:ClearThreshold", 0.45),
                 AttendanceTolerance       = attendTol,
                 EnrollmentStrictTolerance = D(db, "Biometrics:EnrollmentStrictTolerance", 0.45),
-                WorkerAnalyzeTimeoutMs              = I(db, "Biometrics:Worker:AnalyzeTimeoutMs", 5000),
+                EngineAnalyzeTimeoutMs     = I(db, "Biometrics:Engine:AnalyzeTimeoutMs", 5000),
                 MaxConcurrentScans        = I(db, "Kiosk:MaxConcurrentScans", 4),
                 EnrollCaptureTarget       = I(db, "Biometrics:Enroll:CaptureTarget", 8),
                 EnrollMaxStoredVectors    = I(db, "Biometrics:Enroll:MaxStoredVectors", 8),
@@ -92,7 +92,7 @@ namespace FaceAttend.Areas.Admin.Helpers
                     " — Defaults are shown below. Save to persist them.",
 
                 RecognitionTolerance = ConfigurationService.GetDouble("Biometrics:RecognitionTolerance", 0.60),
-                WorkerAnalyzeTimeoutMs = ConfigurationService.GetInt("Biometrics:Worker:AnalyzeTimeoutMs", 5000),
+                EngineAnalyzeTimeoutMs = ConfigurationService.GetInt("Biometrics:Engine:AnalyzeTimeoutMs", 5000),
                 AntiSpoofThreshold = ConfigurationService.GetDouble("Biometrics:AntiSpoof:ClearThreshold", 0.45),
 
                 GPSAccuracyRequired = ConfigurationService.GetInt("Location:GPSAccuracyRequired", 50),

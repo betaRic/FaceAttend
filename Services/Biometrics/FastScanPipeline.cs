@@ -20,7 +20,7 @@ namespace FaceAttend.Services.Biometrics
             public float[] Landmarks5 { get; set; }
             public string AntiSpoofDecision { get; set; }
             public bool AntiSpoofModelOk { get; set; }
-            public OpenVinoBiometrics.FaceBox FaceBox { get; set; }
+            public BiometricEngine.FaceBox FaceBox { get; set; }
             public float Sharpness { get; set; }
             public float SharpnessThreshold { get; set; }
             public int ImageWidth { get; set; }
@@ -84,17 +84,17 @@ namespace FaceAttend.Services.Biometrics
 
             if (timings != null) timings["read_ms"] = sw.ElapsedMilliseconds;
 
-            var biometric = new OpenVinoBiometrics();
-            string workerError;
-            var response = biometric.AnalyzeBytes(imageBytes, mode, out workerError);
-            if (timings != null) timings["openvino_analyze_ms"] = sw.ElapsedMilliseconds;
+            var biometric = new BiometricEngine();
+            string engineError;
+            var response = biometric.AnalyzeBytes(imageBytes, mode, out engineError);
+            if (timings != null) timings["biometric_engine_ms"] = sw.ElapsedMilliseconds;
 
             if (response == null || !response.Ok)
             {
                 return new ScanResult
                 {
                     Ok = false,
-                    Error = response?.Error ?? workerError ?? "OPENVINO_ANALYZE_FAIL",
+                    Error = response?.Error ?? engineError ?? "BIOMETRIC_ENGINE_ANALYZE_FAIL",
                     TimingMs = sw.ElapsedMilliseconds,
                     Timings = timings
                 };
@@ -106,9 +106,8 @@ namespace FaceAttend.Services.Biometrics
             var policy = BiometricPolicy.Current;
             var antiSpoofScore = antiSpoof?.Score ?? 0f;
             var modelOk = antiSpoof == null || antiSpoof.ModelOk;
-            var decision = !string.IsNullOrWhiteSpace(antiSpoof?.Decision)
-                ? antiSpoof.Decision
-                : policy.EvaluateAntiSpoof(modelOk, antiSpoofScore, isMobile).Decision.ToString().ToUpperInvariant();
+            var antiSpoofDecision = policy.EvaluateAntiSpoof(modelOk, antiSpoofScore, isMobile);
+            var decision = antiSpoofDecision.Decision.ToString().ToUpperInvariant();
 
             int width;
             int height;
@@ -125,7 +124,7 @@ namespace FaceAttend.Services.Biometrics
                 AntiSpoofModelOk = modelOk,
                 FaceBox = faceBox,
                 Sharpness = quality?.Sharpness ?? 0f,
-                SharpnessThreshold = quality?.SharpnessThreshold ?? FaceQualityAnalyzer.GetSharpnessThreshold(isMobile),
+                SharpnessThreshold = FaceQualityAnalyzer.GetSharpnessThreshold(isMobile),
                 ImageWidth = width,
                 ImageHeight = height,
                 TimingMs = sw.ElapsedMilliseconds,
@@ -180,12 +179,12 @@ namespace FaceAttend.Services.Biometrics
             }
         }
 
-        private static OpenVinoBiometrics.FaceBox ToFaceBox(WorkerFaceBox faceBox)
+        private static BiometricEngine.FaceBox ToFaceBox(BiometricFaceBox faceBox)
         {
             if (faceBox == null)
                 return null;
 
-            return new OpenVinoBiometrics.FaceBox
+            return new BiometricEngine.FaceBox
             {
                 Left = faceBox.X,
                 Top = faceBox.Y,
@@ -194,7 +193,7 @@ namespace FaceAttend.Services.Biometrics
             };
         }
 
-        private static float[] ToLandmarksArray(WorkerAnalyzeFaceResponse response)
+        private static float[] ToLandmarksArray(BiometricAnalysisResponse response)
         {
             if (response?.Landmarks == null)
                 return null;

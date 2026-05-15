@@ -163,7 +163,7 @@ namespace FaceAttend.Controllers.Api
                 bool wasResized;
                 processedPath = ImagePreprocessor.PreprocessForDetection(tempPath, "dup_", out wasResized);
 
-                var biometric = new OpenVinoBiometrics();
+                var biometric = new BiometricEngine();
                 string analyzeErr;
                 var analysis = biometric.AnalyzeFile(processedPath, BiometricScanMode.Enrollment, out analyzeErr);
 

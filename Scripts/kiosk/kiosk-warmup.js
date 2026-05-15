@@ -1,5 +1,5 @@
 // kiosk-warmup.js
-// Polls the server /Health endpoint until the biometric worker is ready.
+// Polls the server /Health endpoint until the biometric engine is ready.
 // Exposes window.KioskWarmup — must be loaded after kiosk-state.js.
 (function () {
     'use strict';

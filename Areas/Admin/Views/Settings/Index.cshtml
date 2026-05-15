@@ -461,14 +461,14 @@
                             <div class="ea-settings-section-body">
                                 <div class="alert alert-warning small py-2 mb-3">
                                     <i class="fa-solid fa-triangle-exclamation me-1"></i>
-                                    Worker timeout controls how long MVC waits for OpenVINO face analysis before failing closed.
+                                    Engine timeout controls how long MVC waits for face analysis before failing closed.
                                 </div>
                                 <div class="row g-3">
                                     <div class="col-12 col-md-6">
-                                        @Html.LabelFor(m => m.WorkerAnalyzeTimeoutMs, new { @class = "form-label" })
-                                        @Html.TextBoxFor(m => m.WorkerAnalyzeTimeoutMs, new { @class = "form-control form-control-sm", type = "number", min = "500", max = "30000", step = "100" })
-                                        @Html.ValidationMessageFor(m => m.WorkerAnalyzeTimeoutMs, "", new { @class = "text-danger small" })
-                                        <div class="form-text">Maximum wait for a single OpenVINO analysis call. Default 5000 ms.</div>
+                                        @Html.LabelFor(m => m.EngineAnalyzeTimeoutMs, new { @class = "form-label" })
+                                        @Html.TextBoxFor(m => m.EngineAnalyzeTimeoutMs, new { @class = "form-control form-control-sm", type = "number", min = "500", max = "30000", step = "100" })
+                                        @Html.ValidationMessageFor(m => m.EngineAnalyzeTimeoutMs, "", new { @class = "text-danger small" })
+                                        <div class="form-text">Maximum wait for a single biometric engine analysis call. Default 5000 ms.</div>
                                     </div>
                                     <div class="col-12 col-md-6">
                                         @Html.LabelFor(m => m.MaxConcurrentScans, new { @class = "form-label" })
@@ -704,7 +704,7 @@
         <div class="ea-form-body">
             <div class="small text-muted mb-3">
                 Anti-spoof detection helps catch photo and screen spoofing. If scans are failing frequently,
-                check OpenVINO worker health before changing thresholds.
+                check biometric engine health before changing thresholds.
             </div>
             
             <div class="row g-3">
@@ -716,7 +716,7 @@
                                 <dt class="col-6">Threshold:</dt>
                                 <dd class="col-6">@Model.AntiSpoofThreshold</dd>
                                 <dt class="col-6">Inference owner:</dt>
-                                <dd class="col-6">OpenVINO worker</dd>
+                                <dd class="col-6">In-process biometric engine</dd>
                             </dl>
                         </div>
                     </div>
@@ -725,9 +725,9 @@
                     <div class="alert alert-warning" style="font-size: 0.85rem;">
                         <strong>Troubleshooting:</strong>
                         <ul class="mb-0 mt-2">
-                            <li>Score &lt; 0.1: Model issue or wrong input</li>
-                            <li>Score 0.1-0.7: Adjust threshold lower</li>
-                            <li>Score &gt; 0.7: Good, should pass</li>
+                            <li>Very low score: check model health, input crop, lighting, and spoof sample type</li>
+                            <li>Gray-zone score: review pilot samples before changing thresholds</li>
+                            <li>High score: expected to pass unless another guard fails</li>
                         </ul>
                     </div>
                 </div>

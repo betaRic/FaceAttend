@@ -51,10 +51,10 @@ namespace FaceAttend.Services.Biometrics
                 snapshot.ExpectedHashesConfigured = expected.Count > 0;
 
                 var paths = ResolveConfiguredModelPaths(expected.Keys).ToList();
-                if (paths.Count == 0 && ConfigurationService.GetBool("Biometrics:Worker:Enabled", false))
+                if (paths.Count == 0 && ConfigurationService.GetBool("Biometrics:Engine:Enabled", true))
                 {
                     snapshot.Ok = false;
-                    snapshot.Error = "No OpenVINO/ONNX model files found in Biometrics:OpenVinoModelsDir.";
+                    snapshot.Error = "No ONNX model files found in Biometrics:ModelDir/Biometrics:OnnxModelsDir.";
                 }
 
                 foreach (var path in paths)
@@ -116,21 +116,21 @@ namespace FaceAttend.Services.Biometrics
         {
             var paths = new List<string>();
 
-            var openVinoDir = MapPath(ConfigurationService.GetString(
-                "Biometrics:OpenVinoModelsDir",
-                "~/App_Data/models/openvino"));
-            if (!string.IsNullOrWhiteSpace(openVinoDir) && Directory.Exists(openVinoDir))
+            var modelDir = MapPath(ConfigurationService.GetString(
+                "Biometrics:ModelDir",
+                ConfigurationService.GetString("Biometrics:OnnxModelsDir", "~/App_Data/models/onnx")));
+            if (!string.IsNullOrWhiteSpace(modelDir) && Directory.Exists(modelDir))
             {
-                paths.AddRange(Directory.GetFiles(openVinoDir, "*.xml").OrderBy(x => x));
-                paths.AddRange(Directory.GetFiles(openVinoDir, "*.bin").OrderBy(x => x));
-                paths.AddRange(Directory.GetFiles(openVinoDir, "*.onnx").OrderBy(x => x));
+                paths.AddRange(Directory.GetFiles(modelDir, "*.onnx").OrderBy(x => x));
 
                 foreach (var fileName in expectedFileNames ?? Enumerable.Empty<string>())
                 {
                     if (!string.IsNullOrWhiteSpace(fileName))
-                        paths.Add(System.IO.Path.Combine(openVinoDir, fileName.Trim()));
+                        paths.Add(System.IO.Path.Combine(modelDir, fileName.Trim()));
                 }
             }
+
+            paths.AddRange(BiometricEngine.GetConfiguredModelPaths());
 
             return paths.Distinct(StringComparer.OrdinalIgnoreCase);
         }

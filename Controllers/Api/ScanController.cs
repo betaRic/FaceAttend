@@ -8,9 +8,9 @@ using FaceAttend.Services.Security;
 
 namespace FaceAttend.Controllers.Api
 {
-        [RoutePrefix("api/scan")]
-        public class ScanController : Controller
-        {
+    [RoutePrefix("api/scan")]
+    public class ScanController : Controller
+    {
         [HttpPost]
         [Route("frame")]
         [ValidateAntiForgeryToken]
@@ -138,7 +138,7 @@ namespace FaceAttend.Controllers.Api
                 var maxBytes = ConfigurationService.GetInt("Biometrics:MaxUploadBytes", 10 * 1024 * 1024);
                 tempPath = FileSecurityService.SaveTemp(image, "val_", maxBytes);
 
-                var biometric = new OpenVinoBiometrics();
+                var biometric = new BiometricEngine();
                 string analyzeError;
                 var analysis = biometric.AnalyzeFile(tempPath, BiometricScanMode.Enrollment, out analyzeError);
 

@@ -51,7 +51,8 @@ namespace FaceAttend.Controllers
                     TimeZoneHelper.NowLocal(),
                     includePerfTimings: ConfigurationService.GetBool("Kiosk:EnablePerfTimings", false),
                     httpContext: HttpContext,
-                    wfhMode: wfhMode);
+                    wfhMode: wfhMode,
+                    requireGps: true);
                 OperationalMetricsService.RecordScan(scanSw.ElapsedMilliseconds, result);
                 PublicAuditService.RecordScan(Request, result, "PUBLIC_SCAN", scanSw.ElapsedMilliseconds);
                 return result;

@@ -87,17 +87,17 @@
 
     @* â”€â”€ Circuit-breaker warning banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
        Hidden by default (display:none).
-       Shown immediately on page load if the biometric worker is not ready.
+       Shown immediately on page load if the biometric engine is not ready.
        Also toggled by the AJAX refresh loop (see @section scripts below).
     â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ *@
-    <div id="biometric-worker-warning"
+    <div id="biometric-engine-warning"
          class="alert alert-danger d-flex align-items-center gap-2 mb-3"
          style="display:none !important;"
          role="alert">
         <i class="fa-solid fa-triangle-exclamation fa-lg flex-shrink-0" aria-hidden="true"></i>
         <div class="flex-grow-1">
-            <strong>Biometric worker problem.</strong>
-            OpenVINO face recognition or anti-spoof inference is not ready. Kiosk and public scans should fail closed until the worker is healthy.
+            <strong>Biometric engine problem.</strong>
+            Face recognition or anti-spoof inference is not ready. Kiosk and public scans should fail closed until the engine is scan-ready.
         </div>
     </div>
 
@@ -295,7 +295,7 @@
                         var healthItems = new[]
                         {
                             new { Label = "Database",       Ok = Model.DatabaseHealthy,     Icon = "fa-database",    DomId = "db-health-indicator" },
-                            new { Label = "OpenVINO worker", Ok = Model.BiometricWorkerReady, Icon = "fa-face-smile",  DomId = ""                    },
+                            new { Label = "Biometric engine", Ok = Model.BiometricEngineReady, Icon = "fa-face-smile",  DomId = ""                    },
                             new { Label = "Offline assets", Ok = Model.OfflineAssetsOk,     Icon = "fa-wifi",        DomId = ""                    },
                         };
                     }
@@ -389,8 +389,8 @@
      kpi-pending-reviews   - Pending Reviews badge (right column)
 
    WORKER HEALTH:
-     If the server reports biometricWorkerReady = false, the worker warning banner is shown.
-     It is hidden again as soon as the worker is healthy.
+     If the server reports biometricEngineReady = false, the engine warning banner is shown.
+     It is hidden again as soon as the engine is scan-ready.
    ============================================================================ *@
 @section scripts {
 <script>
@@ -433,10 +433,10 @@
     // This runs synchronously - the Razor if block emits the JS call only
     // when the circuit was already open when the page was rendered.
     // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-@if (!Model.BiometricWorkerReady)
+@if (!Model.BiometricEngineReady)
 {
     @:document.addEventListener('DOMContentLoaded', function () {
-    @:    var warn = document.getElementById('biometric-worker-warning');
+    @:    var warn = document.getElementById('biometric-engine-warning');
     @:    if (warn) warn.style.removeProperty('display');
     @:});
 }
@@ -485,12 +485,12 @@
             }
 
             // â”€â”€ Circuit-breaker warning banner â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-            var workerWarn = document.getElementById('biometric-worker-warning');
-            if (workerWarn) {
-                if (data.biometricWorkerReady === false) {
-                    workerWarn.style.removeProperty('display');
+            var engineWarn = document.getElementById('biometric-engine-warning');
+            if (engineWarn) {
+                if (data.biometricEngineReady === false) {
+                    engineWarn.style.removeProperty('display');
                 } else {
-                    workerWarn.style.setProperty('display', 'none', 'important');
+                    engineWarn.style.setProperty('display', 'none', 'important');
                 }
             }
 

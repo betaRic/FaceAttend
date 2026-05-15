@@ -147,7 +147,8 @@ namespace FaceAttend.Controllers.Mobile
             }
             catch (Exception ex)
             {
-                return JsonResponseBuilder.Error("SERVER_ERROR", ex.Message);
+                System.Diagnostics.Trace.TraceError("[MobileEnrollment.ScanFrame] Error: {0}", ex);
+                return JsonResponseBuilder.Error("SERVER_ERROR", "Face scanning failed. Please try again.");
             }
         }
 
@@ -346,6 +347,7 @@ namespace FaceAttend.Controllers.Mobile
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Trace.TraceError("[MobileEnrollment.SubmitEnrollment] Error: {0}", ex);
                 Response.StatusCode = 500;
                 Response.TrySkipIisCustomErrors = true;
 
@@ -354,7 +356,7 @@ namespace FaceAttend.Controllers.Mobile
                     {
                         ok = false,
                         error = "SERVER_ERROR",
-                        message = ex.GetBaseException().Message
+                        message = "Enrollment could not be submitted. Please try again or contact an administrator."
                     }),
                     "application/json");
             }

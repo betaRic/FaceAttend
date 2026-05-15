@@ -70,14 +70,14 @@ namespace FaceAttend.Services.Biometrics
         {
             return new BiometricPolicy
             {
-                ModelVersion = ConfigurationService.GetString("Biometrics:ModelVersion", "openvino-v1"),
+                ModelVersion = ConfigurationService.GetString("Biometrics:ModelVersion", "yunet-sface-antispoofmn3-v1-pending-calibration"),
                 DetectorModel = ConfigurationService.GetString("Biometrics:DetectorModel",
-                    ConfigurationService.GetString("Biometrics:Detector", "face-detection-retail-0004")),
+                    ConfigurationService.GetString("Biometrics:Detector", "opencv-yunet-2023mar")),
                 RecognizerModel = ConfigurationService.GetString("Biometrics:RecognizerModel",
-                    ConfigurationService.GetString("Biometrics:RecognitionModel", "face-reidentification-retail-0095")),
-                AntiSpoofModel = ConfigurationService.GetString("Biometrics:AntiSpoofModel", "anti-spoof-mn3"),
+                    ConfigurationService.GetString("Biometrics:RecognitionModel", "opencv-sface-2021dec")),
+                AntiSpoofModel = ConfigurationService.GetString("Biometrics:AntiSpoofModel", "anti-spoof-mn3-onnx"),
                 DistanceMetric = ConfigurationService.GetString("Biometrics:DistanceMetric", "euclidean_l2_normalized"),
-                EmbeddingDim = ConfigurationService.GetInt("Biometrics:EmbeddingDim", 256),
+                EmbeddingDim = ConfigurationService.GetInt("Biometrics:EmbeddingDim", 128),
                 HighDistanceThreshold = ConfigurationService.GetDouble("Biometrics:Match:HighDistThreshold", 0.40),
                 MediumDistanceThreshold = ConfigurationService.GetDouble("Biometrics:Match:MedDistThreshold", 0.55),
                 AttendanceTolerance = ConfigurationService.GetDouble("Biometrics:AttendanceTolerance", 0.50),

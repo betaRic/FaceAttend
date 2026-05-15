@@ -1,35 +1,10 @@
 using System;
 using FaceAttend.Services.Biometrics;
-using FaceAttend.Services.Recognition;
 
 namespace FaceAttend.Services
 {
     /// <summary>
-    /// SAGUPA: Mabilis na health/readiness probe para sa IIS at load balancers.
-    /// 
-    /// PAGLALARAWAN (Description):
-    ///   Nagche-check ng system health nang mabilis para malaman ng:
-    ///   - IIS kung ready bang tanggapin ang requests
-    ///   - Load balancers kung i-reroute pa ba ang traffic
-    ///   - Monitoring systems kung may problema
-    /// 
-    /// GINAGAMIT SA:
-    ///   - HealthController.Index() - /health endpoint
-    ///   - Application startup validation
-    /// 
-    /// PRINCIPLES:
-    ///   1. MABILIS - hindi dapat tumagal ng higit sa 500ms
-    ///   2. LIGHTWEIGHT - hindi naglo-load ng ML models
-    ///   3. DETERMINISTIC - consistent ang resulta
-    /// 
-    /// CHECKED COMPONENTS:
-    ///   - Database connectivity
-    ///   - OpenVINO worker readiness
-    ///   - Model integrity metadata
-    ///   - Warm-up state completion
-    /// 
-    /// ILOKANO: "Ti HealthProbe ket kasla 'thermometer' ti sistema - 
-    ///           makitana no adda nagas-ang wenno nasayaat ti sistema"
+    /// Fast readiness snapshot for IIS, monitoring, and the admin operations page.
     /// </summary>
     public static class HealthProbe
     {
@@ -90,30 +65,46 @@ namespace FaceAttend.Services
                 ? (int?)null
                 : (int)Math.Max(0, (DateTime.UtcNow - matcherStats.LastLoaded).TotalSeconds);
 
-            var worker = BiometricWorkerClient.CheckHealth();
-            snap.WorkerEnabled = worker.Enabled;
-            snap.WorkerHealthy = worker.Healthy;
-            snap.WorkerStatus = worker.Status;
-            snap.WorkerDurationMs = worker.DurationMs;
-            snap.BiometricWorkerReady = worker.Enabled && worker.Healthy;
-            snap.WorkerSecretRequired = ConfigurationService.GetBool("Biometrics:Worker:RequireSecret", true);
-            snap.WorkerSecretConfigured = !string.IsNullOrWhiteSpace(
-                ConfigurationService.GetString("Biometrics:Worker:SharedSecret", ""));
-            snap.AntiSpoofModelPresent = snap.BiometricWorkerReady;
-            snap.AntiSpoofCircuitOpen = worker.Enabled && !worker.Healthy;
+            var engine = BiometricEngine.GetStatus();
+            snap.EngineEnabled = engine.Enabled;
+            snap.EngineHealthy = engine.Healthy;
+            snap.EngineReady = engine.Ready;
+            snap.EngineRuntime = engine.Runtime;
+            snap.EngineStatus = engine.Status;
+            snap.EngineDurationMs = engine.DurationMs;
+            snap.EngineAnalyzeSupported = engine.AnalyzeSupported;
+            snap.BiometricEngineReady = engine.Ready;
+            snap.AntiSpoofModelPresent = EngineSlotPresent(engine, "antiSpoof");
+            snap.AntiSpoofCircuitOpen = engine.Enabled && !engine.Ready;
             snap.AntiSpoofCircuitStuck = false;
 
             snap.Ready =
                 snap.App &&
                 snap.Database &&
                 snap.WriteReady &&
-                snap.BiometricWorkerReady &&
-                (!snap.WorkerSecretRequired || snap.WorkerSecretConfigured) &&
+                snap.BiometricEngineReady &&
                 snap.ModelIntegrityOk &&
                 (!snap.DatabaseMigrationsRequired || snap.DatabaseMigrationsOk) &&
                 snap.WarmUpState == 1;
 
             return snap;
+        }
+
+        private static bool EngineSlotPresent(BiometricEngineStatus engine, string slotName)
+        {
+            if (engine?.Models == null || string.IsNullOrWhiteSpace(slotName))
+                return false;
+
+            foreach (var model in engine.Models)
+            {
+                if (model != null &&
+                    string.Equals(model.Slot, slotName, StringComparison.OrdinalIgnoreCase) &&
+                    model.Exists &&
+                    model.ExtensionOk)
+                    return true;
+            }
+
+            return false;
         }
 
         public class HealthSnapshot
@@ -130,7 +121,7 @@ namespace FaceAttend.Services
             public bool BiometricTemplatesTableExists { get; set; }
             public int ActiveEmployeesMissingTemplates { get; set; }
             public int RemainingDeviceTokenRows { get; set; }
-            public bool BiometricWorkerReady { get; set; }
+            public bool BiometricEngineReady { get; set; }
             public bool AntiSpoofModelPresent { get; set; }
             public bool AntiSpoofCircuitOpen { get; set; }
             public bool AntiSpoofCircuitStuck { get; set; }
@@ -146,12 +137,13 @@ namespace FaceAttend.Services
             public int FaceMatcherEmployees { get; set; }
             public int FaceMatcherVectors { get; set; }
             public int? FaceMatcherCacheAgeSeconds { get; set; }
-            public bool WorkerEnabled { get; set; }
-            public bool WorkerHealthy { get; set; }
-            public bool WorkerSecretRequired { get; set; }
-            public bool WorkerSecretConfigured { get; set; }
-            public string WorkerStatus { get; set; }
-            public long WorkerDurationMs { get; set; }
+            public bool EngineEnabled { get; set; }
+            public bool EngineHealthy { get; set; }
+            public bool EngineReady { get; set; }
+            public bool EngineAnalyzeSupported { get; set; }
+            public string EngineRuntime { get; set; }
+            public string EngineStatus { get; set; }
+            public long EngineDurationMs { get; set; }
         }
     }
 }

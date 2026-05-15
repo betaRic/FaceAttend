@@ -102,7 +102,7 @@ namespace FaceAttend
 
         private static void RunWarmUpPipeline()
         {
-            WarmUpBiometricWorker();
+            WarmUpBiometricEngine();
             WarmUpEmployeeMatcher();
             WarmUpVisitorFaceIndex();
 
@@ -134,19 +134,19 @@ namespace FaceAttend
             }
         }
 
-        private static void WarmUpBiometricWorker()
+        private static void WarmUpBiometricEngine()
         {
             try
             {
-                OpenVinoBiometrics.InitializeWorker();
+                BiometricEngine.Initialize();
 
                 System.Diagnostics.Trace.TraceInformation(
-                    "[Application_Start] OpenVINO biometric worker is healthy.");
+                    "[Application_Start] Biometric engine is ready.");
             }
             catch (Exception ex)
             {
                 System.Diagnostics.Trace.TraceError(
-                    "[Application_Start] WARNING: OpenVINO biometric worker is not ready: " +
+                    "[Application_Start] WARNING: Biometric engine is not ready: " +
                     ex.Message);
             }
         }

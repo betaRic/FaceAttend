@@ -25,8 +25,8 @@ namespace FaceAttend.Models.ViewModels.Admin
         public double EnrollmentStrictTolerance { get; set; }
 
         [Range(500, 30000)]
-        [Display(Name = "Worker analyze timeout (ms)")]
-        public int WorkerAnalyzeTimeoutMs { get; set; }
+        [Display(Name = "Engine analyze timeout (ms)")]
+        public int EngineAnalyzeTimeoutMs { get; set; }
 
         [Range(1, 32)]
         [Display(Name = "Max concurrent scans")]

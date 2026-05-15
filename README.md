@@ -12,8 +12,8 @@
   <img src="https://img.shields.io/badge/.NET%20Framework-4.8-blue" alt=".NET 4.8" />
   <img src="https://img.shields.io/badge/ASP.NET%20MVC-5.3-blue" alt="ASP.NET MVC 5" />
   <img src="https://img.shields.io/badge/SQL%20Server-Express-lightgrey" alt="SQL Server Express" />
-  <img src="https://img.shields.io/badge/OpenVINO-face%20recognition-orange" alt="OpenVINO" />
-  <img src="https://img.shields.io/badge/worker-anti--spoof-green" alt="Anti-spoof worker" />
+  <img src="https://img.shields.io/badge/ONNX%20Runtime-biometric%20engine-orange" alt="ONNX Runtime" />
+  <img src="https://img.shields.io/badge/anti--spoof-review--first-green" alt="Anti-spoof policy" />
   <img src="https://img.shields.io/badge/platform-Windows%20%2F%20IIS-informational" alt="Windows IIS" />
 </p>
 
@@ -50,7 +50,7 @@ FaceAttend is a production-grade attendance system deployed for DILG Region XII 
 The system operates in two modes:
 
 - **Kiosk mode** — a shared desktop or tablet placed at the office entrance. Employees walk past the camera; the system recognizes their face and records attendance automatically.
-- **Personal mobile mode** — employees use their own registered smartphones to scan their own face. One device per employee. Device registration requires admin approval.
+- **Mobile/public mode** — employees can self-register and scan attendance from their own device. The server remains the only authority for identity decisions.
 
 Visitor logging is integrated into both modes. Unrecognized faces trigger a visitor entry form instead of failing silently.
 
@@ -60,13 +60,13 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 
 ### Biometrics
 - Real-time face detection via **MediaPipe** (client-side, zero-latency)
-- Face recognition using a localhost **OpenVINO worker** with policy-configured embeddings (`Biometrics:EmbeddingDim`, default 256)
-- **Anti-spoof scoring** via the worker (`anti-spoof-mn3` by default); treated as a calibrated risk signal, not proof of real presence
+- Face recognition via an in-process **ONNX Runtime biometric engine** with policy-configured embeddings (`Biometrics:EmbeddingDim`, default 128 for OpenCV SFace)
+- **Anti-spoof scoring** via the biometric engine; treated as a calibrated risk signal, not proof of real presence
 - **BallTree face index** for O(log n) matching when employee count exceeds configured threshold
 - **Angle-aware tolerance** — relaxes face match threshold when the face is off-center
 - **Sharpness scoring** (Laplacian variance) during enrollment to reject blurry frames
 - **Multi-vector enrollment** — up to 5 face vectors stored per employee for pose diversity
-- **Worker-owned inference** — MVC sends one JPEG to `/analyze-face`; detection, landmarks, recognition, and anti-spoof stay out of the web app
+- **Server-owned inference** — MVC receives one still JPEG per scan; browser detection is UI guidance only
 - **In-memory scan pipeline** — single JPEG decode reused across all operations (no temp files)
 
 ### Kiosk
@@ -76,7 +76,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 - GPS drift detection — re-verifies location if device moves >60m mid-session
 - Anti-spoof GPS validation — blocks null-island coordinates and exact repeat coordinates
 - Admin PIN unlock from kiosk via `Ctrl+Shift+Space` or double-click brand logo
-- Server warm-up gate — displays "System starting..." while OpenVINO models load on cold start
+- Server warm-up gate — displays "System starting..." while the biometric engine and face indexes initialize
 - Idle overlay with live clock, office map, and location status
 
 ### Mobile Self-Service
@@ -141,7 +141,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 │  │                                                         │ │
 │  │  FastScanPipeline  │  DeviceService  │  AttendanceService│ │
 │  │  FastFaceMatcher   │  ConfigService  │  AuditHelper      │ │
-│  │  OpenVinoBiometrics │ BiometricWorker │ TimeZoneHelper    │ │
+│  │  BiometricEngine    │  BiometricPolicy │ TimeZoneHelper   │ │
 │  │  BiometricPolicy    │  LocationAntiSpoof                    │ │
 │  └──────────────────────────────────────────────────────── ┘ │
 │                                                              │
@@ -149,7 +149,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 │  │              In-Memory Cache (RAM)                      │ │
 │  │  FastFaceMatcher: employee face vectors loaded at start │ │
 │  │  BallTree index: O(log n) search for 50+ employees      │ │
-│  │  Worker client: localhost OpenVINO inference boundary       │ │
+│  │  BiometricEngine: in-process ONNX inference boundary        │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────┬───────────────────────────┘
                                   │ Entity Framework 6
@@ -171,9 +171,9 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 | Language | C# (server), JavaScript ES5+ (client) |
 | Database | SQL Server Express (Entity Framework 6.4) |
 | Face Detection (client) | MediaPipe Face Detection (WASM) |
-| Face Recognition (server) | OpenVINO via localhost `OpenVINO worker` |
-| Anti-spoof (server) | Worker-owned model, default `anti-spoof-mn3` |
-| Face Encoding (server) | Worker-owned embedding model, default `face-reidentification-retail-0095` |
+| Face Recognition (server) | In-process ONNX Runtime biometric engine |
+| Anti-spoof (server) | Engine-owned ONNX model, review-first policy |
+| Face Encoding (server) | Engine-owned embedding model |
 | UI | Bootstrap 5.3, SweetAlert2, Font Awesome 6 |
 | Web Server | IIS (Windows Server / Windows 10+) |
 | Build | Visual Studio 2022, MSBuild, TypeScript 5.9 |
@@ -186,9 +186,7 @@ Visitor logging is integrated into both modes. Unrecognized faces trigger a visi
 FaceAttend/
 ├── App_Data/
 │   ├── models/
-│   │   └── openvino/                          # Optional deployed worker model files/hashes
-│   │       ├── *.xml
-│   │       ├── *.bin
+│   │   └── onnx/                              # Deployed ONNX model files/hashes
 │   │       └── *.onnx
 │   └── tmp/                               # Temporary file processing
 ├── Areas/
@@ -216,9 +214,9 @@ FaceAttend/
 │   └── ViewModels/                        # Strongly-typed view models
 ├── Services/
 │   ├── Biometrics/
-│   │   ├── OpenVinoBiometrics.cs          # MVC-facing worker abstraction
+│   │   ├── BiometricEngine.cs             # MVC-facing in-process biometric engine
 │   │   ├── FastFaceMatcher.cs             # RAM-cache matching (~5–20ms)
-│   │   ├── FastScanPipeline.cs            # In-memory worker-backed scan pipeline
+│   │   ├── FastScanPipeline.cs            # In-memory engine-backed scan pipeline
 │   │   ├── BallTreeIndex.cs               # O(log n) nearest-neighbor search
 │   │   ├── EmployeeFaceIndex.cs           # Employee face cache with BallTree
 │   │   ├── BiometricPolicy.cs             # Canonical thresholds/model policy
@@ -267,7 +265,7 @@ FaceAttend/
 | SQL Server | Express 2019 | Express 2022 or Standard |
 | Visual C++ Runtime | 2015–2022 x64 | 2015–2022 x64 |
 
-> **Important:** OpenVINO requires the Visual C++ 2015–2022 x64 Redistributable. Install from [Microsoft's download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) before deploying.
+> **Important:** ONNX Runtime requires the Visual C++ 2015–2022 x64 Redistributable. Install from [Microsoft's download page](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist) before deploying.
 
 ### Development Requirements
 
@@ -286,9 +284,17 @@ git clone https://github.com/your-org/FaceAttend.git
 cd FaceAttend
 ```
 
-### 2. Prepare Worker Models
+### 2. Prepare ONNX Models
 
-The MVC app does not load local recognition or anti-spoof models. Model files belong to the OpenVINO worker deployment and are referenced by `Biometrics:OpenVinoModelsDir` only for health/integrity reporting. Pin `Biometrics:ModelHashes` after final model selection.
+The controlled-deployment candidate ONNX files are installed under `App_Data/models/onnx`:
+
+| File | Model | SHA-256 |
+|---|---|---|
+| `face-detector.onnx` | OpenCV YuNet 2023mar detector with 5-point landmarks | `8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4` |
+| `face-recognizer.onnx` | OpenCV SFace 2021dec recognizer | `0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79` |
+| `anti-spoof.onnx` | OpenVINO anti-spoof-mn3 ONNX classifier | `c4c99af04603b62d7e44f6f4daeb33e0daeccc696008c0b1d62f6f5cebbb3262` |
+
+`Biometrics:ModelHashes` pins these exact files. If any model file changes, treat the model version as changed and run pilot calibration before enrolling employees.
 
 ### 3. Configure the Database
 
@@ -316,7 +322,7 @@ nuget restore FaceAttend.sln
 
 ### 5. Build the Solution
 
-Build in Visual Studio (`Ctrl+Shift+B`) targeting **x64**. The project requires x64 because OpenVINO's native binaries are x64 only.
+Build in Visual Studio (`Ctrl+Shift+B`) targeting **x64**. The project requires x64 because ONNX Runtime native binaries are x64.
 
 ### 6. Configure IIS
 
@@ -387,7 +393,7 @@ Write-Host "`nEnvironment variable set successfully."
 
 Navigate to `https://your-server/` — the kiosk page loads. Navigate to `https://your-server/Admin` to access the admin panel and enter the PIN you configured.
 
-> **Cold start note:** On first load after server restart, the system takes 15–20 seconds to load the OpenVINO models into RAM. The kiosk displays "System starting... Models loading, please wait." during this window and begins scanning automatically once ready.
+> **Cold start note:** On first load after server restart, the system warms the biometric engine and face indexes. The kiosk displays "System starting..." during this window and begins scanning automatically once ready.
 
 ---
 
@@ -399,10 +405,15 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 
 | Key | Default | Description |
 |---|---|---|
-| `Biometrics:Worker:BaseUrl` | `http://127.0.0.1:5077` | Local OpenVINO worker URL. |
-| `Biometrics:Worker:AnalyzeTimeoutMs` | `5000` | Maximum worker analysis time per submitted frame. |
+| `Biometrics:ModelDir` | `~/App_Data/models/onnx` | Secured ONNX model directory. |
+| `Biometrics:Engine:Runtime` | `ONNX_RUNTIME_CPU` | In-process inference runtime. |
+| `Biometrics:Engine:AnalyzeTimeoutMs` | `5000` | Maximum engine analysis time per submitted frame. |
+| `Biometrics:ModelVersion` | `yunet-sface-antispoofmn3-v1-pending-calibration` | Model identity written into decisions/receipts/templates. Fresh enrollment must happen after this is final. |
+| `Biometrics:EmbeddingDim` | `128` | Expected SFace embedding length. |
+| `Biometrics:ModelHashes` | pinned file hashes | SHA-256 pins for deployed ONNX files. |
+| `Kiosk:AllowedIpRanges` | blank | Comma-separated kiosk IPv4 allowlist. Set before controlled deployment. |
 | `Biometrics:AttendanceTolerance` | `0.60` | Face match tolerance for attendance scanning. |
-| `Biometrics:AntiSpoof:ClearThreshold` | `0.45` | Anti-spoof clear-pass threshold returned by the worker. |
+| `Biometrics:AntiSpoof:ClearThreshold` | `0.45` | Anti-spoof clear-pass threshold applied by MVC policy. |
 | `Biometrics:AntiSpoof:ReviewThreshold` | `0.30` | Gray-zone threshold; retry or mark `NeedsReview`. |
 | `Biometrics:AntiSpoof:BlockThreshold` | `0.15` | Critical spoof threshold. |
 | `Biometrics:EnrollmentStrictTolerance` | `0.45` | Duplicate check tolerance during new employee enrollment. |
@@ -430,13 +441,13 @@ All settings are configurable via Admin → Settings at runtime. They are stored
 | `Location:GPSRadiusDefault` | `100` | Default office radius in meters (overridden per office). |
 | `Location:GPSAccuracyRequired` | `50` | Maximum GPS accuracy error in meters. Higher = more permissive. |
 
-### Worker Anti-spoof Policy
+### Anti-spoof Policy
 
 | Key | Default | Description |
 |---|---|---|
 | `Biometrics:AntiSpoof:ClearThreshold` | `0.45` | Score at or above this value is treated as a clear anti-spoof pass. |
 | `Biometrics:AntiSpoof:ReviewThreshold` | `0.35` | Gray-zone score that records but flags `NeedsReview`. |
-| `Biometrics:Worker:AnalyzeTimeoutMs` | `5000` | Timeout for worker `/analyze-face` calls. |
+| `Biometrics:Engine:AnalyzeTimeoutMs` | `5000` | Timeout for biometric engine analysis. |
 
 ### Admin Security
 
@@ -480,12 +491,12 @@ Leave blank to disable IP restriction (not recommended for production).
 
 ## ML Models
 
-### Face Recognition — OpenVINO Worker
+### Face Recognition — Biometric Engine
 
-FaceAttend sends one still JPEG to the localhost OpenVINO worker. The worker performs authoritative face detection, landmark extraction, embedding generation, recognition candidate scoring, and anti-spoof scoring. Embedding length is controlled by `Biometrics:EmbeddingDim` and defaults to 256.
+FaceAttend sends one still JPEG to the in-process biometric engine. The engine boundary owns authoritative face detection, landmark extraction, face alignment, embedding generation, and anti-spoof scoring. Matching still happens in `FastFaceMatcher` against active employee vectors. Embedding length is controlled by `Biometrics:EmbeddingDim` and defaults to 128.
 
 - Enrollment uses a **strict** tolerance (0.45) to prevent near-duplicate enrollments.
-- Attendance uses a **lenient** tolerance (0.65, clamped 0.55–0.75) with automatic relaxation for off-angle faces.
+- Attendance uses the policy tolerance (`Biometrics:AttendanceTolerance`, capped by the medium-distance threshold) and must be calibrated from local pilot distance distributions.
 
 ### Face Index
 
@@ -495,13 +506,13 @@ Matching time: ~5–20ms (RAM), compared to ~100–200ms for a database query.
 
 ### Anti-spoof
 
-Each scan sends a still JPEG to the OpenVINO worker. The worker returns an anti-spoof score plus model/version metadata. MVC applies the canonical `BiometricPolicy`: clear pass records normally, gray zone retries or flags review, and critical spoof blocks. Do not treat this as proof of life until local pilot calibration supports it.
+Each scan sends a still JPEG to the biometric engine. The engine returns an anti-spoof score plus model/version metadata. MVC applies the canonical `BiometricPolicy`: clear pass records normally, gray zone retries or flags review, and critical spoof blocks. Do not treat this as proof of life until local pilot calibration supports it.
 
 ### Warm-up Pipeline
 
 On application start, `Global.asax` runs these steps in a background thread:
 
-1. **OpenVINO worker health** — verifies the localhost worker is enabled and healthy.
+1. **Biometric engine health** — verifies ONNX Runtime, model files, and scan adapters are ready.
 2. **Employee face index** — reads all active employee face vectors from the database into RAM.
 3. **Visitor face index** — same for known visitors.
 
@@ -598,11 +609,11 @@ Mobile device opens /Kiosk
                                 │
                          POST /Kiosk/Attend (JPEG frame + face box + GPS)
                                 │
-                    Server: OpenVINOBiometrics → FastFaceMatcher
+                    Server: BiometricEngine -> FastFaceMatcher
                                 │
                     ┌───────────┴──────────┐
-                    │ Parallel inference    │
-                    │ anti-spoof + encoding│
+                    │ Detector + alignment  │
+                    │ SFace + anti-spoof    │
                     └───────────┬──────────┘
                                 │
                     Match found? ─── No ──► Visitor modal
@@ -636,7 +647,7 @@ Returns system readiness. The kiosk polls this on startup to gate scanning until
   "ok": true,
   "app": true,
   "database": true,
-  "biometricWorkerReady": true,
+  "biometricEngineReady": true,
   "antiSpoofModelPresent": true,
   "antiSpoofCircuitOpen": false,
   "antiSpoofCircuitStuck": false,
@@ -658,7 +669,7 @@ Lightweight health probe (no DB or model check). Returns `{ "ok": true }`. Used 
 GET /Health/diagnostics
 ```
 
-Detailed diagnostics including OpenVINO pool status, individual model file presence, DB connection test, and per-step warm-up results. Useful for troubleshooting deployment issues.
+Detailed diagnostics including biometric engine status, individual model file presence, DB connection test, and per-step warm-up results. Useful for troubleshooting deployment issues.
 
 ### Kiosk Endpoints
 
@@ -754,7 +765,7 @@ Detailed diagnostics including OpenVINO pool status, individual model file prese
 
 ### Cold-Start Time
 
-MVC cold start should be dominated by database readiness and face-index cache loading. Model cold start belongs to the OpenVINO worker; if scans are slow immediately after restart, profile the worker process and its model-load time instead of adding inference code back into MVC.
+MVC cold start should be dominated by database readiness, biometric engine model load, and face-index cache loading. If scans are slow immediately after restart, profile model-load and inference time from Admin → Operations before changing thresholds.
 
 ### Face Matching Speed
 
@@ -795,10 +806,10 @@ The server warm-up is complete but the kiosk is not detecting it. Check:
 ### Warm-up fails or times out
 
 Navigate to `/Health/diagnostics` for detailed step-by-step status. Common causes:
-- OpenVINO worker offline — check `biometricWorker` and `workerHealthy` in the diagnostics response.
-- Missing worker model files — check the worker `/models` endpoint and `Biometrics:OpenVinoModelsDir` hash/integrity output.
+- Biometric engine not ready — check `biometricEngine` in the diagnostics response.
+- Missing ONNX model files — check `Biometrics:ModelDir` and model hash/integrity output.
 - Database not reachable — check `database` and `error` fields.
-- Visual C++ Redistributable not installed — OpenVINO will fail to load.
+- Visual C++ Redistributable not installed — ONNX Runtime may fail to load.
 
 ### Face not recognized
 
@@ -810,7 +821,7 @@ Navigate to `/Health/diagnostics` for detailed step-by-step status. Common cause
 ### Anti-spoof always failing
 
 1. Check `AntiSpoofScore`/anti-spoof score in the attendance log.
-2. Check worker health and model version from `/Health/diagnostics`.
+2. Check biometric engine health and model version from `/Health/diagnostics`.
 3. Adjust `Biometrics:AntiSpoof:*Threshold` only after reviewing real failed samples; lowering thresholds blindly is how spoofing sneaks into production.
 
 ### GPS location never resolves on mobile
@@ -840,7 +851,7 @@ This project is developed for internal use by DILG Region XII. If you are contri
 
 - All C# follows standard .NET naming conventions.
 - Service classes are stateless where possible; stateful services use thread-safe patterns.
-- Biometric operations must use the `OpenVINOBiometrics` pool — never instantiate `FaceRecognition` directly outside the pool.
+- Biometric operations must use `BiometricEngine` and `BiometricPolicy`; browser-side face detection is UI guidance only.
 - All admin actions must call `AuditHelper.Log()`.
 - Security-sensitive operations (PIN verify, device approval, IP check) must not add logging that reveals sensitive values.
 

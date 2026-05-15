@@ -24,7 +24,7 @@ namespace FaceAttend.Areas.Admin.Controllers
             {
                 DatabaseHealthy = health.Database,
                 DatabaseError = health.DatabaseError,
-                BiometricWorkerReady = health.BiometricWorkerReady,
+                BiometricEngineReady = health.BiometricEngineReady,
                 WarmUpState = health.WarmUpState,
                 WarmUpMessage = health.WarmUpMessage,
                 ModelVersion = health.ModelVersion,
@@ -32,11 +32,14 @@ namespace FaceAttend.Areas.Admin.Controllers
                 ModelHashesConfigured = health.ModelHashesConfigured,
                 ModelAclOk = health.ModelAclOk,
                 ModelRequireReadOnlyAcl = health.ModelRequireReadOnlyAcl,
-                WorkerEnabled = health.WorkerEnabled,
-                WorkerHealthy = health.WorkerHealthy,
-                WorkerStatus = health.WorkerStatus,
+                EngineEnabled = health.EngineEnabled,
+                EngineHealthy = health.EngineHealthy,
+                EngineReady = health.EngineReady,
+                EngineStatus = health.EngineStatus,
+                EngineRuntime = health.EngineRuntime,
+                EngineAnalyzeSupported = health.EngineAnalyzeSupported,
                 FaceMatcherCacheAgeSeconds = health.FaceMatcherCacheAgeSeconds,
-                BiometricWorkerStatus = OpenVinoBiometrics.GetWorkerStatus(),
+                BiometricEngineStatus = BiometricEngine.GetStatus(),
                 FaceMatcherStats = FastFaceMatcher.GetStats(),
                 ScanMetrics = OperationalMetricsService.GetSnapshot(),
                 ServerTimeLocal = TimeZoneHelper.NowLocal()
@@ -48,11 +51,13 @@ namespace FaceAttend.Areas.Admin.Controllers
             if (!vm.DatabaseHealthy) vm.Warnings.Add("Database readiness failed.");
             if (!health.WriteReady) vm.Warnings.Add("Database is not reporting READ_WRITE.");
             if (vm.MigrationStatus == null || !vm.MigrationStatus.Ok) vm.Warnings.Add("Database stabilization migrations are incomplete.");
-            if (!vm.BiometricWorkerReady) vm.Warnings.Add("OpenVINO biometric worker is not ready.");
+            if (!vm.BiometricEngineReady) vm.Warnings.Add("Biometric engine is not scan-ready.");
             if (!vm.ModelIntegrityOk) vm.Warnings.Add("Model file hash/integrity check failed.");
             if (!vm.ModelHashesConfigured) vm.Warnings.Add("Model hashes are not pinned yet.");
             if (!vm.ModelAclOk) vm.Warnings.Add("Model files or folders are writable by the app identity; lock ACLs before production.");
-            if (vm.WorkerEnabled && !vm.WorkerHealthy) vm.Warnings.Add("Biometric worker is enabled but not healthy.");
+            if (vm.EngineEnabled && !vm.EngineHealthy) vm.Warnings.Add("Biometric engine is enabled but not healthy.");
+            if (vm.EngineHealthy && !vm.EngineAnalyzeSupported) vm.Warnings.Add("ONNX Runtime is available, but model-specific scan adapters are not implemented yet.");
+            if (string.IsNullOrWhiteSpace(ConfigurationService.GetString("Kiosk:AllowedIpRanges", ""))) vm.Warnings.Add("Kiosk IP allowlist is empty; set Kiosk:AllowedIpRanges before controlled deployment.");
             if (vm.DiskFreeGb.HasValue && vm.DiskFreeGb.Value < 3.0) vm.Warnings.Add("Disk free space is below 3GB.");
             if (vm.TmpMb.HasValue && vm.TmpMb.Value > 500) vm.Warnings.Add("Temporary scan folder is above 500MB.");
 
@@ -95,6 +100,13 @@ namespace FaceAttend.Areas.Admin.Controllers
                 p95Ms = metrics.P95Ms,
                 serverTimeLocal = TimeZoneHelper.NowLocal().ToString("HH:mm:ss")
             }, JsonRequestBehavior.AllowGet);
+        }
+
+        [HttpGet]
+        [RateLimit(Name = "AdminEngineBenchmark", MaxRequests = 6, WindowSeconds = 60, Burst = 2)]
+        public ActionResult EngineBenchmarkJson()
+        {
+            return Json(BiometricEngine.Benchmark(), JsonRequestBehavior.AllowGet);
         }
 
         [HttpGet]

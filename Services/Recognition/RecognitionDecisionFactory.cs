@@ -14,7 +14,7 @@ namespace FaceAttend.Services.Recognition
             AntiSpoofPolicyResult antiSpoofResult,
             float sharpness,
             float sharpnessThreshold,
-            OpenVinoBiometrics.FaceBox faceBox,
+            BiometricEngine.FaceBox faceBox,
             int imageWidth,
             int imageHeight,
             FastFaceMatcher.MatchResult match,
@@ -45,7 +45,7 @@ namespace FaceAttend.Services.Recognition
             AntiSpoofPolicyResult antiSpoofResult,
             float sharpness,
             float sharpnessThreshold,
-            OpenVinoBiometrics.FaceBox faceBox,
+            BiometricEngine.FaceBox faceBox,
             int imageWidth,
             int imageHeight,
             long processingMs)
@@ -126,7 +126,7 @@ namespace FaceAttend.Services.Recognition
             };
         }
 
-        private static double? FaceAreaRatio(OpenVinoBiometrics.FaceBox faceBox, int imageWidth, int imageHeight)
+        private static double? FaceAreaRatio(BiometricEngine.FaceBox faceBox, int imageWidth, int imageHeight)
         {
             if (faceBox == null || imageWidth <= 0 || imageHeight <= 0)
                 return null;

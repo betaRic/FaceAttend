@@ -243,66 +243,12 @@
             });
             
             this.post('api/enrollment/enroll', formData, onSuccess, onError);
-        },
-        
-        /**
-         * Record attendance
-         * 
-         * @param {Blob} imageBlob - Image data
-         * @param {Object} options - Additional options
-         * @param {number} options.lat - GPS latitude
-         * @param {number} options.lon - GPS longitude
-         * @param {number} options.accuracy - GPS accuracy
-         * @param {function} onSuccess - Success callback
-         * @param {function} onError - Error callback
-         */
-        attend: function(imageBlob, options, onSuccess, onError) {
-            if (typeof options === 'function') {
-                onError = onSuccess;
-                onSuccess = options;
-                options = {};
-            }
-            
-            var formData = new FormData();
-            formData.append('image', imageBlob);
-            
-            if (options) {
-                if (options.lat !== undefined) formData.append('lat', options.lat);
-                if (options.lon !== undefined) formData.append('lon', options.lon);
-                if (options.accuracy !== undefined) formData.append('accuracy', options.accuracy);
-            }
-            
-            this.post('api/attendance/record', formData, onSuccess, onError);
-        },
-        
-        /**
-         * Record attendance with burst mode (multiple frames)
-         * 
-         * @param {Blob[]} imageBlobs - Array of image blobs
-         * @param {Object} options - Additional options
-         * @param {function} onSuccess - Success callback
-         * @param {function} onError - Error callback
-         */
-        attendBurst: function(imageBlobs, options, onSuccess, onError) {
-            if (typeof options === 'function') {
-                onError = onSuccess;
-                onSuccess = options;
-                options = {};
-            }
-            
-            var formData = new FormData();
-            
-            imageBlobs.forEach(function(blob, index) {
-                formData.append('frames', blob, 'frame_' + index + '.jpg');
-            });
-            
-            if (options) {
-                if (options.lat !== undefined) formData.append('lat', options.lat);
-                if (options.lon !== undefined) formData.append('lon', options.lon);
-                if (options.accuracy !== undefined) formData.append('accuracy', options.accuracy);
-            }
-            this.post('api/attendance/burst', formData, onSuccess, onError);
         }
+        
+        /**
+         * Attendance scans intentionally use the MVC Kiosk/Attendance actions.
+         * Do not add burst or streaming frame upload helpers here.
+         */
     };
 
     // Auto-initialize with defaults

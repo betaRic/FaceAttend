@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 
 namespace FaceAttend.Services.Security
 {
@@ -21,7 +22,11 @@ namespace FaceAttend.Services.Security
         /// </summary>
         public static bool IsAllowed(string clientIp)
         {
-            var allowedRanges = GetAllowedRanges();
+            return IsAllowedByRanges(clientIp, GetAllowedRanges());
+        }
+
+        public static bool IsAllowedByRanges(string clientIp, string allowedRanges)
+        {
             if (string.IsNullOrEmpty(allowedRanges))
                 return true;
 
@@ -53,16 +58,20 @@ namespace FaceAttend.Services.Security
 
         /// <summary>
         /// Returns true if ip falls within range (single IPv4 or CIDR block).
-        /// IPv6 is not supported — always returns false for IPv6 inputs.
+        /// CIDR matching is IPv4 only. IPv4-mapped IPv6 and loopback are normalized for IIS/proxy compatibility.
         /// </summary>
         private static bool IsIpInRange(string ip, string range)
         {
             if (string.IsNullOrWhiteSpace(ip) || string.IsNullOrWhiteSpace(range))
                 return false;
 
+            IPAddress clientIp;
+            if (!TryParseIPv4(ip, out clientIp))
+                return false;
+
             IPAddress single;
-            if (IPAddress.TryParse(range, out single))
-                return string.Equals(ip.Trim(), range.Trim(), StringComparison.OrdinalIgnoreCase);
+            if (TryParseIPv4(range, out single))
+                return single.Equals(clientIp);
 
             // CIDR notation: "base/prefix"
             var parts = range.Split('/');
@@ -71,13 +80,9 @@ namespace FaceAttend.Services.Security
 
             IPAddress baseIp;
             int prefixLen;
-            if (!IPAddress.TryParse(parts[0].Trim(), out baseIp))
+            if (!TryParseIPv4(parts[0].Trim(), out baseIp))
                 return false;
             if (!int.TryParse(parts[1].Trim(), out prefixLen))
-                return false;
-
-            IPAddress clientIp;
-            if (!IPAddress.TryParse(ip.Trim(), out clientIp))
                 return false;
 
             var baseBytes   = baseIp.GetAddressBytes();
@@ -95,6 +100,35 @@ namespace FaceAttend.Services.Security
             uint clientNet = ToUint(clientBytes);
 
             return (baseNet & mask) == (clientNet & mask);
+        }
+
+        private static bool TryParseIPv4(string value, out IPAddress ipv4)
+        {
+            ipv4 = null;
+
+            IPAddress parsed;
+            if (!IPAddress.TryParse((value ?? "").Trim(), out parsed))
+                return false;
+
+            if (parsed.AddressFamily == AddressFamily.InterNetwork)
+            {
+                ipv4 = parsed;
+                return true;
+            }
+
+            if (parsed.Equals(IPAddress.IPv6Loopback))
+            {
+                ipv4 = IPAddress.Loopback;
+                return true;
+            }
+
+            if (parsed.IsIPv4MappedToIPv6)
+            {
+                ipv4 = parsed.MapToIPv4();
+                return true;
+            }
+
+            return false;
         }
 
         /// <summary>Converts a 4-byte IPv4 address to uint for subnet mask comparison.</summary>

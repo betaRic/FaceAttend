@@ -23,7 +23,7 @@ namespace FaceAttend.Models.ViewModels.Admin
 
         // ── System health ────────────────────────────────────────────────────
         public bool DatabaseHealthy    { get; set; }
-        public bool BiometricWorkerReady   { get; set; }
+        public bool BiometricEngineReady   { get; set; }
         public bool OfflineAssetsOk    { get; set; } = true;
 
         // ── Display helpers ──────────────────────────────────────────────────

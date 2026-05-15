@@ -214,6 +214,10 @@
     <Reference Include="Microsoft.Web.Infrastructure, Version=2.0.0.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
       <HintPath>packages\Microsoft.Web.Infrastructure.2.0.0\lib\net40\Microsoft.Web.Infrastructure.dll</HintPath>
     </Reference>
+    <Reference Include="Microsoft.ML.OnnxRuntime, Version=1.25.1.0, Culture=neutral, PublicKeyToken=f27f157f0a5b7bb6, processorArchitecture=MSIL">
+      <HintPath>packages\Microsoft.ML.OnnxRuntime.Managed.1.25.1\lib\netstandard2.0\Microsoft.ML.OnnxRuntime.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
     <Reference Include="Microsoft.Win32.Registry, Version=4.1.1.0, Culture=neutral, PublicKeyToken=b03f5f7f11d50a3a, processorArchitecture=MSIL">
       <HintPath>packages\Microsoft.Win32.Registry.4.5.0\lib\net461\Microsoft.Win32.Registry.dll</HintPath>
     </Reference>
@@ -443,7 +447,8 @@
     <Compile Include="Services\Biometrics\ImagePreprocessor.cs" />
     <Compile Include="Services\Biometrics\MatcherStats.cs" />
     <Compile Include="Services\Biometrics\ModelIntegrityService.cs" />
-    <Compile Include="Services\Biometrics\OpenVinoBiometrics.cs" />
+    <Compile Include="Services\Biometrics\BiometricEngine.cs" />
+    <Compile Include="Services\Biometrics\BiometricEngineContracts.cs" />
       <Compile Include="Services\Biometrics\RiskyPairAuditService.cs" />
       <Compile Include="Services\Biometrics\VisitorFaceIndex.cs" />
       <Compile Include="Services\CalibrationExportService.cs" />
@@ -465,8 +470,6 @@
     <Compile Include="Services\OperationResult.cs" />
     <Compile Include="Services\OperationalMetricsService.cs" />
     <Compile Include="Services\Recognition\AttendanceScanService.cs" />
-    <Compile Include="Services\Recognition\BiometricWorkerClient.cs" />
-      <Compile Include="Services\Recognition\BiometricWorkerContracts.cs" />
       <Compile Include="Services\Recognition\PendingScanService.cs" />
       <Compile Include="Services\Recognition\RecognitionDecisionFactory.cs" />
       <Compile Include="Services\Recognition\RecognitionDecisionDto.cs" />
@@ -499,14 +502,12 @@
   </ItemGroup>
   <ItemGroup>
     <None Include=".tools\nuget.exe" />
-    <Content Include="App_Data\models\openvino\anti-spoof-mn3.bin" />
-    <Content Include="App_Data\models\openvino\anti-spoof-mn3.xml" />
-    <Content Include="App_Data\models\openvino\face-detection-retail-0004.bin" />
-    <Content Include="App_Data\models\openvino\face-detection-retail-0004.xml" />
-    <Content Include="App_Data\models\openvino\face-reidentification-retail-0095.bin" />
-    <Content Include="App_Data\models\openvino\face-reidentification-retail-0095.xml" />
-    <Content Include="App_Data\models\openvino\landmarks-regression-retail-0009.bin" />
-    <Content Include="App_Data\models\openvino\landmarks-regression-retail-0009.xml" />
+    <None Include="Native\onnxruntime\win-x64\onnxruntime.dll" />
+    <None Include="Native\onnxruntime\win-x64\onnxruntime_providers_shared.dll" />
+    <Content Include="App_Data\models\onnx\.gitkeep" />
+    <Content Include="App_Data\models\onnx\anti-spoof.onnx" />
+    <Content Include="App_Data\models\onnx\face-detector.onnx" />
+    <Content Include="App_Data\models\onnx\face-recognizer.onnx" />
     <Content Include="Areas\Admin\Views\Attendance\Details.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\Index.cshtml" />
     <Content Include="Areas\Admin\Views\Attendance\SummaryReport.cshtml" />
@@ -745,8 +746,25 @@
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Import Project="$(VSToolsPath)\WebApplications\Microsoft.WebApplication.targets" Condition="'$(VSToolsPath)' != ''" />
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v10.0\WebApplications\Microsoft.WebApplication.targets" Condition="false" />
+  <Target Name="CopyOnnxRuntimeNativeBinaries" AfterTargets="Build">
+    <ItemGroup>
+      <OnnxRuntimeNative Include="$(MSBuildProjectDirectory)\Native\onnxruntime\win-x64\onnxruntime*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(OnnxRuntimeNative)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" Condition="'@(OnnxRuntimeNative)' != ''" />
+  </Target>
+  <Target Name="AddOnnxRuntimeNativeBinariesToPackage" BeforeTargets="CopyAllFilesToSingleFolderForPackage;CopyAllFilesToSingleFolderForMsdeploy">
+    <ItemGroup>
+      <FilesForPackagingFromProject Include="$(MSBuildProjectDirectory)\Native\onnxruntime\win-x64\onnxruntime.dll">
+        <DestinationRelativePath>bin\onnxruntime.dll</DestinationRelativePath>
+      </FilesForPackagingFromProject>
+      <FilesForPackagingFromProject Include="$(MSBuildProjectDirectory)\Native\onnxruntime\win-x64\onnxruntime_providers_shared.dll">
+        <DestinationRelativePath>bin\onnxruntime_providers_shared.dll</DestinationRelativePath>
+      </FilesForPackagingFromProject>
+    </ItemGroup>
+  </Target>
   <Target Name="MvcBuildViews" AfterTargets="AfterBuild" Condition="'$(MvcBuildViews)'=='true'">
-    <AspNetCompiler VirtualPath="temp" PhysicalPath="$(WebProjectOutputDir)" />
+    <AspNetCompiler VirtualPath="temp" PhysicalPath="$(WebProjectOutputDir)" ToolPath="$(windir)\Microsoft.NET\Framework64\v4.0.30319" Condition="'$(PlatformTarget)'=='x64'" />
+    <AspNetCompiler VirtualPath="temp" PhysicalPath="$(WebProjectOutputDir)" Condition="'$(PlatformTarget)'!='x64'" />
   </Target>
   <ProjectExtensions>
     <VisualStudio>

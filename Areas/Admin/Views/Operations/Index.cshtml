@@ -3,7 +3,7 @@
 @model FaceAttend.Models.ViewModels.Admin.OperationsVm
 @{
     ViewBag.Title = "Operations";
-    var readyClass = Model.DatabaseHealthy && Model.BiometricWorkerReady && Model.ModelIntegrityOk ? "success" : "danger";
+    var readyClass = Model.DatabaseHealthy && Model.BiometricEngineReady && Model.ModelIntegrityOk ? "success" : "danger";
     var calibration = Model.CalibrationSummary;
     var migrations = Model.MigrationStatus;
 }
@@ -85,10 +85,11 @@
                         <dt class="col-5">Database</dt><dd class="col-7">@(Model.DatabaseHealthy ? "OK" : Model.DatabaseError ?? "Failed")</dd>
                         <dt class="col-5">DB migrations</dt><dd class="col-7">@(migrations != null && migrations.Ok ? "OK" : "Incomplete") @(migrations != null && migrations.Required ? "· enforced" : "· warn only")</dd>
                         <dt class="col-5">Warm-up</dt><dd class="col-7">@Model.WarmUpState · @Model.WarmUpMessage</dd>
-                        <dt class="col-5">OpenVINO worker</dt><dd class="col-7">@(Model.BiometricWorkerReady ? "Ready" : "Not ready")</dd>
+                        <dt class="col-5">Biometric engine</dt><dd class="col-7">@(Model.BiometricEngineReady ? "Ready" : "Not ready")</dd>
                         <dt class="col-5">Model version</dt><dd class="col-7">@Model.ModelVersion</dd>
                         <dt class="col-5">Model integrity</dt><dd class="col-7">@(Model.ModelIntegrityOk ? "OK" : "Failed") @(Model.ModelHashesConfigured ? "· pinned" : "· hashes not pinned") · @(Model.ModelAclOk ? "ACL locked" : "ACL writable") @(Model.ModelRequireReadOnlyAcl ? "· enforced" : "· warn only")</dd>
-                        <dt class="col-5">Worker</dt><dd class="col-7">@(Model.WorkerEnabled ? (Model.WorkerHealthy ? "Healthy" : "Not ready") : "Disabled") @Model.WorkerStatus</dd>
+                        <dt class="col-5">Engine</dt><dd class="col-7">@(Model.EngineEnabled ? (Model.EngineHealthy ? "Healthy" : "Not ready") : "Disabled") @Model.EngineStatus</dd>
+                        <dt class="col-5">Runtime</dt><dd class="col-7">@Model.EngineRuntime</dd>
                         <dt class="col-5">Cache age</dt><dd class="col-7">@(Model.FaceMatcherCacheAgeSeconds.HasValue ? Model.FaceMatcherCacheAgeSeconds + "s" : "-")</dd>
                         <dt class="col-5">Temp folder</dt><dd class="col-7">@(Model.TmpMb.HasValue ? Model.TmpMb + " MB" : "-")</dd>
                     </dl>
@@ -174,8 +175,8 @@
         </div>
         <div class="col-12 col-xl-6">
             <div class="ea-form-card h-100">
-                <div class="ea-form-header"><div class="ea-form-title">OpenVINO Worker</div></div>
-                <pre class="small mb-0 p-3">@JsonConvert.SerializeObject(Model.BiometricWorkerStatus, Formatting.Indented)</pre>
+                <div class="ea-form-header"><div class="ea-form-title">Biometric Engine</div></div>
+                <pre class="small mb-0 p-3">@JsonConvert.SerializeObject(Model.BiometricEngineStatus, Formatting.Indented)</pre>
             </div>
         </div>
         <div class="col-12 col-xl-6">

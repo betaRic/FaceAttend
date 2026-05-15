@@ -40,7 +40,8 @@ namespace FaceAttend.Services.Recognition
             DateTime requestedAtLocal,
             bool includePerfTimings,
             HttpContextBase httpContext,
-            bool wfhMode = false)
+            bool wfhMode = false,
+            bool requireGps = false)
         {
             var request  = httpContext.Request;
             var response = httpContext.Response;
@@ -64,7 +65,7 @@ namespace FaceAttend.Services.Recognition
                 using (var db = new FaceAttendDBEntities())
                 {
                     Office office           = null;
-                    bool   gpsRequired      = DeviceService.IsMobileDevice(request);
+                    bool   gpsRequired      = requireGps;
                     bool   locationVerified = false;
                     int    requiredAcc      = 0;
 
@@ -92,7 +93,7 @@ namespace FaceAttend.Services.Recognition
                     if (office == null && !wfhMode)
                         return NoOfficesResult(includePerfTimings, timings);
 
-                    var isMobileAttend = DeviceService.IsMobileDevice(request);
+                    var isMobileAttend = requireGps || DeviceService.IsMobileDevice(request);
                     var biometricPolicy = BiometricPolicy.Current;
                     var antiSpoofThreshold = biometricPolicy.AntiSpoofClearThresholdFor(isMobileAttend);
 
@@ -111,7 +112,7 @@ namespace FaceAttend.Services.Recognition
 
                     if (fastResult.Timings != null)
                         foreach (var t in fastResult.Timings)
-                            timings["openvino_" + t.Key] = t.Value;
+                            timings["biometric_" + t.Key] = t.Value;
 
                     if (!fastResult.Ok)
                     {
@@ -137,7 +138,7 @@ namespace FaceAttend.Services.Recognition
                     actualImageHeight  = fastResult.ImageHeight;
                     sharpness          = fastResult.Sharpness;
                     sharpnessThreshold = fastResult.SharpnessThreshold;
-                    mark("openvino_pipeline_ms");
+                    mark("biometric_pipeline_ms");
 
                     if (vec == null)
                         return JsonResponseBuilder.ErrorWithTimings("ENCODING_FAIL", timings, includePerfTimings);

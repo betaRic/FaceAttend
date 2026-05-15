@@ -362,7 +362,7 @@
                         return; 
                     }
 
-                    // SERVER WARM-UP GATE: Block scans until biometric worker health is ready.
+                    // SERVER WARM-UP GATE: Block scans until the biometric engine is ready.
                     // The /Health endpoint reports ready:true when WarmUpState == 1.
                     if (!state.serverReady) {
                         safeSetPrompt('System starting...', 'Models loading, please wait.');

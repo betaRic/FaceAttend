@@ -119,7 +119,7 @@ namespace FaceAttend.Controllers
                     activeEmployeesMissingTemplates = snap.ActiveEmployeesMissingTemplates,
                     remainingDeviceTokenRows = snap.RemainingDeviceTokenRows
                 },
-                biometricWorkerReady = snap.BiometricWorkerReady,
+                biometricEngineReady = snap.BiometricEngineReady,
                 antiSpoofModelPresent = snap.AntiSpoofModelPresent,
                 antiSpoofCircuitOpen  = snap.AntiSpoofCircuitOpen,
                 antiSpoofCircuitStuck = snap.AntiSpoofCircuitStuck,
@@ -146,14 +146,15 @@ namespace FaceAttend.Controllers
                         f.AclError
                     })
                 },
-                worker = new
+                engine = new
                 {
-                    enabled = snap.WorkerEnabled,
-                    healthy = snap.WorkerHealthy,
-                    secretRequired = snap.WorkerSecretRequired,
-                    secretConfigured = snap.WorkerSecretConfigured,
-                    status = snap.WorkerStatus,
-                    durationMs = snap.WorkerDurationMs
+                    enabled = snap.EngineEnabled,
+                    healthy = snap.EngineHealthy,
+                    ready = snap.EngineReady,
+                    analyzeSupported = snap.EngineAnalyzeSupported,
+                    runtime = snap.EngineRuntime,
+                    status = snap.EngineStatus,
+                    durationMs = snap.EngineDurationMs
                 },
                 disk = new
                 {
@@ -182,7 +183,7 @@ namespace FaceAttend.Controllers
         }
 
         /// <summary>
-        /// AntiSpoof endpoint — just confirms the worker process is alive.
+        /// Live endpoint — confirms the MVC app process is alive.
         /// Does NOT check DB, disk, or models. Used by nginx upstream checks.
         /// </summary>
         [HttpGet]
@@ -234,7 +235,7 @@ namespace FaceAttend.Controllers
                 dbDetails = new { ok = false, error = ex.Message, errorType = ex.GetType().Name };
             }
 
-            var biometricWorkerStatus = OpenVinoBiometrics.GetWorkerStatus();
+            var biometricEngineStatus = BiometricEngine.GetStatus();
 
             // Face matcher cache stats
             var matcherStats = FaceAttend.Services.Biometrics.FastFaceMatcher.GetStats();
@@ -259,7 +260,7 @@ namespace FaceAttend.Controllers
                     files = modelIntegrity.Files.Select(f => new { f.Name, f.Exists, f.Match })
                 },
                 database = dbDetails,
-                biometricWorker = biometricWorkerStatus,
+                biometricEngine = biometricEngineStatus,
                 faceMatcher = new
                 {
                     isInitialized    = matcherStats.IsInitialized,
